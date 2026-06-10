@@ -1,8 +1,27 @@
+import os
 from collections import defaultdict
 
 from PyQt5.QtGui import QPainter, QColor, QPainterPath, QTransform, QBrush, QPolygonF, QPalette, QPen, QPixmap, QFont
 from PyQt5.QtWidgets import QWidget, QToolTip, QApplication
 from PyQt5.QtCore import Qt, QSize, QRect, QPointF, pyqtSignal, QEvent, QRectF
+
+
+# Directory holding the background PNGs (sits next to this module).
+_WIDGETS_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def load_background_pixmap(name):
+    """Load a keyboard background image.
+
+    Prefer the raw PNG on disk (so swapping the file takes effect without
+    recompiling the Qt resource blob); fall back to the compiled ``:/``
+    resource alias if the file is missing (e.g. a frozen build)."""
+    disk_path = os.path.join(_WIDGETS_DIR, name + ".png")
+    if os.path.exists(disk_path):
+        pixmap = QPixmap(disk_path)
+        if not pixmap.isNull():
+            return pixmap
+    return QPixmap(":/" + name)
 
 from constants import KEY_SIZE_RATIO, KEY_SPACING_RATIO, KEYBOARD_WIDGET_PADDING, \
     KEYBOARD_WIDGET_MASK_HEIGHT, KEY_ROUNDNESS, SHADOW_SIDE_PADDING, SHADOW_TOP_PADDING, SHADOW_BOTTOM_PADDING, \
@@ -1003,9 +1022,9 @@ class KeyboardWidget2(QWidget):
 
         # Choose image based on brightness (light or dark theme)
         if brightness > 127:  # Threshold for light/dark theme
-            pixmap = QPixmap(":/backgroundlight")  # Light theme alias
+            pixmap = load_background_pixmap("backgroundlight")  # Light theme
         else:
-            pixmap = QPixmap(":/backgrounddark")  # Dark theme alias
+            pixmap = load_background_pixmap("backgrounddark")  # Dark theme
         
         if not pixmap.isNull():
             # Define the area for the image with specific coordinates and dimensions
