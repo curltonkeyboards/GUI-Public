@@ -2096,13 +2096,11 @@ class EncoderAssignWidget(QWidget):
         self.current_layer = 0
         self.selected_button = None
         self.buttons = []
+        # Single-encoder hardware: one rotary encoder (enc_idx 0) + sustain pedal.
         self.labels = [
-            "Encoder 1 Up",
-            "Encoder 1 Down",
-            "Encoder 1 Press",
-            "Encoder 2 Up",
-            "Encoder 2 Down",
-            "Encoder 2 Press",
+            "Encoder Up",
+            "Encoder Down",
+            "Encoder Press",
             "Sustain Pedal"
         ]
 
@@ -2119,43 +2117,28 @@ class EncoderAssignWidget(QWidget):
         layout.setContentsMargins(5, 45, 5, 10)  # 45px top margin
         self.setLayout(layout)
 
-        # Create buttons in logical order (indices 0-6) before adding to UI
-        # Index 0: Encoder 1 Up
-        enc1_up_btn = EncoderButton(is_up=True)
-        enc1_up_btn.clicked.connect(lambda: self.on_button_clicked(0))
-        self.buttons.append(enc1_up_btn)
+        # Create buttons in logical order (indices 0-3) before adding to UI
+        # Index 0: Encoder Up
+        enc_up_btn = EncoderButton(is_up=True)
+        enc_up_btn.clicked.connect(lambda: self.on_button_clicked(0))
+        self.buttons.append(enc_up_btn)
 
-        # Index 1: Encoder 1 Down
-        enc1_down_btn = EncoderButton(is_up=False)
-        enc1_down_btn.clicked.connect(lambda: self.on_button_clicked(1))
-        self.buttons.append(enc1_down_btn)
+        # Index 1: Encoder Down
+        enc_down_btn = EncoderButton(is_up=False)
+        enc_down_btn.clicked.connect(lambda: self.on_button_clicked(1))
+        self.buttons.append(enc_down_btn)
 
-        # Index 2: Encoder 1 Press
-        enc1_push_btn = PushButton()
-        enc1_push_btn.clicked.connect(lambda: self.on_button_clicked(2))
-        self.buttons.append(enc1_push_btn)
+        # Index 2: Encoder Press
+        enc_push_btn = PushButton()
+        enc_push_btn.clicked.connect(lambda: self.on_button_clicked(2))
+        self.buttons.append(enc_push_btn)
 
-        # Index 3: Encoder 2 Up
-        enc2_up_btn = EncoderButton(is_up=True)
-        enc2_up_btn.clicked.connect(lambda: self.on_button_clicked(3))
-        self.buttons.append(enc2_up_btn)
-
-        # Index 4: Encoder 2 Down
-        enc2_down_btn = EncoderButton(is_up=False)
-        enc2_down_btn.clicked.connect(lambda: self.on_button_clicked(4))
-        self.buttons.append(enc2_down_btn)
-
-        # Index 5: Encoder 2 Press
-        enc2_push_btn = PushButton()
-        enc2_push_btn.clicked.connect(lambda: self.on_button_clicked(5))
-        self.buttons.append(enc2_push_btn)
-
-        # Index 6: Sustain Pedal
+        # Index 3: Sustain Pedal
         sustain_btn = SustainButton()
-        sustain_btn.clicked.connect(lambda: self.on_button_clicked(6))
+        sustain_btn.clicked.connect(lambda: self.on_button_clicked(3))
         self.buttons.append(sustain_btn)
 
-        # Now add to UI layout in display order (sustain at top, then encoders)
+        # Now add to UI layout in display order (sustain at top, then encoder)
         # Sustain pedal group - at top, center aligned with 20px left shift
         sustain_label = QLabel("Sustain Pedal")
         sustain_label.setStyleSheet("QLabel { font-size: 11px; font-weight: bold; background: transparent; }")
@@ -2174,92 +2157,47 @@ class EncoderAssignWidget(QWidget):
         # Add 10px spacer below sustain button
         layout.addSpacing(23)
 
-        # Encoder 1 group
-        encoder1_label = QLabel("Encoder 1")
-        encoder1_label.setStyleSheet("QLabel { font-size: 11px; font-weight: bold; background: transparent; }")
-        encoder1_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(encoder1_label)
+        # Encoder group (single encoder)
+        encoder_label = QLabel("Encoder")
+        encoder_label.setStyleSheet("QLabel { font-size: 11px; font-weight: bold; background: transparent; }")
+        encoder_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(encoder_label)
 
-        # 7px spacing between Encoder 1 title and button labels
+        # 7px spacing between Encoder title and button labels
         layout.setSpacing(7)
 
-        # Encoder 1 button labels (above buttons)
-        encoder1_labels_layout = QHBoxLayout()
-        encoder1_labels_layout.setSpacing(5)
-        enc1_up_label = QLabel("UP")
-        enc1_up_label.setStyleSheet("QLabel { font-size: 9px; background: transparent; }")
-        enc1_up_label.setAlignment(Qt.AlignCenter)
-        enc1_up_label.setFixedWidth(55)
-        enc1_down_label = QLabel("DOWN")
-        enc1_down_label.setStyleSheet("QLabel { font-size: 9px; background: transparent; }")
-        enc1_down_label.setAlignment(Qt.AlignCenter)
-        enc1_down_label.setFixedWidth(55)
-        enc1_push_label = QLabel("PUSH")
-        enc1_push_label.setStyleSheet("QLabel { font-size: 9px; background: transparent; }")
-        enc1_push_label.setAlignment(Qt.AlignCenter)
-        enc1_push_label.setFixedWidth(55)
-        encoder1_labels_layout.addWidget(enc1_up_label)
-        encoder1_labels_layout.addWidget(enc1_down_label)
-        encoder1_labels_layout.addWidget(enc1_push_label)
-        encoder1_labels_layout.addStretch()
-        layout.addLayout(encoder1_labels_layout)
+        # Encoder button labels (above buttons)
+        encoder_labels_layout = QHBoxLayout()
+        encoder_labels_layout.setSpacing(5)
+        enc_up_label = QLabel("UP")
+        enc_up_label.setStyleSheet("QLabel { font-size: 9px; background: transparent; }")
+        enc_up_label.setAlignment(Qt.AlignCenter)
+        enc_up_label.setFixedWidth(55)
+        enc_down_label = QLabel("DOWN")
+        enc_down_label.setStyleSheet("QLabel { font-size: 9px; background: transparent; }")
+        enc_down_label.setAlignment(Qt.AlignCenter)
+        enc_down_label.setFixedWidth(55)
+        enc_push_label = QLabel("PUSH")
+        enc_push_label.setStyleSheet("QLabel { font-size: 9px; background: transparent; }")
+        enc_push_label.setAlignment(Qt.AlignCenter)
+        enc_push_label.setFixedWidth(55)
+        encoder_labels_layout.addWidget(enc_up_label)
+        encoder_labels_layout.addWidget(enc_down_label)
+        encoder_labels_layout.addWidget(enc_push_label)
+        encoder_labels_layout.addStretch()
+        layout.addLayout(encoder_labels_layout)
 
         # 3px spacing between labels and buttons
         layout.setSpacing(3)
 
-        # Encoder 1 buttons (Up/Down circular, Press square)
-        encoder1_layout = QHBoxLayout()
-        encoder1_layout.setSpacing(5)
-        encoder1_layout.addWidget(enc1_up_btn)
-        encoder1_layout.addWidget(enc1_down_btn)
-        encoder1_layout.addWidget(enc1_push_btn)
-        encoder1_layout.addStretch()
-        layout.addLayout(encoder1_layout)
-
-        # 7px spacing between Encoder 1 buttons and Encoder 2 title
-        layout.setSpacing(7)
-
-        # Encoder 2 group
-        encoder2_label = QLabel("Encoder 2")
-        encoder2_label.setStyleSheet("QLabel { font-size: 11px; font-weight: bold; background: transparent; }")
-        encoder2_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(encoder2_label)
-
-        # 7px spacing between Encoder 2 title and button labels
-        layout.setSpacing(7)
-
-        # Encoder 2 button labels (above buttons)
-        encoder2_labels_layout = QHBoxLayout()
-        encoder2_labels_layout.setSpacing(5)
-        enc2_up_label = QLabel("UP")
-        enc2_up_label.setStyleSheet("QLabel { font-size: 9px; background: transparent; }")
-        enc2_up_label.setAlignment(Qt.AlignCenter)
-        enc2_up_label.setFixedWidth(55)
-        enc2_down_label = QLabel("DOWN")
-        enc2_down_label.setStyleSheet("QLabel { font-size: 9px; background: transparent; }")
-        enc2_down_label.setAlignment(Qt.AlignCenter)
-        enc2_down_label.setFixedWidth(55)
-        enc2_push_label = QLabel("PUSH")
-        enc2_push_label.setStyleSheet("QLabel { font-size: 9px; background: transparent; }")
-        enc2_push_label.setAlignment(Qt.AlignCenter)
-        enc2_push_label.setFixedWidth(55)
-        encoder2_labels_layout.addWidget(enc2_up_label)
-        encoder2_labels_layout.addWidget(enc2_down_label)
-        encoder2_labels_layout.addWidget(enc2_push_label)
-        encoder2_labels_layout.addStretch()
-        layout.addLayout(encoder2_labels_layout)
-
-        # 3px spacing between labels and buttons
-        layout.setSpacing(3)
-
-        # Encoder 2 buttons (Up/Down circular, Press square)
-        encoder2_layout = QHBoxLayout()
-        encoder2_layout.setSpacing(5)
-        encoder2_layout.addWidget(enc2_up_btn)
-        encoder2_layout.addWidget(enc2_down_btn)
-        encoder2_layout.addWidget(enc2_push_btn)
-        encoder2_layout.addStretch()
-        layout.addLayout(encoder2_layout)
+        # Encoder buttons (Up/Down circular, Press square)
+        encoder_layout = QHBoxLayout()
+        encoder_layout.setSpacing(5)
+        encoder_layout.addWidget(enc_up_btn)
+        encoder_layout.addWidget(enc_down_btn)
+        encoder_layout.addWidget(enc_push_btn)
+        encoder_layout.addStretch()
+        layout.addLayout(encoder_layout)
 
         layout.addStretch()
 
@@ -2291,17 +2229,14 @@ class EncoderAssignWidget(QWidget):
         if keyboard is not None:
             # Encoder rotation mapping (only CW and CCW, not press)
             encoder_mapping = {
-                0: (0, 1),  # Encoder 1 Up (enc_idx=0, dir=1 CW)
-                1: (0, 0),  # Encoder 1 Down (enc_idx=0, dir=0 CCW)
-                3: (1, 1),  # Encoder 2 Up (enc_idx=1, dir=1 CW)
-                4: (1, 0),  # Encoder 2 Down (enc_idx=1, dir=0 CCW)
+                0: (0, 1),  # Encoder Up (enc_idx=0, dir=1 CW)
+                1: (0, 0),  # Encoder Down (enc_idx=0, dir=0 CCW)
             }
 
             # Matrix key mapping for encoder press and sustain pedal
             matrix_key_mapping = {
-                2: (5, 1),  # Encoder 1 Press -> row 5, col 1
-                5: (5, 0),  # Encoder 2 Press -> row 5, col 0
-                6: (5, 2),  # Sustain Pedal -> row 5, col 2
+                2: (5, 0),  # Encoder Press -> row 5, col 0 (firmware single-encoder click, PB0)
+                3: (5, 2),  # Sustain Pedal -> row 5, col 2
             }
 
             # Update encoder rotation buttons (from encoder_layout)
@@ -2509,27 +2444,16 @@ class KeymapEditor(BasicEditor):
         self.preset_menu_btn.setMenu(menu)
 
     def _build_encoder_menu(self):
-        """Build encoder menu with Individual and Both submenus."""
+        """Build encoder menu (single encoder, flat preset list)."""
         menu = QMenu(self.encoder_menu_btn)
 
-        # Individual submenu — single encoder presets
-        individual_menu = menu.addMenu("Individual")
+        # Single-encoder hardware: one flat list of presets applied to the encoder.
         for name, description, enc_cw, enc_ccw, enc_press in INDIVIDUAL_ENCODER_PRESETS:
-            action = individual_menu.addAction(name)
+            action = menu.addAction(name)
             action.setToolTip(description)
             entry = (name, description, enc_cw, enc_ccw, enc_press)
             action.triggered.connect(
                 lambda checked, e=entry: self._on_individual_encoder_selected(e))
-
-        # Both submenu — paired encoder presets
-        both_menu = menu.addMenu("Both")
-        for preset in ENCODER_PRESETS:
-            name = preset[0]
-            description = preset[1]
-            action = both_menu.addAction(name)
-            action.setToolTip(description)
-            action.triggered.connect(
-                lambda checked, p=preset: self._on_both_encoder_selected(p))
 
         self.encoder_menu_btn.setMenu(menu)
 
@@ -2682,75 +2606,11 @@ class KeymapEditor(BasicEditor):
         self.refresh_layer_display()
 
     def _on_individual_encoder_selected(self, entry):
-        """Handle individual encoder preset — show dialog to pick which encoder."""
+        """Handle encoder preset — confirm and apply to the single encoder."""
         if self.keyboard is None:
             return
 
         name, description, enc_cw, enc_ccw, enc_press = entry
-        self.encoder_menu_btn.setText(name)
-        self.encoder_menu_btn.setToolTip(description)
-
-        # Dialog to pick which encoder
-        dlg = QDialog(None)
-        dlg.setWindowTitle(tr("KeymapEditor", "Apply Encoder Preset"))
-        dlg.setMinimumWidth(280)
-        layout = QVBoxLayout()
-        dlg.setLayout(layout)
-
-        info = QLabel(tr("KeymapEditor",
-                         '<b>{}</b><br><i>{}</i>'.format(name, description)))
-        info.setWordWrap(True)
-        layout.addWidget(info)
-        layout.addSpacing(8)
-
-        enc_layout = QHBoxLayout()
-        enc_layout.addWidget(QLabel(tr("KeymapEditor", "Apply to encoder:")))
-        enc_spin = QSpinBox()
-        enc_spin.setMinimum(1)
-        enc_spin.setMaximum(2)
-        enc_spin.setValue(1)
-        enc_spin.setToolTip("Encoder 1 (left) or Encoder 2 (right)")
-        enc_layout.addWidget(enc_spin)
-        enc_layout.addStretch()
-        layout.addLayout(enc_layout)
-
-        layout.addSpacing(8)
-
-        warn = QLabel(tr("KeymapEditor",
-                         "This will overwrite Encoder {} on Layer {}.".format(
-                             enc_spin.value(), self.current_layer)))
-        warn.setStyleSheet("color: #c00; font-size: 9pt;")
-        enc_spin.valueChanged.connect(
-            lambda v: warn.setText(
-                "This will overwrite Encoder {} on Layer {}.".format(v, self.current_layer)))
-        layout.addWidget(warn)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(dlg.accept)
-        buttons.rejected.connect(dlg.reject)
-        layout.addWidget(buttons)
-
-        if dlg.exec_() != QDialog.Accepted:
-            return
-
-        layer = self.current_layer
-        enc_idx = enc_spin.value() - 1  # 0-based
-        # Encoder press: Enc1 → row=5 col=1, Enc2 → row=5 col=0
-        press_col = 1 - enc_idx
-
-        self.keyboard.set_encoder(layer, enc_idx, 1, enc_cw)
-        self.keyboard.set_encoder(layer, enc_idx, 0, enc_ccw)
-        self.keyboard.set_key(layer, 5, press_col, enc_press)
-
-        self.encoder_assign.set_layer(self.current_layer, self.keyboard)
-        self.refresh_layer_display()
-
-    def _on_both_encoder_selected(self, preset):
-        """Handle both-encoder preset — show confirmation and apply."""
-        if self.keyboard is None:
-            return
-
-        name, description, enc1_cw, enc1_ccw, enc1_press, enc2_cw, enc2_ccw, enc2_press = preset
         self.encoder_menu_btn.setText(name)
         self.encoder_menu_btn.setToolTip(description)
 
@@ -2760,7 +2620,7 @@ class KeymapEditor(BasicEditor):
             tr("KeymapEditor",
                'Apply "{}" encoder preset to Layer {}?\n\n'
                '{}\n\n'
-               'This will overwrite both encoder assignments.'.format(
+               'This will overwrite the encoder assignment.'.format(
                    name, self.current_layer, description)),
             QMessageBox.Yes | QMessageBox.No
         )
@@ -2768,14 +2628,10 @@ class KeymapEditor(BasicEditor):
             return
 
         layer = self.current_layer
-
-        self.keyboard.set_encoder(layer, 0, 1, enc1_cw)
-        self.keyboard.set_encoder(layer, 0, 0, enc1_ccw)
-        self.keyboard.set_key(layer, 5, 1, enc1_press)
-
-        self.keyboard.set_encoder(layer, 1, 1, enc2_cw)
-        self.keyboard.set_encoder(layer, 1, 0, enc2_ccw)
-        self.keyboard.set_key(layer, 5, 0, enc2_press)
+        # Single encoder = enc_idx 0; press is the firmware click at row 5, col 0.
+        self.keyboard.set_encoder(layer, 0, 1, enc_cw)
+        self.keyboard.set_encoder(layer, 0, 0, enc_ccw)
+        self.keyboard.set_key(layer, 5, 0, enc_press)
 
         self.encoder_assign.set_layer(self.current_layer, self.keyboard)
         self.refresh_layer_display()
@@ -2951,19 +2807,15 @@ class KeymapEditor(BasicEditor):
         l = self.current_layer
 
         # Map button index to encoder parameters or matrix key positions
-        # Button 0: Encoder 1 Up (enc_idx=0, dir=1) - encoder rotation
-        # Button 1: Encoder 1 Down (enc_idx=0, dir=0) - encoder rotation
-        # Button 2: Encoder 1 Press - matrix key at row=5, col=1
-        # Button 3: Encoder 2 Up (enc_idx=1, dir=1) - encoder rotation
-        # Button 4: Encoder 2 Down (enc_idx=1, dir=0) - encoder rotation
-        # Button 5: Encoder 2 Press - matrix key at row=5, col=0
-        # Button 6: Sustain Pedal - matrix key at row=5, col=2
+        # Button 0: Encoder Up (enc_idx=0, dir=1) - encoder rotation
+        # Button 1: Encoder Down (enc_idx=0, dir=0) - encoder rotation
+        # Button 2: Encoder Press - matrix key at row=5, col=0 (firmware PB0 click)
+        # Button 3: Sustain Pedal - matrix key at row=5, col=2
 
-        # Matrix key mappings for encoder clicks and sustain pedal
+        # Matrix key mappings for encoder click and sustain pedal
         matrix_key_mapping = {
-            2: (5, 1),  # Encoder 1 Press -> row 5, col 1
-            5: (5, 0),  # Encoder 2 Press -> row 5, col 0
-            6: (5, 2),  # Sustain Pedal -> row 5, col 2
+            2: (5, 0),  # Encoder Press -> row 5, col 0
+            3: (5, 2),  # Sustain Pedal -> row 5, col 2
         }
 
         if button_index in matrix_key_mapping:
@@ -2973,10 +2825,8 @@ class KeymapEditor(BasicEditor):
         else:
             # Map button index to encoder index and direction (rotation only)
             encoder_mapping = {
-                0: (0, 1),  # Encoder 1 Up (CW)
-                1: (0, 0),  # Encoder 1 Down (CCW)
-                3: (1, 1),  # Encoder 2 Up (CW)
-                4: (1, 0),  # Encoder 2 Down (CCW)
+                0: (0, 1),  # Encoder Up (CW)
+                1: (0, 0),  # Encoder Down (CCW)
             }
 
             if button_index in encoder_mapping:
