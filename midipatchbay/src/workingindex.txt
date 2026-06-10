@@ -1,0 +1,1781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple MIDI Patchbay</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8fafc;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            font-weight: 400;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 32px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #1a202c;
+            margin-bottom: 40px;
+            font-size: 2rem;
+            font-weight: 400;
+            letter-spacing: -0.025em;
+        }
+        
+        h2 {
+            color: #2d3748;
+            font-size: 1.25rem;
+            font-weight: 500;
+            margin-bottom: 16px;
+        }
+        
+        h3 {
+            color: #4a5568;
+            font-size: 1.1rem;
+            font-weight: 500;
+            margin-bottom: 16px;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+        }
+        
+        .section h2 {
+            color: #2d3748;
+            border-bottom: 2px solid #4299e1;
+            padding-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        .device-list {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            min-height: 100px;
+        }
+        
+        .device {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 8px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s ease;
+        }
+        
+        .device:hover {
+            border-color: #cbd5e0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+        
+        .device-name {
+            font-weight: 500;
+            color: #2d3748;
+        }
+        
+        .connections {
+            margin-top: 30px;
+        }
+        
+        .connection {
+            background: #ebf8ff;
+            border: 1px solid #4299e1;
+            border-radius: 6px;
+            padding: 16px;
+            margin: 10px 0;
+            transition: all 0.2s ease;
+        }
+        
+        .connection-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .connection-info {
+            display: flex;
+            align-items: center;
+            flex: 1;
+        }
+        
+        .connection-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .advanced-btn {
+            background: #718096;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.8rem;
+            transition: all 0.2s ease;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .advanced-btn:hover {
+            background: #4a5568;
+        }
+        
+        .advanced-btn.active {
+            background: #2d3748;
+        }
+        
+        .connection-advanced {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #bee3f8;
+            display: none;
+        }
+        
+        .connection-advanced.open {
+            display: block;
+        }
+        
+        .connection:hover {
+            background: #bee3f8;
+        }
+        
+        .connection-arrow {
+            font-size: 16px;
+            color: #4299e1;
+            font-weight: 500;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.85rem;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(66, 153, 225, 0.2);
+            font-family: 'Inter', sans-serif;
+        }
+        
+        button:hover {
+            background: linear-gradient(135deg, #3182ce 0%, #2c5aa0 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(66, 153, 225, 0.3);
+        }
+        
+        button:disabled {
+            background: #e2e8f0;
+            color: #a0aec0;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .error {
+            background: #fed7d7;
+            border: 1px solid #fc8181;
+            color: #c53030;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 400;
+        }
+        
+        .success {
+            background: #c6f6d5;
+            border: 1px solid #68d391;
+            color: #2f855a;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 400;
+        }
+        
+        select {
+            padding: 10px 14px;
+            border: 2px solid #e2e8f0;
+            border-radius: 6px;
+            margin: 0 10px;
+            font-size: 0.85rem;
+            color: #4a5568;
+            background: white;
+            transition: border-color 0.2s ease;
+            min-width: 180px;
+            font-family: 'Inter', sans-serif;
+            font-weight: 400;
+        }
+        
+        select:focus {
+            outline: none;
+            border-color: #4299e1;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+            border-radius: 6px;
+        }
+        
+        .add-connection {
+            background: #f7fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 24px;
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        
+        .connection-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin: 16px 0;
+        }
+        
+        .arrow {
+            font-size: 16px;
+            color: #4299e1;
+            font-weight: 500;
+        }
+        
+        .output-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 500;
+            color: #2d3748;
+            font-size: 1rem;
+        }
+        
+        .status-light {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-left: 6px;
+            transition: all 0.2s ease;
+        }
+        
+        .status-light.connected {
+            background-color: #48bb78;
+            box-shadow: 0 0 8px rgba(72, 187, 120, 0.4);
+        }
+        
+        .status-light.disconnected {
+            background-color: #f56565;
+            box-shadow: 0 0 8px rgba(245, 101, 101, 0.4);
+        }
+        
+        .usb-fix {
+            background: #fffbeb;
+            border: 2px solid #f6ad55;
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 20px;
+        }
+        
+        .usb-fix h3 {
+            margin-top: 0;
+            color: #c05621;
+            font-weight: 500;
+        }
+        
+        .usb-fix p {
+            color: #744210;
+            margin-bottom: 16px;
+            font-weight: 400;
+        }
+        
+        .usb-fix button {
+            background: linear-gradient(135deg, #f6ad55 0%, #ed8936 100%);
+            margin-right: 12px;
+            border-radius: 8px;
+        }
+        
+        .usb-fix button:hover {
+            background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+        }
+        
+        .connections-section {
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .connections-title {
+            color: #2d3748;
+            font-size: 1.25rem;
+            font-weight: 500;
+            margin-bottom: 16px;
+            border-bottom: 2px solid #4299e1;
+            padding-bottom: 6px;
+        }
+        
+        .filter-section {
+            margin-bottom: 20px;
+        }
+        
+        .filter-checkbox {
+            display: flex;
+            align-items: center;
+            margin-bottom: 16px;
+            font-weight: 500;
+            color: #2d3748;
+        }
+        
+        .filter-checkbox input {
+            margin-right: 8px;
+            transform: scale(1.2);
+        }
+        
+        .message-types {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+            gap: 8px;
+            margin-top: 16px;
+        }
+        
+        .message-type-btn {
+            background: #e2e8f0;
+            color: #4a5568;
+            border: 2px solid #e2e8f0;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-align: center;
+            transition: all 0.2s ease;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .message-type-btn:hover {
+            background: #cbd5e0;
+            border-color: #cbd5e0;
+        }
+        
+        .message-type-btn.active {
+            background: #4299e1;
+            color: white;
+            border-color: #4299e1;
+        }
+        
+        .channel-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 6px;
+            margin-top: 12px;
+        }
+        
+        .channel-btn {
+            background: #e2e8f0;
+            color: #4a5568;
+            border: 2px solid #e2e8f0;
+            padding: 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-align: center;
+            transition: all 0.2s ease;
+            font-family: 'Inter', sans-serif;
+            min-height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .channel-btn:hover {
+            background: #cbd5e0;
+            border-color: #cbd5e0;
+        }
+        
+        .channel-btn.active {
+            background: #4299e1;
+            color: white;
+            border-color: #4299e1;
+        }
+		
+		.loop-manager {
+			background: #f7fafc;
+			border: 2px solid #e2e8f0;
+			border-radius: 12px;
+			padding: 24px;
+			margin-top: 20px;
+		}
+		
+		.loop-actions {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+			gap: 16px;
+			margin-bottom: 24px;
+		}
+		
+		.save-section, .load-section {
+			background: white;
+			border: 1px solid #e2e8f0;
+			border-radius: 8px;
+			padding: 20px;
+		}
+		
+		.save-section h4, .load-section h4 {
+			margin-top: 0;
+			color: #2d3748;
+			font-weight: 500;
+			font-size: 1.1rem;
+		}
+		
+		.loop-buttons {
+			display: grid;
+			grid-template-columns: repeat(4, 1fr);
+			gap: 8px;
+			margin: 16px 0;
+		}
+		
+		.loop-btn {
+			background: #e2e8f0;
+			color: #4a5568;
+			border: 2px solid #e2e8f0;
+			padding: 12px 8px;
+			border-radius: 6px;
+			cursor: pointer;
+			font-weight: 500;
+			text-align: center;
+			transition: all 0.2s ease;
+			font-family: 'Inter', sans-serif;
+		}
+		
+		.loop-btn:hover {
+			background: #cbd5e0;
+			border-color: #cbd5e0;
+		}
+		
+		.loop-btn.has-data {
+			background: #4299e1;
+			color: white;
+			border-color: #4299e1;
+		}
+		
+		.loop-btn.has-data:hover {
+			background: #3182ce;
+			border-color: #3182ce;
+		}
+		
+		.transfer-status {
+			background: #ebf8ff;
+			border: 1px solid #4299e1;
+			border-radius: 6px;
+			padding: 12px;
+			margin: 16px 0;
+			font-weight: 500;
+			color: #2c5aa0;
+			display: none;
+		}
+		
+		.transfer-status.active {
+			display: block;
+		}
+		
+		.progress-bar {
+			width: 100%;
+			height: 8px;
+			background: #e2e8f0;
+			border-radius: 4px;
+			margin: 8px 0;
+			overflow: hidden;
+		}
+		
+		.progress-fill {
+			height: 100%;
+			background: #4299e1;
+			width: 0%;
+			transition: width 0.3s ease;
+		}
+		
+		.file-list {
+			max-height: 200px;
+			overflow-y: auto;
+			border: 1px solid #e2e8f0;
+			border-radius: 6px;
+			margin: 16px 0;
+		}
+		
+		.file-item {
+			padding: 12px 16px;
+			border-bottom: 1px solid #f1f5f9;
+			cursor: pointer;
+			transition: background 0.2s ease;
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+		}
+		
+		.file-item:hover {
+			background: #f8fafc;
+		}
+		
+		.file-item:last-child {
+			border-bottom: none;
+		}
+		
+		.file-item.selected {
+			background: #ebf8ff;
+			border-left: 4px solid #4299e1;
+		}
+		
+		.file-name {
+			font-weight: 500;
+			color: #2d3748;
+		}
+		
+		.file-date {
+			font-size: 0.8rem;
+			color: #718096;
+		}
+		
+		.sysex-status {
+			background: #f0fff4;
+			border: 1px solid #48bb78;
+			border-radius: 6px;
+			padding: 12px;
+			margin: 16px 0;
+			font-weight: 500;
+			color: #22543d;
+		}
+		
+		.sysex-status.disconnected {
+			background: #fffaf0;
+			border-color: #ed8936;
+			color: #744210;
+		}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>MIDIswitch Connect</h1>
+        
+        <div id="status"></div>
+        
+        <div class="add-connection">
+            <h3>Connect to MIDIswitch</h3>
+            <div class="connection-row">
+                <select id="inputSelect">
+                    <option value="">Select MIDI Input...</option>
+                </select>
+                <span class="arrow">→</span>
+                <div class="output-status">
+                    MIDIswitch <div class="status-light disconnected" id="statusLight"></div>
+                </div>
+            </div>
+            <button onclick="addConnection()">Connect</button>
+            
+            <!-- SysEx Status Display -->
+            <div class="sysex-status disconnected" id="sysexStatus">
+                SysEx Listener: Not Connected
+            </div>
+        </div>
+        
+        <div class="connections-section">
+            <div id="connectionsList"></div>
+        </div>
+        
+        <!-- Loop Manager Section -->
+        <div class="section">
+            <h2>Loop Manager</h2>
+            <div class="loop-manager">
+                
+                <!-- Save Section -->
+                <div class="loop-actions">
+                    <div class="save-section">
+                        <h4>Save Loops</h4>
+                        <p>Save current loop to file:</p>
+                        <div class="loop-buttons">
+                            <button class="loop-btn" id="saveLoop1" onclick="requestSaveLoop(1)">Loop 1</button>
+                            <button class="loop-btn" id="saveLoop2" onclick="requestSaveLoop(2)">Loop 2</button>
+                            <button class="loop-btn" id="saveLoop3" onclick="requestSaveLoop(3)">Loop 3</button>
+                            <button class="loop-btn" id="saveLoop4" onclick="requestSaveLoop(4)">Loop 4</button>
+                        </div>
+                        <div class="transfer-status" id="saveStatus">
+                            <div>Receiving loop data...</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="saveProgress"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Load Section -->
+                    <div class="load-section">
+                        <h4>Load Loops</h4>
+                        <button onclick="browseLoopFiles()" style="margin-bottom: 16px;">Browse Files</button>
+                        <div class="file-list" id="fileList">
+                            <div style="padding: 20px; text-align: center; color: #718096;">
+                                No loop files loaded
+                            </div>
+                        </div>
+                        <div style="margin-top: 16px;">
+                            <span style="font-weight: 500; color: #4a5568;">Load to:</span>
+                            <div class="loop-buttons">
+                                <button class="loop-btn" onclick="loadToLoop(1)">Loop 1</button>
+                                <button class="loop-btn" onclick="loadToLoop(2)">Loop 2</button>
+                                <button class="loop-btn" onclick="loadToLoop(3)">Loop 3</button>
+                                <button class="loop-btn" onclick="loadToLoop(4)">Loop 4</button>
+                            </div>
+                        </div>
+                        <div class="transfer-status" id="loadStatus">
+                            <div>Sending loop data...</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="loadProgress"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+        
+        <div class="usb-fix" id="usbFix" style="display: none;">
+            <h3>USB Device Not Detected?</h3>
+            <p>If your MIDISwitch isn't showing up:</p>
+            <button onclick="hardRefresh()" style="background: #ff9800;">Force USB Device Scan</button>
+            <button onclick="reinitializeMIDI()" style="background: #f44336;">Reinitialize MIDI System</button>
+        </div>
+    </div>
+
+    <script>
+        let midiAccess = null;
+        let connections = [];
+        let initAttempts = 0;
+        const maxInitAttempts = 5;
+        let midiswitchOutput = null;
+        
+        // NEW: Automatic SysEx listener
+        let midiswitchInput = null;
+        let sysexListenerActive = false;
+        
+        // Loop Manager Variables
+        const SYSEX_MANUFACTURER_ID = 0x7D;
+        const SYSEX_DEVICE_ID = 0x4D;
+        const SYSEX_SUB_ID = 0x00;
+
+        const SYSEX_CMD_SAVE_START = 0x01;
+        const SYSEX_CMD_SAVE_CHUNK = 0x02;
+        const SYSEX_CMD_SAVE_END = 0x03;
+        const SYSEX_CMD_LOAD_START = 0x04;
+        const SYSEX_CMD_LOAD_CHUNK = 0x05;
+        const SYSEX_CMD_LOAD_END = 0x06;
+        const SYSEX_CMD_REQUEST_SAVE = 0x10; // NEW: SysEx save request
+
+        const SYSEX_CHUNK_SIZE = 448;
+
+        // Transfer state
+        let currentTransfer = {
+            active: false,
+            isLoading: false,
+            loopNum: 0,
+            expectedChunks: 0,
+            receivedChunks: 0,
+            totalSize: 0,
+            receivedData: [],
+            fileName: ''
+        };
+
+        let selectedFile = null;
+        let loadedFiles = [];
+        
+        // Initialize MIDI with multiple retry attempts
+        async function initMIDI() {
+            initAttempts++;
+            
+            try {
+                if (!navigator.requestMIDIAccess) {
+                    throw new Error('Web MIDI API not supported in this browser');
+                }
+                
+                console.log(`MIDI initialization attempt ${initAttempts}...`);
+                
+                // Request MIDI access with all possible options
+                const midiOptions = { 
+                    sysex: true,
+                    software: true
+                };
+                
+                midiAccess = await navigator.requestMIDIAccess(midiOptions);
+                console.log(`MIDI access granted! (Attempt ${initAttempts})`);
+                
+                // Set up state change listener
+                midiAccess.onstatechange = (event) => {
+                    console.log('MIDI state change detected:', event.port.name, event.port.state);
+                    setTimeout(updateDeviceLists, 500); // Small delay for stability
+                };
+                
+                // Initial device list update
+                updateDeviceLists();
+                
+                // Schedule multiple refresh attempts to catch slow USB devices
+                scheduleUSBDeviceScans();
+                
+            } catch (error) {
+                console.error(`MIDI initialization attempt ${initAttempts} failed:`, error);
+                
+                // Retry initialization if we haven't exceeded max attempts
+                if (initAttempts < maxInitAttempts) {
+                    setTimeout(() => {
+                        console.log(`Retrying MIDI initialization in 2 seconds...`);
+                        initMIDI();
+                    }, 2000);
+                }
+            }
+        }
+        
+        // NEW: Set up automatic SysEx listener for MIDIswitch
+        function setupSysExListener() {
+            if (!midiAccess) return;
+            
+            // Find MIDIswitch input port
+            const inputs = Array.from(midiAccess.inputs.values());
+            const midiswitchInputPort = inputs.find(input => 
+                input.name.toLowerCase().includes('midiswitch') && input.state === 'connected'
+            );
+            
+            if (midiswitchInputPort && midiswitchInputPort !== midiswitchInput) {
+                console.log('Setting up automatic SysEx listener for:', midiswitchInputPort.name);
+                
+                // Clear previous listener if exists
+                if (midiswitchInput) {
+                    midiswitchInput.onmidimessage = null;
+                }
+                
+                midiswitchInput = midiswitchInputPort;
+                
+                // Set up SysEx-only listener that NEVER forwards data
+                midiswitchInput.onmidimessage = async function(event) {
+                    console.log('SysEx Listener received MIDI:', event.data);
+                    
+                    // ONLY process SysEx messages for our device - filter everything else
+                    if (event.data[0] === 0xF0 && event.data.length >= 6) {
+                        if (event.data[1] === SYSEX_MANUFACTURER_ID && 
+                            event.data[2] === SYSEX_SUB_ID && 
+                            event.data[3] === SYSEX_DEVICE_ID) {
+                            console.log('Processing SysEx message from MIDIswitch');
+                            await handleSysExMessage(Array.from(event.data));
+                        } else {
+                            console.log('SysEx message not for us, ignoring');
+                        }
+                    } else {
+                        console.log('Non-SysEx message ignored by SysEx listener');
+                    }
+                    
+                    // NEVER forward any data - this prevents feedback loops
+                };
+                
+                // Open the port
+                midiswitchInput.open().then(() => {
+                    sysexListenerActive = true;
+                    updateSysExStatus();
+                    console.log('SysEx listener established for MIDIswitch');
+                }).catch(error => {
+                    console.error('Failed to open MIDIswitch input for SysEx listener:', error);
+                    sysexListenerActive = false;
+                    updateSysExStatus();
+                });
+                
+            } else if (!midiswitchInputPort) {
+                // MIDIswitch input not available
+                if (midiswitchInput) {
+                    midiswitchInput.onmidimessage = null;
+                    midiswitchInput = null;
+                }
+                sysexListenerActive = false;
+                updateSysExStatus();
+                console.log('MIDIswitch input not available for SysEx listener');
+            }
+        }
+        
+        // NEW: Update SysEx status display
+        function updateSysExStatus() {
+            const sysexStatusDiv = document.getElementById('sysexStatus');
+            if (sysexListenerActive && midiswitchInput) {
+                sysexStatusDiv.className = 'sysex-status';
+                sysexStatusDiv.textContent = `SysEx Listener: Connected to ${midiswitchInput.name}`;
+            } else {
+                sysexStatusDiv.className = 'sysex-status disconnected';
+                sysexStatusDiv.textContent = 'SysEx Listener: Not Connected';
+            }
+        }
+        
+        function scheduleUSBDeviceScans() {
+            // Multiple scans at different intervals to catch USB devices
+            const scanTimes = [1000, 3000, 5000, 8000, 12000]; // Progressive delays
+            
+            scanTimes.forEach((delay, index) => {
+                setTimeout(() => {
+                    console.log(`USB device scan ${index + 1}...`);
+                    updateDeviceLists();
+                }, delay);
+            });
+        }
+        
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="${type}">${message}</div>`;
+            setTimeout(() => {
+                statusDiv.innerHTML = '';
+            }, 5000);
+        }
+        
+        function updateDeviceLists() {
+            if (!midiAccess) {
+                console.log('MIDI access not available yet');
+                return;
+            }
+            
+            console.log('=== DEVICE SCAN ===');
+            console.log('Input ports:', midiAccess.inputs.size);
+            console.log('Output ports:', midiAccess.outputs.size);
+            
+            const inputSelect = document.getElementById('inputSelect');
+            const statusLight = document.getElementById('statusLight');
+            
+            // Clear existing content
+            inputSelect.innerHTML = '<option value="">Select MIDI Input...</option>';
+            
+            let midiswitchFound = false;
+            midiswitchOutput = null;
+            
+            // Process inputs - add all to dropdown EXCEPT MIDIswitch (to prevent loops)
+            const inputs = Array.from(midiAccess.inputs.values());
+            inputs.forEach(input => {
+                console.log(`Input: ${input.name} (ID: ${input.id}, State: ${input.state}, Connection: ${input.connection})`);
+                
+                // Try to open the port to ensure it's available
+                try {
+                    if (input.connection === 'closed') {
+                        input.open();
+                    }
+                } catch (e) {
+                    console.log(`Could not open input ${input.name}:`, e);
+                }
+                
+                // Add to dropdown only if NOT MIDIswitch (prevent feedback loops)
+                if (!input.name.toLowerCase().includes('midiswitch')) {
+                    const option = document.createElement('option');
+                    option.value = input.id;
+                    option.textContent = input.name;
+                    inputSelect.appendChild(option);
+                }
+            });
+            
+            // Process outputs - look for MIDIswitch
+            const outputs = Array.from(midiAccess.outputs.values());
+            outputs.forEach(output => {
+                console.log(`Output: ${output.name} (ID: ${output.id}, State: ${output.state}, Connection: ${output.connection})`);
+                
+                // Check if this is a MIDIswitch device
+                if (output.name.toLowerCase().includes('midiswitch')) {
+                    midiswitchFound = true;
+                    midiswitchOutput = output;
+                    
+                    // Try to open the port to ensure it's available
+                    try {
+                        if (output.connection === 'closed') {
+                            output.open();
+                        }
+                    } catch (e) {
+                        console.log(`Could not open output ${output.name}:`, e);
+                    }
+                }
+            });
+            
+            // Update status light
+            if (midiswitchFound && midiswitchOutput) {
+                statusLight.className = 'status-light connected';
+            } else {
+                statusLight.className = 'status-light disconnected';
+            }
+            
+            // NEW: Set up automatic SysEx listener
+            setupSysExListener();
+            
+            // Show/hide USB fix section based on whether MIDIswitch was found
+            const usbFixDiv = document.getElementById('usbFix');
+            if (midiswitchFound) {
+                usbFixDiv.style.display = 'none';
+            } else {
+                usbFixDiv.style.display = 'block';
+            }
+            
+            console.log('=== END SCAN ===');
+        }
+        
+        // Force refresh functions for USB troubleshooting
+        function hardRefresh() {
+            console.log('Hard refresh requested...');
+            
+            if (midiAccess) {
+                // Force all ports to close and reopen
+                midiAccess.inputs.forEach(input => {
+                    try {
+                        input.close();
+                        setTimeout(() => input.open(), 100);
+                    } catch (e) {}
+                });
+                
+                midiAccess.outputs.forEach(output => {
+                    try {
+                        output.close();
+                        setTimeout(() => output.open(), 100);
+                    } catch (e) {}
+                });
+            }
+            
+            // Multiple rapid scans
+            setTimeout(updateDeviceLists, 500);
+            setTimeout(updateDeviceLists, 1500);
+            setTimeout(updateDeviceLists, 3000);
+        }
+        
+        function reinitializeMIDI() {
+            console.log('Reinitializing MIDI system...');
+            
+            // Reset everything
+            midiAccess = null;
+            initAttempts = 0;
+            
+            // Clear existing connections
+            connections.forEach(conn => {
+                try {
+                    conn.input.onmidimessage = null;
+                } catch (e) {}
+            });
+            connections = [];
+            
+            // Clear SysEx listener
+            if (midiswitchInput) {
+                midiswitchInput.onmidimessage = null;
+                midiswitchInput = null;
+            }
+            sysexListenerActive = false;
+            
+            updateConnectionsList();
+            updateSysExStatus();
+            
+            // Restart initialization
+            setTimeout(initMIDI, 1000);
+        }
+        
+        function addConnection() {
+            const inputSelect = document.getElementById('inputSelect');
+            const inputId = inputSelect.value;
+            
+            if (!inputId) {
+                showStatus('Please select a MIDI input device', 'error');
+                return;
+            }
+            
+            if (!midiswitchOutput) {
+                showStatus('MIDIswitch not detected - please check connection', 'error');
+                return;
+            }
+            
+            const existingConnection = connections.find(conn => 
+                conn.inputId === inputId && conn.outputId === midiswitchOutput.id
+            );
+            
+            if (existingConnection) {
+                showStatus('Connection already exists', 'error');
+                return;
+            }
+            
+            const input = midiAccess.inputs.get(inputId);
+            
+            if (!input) {
+                showStatus('Selected input device not found', 'error');
+                return;
+            }
+            
+            // Create connection
+            const connection = {
+                inputId: inputId,
+                outputId: midiswitchOutput.id,
+                inputName: input.name,
+                outputName: midiswitchOutput.name,
+                input: input,
+                output: midiswitchOutput,
+                // Advanced settings
+                filterEnabled: false,
+                allowedMessageTypes: new Set(),
+                channelFilterEnabled: false,
+                allowedChannels: new Set(),
+                remapEnabled: false,
+                remapChannel: 1
+            };
+            
+            // Set up MIDI message forwarding (NO SysEx handling here - that's done by the automatic listener)
+            input.onmidimessage = function(event) {
+                // Forward messages if they pass filters
+                if (!shouldFilterMessage(event.data, connection)) {
+                    let data = event.data;
+                    
+                    // Apply channel remapping if enabled
+                    if (connection.remapEnabled && isChannelMessage(data[0])) {
+                        data = remapChannel(data, connection.remapChannel);
+                    }
+                    
+                    midiswitchOutput.send(data);
+                }
+            };
+            
+            connections.push(connection);
+            updateConnectionsList();
+            showStatus(`Connected ${input.name} → ${midiswitchOutput.name}`, 'success');
+            
+            inputSelect.value = '';
+        }
+        
+        function removeConnection(index) {
+            const connection = connections[index];
+            connection.input.onmidimessage = null;
+            connections.splice(index, 1);
+            updateConnectionsList();
+            showStatus(`Disconnected ${connection.inputName} → ${connection.outputName}`, 'success');
+        }
+        
+        function updateConnectionsList() {
+            const connectionsDiv = document.getElementById('connectionsList');
+            
+            if (connections.length === 0) {
+                connectionsDiv.innerHTML = '';
+                return;
+            }
+            
+            // Add title only when there are connections
+            let connectionsHTML = '<div class="connections-title">Active Connections</div>';
+            
+            connections.forEach((connection, index) => {
+                connectionsHTML += `
+                    <div class="connection">
+                        <div class="connection-header">
+                            <div class="connection-info">
+                                <span style="font-weight: 500; color: #2d3748;">${connection.inputName}</span>
+                                <span class="connection-arrow" style="margin: 0 12px;">→</span>
+                                <span style="font-weight: 500; color: #2d3748;">${connection.outputName}</span>
+                            </div>
+                            <div class="connection-buttons">
+                                <button class="advanced-btn" onclick="toggleConnectionAdvanced(${index})">Advanced</button>
+                                <button onclick="removeConnection(${index})">Disconnect</button>
+                            </div>
+                        </div>
+                        <div class="connection-advanced" id="connectionAdvanced${index}">
+                            <div class="filter-section">
+                                <div class="filter-checkbox">
+                                    <input type="checkbox" id="filterEnabled${index}" onchange="updateConnectionFilter(${index}, 'filter')" ${connection.filterEnabled ? 'checked' : ''}>
+                                    <label for="filterEnabled${index}">Allow these messages only:</label>
+                                </div>
+                                <div class="message-types">
+                                    <button class="message-type-btn ${connection.allowedMessageTypes.has('note') ? 'active' : ''}" data-type="note" onclick="toggleConnectionMessageType(${index}, 'note', this)">Note</button>
+                                    <button class="message-type-btn ${connection.allowedMessageTypes.has('pitch') ? 'active' : ''}" data-type="pitch" onclick="toggleConnectionMessageType(${index}, 'pitch', this)">Pitch</button>
+                                    <button class="message-type-btn ${connection.allowedMessageTypes.has('aftertouch') ? 'active' : ''}" data-type="aftertouch" onclick="toggleConnectionMessageType(${index}, 'aftertouch', this)">Aftertouch</button>
+                                    <button class="message-type-btn ${connection.allowedMessageTypes.has('cc') ? 'active' : ''}" data-type="cc" onclick="toggleConnectionMessageType(${index}, 'cc', this)">CC</button>
+                                    <button class="message-type-btn ${connection.allowedMessageTypes.has('program') ? 'active' : ''}" data-type="program" onclick="toggleConnectionMessageType(${index}, 'program', this)">Prg Chg</button>
+                                    <button class="message-type-btn ${connection.allowedMessageTypes.has('sysex') ? 'active' : ''}" data-type="sysex" onclick="toggleConnectionMessageType(${index}, 'sysex', this)">Sysex</button>
+                                    <button class="message-type-btn ${connection.allowedMessageTypes.has('activesense') ? 'active' : ''}" data-type="activesense" onclick="toggleConnectionMessageType(${index}, 'activesense', this)">Actv Sen</button>
+                                    <button class="message-type-btn ${connection.allowedMessageTypes.has('reset') ? 'active' : ''}" data-type="reset" onclick="toggleConnectionMessageType(${index}, 'reset', this)">Reset</button>
+                                    <button class="message-type-btn ${connection.allowedMessageTypes.has('clock') ? 'active' : ''}" data-type="clock" onclick="toggleConnectionMessageType(${index}, 'clock', this)">Clock</button>
+                                    <button class="message-type-btn ${connection.allowedMessageTypes.has('start') ? 'active' : ''}" data-type="start" onclick="toggleConnectionMessageType(${index}, 'start', this)">Start</button>
+                                    <button class="message-type-btn ${connection.allowedMessageTypes.has('continue') ? 'active' : ''}" data-type="continue" onclick="toggleConnectionMessageType(${index}, 'continue', this)">Continue</button>
+                                    <button class="message-type-btn ${connection.allowedMessageTypes.has('stop') ? 'active' : ''}" data-type="stop" onclick="toggleConnectionMessageType(${index}, 'stop', this)">Stop</button>
+                                    <button class="message-type-btn ${connection.allowedMessageTypes.has('mtc') ? 'active' : ''}" data-type="mtc" onclick="toggleConnectionMessageType(${index}, 'mtc', this)">MTC</button>
+                                    <button class="message-type-btn ${connection.allowedMessageTypes.has('songpos') ? 'active' : ''}" data-type="songpos" onclick="toggleConnectionMessageType(${index}, 'songpos', this)">Song Pos</button>
+                                    <button class="message-type-btn ${connection.allowedMessageTypes.has('songsel') ? 'active' : ''}" data-type="songsel" onclick="toggleConnectionMessageType(${index}, 'songsel', this)">Song Sel</button>
+                                    <button class="message-type-btn ${connection.allowedMessageTypes.has('tunereq') ? 'active' : ''}" data-type="tunereq" onclick="toggleConnectionMessageType(${index}, 'tunereq', this)">Tune Rq</button>
+                                </div>
+                            </div>
+                            <div class="filter-section">
+                                <div class="filter-checkbox">
+                                    <input type="checkbox" id="channelFilterEnabled${index}" onchange="updateConnectionFilter(${index}, 'channel')" ${connection.channelFilterEnabled ? 'checked' : ''}>
+                                    <label for="channelFilterEnabled${index}">Allow messages from these channels only:</label>
+                                </div>
+                                <div class="channel-grid">
+                                    ${Array.from({length: 16}, (_, i) => {
+                                        const channel = i + 1;
+                                        const isActive = connection.allowedChannels.has(channel);
+                                        return `<button class="channel-btn ${isActive ? 'active' : ''}" data-channel="${channel}" onclick="toggleConnectionChannel(${index}, ${channel}, this)">${channel}</button>`;
+                                    }).join('')}
+                                </div>
+                            </div>
+                            <div class="filter-section">
+                                <div class="filter-checkbox">
+                                    <input type="checkbox" id="remapEnabled${index}" onchange="updateConnectionFilter(${index}, 'remap')" ${connection.remapEnabled ? 'checked' : ''}>
+                                    <label for="remapEnabled${index}">Remap to channel:</label>
+                                </div>
+                                <div class="channel-grid">
+                                    ${Array.from({length: 16}, (_, i) => {
+                                        const channel = i + 1;
+                                        const isActive = connection.remapChannel === channel;
+                                        return `<button class="channel-btn ${isActive ? 'active' : ''}" data-remap="${channel}" onclick="selectConnectionRemapChannel(${index}, ${channel}, this)">${channel}</button>`;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            connectionsDiv.innerHTML = connectionsHTML;
+        }
+        
+        // Loop Manager Functions
+        
+        // Request save from keyboard using SysEx (UPDATED with better state management)
+        function requestSaveLoop(loopNum) {
+            if (!midiswitchOutput) {
+                showStatus('MIDIswitch not connected', 'error');
+                return;
+            }
+            
+            console.log(`🎯 Requesting save of loop ${loopNum} via SysEx...`);
+            
+            // Clear any previous transfer state
+            if (currentTransfer.active) {
+                console.log(`⚠️ Previous transfer was still active - clearing it`);
+            }
+            
+            // Set up to receive the data - BEFORE sending the request
+            currentTransfer = {
+                active: true,
+                isLoading: false,
+                loopNum: loopNum,
+                expectedChunks: 0,
+                receivedChunks: 0,
+                totalSize: 0,
+                receivedData: [],
+                fileName: `loop${loopNum}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.loop`
+            };
+            
+            console.log(`📋 Transfer state initialized:`);
+            console.log(`   - Active: ${currentTransfer.active}`);
+            console.log(`   - Target loop: ${currentTransfer.loopNum}`);
+            console.log(`   - File name: ${currentTransfer.fileName}`);
+            
+            // Send SysEx save request
+            const saveRequestMsg = [
+                0xF0,                    // SysEx start
+                SYSEX_MANUFACTURER_ID,   // Manufacturer ID
+                SYSEX_SUB_ID,           // Sub ID
+                SYSEX_DEVICE_ID,        // Device ID  
+                SYSEX_CMD_REQUEST_SAVE, // Command: REQUEST_SAVE
+                loopNum,                // Which loop (1-4)
+                0xF7                    // SysEx end
+            ];
+            
+            midiswitchOutput.send(saveRequestMsg);
+            console.log(`📤 Sent SysEx save request:`, saveRequestMsg);
+            
+            // Show status
+            const saveStatus = document.getElementById('saveStatus');
+            saveStatus.classList.add('active');
+            updateSaveProgress(0);
+            
+            console.log(`🎬 Save request completed - waiting for device response...`);
+        }
+
+        // Handle incoming SysEx messages (UPDATED with better logging)
+        async function handleSysExMessage(data) {
+            console.log('handleSysExMessage called with data:', data);
+            
+            if (data.length < 6) {
+                console.log('SysEx message too short, ignoring');
+                return;
+            }
+            
+            const command = data[4];
+            const loopNum = data[5];
+            
+            console.log(`SysEx command: ${command}, loop: ${loopNum}`);
+            
+            switch (command) {
+                case SYSEX_CMD_SAVE_START:
+                    console.log(`🚀 Received SAVE_START command for loop ${loopNum}`);
+                    
+                    // AUTO-SETUP: If transfer isn't active, this is a device-initiated save
+                    if (!currentTransfer.active || currentTransfer.loopNum !== loopNum) {
+                        console.log(`🤖 Device-initiated save detected - auto-setting up transfer state`);
+                        
+                        // Set up transfer state automatically
+                        currentTransfer = {
+                            active: true,
+                            isLoading: false,
+                            loopNum: loopNum,
+                            expectedChunks: 0,
+                            receivedChunks: 0,
+                            totalSize: 0,
+                            receivedData: [],
+                            fileName: `loop${loopNum}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.loop`
+                        };
+                        
+                        // Show progress UI
+                        const saveStatus = document.getElementById('saveStatus');
+                        saveStatus.classList.add('active');
+                        updateSaveProgress(0);
+                        
+                        console.log(`✅ Auto-setup completed for device-initiated save`);
+                    }
+                    
+                    if (data.length >= 9 && currentTransfer.active && !currentTransfer.isLoading) {
+                        currentTransfer.expectedChunks = data[6];
+                        currentTransfer.totalSize = ((data[7] & 0x7F) << 8) | (data[8] & 0x7F);
+                        currentTransfer.receivedChunks = 0;
+                        currentTransfer.receivedData = [];
+                        
+                        console.log(`📋 Transfer setup:`);
+                        console.log(`   - Target loop: ${currentTransfer.loopNum}`);
+                        console.log(`   - Expected chunks: ${currentTransfer.expectedChunks}`);
+                        console.log(`   - Total size: ${currentTransfer.totalSize} bytes`);
+                        console.log(`   - Transfer active: ${currentTransfer.active}`);
+                        console.log(`   - File name: ${currentTransfer.fileName}`);
+                        
+                        updateSaveProgress(0);
+                        console.log(`✅ Ready to receive ${currentTransfer.expectedChunks} chunks`);
+                    } else {
+                        console.log(`❌ SAVE_START ignored - invalid state or insufficient data`);
+                        console.log(`   - Data length: ${data.length}`);
+                        console.log(`   - Transfer active: ${currentTransfer.active}`);
+                        console.log(`   - Is loading: ${currentTransfer.isLoading}`);
+                    }
+                    break;
+                    
+                case SYSEX_CMD_SAVE_CHUNK:
+                    console.log(`📦 Received SAVE_CHUNK command`);
+                    if (currentTransfer.active && !currentTransfer.isLoading && loopNum === currentTransfer.loopNum) {
+                        if (data.length >= 10) {
+                            const chunkNum = data[6];
+                            const chunkSize = ((data[7] & 0x7F) << 7) | (data[8] & 0x7F);
+                            
+                            console.log(`📥 Processing chunk ${chunkNum}, size: ${chunkSize}, total data length: ${data.length}`);
+                            
+                            if (chunkSize > 0 && data.length >= 9 + chunkSize) {
+                                // Extract chunk data (skip SysEx header)
+                                const chunkData = data.slice(9, 9 + chunkSize);
+                                currentTransfer.receivedData.push(...chunkData);
+                                currentTransfer.receivedChunks++;
+                                
+                                const progress = (currentTransfer.receivedChunks / currentTransfer.expectedChunks) * 100;
+                                updateSaveProgress(progress);
+                                
+                                console.log(`✅ Chunk ${currentTransfer.receivedChunks}/${currentTransfer.expectedChunks} processed (${progress.toFixed(1)}%)`);
+                                console.log(`📊 Total data collected: ${currentTransfer.receivedData.length} bytes`);
+                                
+                                // DON'T complete transfer here - wait for SAVE_END command
+                                console.log(`⏳ Waiting for more chunks or SAVE_END command...`);
+                            } else {
+                                console.error(`❌ Invalid chunk: size=${chunkSize}, available=${data.length - 9}`);
+                            }
+                        } else {
+                            console.error(`❌ SAVE_CHUNK message too short: ${data.length} bytes`);
+                        }
+                    } else {
+                        console.log(`⚠️ Ignoring SAVE_CHUNK - invalid transfer state`);
+                    }
+                    break;
+                    
+                case SYSEX_CMD_SAVE_END:
+                    console.log('🏁 Received SAVE_END command - processing...');
+                    console.log(`🔍 Transfer state: active=${currentTransfer.active}, isLoading=${currentTransfer.isLoading}, targetLoop=${currentTransfer.loopNum}, receivedLoop=${loopNum}`);
+                    
+                    if (currentTransfer.active && !currentTransfer.isLoading && loopNum === currentTransfer.loopNum) {
+                        console.log(`✅ Transfer state valid, checking chunk count...`);
+                        
+                        if (currentTransfer.receivedChunks === currentTransfer.expectedChunks) {
+                            console.log(`🎵 Loop transfer complete!`);
+                            console.log(`📊 Original size: ${currentTransfer.totalSize} bytes (7-bit encoded)`);
+                            console.log(`📦 Chunks received: ${currentTransfer.receivedChunks}/${currentTransfer.expectedChunks}`);
+                            console.log(`💾 Starting decode process...`);
+                            
+                            // Decode 7-bit to 8-bit
+                            const decodedData = decode7to8(currentTransfer.receivedData);
+                            
+                            console.log(`📊 Decoded size: ${decodedData.length} bytes (8-bit)`);
+                            console.log(`📂 Saving as: ${currentTransfer.fileName}`);
+                            
+                            try {
+                                // Save to file
+                                await saveLoopFile(currentTransfer.fileName, decodedData);
+                                console.log(`✅ Save process completed successfully for loop ${loopNum}`);
+                                showStatus(`Saved ${currentTransfer.fileName}`, 'success');
+                            } catch (saveError) {
+                                console.error(`❌ Save process failed:`, saveError);
+                                showStatus(`Save failed: ${saveError.message}`, 'error');
+                            }
+                        } else {
+                            console.error(`❌ Save failed: received ${currentTransfer.receivedChunks}/${currentTransfer.expectedChunks} chunks`);
+                            showStatus('Save failed - incomplete transfer', 'error');
+                        }
+                        
+                        // Hide status
+                        document.getElementById('saveStatus').classList.remove('active');
+                        currentTransfer.active = false;
+                        console.log(`🏁 Transfer process completed for loop ${loopNum}`);
+                    } else {
+                        console.log(`⚠️ Transfer state invalid - ignoring SAVE_END`);
+                    }
+                    break;
+                    
+                default:
+                    console.log(`Unknown SysEx command: ${command}`);
+                    break;
+            }
+        }
+
+        // 7-bit to 8-bit decoding
+        function decode7to8(input) {
+            const output = [];
+            let bitsBuffer = 0;
+            let bitsCount = 0;
+            
+            for (let i = 0; i < input.length; i++) {
+                bitsBuffer |= ((input[i] & 0x7F) << bitsCount);
+                bitsCount += 7;
+                
+                while (bitsCount >= 8) {
+                    output.push(bitsBuffer & 0xFF);
+                    bitsBuffer >>= 8;
+                    bitsCount -= 8;
+                }
+            }
+            
+            return new Uint8Array(output);
+        }
+
+        // 8-bit to 7-bit encoding
+        function encode8to7(input) {
+            const output = [];
+            let bitsBuffer = 0;
+            let bitsCount = 0;
+            
+            for (let i = 0; i < input.length; i++) {
+                bitsBuffer |= (input[i] << bitsCount);
+                bitsCount += 8;
+                
+                while (bitsCount >= 7) {
+                    output.push(bitsBuffer & 0x7F);
+                    bitsBuffer >>= 7;
+                    bitsCount -= 7;
+                }
+            }
+            
+            if (bitsCount > 0) {
+                output.push(bitsBuffer & 0x7F);
+            }
+            
+            return new Uint8Array(output);
+        }
+
+        // Update progress bars
+        function updateSaveProgress(percent) {
+            const progressFill = document.getElementById('saveProgress');
+            progressFill.style.width = percent + '%';
+        }
+
+        function updateLoadProgress(percent) {
+            const progressFill = document.getElementById('loadProgress');
+            progressFill.style.width = percent + '%';
+        }
+
+        // Browse for loop files (FIXED - force browser mode for now)
+        async function browseLoopFiles() {
+            try {
+                console.log('Opening file browser...');
+                
+                // TEMPORARY FIX: Force browser file input until Tauri APIs are properly configured
+                console.log('Using browser file input (Tauri APIs not properly configured)');
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.loop';
+                input.multiple = true;
+                
+                return new Promise((resolve) => {
+                    input.onchange = async (e) => {
+                        try {
+                            const files = Array.from(e.target.files);
+                            console.log(`Selected ${files.length} files`);
+                            
+                            for (const file of files) {
+                                console.log(`Loading file: ${file.name} (${file.size} bytes)`);
+                                const arrayBuffer = await file.arrayBuffer();
+                                const data = new Uint8Array(arrayBuffer);
+                                
+                                loadedFiles.push({
+                                    name: file.name,
+                                    data: data,
+                                    date: new Date(file.lastModified),
+                                    size: file.size
+                                });
+                                
+                                console.log(`✅ Loaded: ${file.name}`);
+                            }
+                            
+                            updateFileList();
+                            console.log(`📁 Total files loaded: ${loadedFiles.length}`);
+                            showStatus(`Loaded ${files.length} files`, 'success');
+                            resolve();
+                        } catch (fileError) {
+                            console.error('Error processing files:', fileError);
+                            showStatus('Error loading files', 'error');
+                            resolve();
+                        }
+                    };
+                    
+                    input.click();
+                });
+                
+            } catch (error) {
+                console.error('Error opening file browser:', error);
+                showStatus('Error opening file browser', 'error');
+            }
+        }
+
+        // Update file list display
+        function updateFileList() {
+            const fileList = document.getElementById('fileList');
+            
+            if (loadedFiles.length === 0) {
+                fileList.innerHTML = '<div style="padding: 20px; text-align: center; color: #718096;">No loop files loaded</div>';
+                return;
+            }
+            
+            let html = '';
+            loadedFiles.forEach((file, index) => {
+                const isSelected = selectedFile === index;
+                html += `
+                    <div class="file-item ${isSelected ? 'selected' : ''}" onclick="selectFile(${index})">
+                        <div>
+                            <div class="file-name">${file.name}</div>
+                            <div class="file-date">${file.date.toLocaleDateString()} ${file.date.toLocaleTimeString()}</div>
+                        </div>
+                        <div style="font-size: 0.8rem; color: #718096;">
+                            ${(file.size / 1024).toFixed(1)} KB
+                        </div>
+                    </div>
+                `;
+            });
+            
+            fileList.innerHTML = html;
+        }
+
+        // Select file for loading
+        function selectFile(index) {
+            selectedFile = index;
+            updateFileList();
+        }
+
+        // Load file to specific loop
+        function loadToLoop(loopNum) {
+            if (selectedFile === null || !loadedFiles[selectedFile]) {
+                showStatus('Please select a file first', 'error');
+                return;
+            }
+            
+            if (!midiswitchOutput) {
+                showStatus('MIDIswitch not connected', 'error');
+                return;
+            }
+            
+            const file = loadedFiles[selectedFile];
+            console.log(`Loading ${file.name} to loop ${loopNum}...`);
+            
+            // Encode to 7-bit
+            const encodedData = encode8to7(file.data);
+            
+            // Calculate chunks
+            const numChunks = Math.ceil(encodedData.length / SYSEX_CHUNK_SIZE);
+            
+            // Set up transfer state
+            currentTransfer = {
+                active: true,
+                isLoading: true,
+                loopNum: loopNum,
+                expectedChunks: numChunks,
+                receivedChunks: 0,
+                totalSize: encodedData.length,
+                fileName: file.name
+            };
+            
+            // Show status
+            const loadStatus = document.getElementById('loadStatus');
+            loadStatus.classList.add('active');
+            updateLoadProgress(0);
+            
+            // Send start message
+            const startMsg = [
+                0xF0, SYSEX_MANUFACTURER_ID, SYSEX_SUB_ID, SYSEX_DEVICE_ID,
+                SYSEX_CMD_LOAD_START, loopNum, numChunks,
+                (encodedData.length >> 8) & 0x7F, encodedData.length & 0x7F,
+                0xF7
+            ];
+            midiswitchOutput.send(startMsg);
+            
+            // Send chunks with delays
+            let chunkIndex = 0;
+            const sendNextChunk = () => {
+                if (chunkIndex >= numChunks) {
+                    // Send end message
+                    const endMsg = [
+                        0xF0, SYSEX_MANUFACTURER_ID, SYSEX_SUB_ID, SYSEX_DEVICE_ID,
+                        SYSEX_CMD_LOAD_END, loopNum, 0xF7
+                    ];
+                    midiswitchOutput.send(endMsg);
+                    
+                    // Hide status
+                    loadStatus.classList.remove('active');
+                    currentTransfer.active = false;
+                    
+                    showStatus(`Loaded ${file.name} to Loop ${loopNum}`, 'success');
+                    console.log('Load complete');
+                    return;
+                }
+                
+                const chunkStart = chunkIndex * SYSEX_CHUNK_SIZE;
+                const chunkEnd = Math.min(chunkStart + SYSEX_CHUNK_SIZE, encodedData.length);
+                const chunkSize = chunkEnd - chunkStart;
+                const chunkData = encodedData.slice(chunkStart, chunkEnd);
+                
+                // Build chunk message
+                const chunkMsg = [
+                    0xF0, SYSEX_MANUFACTURER_ID, SYSEX_SUB_ID, SYSEX_DEVICE_ID,
+                    SYSEX_CMD_LOAD_CHUNK, loopNum, chunkIndex,
+                    (chunkSize >> 7) & 0x7F, chunkSize & 0x7F,
+                    ...chunkData,
+                    0xF7
+                ];
+                
+                midiswitchOutput.send(chunkMsg);
+                
+                chunkIndex++;
+                const progress = (chunkIndex / numChunks) * 100;
+                updateLoadProgress(progress);
+                
+                console.log(`Sent chunk ${chunkIndex}/${numChunks}`);
+                
+                // Schedule next chunk
+                setTimeout(sendNextChunk, 50); // 50ms delay between chunks
+            };
+            
+            // Start sending chunks
+            setTimeout(sendNextChunk, 100); // Initial delay
+        }
+
+        // Save loop file to disk (FIXED - force browser download for now)
+        async function saveLoopFile(fileName, data) {
+            try {
+                console.log(`💾 Starting save process...`);
+                console.log(`📄 File name: ${fileName}`);
+                console.log(`📊 Data size: ${data.length} bytes`);
+                console.log(`🔍 Data type: ${data.constructor.name}`);
+                console.log(`📋 First 10 bytes: [${Array.from(data.slice(0, 10)).join(', ')}]`);
+                
+                // TEMPORARY FIX: Force browser download until Tauri APIs are properly configured
+                console.log('🌐 Using browser download (Tauri APIs not properly configured)');
+                
+                const blob = new Blob([data], { type: 'application/octet-stream' });
+                console.log(`💿 Created blob: ${blob.size} bytes, type: ${blob.type}`);
+                
+                const url = URL.createObjectURL(blob);
+                console.log(`🔗 Created download URL: ${url.substring(0, 50)}...`);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                
+                console.log(`⬇️ Triggering download...`);
+                a.click();
+                
+                // Cleanup
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                console.log(`✅ Download triggered successfully!`);
+                console.log(`📁 File will be saved to your default Downloads folder`);
+                console.log(`🎯 Look for: ${fileName}`);
+                
+                showStatus(`Downloaded: ${fileName} (${data.length} bytes)`, 'success');
+                
+                // Show additional info to user
+                setTimeout(() => {
+                    showStatus(`Check Downloads folder for: ${fileName}`, 'success');
+                }, 2000);
+                
+            } catch (error) {
+                console.error('❌ Error saving file:', error);
+                console.error('💥 Error details:', {
+                    message: error.message,
+                    stack: error.stack,
+                    fileName: fileName,
+                    dataLength: data ? data.length : 'undefined'
+                });
+                showStatus(`Error saving file: ${error.message}`, 'error');
+            }
+        }
+        
+        // Initialize when page loads
+        window.addEventListener('load', initMIDI);
+        
+        // Connection-specific advanced functions
+        function toggleConnectionAdvanced(index) {
+            const advancedDiv = document.getElementById(`connectionAdvanced${index}`);
+            const advancedBtn = event.target;
+            
+            if (advancedDiv.classList.contains('open')) {
+                advancedDiv.classList.remove('open');
+                advancedBtn.classList.remove('active');
+            } else {
+                advancedDiv.classList.add('open');
+                advancedBtn.classList.add('active');
+            }
+        }
+        
+        function updateConnectionFilter(index, type) {
+            const connection = connections[index];
+            
+            if (type === 'filter') {
+                connection.filterEnabled = document.getElementById(`filterEnabled${index}`).checked;
+            } else if (type === 'channel') {
+                connection.channelFilterEnabled = document.getElementById(`channelFilterEnabled${index}`).checked;
+            } else if (type === 'remap') {
+                connection.remapEnabled = document.getElementById(`remapEnabled${index}`).checked;
+            }
+        }
+        
+        function toggleConnectionMessageType(index, messageType, button) {
+            const connection = connections[index];
+            
+            if (button.classList.contains('active')) {
+                button.classList.remove('active');
+                connection.allowedMessageTypes.delete(messageType);
+            } else {
+                button.classList.add('active');
+                connection.allowedMessageTypes.add(messageType);
+            }
+        }
+        
+        function toggleConnectionChannel(index, channel, button) {
+            const connection = connections[index];
+            
+            if (button.classList.contains('active')) {
+                button.classList.remove('active');
+                connection.allowedChannels.delete(channel);
+            } else {
+                button.classList.add('active');
+                connection.allowedChannels.add(channel);
+            }
+        }
+        
+        function selectConnectionRemapChannel(index, channel, button) {
+            const connection = connections[index];
+            
+            // Remove active class from all remap buttons for this connection
+            const remapButtons = button.parentElement.querySelectorAll('.channel-btn');
+            remapButtons.forEach(btn => btn.classList.remove('active'));
+            
+            // Set the selected channel as active
+            button.classList.add('active');
+            connection.remapChannel = channel;
+        }
+        
+        function getMIDIMessageType(data) {
+            const statusByte = data[0];
+            
+            // System Real-Time Messages (0xF8-0xFF)
+            if (statusByte >= 0xF8) {
+                switch (statusByte) {
+                    case 0xF8: return 'clock';
+                    case 0xFA: return 'start';
+                    case 0xFB: return 'continue';
+                    case 0xFC: return 'stop';
+                    case 0xFE: return 'activesense';
+                    case 0xFF: return 'reset';
+                    default: return 'unknown';
+                }
+            }
+            
+            // System Common Messages (0xF0-0xF7)
+            if (statusByte >= 0xF0) {
+                switch (statusByte) {
+                    case 0xF0: return 'sysex';
+                    case 0xF1: return 'mtc';
+                    case 0xF2: return 'songpos';
+                    case 0xF3: return 'songsel';
+                    case 0xF6: return 'tunereq';
+                    default: return 'unknown';
+                }
+            }
+            
+            // Channel Messages (0x80-0xEF)
+            const messageType = (statusByte & 0xF0) >> 4;
+            switch (messageType) {
+                case 0x8: case 0x9: return 'note'; // Note Off / Note On
+                case 0xA: return 'aftertouch'; // Polyphonic Key Pressure
+                case 0xB: return 'cc'; // Control Change
+                case 0xC: return 'program'; // Program Change
+                case 0xD: return 'aftertouch'; // Channel Pressure
+                case 0xE: return 'pitch'; // Pitch Bend
+                default: return 'unknown';
+            }
+        }
+        
+        function isChannelMessage(statusByte) {
+            return statusByte >= 0x80 && statusByte <= 0xEF;
+        }
+        
+        function getMessageChannel(statusByte) {
+            if (isChannelMessage(statusByte)) {
+                return (statusByte & 0x0F) + 1; // Convert from 0-15 to 1-16
+            }
+            return null;
+        }
+        
+        function remapChannel(data, newChannel) {
+            const newData = new Uint8Array(data);
+            if (isChannelMessage(data[0])) {
+                newData[0] = (data[0] & 0xF0) | ((newChannel - 1) & 0x0F);
+            }
+            return newData;
+        }
+        
+        function shouldFilterMessage(data, connection) {
+            // Check message type filtering
+            if (connection.filterEnabled && connection.allowedMessageTypes.size > 0) {
+                const messageType = getMIDIMessageType(data);
+                if (!connection.allowedMessageTypes.has(messageType)) {
+                    return true; // Filter out this message
+                }
+            }
+            
+            // Check channel filtering
+            if (connection.channelFilterEnabled && connection.allowedChannels.size > 0) {
+                const channel = getMessageChannel(data[0]);
+                if (channel !== null && !connection.allowedChannels.has(channel)) {
+                    return true; // Filter out this message
+                }
+            }
+            
+            return false; // Don't filter
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,113 @@
+version: 2.1
+
+jobs:
+  build-linux:
+    docker:
+      - image: circleci/python:3.6  # Use a suitable image that matches your requirements
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y libusb-1.0-0-dev libudev-dev ruby ruby-dev rubygems build-essential desktop-file-utils wget unzip zlib1g-dev liblzma-dev libssl-dev git imagemagick file libfuse2
+            wget https://github.com/AppImage/pkg2appimage/archive/38603d92359a48189c35debad9005e8e902e6070.zip
+            unzip *.zip
+            sudo gem install --no-document fpm
+      - run:
+          name: Set up Python 3.6
+          command: ./util/setup_python36.sh
+      - run:
+          name: Setup venv
+          command: |
+            python3.6 -m venv venv
+            . venv/bin/activate
+            pip install -r requirements.txt
+      - run:
+          name: Build
+          command: |
+            . venv/bin/activate
+            fbs freeze
+            fbs installer
+            deactivate
+            ./pkg2appimage-*/pkg2appimage misc/Vial.yml
+            mv out/Vial-*.AppImage out/Vial-x86_64.AppImage
+      - persist_to_workspace:
+          root: out
+          paths:
+            - Vial-x86_64.AppImage
+
+  build-mac:
+    macos:
+      version: "11"  # Specify the macOS version here
+    steps:
+      - checkout
+      - run:
+          name: Get Python
+          command: |
+            curl https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macosx${MACOSX_DEPLOYMENT_TARGET}.pkg -o "python.pkg"
+      - run:
+          name: Verify download
+          command: shasum -a 256 -c <<< '4bcd53faffc98d193ef7cdccd5668de3829c702af4db45258819a84a2cab60d0 *python.pkg'
+      - run:
+          name: Install Python
+          command: sudo installer -pkg python.pkg -target /
+      - run:
+          name: Setup venv
+          command: |
+            python3 -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+      - run:
+          name: Build
+          command: |
+            source venv/bin/activate
+            fbs freeze
+            hdiutil create -volname Vial -srcfolder "target/Curlton KeyStation.app" -ov -format UDZO vial-mac.dmg
+      - persist_to_workspace:
+          root: .
+          paths:
+            - vial-mac.dmg
+
+  build-win:
+    docker:
+      - image: circleci/python:3.6  # Use a suitable image that matches your requirements
+    steps:
+      - checkout
+      - run:
+          name: Setup venv
+          command: |
+            python -m venv venv
+            . .\venv\Scripts\activate.ps1
+            pip install -r requirements.txt
+      - run:
+          name: Install NSIS
+          command: |
+            Invoke-WebRequest "https://github.com/vial-kb/vial-deps/releases/download/v1/nsis-3.06.1-setup.exe" -UserAgent "wget" -OutFile nsis-3.06.1-setup.exe
+            if ((Get-FileHash nsis-3.06.1-setup.exe -Algorithm sha256).Hash -ne "f60488a676308079bfdf6845dc7114cfd4bbff47b66be4db827b89bb8d7fdc52") { Write-Error 'SHA256 mismatch' }
+            Start-Process -FilePath "nsis-3.06.1-setup.exe" -ArgumentList "/S", "/D=C:\Program Files (x86)\NSIS" -NoNewWindow -Wait
+      - run:
+          name: Build
+          command: |
+            . .\venv\Scripts\activate.ps1
+            fbs freeze
+            Compress-Archive -Path "target\Curlton KeyStation" -DestinationPath vial-win.zip
+      - run:
+          name: Create installer
+          command: |
+            $env:Path += ";C:\Program Files (x86)\NSIS"
+            . .\venv\Scripts\activate.ps1
+            fbs installer
+      - persist_to_workspace:
+          root: .
+          paths:
+            - vial-win.zip
+            - target\Curlton KeyStationSetup.exe
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - build-linux
+      - build-mac
+      - build-win

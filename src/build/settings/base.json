@@ -1,0 +1,12 @@
+{
+    "app_name": "Curlton KeyStation",
+    "author": "Curlton Keyboards",
+    "main_module": "src/main/python/main.py",
+    "version": "0.7.1",
+    "hidden_imports": [
+        "rtmidi",
+        "rtmidi._rtmidi",
+        "rtmidi.midiutil",
+        "rtmidi.midiconstants"
+    ]
+}
