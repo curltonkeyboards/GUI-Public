@@ -2260,11 +2260,11 @@ class EncoderAssignWidget(QWidget):
         enc_push_btn.setParent(encoder_container)
         enc_push_btn.move(col_push_center, Q3 * 2)
 
-        # The only remaining encoder title: "Click" under the push button
+        # The only remaining encoder title: bold "Click" above the push button
         click_label = QLabel("Click", encoder_container)
-        click_label.setStyleSheet("QLabel { font-size: 9px; background: transparent; }")
+        click_label.setStyleSheet("QLabel { font-size: 9px; font-weight: bold; background: transparent; }")
         click_label.setAlignment(Qt.AlignCenter)
-        click_label.setGeometry(col_push_center, Q3 * 2 + BTN, BTN, 14)
+        click_label.setGeometry(col_push_center, Q3 * 2 - 16, BTN, 14)
 
         layout.addWidget(encoder_container)
         layout.addStretch()
