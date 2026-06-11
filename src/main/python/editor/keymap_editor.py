@@ -2175,13 +2175,25 @@ class EncoderAssignWidget(QWidget):
         encoder_container.setStyleSheet("background: transparent;")
         encoder_container.setFixedSize(col_push + BTN, Q3 * 2 + BTN + 18)
 
-        # Up: same column, shifted down 3/4 of a button height
+        # Up: same column (left), shifted down 3/4 of a button height
         enc_up_btn.setParent(encoder_container)
         enc_up_btn.move(col_up, Q3)
 
-        # Down: moved to the old Push column, shifted down 3/4 of a button height
+        # Down: moved to the old Push column (right), shifted down 3/4 of a button height
         enc_down_btn.setParent(encoder_container)
         enc_down_btn.move(col_push, Q3)
+
+        # Encoder rotation titles: rotational arrows above the left/right buttons
+        # (left = counter-clockwise, right = clockwise) instead of UP/DOWN text.
+        arrow_style = "QLabel { font-size: 20px; font-weight: bold; background: transparent; }"
+        left_arrow = QLabel("↺", encoder_container)   # ↺ rotate left
+        left_arrow.setStyleSheet(arrow_style)
+        left_arrow.setAlignment(Qt.AlignCenter)
+        left_arrow.setGeometry(col_up, Q3 - 22, BTN, 22)
+        right_arrow = QLabel("↻", encoder_container)  # ↻ rotate right
+        right_arrow.setStyleSheet(arrow_style)
+        right_arrow.setAlignment(Qt.AlignCenter)
+        right_arrow.setGeometry(col_push, Q3 - 22, BTN, 22)
 
         # Push: centered horizontally between the new Up/Down, a FURTHER 3/4 down
         col_push_center = (col_up + col_push) // 2  # 60
