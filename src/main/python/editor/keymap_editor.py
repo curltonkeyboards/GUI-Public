@@ -2239,13 +2239,13 @@ class EncoderAssignWidget(QWidget):
         encoder_container.setStyleSheet("background: transparent;")
         encoder_container.setFixedSize(col_push + BTN, Q3 * 2 + BTN + 18)
 
-        # Up: same column (left), shifted down 3/4 of a button height
-        enc_up_btn.setParent(encoder_container)
-        enc_up_btn.move(col_up, Q3)
-
-        # Down: moved to the old Push column (right), shifted down 3/4 of a button height
+        # Down (CCW / left rotation): left column, under the rotate-left arrow
         enc_down_btn.setParent(encoder_container)
-        enc_down_btn.move(col_push, Q3)
+        enc_down_btn.move(col_up, Q3)
+
+        # Up (CW / right rotation): right column, under the rotate-right arrow
+        enc_up_btn.setParent(encoder_container)
+        enc_up_btn.move(col_push, Q3)
 
         # Encoder rotation titles: curved rotational arrows above the left/right
         # buttons (left = rotate-left, right = rotate-right) instead of UP/DOWN.
