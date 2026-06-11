@@ -2095,7 +2095,7 @@ class RotationArrow(QWidget):
     def __init__(self, mirror=False, parent=None):
         super().__init__(parent)
         self.mirror = mirror
-        self.setFixedSize(34, 28)
+        self.setFixedSize(30, 25)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
     def paintEvent(self, event):
@@ -2115,7 +2115,7 @@ class RotationArrow(QWidget):
         color = QApplication.palette().color(QPalette.ButtonText)
         pad = w * 0.16
         rect = QRectF(pad, pad, w - 2 * pad, h - 2 * pad)
-        start, span = -20, 210      # arc geometry tuned to match the target art
+        start, span = 0, 180        # exact 180° half-circle
         body = span - 18            # leave a gap at the end for the arrowhead
         head = w * 0.42
 
@@ -2249,11 +2249,11 @@ class EncoderAssignWidget(QWidget):
 
         # Encoder rotation titles: curved rotational arrows above the left/right
         # buttons (left = rotate-left, right = rotate-right) instead of UP/DOWN.
-        ARROW_W = 34
+        ARROW_W = 30
         left_arrow = RotationArrow(mirror=False, parent=encoder_container)
-        left_arrow.move(col_up + (BTN - ARROW_W) // 2, Q3 - 30)
+        left_arrow.move(col_up + (BTN - ARROW_W) // 2, Q3 - 28)
         right_arrow = RotationArrow(mirror=True, parent=encoder_container)
-        right_arrow.move(col_push + (BTN - ARROW_W) // 2, Q3 - 30)
+        right_arrow.move(col_push + (BTN - ARROW_W) // 2, Q3 - 28)
 
         # Push: centered horizontally between the new Up/Down, a FURTHER 3/4 down
         col_push_center = (col_up + col_push) // 2  # 60
