@@ -2157,48 +2157,44 @@ class EncoderAssignWidget(QWidget):
         # Add 10px spacer below sustain button
         layout.addSpacing(23)
 
-        # Encoder group (single encoder)
-        encoder_label = QLabel("Encoder")
-        encoder_label.setStyleSheet("QLabel { font-size: 11px; font-weight: bold; background: transparent; }")
-        encoder_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(encoder_label)
+        # Encoder group (single encoder) — absolutely-positioned buttons.
+        # No "Encoder"/UP/DOWN/PUSH titles. Up and Down sit level, each shifted
+        # down 3/4 of a button height; Down takes the old Push column. Push is
+        # centered between Up and Down, a further 3/4 of a button height lower.
+        # The push button keeps a single "Click" title beneath it.
+        BTN = 55                 # button width/height (fixed 55x55)
+        SPACING = 5              # original inter-button gap
+        Q3 = int(round(BTN * 0.75))  # 3/4 of a button height (≈ 41px)
 
-        # 7px spacing between Encoder title and button labels
-        layout.setSpacing(7)
+        # Original columns (HBox with 5px spacing): up=0, down=60, push=120
+        col_up = 0
+        col_push = (BTN + SPACING) * 2  # 120 — old Push column
 
-        # Encoder button labels (above buttons)
-        encoder_labels_layout = QHBoxLayout()
-        encoder_labels_layout.setSpacing(5)
-        enc_up_label = QLabel("UP")
-        enc_up_label.setStyleSheet("QLabel { font-size: 9px; background: transparent; }")
-        enc_up_label.setAlignment(Qt.AlignCenter)
-        enc_up_label.setFixedWidth(55)
-        enc_down_label = QLabel("DOWN")
-        enc_down_label.setStyleSheet("QLabel { font-size: 9px; background: transparent; }")
-        enc_down_label.setAlignment(Qt.AlignCenter)
-        enc_down_label.setFixedWidth(55)
-        enc_push_label = QLabel("PUSH")
-        enc_push_label.setStyleSheet("QLabel { font-size: 9px; background: transparent; }")
-        enc_push_label.setAlignment(Qt.AlignCenter)
-        enc_push_label.setFixedWidth(55)
-        encoder_labels_layout.addWidget(enc_up_label)
-        encoder_labels_layout.addWidget(enc_down_label)
-        encoder_labels_layout.addWidget(enc_push_label)
-        encoder_labels_layout.addStretch()
-        layout.addLayout(encoder_labels_layout)
+        encoder_container = QWidget()
+        encoder_container.setAttribute(Qt.WA_TranslucentBackground)
+        encoder_container.setStyleSheet("background: transparent;")
+        encoder_container.setFixedSize(col_push + BTN, Q3 * 2 + BTN + 18)
 
-        # 3px spacing between labels and buttons
-        layout.setSpacing(3)
+        # Up: same column, shifted down 3/4 of a button height
+        enc_up_btn.setParent(encoder_container)
+        enc_up_btn.move(col_up, Q3)
 
-        # Encoder buttons (Up/Down circular, Press square)
-        encoder_layout = QHBoxLayout()
-        encoder_layout.setSpacing(5)
-        encoder_layout.addWidget(enc_up_btn)
-        encoder_layout.addWidget(enc_down_btn)
-        encoder_layout.addWidget(enc_push_btn)
-        encoder_layout.addStretch()
-        layout.addLayout(encoder_layout)
+        # Down: moved to the old Push column, shifted down 3/4 of a button height
+        enc_down_btn.setParent(encoder_container)
+        enc_down_btn.move(col_push, Q3)
 
+        # Push: centered horizontally between the new Up/Down, a FURTHER 3/4 down
+        col_push_center = (col_up + col_push) // 2  # 60
+        enc_push_btn.setParent(encoder_container)
+        enc_push_btn.move(col_push_center, Q3 * 2)
+
+        # The only remaining encoder title: "Click" under the push button
+        click_label = QLabel("Click", encoder_container)
+        click_label.setStyleSheet("QLabel { font-size: 9px; background: transparent; }")
+        click_label.setAlignment(Qt.AlignCenter)
+        click_label.setGeometry(col_push_center, Q3 * 2 + BTN, BTN, 14)
+
+        layout.addWidget(encoder_container)
         layout.addStretch()
 
     def on_button_clicked(self, index):
