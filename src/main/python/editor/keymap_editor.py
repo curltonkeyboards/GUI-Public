@@ -2164,7 +2164,7 @@ class EncoderAssignWidget(QWidget):
             "Encoder Up",
             "Encoder Down",
             "Encoder Press",
-            "Sustain Pedal"
+            "Footswitch"
         ]
 
         self.setMinimumWidth(185)
@@ -2203,8 +2203,9 @@ class EncoderAssignWidget(QWidget):
 
         # Now add to UI layout in display order (sustain at top, then encoder)
         # Sustain pedal group - at top, center aligned with 20px left shift
-        sustain_label = QLabel("Sustain Pedal")
-        sustain_label.setStyleSheet("QLabel { font-size: 11px; font-weight: bold; background: transparent; }")
+        sustain_label = QLabel("Footswitch")
+        # Always white so it stays legible over both light and dark backgrounds.
+        sustain_label.setStyleSheet("QLabel { font-size: 11px; font-weight: bold; color: white; background: transparent; }")
         sustain_label.setAlignment(Qt.AlignCenter)
         sustain_label_container = QHBoxLayout()
         sustain_label_container.addWidget(sustain_label)
