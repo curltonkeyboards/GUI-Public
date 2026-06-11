@@ -2085,6 +2085,69 @@ class SustainButton(QWidget):
         qp.end()
 
 
+class RotationArrow(QWidget):
+    """Curved rotational-arrow title for the encoder buttons.
+
+    Draws a thick arc ending in a solid arrowhead (rotate-left). Pass
+    mirror=True to flip it horizontally into a rotate-right arrow.
+    """
+
+    def __init__(self, mirror=False, parent=None):
+        super().__init__(parent)
+        self.mirror = mirror
+        self.setFixedSize(34, 28)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
+    def paintEvent(self, event):
+        import math
+        from PyQt5.QtGui import QPainter, QPen, QBrush, QPainterPath, QPolygonF
+        from PyQt5.QtWidgets import QApplication
+        from PyQt5.QtGui import QPalette
+        from PyQt5.QtCore import Qt, QRectF, QPointF
+
+        qp = QPainter(self)
+        qp.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        if self.mirror:
+            qp.translate(w, 0)
+            qp.scale(-1, 1)
+
+        color = QApplication.palette().color(QPalette.ButtonText)
+        pad = w * 0.16
+        rect = QRectF(pad, pad, w - 2 * pad, h - 2 * pad)
+        start, span = -20, 210      # arc geometry tuned to match the target art
+        body = span - 18            # leave a gap at the end for the arrowhead
+        head = w * 0.42
+
+        path = QPainterPath()
+        path.arcMoveTo(rect, start)
+        path.arcTo(rect, start, body)
+        pen = QPen(color)
+        pen.setWidthF(w * 0.17)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        qp.setPen(pen)
+        qp.setBrush(Qt.NoBrush)
+        qp.drawPath(path)
+
+        end = path.currentPosition()
+        prev_path = QPainterPath()
+        prev_path.arcMoveTo(rect, start + body - 6)
+        prev = prev_path.currentPosition()
+        dx, dy = end.x() - prev.x(), end.y() - prev.y()
+        length = math.hypot(dx, dy) or 1.0
+        ux, uy = dx / length, dy / length
+        px, py = -uy, ux  # perpendicular to the tangent
+        tip = QPointF(end.x() + ux * head * 0.75, end.y() + uy * head * 0.75)
+        base1 = QPointF(end.x() + px * head * 0.55, end.y() + py * head * 0.55)
+        base2 = QPointF(end.x() - px * head * 0.55, end.y() - py * head * 0.55)
+        qp.setPen(Qt.NoPen)
+        qp.setBrush(QBrush(color))
+        qp.drawPolygon(QPolygonF([tip, base1, base2]))
+
+        qp.end()
+
+
 class EncoderAssignWidget(QWidget):
     """Widget for assigning keycodes to encoders and sustain pedal per layer"""
 
@@ -2183,17 +2246,13 @@ class EncoderAssignWidget(QWidget):
         enc_down_btn.setParent(encoder_container)
         enc_down_btn.move(col_push, Q3)
 
-        # Encoder rotation titles: rotational arrows above the left/right buttons
-        # (left = counter-clockwise, right = clockwise) instead of UP/DOWN text.
-        arrow_style = "QLabel { font-size: 20px; font-weight: bold; background: transparent; }"
-        left_arrow = QLabel("↺", encoder_container)   # ↺ rotate left
-        left_arrow.setStyleSheet(arrow_style)
-        left_arrow.setAlignment(Qt.AlignCenter)
-        left_arrow.setGeometry(col_up, Q3 - 22, BTN, 22)
-        right_arrow = QLabel("↻", encoder_container)  # ↻ rotate right
-        right_arrow.setStyleSheet(arrow_style)
-        right_arrow.setAlignment(Qt.AlignCenter)
-        right_arrow.setGeometry(col_push, Q3 - 22, BTN, 22)
+        # Encoder rotation titles: curved rotational arrows above the left/right
+        # buttons (left = rotate-left, right = rotate-right) instead of UP/DOWN.
+        ARROW_W = 34
+        left_arrow = RotationArrow(mirror=False, parent=encoder_container)
+        left_arrow.move(col_up + (BTN - ARROW_W) // 2, Q3 - 30)
+        right_arrow = RotationArrow(mirror=True, parent=encoder_container)
+        right_arrow.move(col_push + (BTN - ARROW_W) // 2, Q3 - 30)
 
         # Push: centered horizontally between the new Up/Down, a FURTHER 3/4 down
         col_push_center = (col_up + col_push) // 2  # 60
