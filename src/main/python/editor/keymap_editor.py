@@ -2251,9 +2251,9 @@ class EncoderAssignWidget(QWidget):
         # buttons (left = rotate-left, right = rotate-right) instead of UP/DOWN.
         ARROW_W = 30
         left_arrow = RotationArrow(mirror=False, parent=encoder_container)
-        left_arrow.move(col_up + (BTN - ARROW_W) // 2, Q3 - 28)
+        left_arrow.move(col_up + (BTN - ARROW_W) // 2, Q3 - 22)
         right_arrow = RotationArrow(mirror=True, parent=encoder_container)
-        right_arrow.move(col_push + (BTN - ARROW_W) // 2, Q3 - 28)
+        right_arrow.move(col_push + (BTN - ARROW_W) // 2, Q3 - 22)
 
         # Push: centered horizontally between the new Up/Down, a FURTHER 3/4 down
         col_push_center = (col_up + col_push) // 2  # 60
