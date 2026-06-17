@@ -206,9 +206,15 @@ class KeyswitchDiagramWidget(QWidget):
             widget_width = self.width()
             widget_height = self.height()
 
-            # Scale the pixmap to fit the widget
+            # Scale the pixmap to fit the widget, but never upscale beyond the
+            # image's native resolution. The widget is fixed at 450x750 while the
+            # source image is only 401x367, so scaling to the full widget width
+            # enlarged (zoomed) the diagram. Capping at the native size keeps it
+            # at its normal size.
+            target_width = min(widget_width, pixmap.width())
+            target_height = min(widget_height, pixmap.height())
             scaled_pixmap = pixmap.scaled(
-                widget_width, widget_height,
+                target_width, target_height,
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation
             )
