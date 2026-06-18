@@ -470,7 +470,7 @@ class VelocityTab(BasicEditor):
             "Reverse (NS): Full travel 127-0, no sustain suppression\n"
             "Vibrato: Wiggle key for aftertouch"
         ))
-        mode_label = QLabel(tr("VelocityTab", "Aftertouch:"))
+        mode_label = QLabel(tr("VelocityTab", "Aftertouch Mode:"))
         mode_label.setMinimumWidth(85)
         mode_layout.addWidget(mode_label)
 
@@ -503,7 +503,7 @@ class VelocityTab(BasicEditor):
         controls['aftertouch_cc_widget'].setLayout(cc_layout)
 
         cc_layout.addWidget(self.create_help_label("MIDI CC for aftertouch.\nOff: Standard aftertouch\nCC#: Send as CC instead"))
-        cc_label = QLabel(tr("VelocityTab", "Aftertouch #CC:"))
+        cc_label = QLabel(tr("VelocityTab", "Polyphonic/CC:"))
         cc_label.setMinimumWidth(95)
         cc_layout.addWidget(cc_label)
 
@@ -514,7 +514,7 @@ class VelocityTab(BasicEditor):
         controls['aftertouch_cc_combo'].setEditable(True)
         controls['aftertouch_cc_combo'].lineEdit().setReadOnly(True)
         controls['aftertouch_cc_combo'].lineEdit().setAlignment(Qt.AlignCenter)
-        controls['aftertouch_cc_combo'].addItem("Off", 255)
+        controls['aftertouch_cc_combo'].addItem("Polyphonic", 255)
         for cc in range(128):
             controls['aftertouch_cc_combo'].addItem(f"CC#{cc}", cc)
         controls['aftertouch_cc_combo'].setCurrentIndex(0)
