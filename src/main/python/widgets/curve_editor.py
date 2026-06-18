@@ -8,9 +8,10 @@ Used for both gaming analog curves and per-key velocity curves.
 """
 
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-                             QComboBox, QDialog, QListWidget, QDialogButtonBox, QMessageBox)
+                             QComboBox, QDialog, QListWidget, QDialogButtonBox, QMessageBox,
+                             QApplication)
 from PyQt5.QtCore import Qt, QPoint, QPointF, pyqtSignal
-from PyQt5.QtGui import QPainter, QPen, QBrush, QColor, QPainterPath, QPolygonF
+from PyQt5.QtGui import QPainter, QPen, QBrush, QColor, QPainterPath, QPolygonF, QPalette
 
 from util import tr
 
@@ -296,12 +297,44 @@ class CurveCanvas(QWidget):
 
         return validated
 
+    def _update_theme_colors(self):
+        """Pick graph colors from the app palette so the graph is light in
+        light mode and dark in dark mode (same brightness check used by the
+        other themed widgets)."""
+        window_color = QApplication.palette().color(QPalette.Window)
+        brightness = (window_color.red() * 0.299 +
+                      window_color.green() * 0.587 +
+                      window_color.blue() * 0.114)
+        if brightness < 127:  # Dark mode
+            self._c_bg = QColor(30, 30, 30)
+            self._c_grid = QColor(50, 50, 50)
+            self._c_label = QColor(150, 150, 150)
+            self._c_title = QColor(180, 180, 180)
+            self._c_curve = QColor(255, 165, 0)
+            self._c_point = QColor(255, 165, 0)
+            self._c_point_constrained = QColor(200, 100, 50)
+            self._c_point_hover = QColor(255, 200, 0)
+            self._c_point_border = QColor(255, 255, 255)
+        else:  # Light mode
+            self._c_bg = QColor(250, 250, 250)
+            self._c_grid = QColor(210, 210, 210)
+            self._c_label = QColor(90, 90, 90)
+            self._c_title = QColor(70, 70, 70)
+            self._c_curve = QColor(235, 140, 0)
+            self._c_point = QColor(235, 140, 0)
+            self._c_point_constrained = QColor(200, 100, 50)
+            self._c_point_hover = QColor(255, 170, 0)
+            self._c_point_border = QColor(80, 80, 80)
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
+        # Resolve theme-aware colors for this paint pass
+        self._update_theme_colors()
+
         # Background
-        painter.fillRect(self.rect(), QColor(30, 30, 30))
+        painter.fillRect(self.rect(), self._c_bg)
 
         # Draw grid
         self.draw_grid(painter)
@@ -314,7 +347,7 @@ class CurveCanvas(QWidget):
 
     def draw_grid(self, painter):
         """Draw grid background"""
-        pen = QPen(QColor(50, 50, 50))
+        pen = QPen(self._c_grid)
         painter.setPen(pen)
 
         draw_area = self.canvas_size - 2 * self.margin
@@ -331,13 +364,13 @@ class CurveCanvas(QWidget):
             painter.drawLine(self.margin, y, self.canvas_size - self.margin, y)
 
         # Draw corner labels (min/max)
-        painter.setPen(QPen(QColor(150, 150, 150)))
+        painter.setPen(QPen(self._c_label))
         painter.drawText(self.margin - 15, self.canvas_size - self.margin + 15, "Min")
         painter.drawText(self.canvas_size - self.margin - 20, self.canvas_size - self.margin + 15, "Max")
         painter.drawText(5, self.margin + 5, "Max")
 
         # Draw axis titles
-        painter.setPen(QPen(QColor(180, 180, 180)))
+        painter.setPen(QPen(self._c_title))
         # X axis title (centered below)
         x_title = "Key press (ms)"
         fm = painter.fontMetrics()
@@ -356,7 +389,7 @@ class CurveCanvas(QWidget):
 
     def draw_curve(self, painter):
         """Draw the curve as polyline through all 4 points"""
-        pen = QPen(QColor(255, 165, 0), 2)  # Orange
+        pen = QPen(self._c_curve, 2)
         painter.setPen(pen)
 
         # Convert points to canvas coordinates
@@ -373,14 +406,14 @@ class CurveCanvas(QWidget):
 
             # All points are draggable (0 and 3 are x-constrained but still draggable)
             if i == self.hover_point or i == self.dragging_point:
-                color = QColor(255, 200, 0)  # Bright yellow (hover/dragging)
+                color = self._c_point_hover  # Hover/dragging
             elif i == 0 or i == 3:
-                color = QColor(200, 100, 50)  # Darker orange for constrained points
+                color = self._c_point_constrained  # Constrained endpoints
             else:
-                color = QColor(255, 165, 0)  # Orange
+                color = self._c_point
 
             painter.setBrush(QBrush(color))
-            painter.setPen(QPen(Qt.white, 2))
+            painter.setPen(QPen(self._c_point_border, 2))
             painter.drawEllipse(canvas_point, self.point_radius, self.point_radius)
 
     def value_to_canvas(self, point):
