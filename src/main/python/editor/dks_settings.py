@@ -180,9 +180,14 @@ class KeyswitchDiagramWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.setMinimumWidth(450)
-        self.setMinimumHeight(750)
         self.setMaximumWidth(450)
-        self.setMaximumHeight(750)
+        # Height matches the visualization container's content area (its 325px
+        # max minus the 10px top/bottom layout margins). The widget used to be
+        # a fixed 750px, which overflowed the 325px box and got clipped, so the
+        # diagram looked pinned to the top. Sizing to the visible box lets the
+        # paintEvent center the diagram within it.
+        self.setMinimumHeight(305)
+        self.setMaximumHeight(305)
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
     def paintEvent(self, event):
@@ -213,7 +218,10 @@ class KeyswitchDiagramWidget(QWidget):
             # 60% (zoom out 40%) so it renders at its normal size.
             zoom_factor = 0.6
             target_width = int(min(widget_width, pixmap.width()) * zoom_factor)
-            target_height = int(min(widget_height, pixmap.height()) * zoom_factor)
+            # Base the height target on the source image (not the widget height)
+            # so the rendered diagram size stays constant regardless of the box
+            # height.
+            target_height = int(pixmap.height() * zoom_factor)
             scaled_pixmap = pixmap.scaled(
                 target_width, target_height,
                 Qt.KeepAspectRatio,
@@ -226,9 +234,10 @@ class KeyswitchDiagramWidget(QWidget):
                 image.invertPixels()
                 scaled_pixmap = QPixmap.fromImage(image)
 
-            # Center horizontally, align to top vertically (to match travel bar alignment)
-            x = (widget_width - scaled_pixmap.width()) // 2 - 35  # Move 35 pixels left
-            y = -30  # Move 30 pixels higher
+            # Center horizontally (nudged 35px left to sit beside the travel
+            # bar) and vertically within the widget's box.
+            x = (widget_width - scaled_pixmap.width()) // 2 - 35
+            y = (widget_height - scaled_pixmap.height()) // 2
 
             painter.drawPixmap(x, y, scaled_pixmap)
         else:
