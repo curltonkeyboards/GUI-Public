@@ -1116,9 +1116,15 @@ class VelocityTab(BasicEditor):
         self.retrigger_slider = base_controls['retrigger_slider']
         self.retrigger_value = base_controls['retrigger_value']
 
-        # Buttons row (Save + Save As)
+        # Buttons row (New + Save + Save As)
         buttons_layout = QHBoxLayout()
         buttons_layout.setSpacing(6)
+
+        self.new_preset_btn = QPushButton(tr("VelocityTab", "New"))
+        self.new_preset_btn.setMinimumHeight(35)
+        self.new_preset_btn.setToolTip("Create a new user preset with default (Linear) settings")
+        self.new_preset_btn.clicked.connect(self.on_new_linear_preset)
+        buttons_layout.addWidget(self.new_preset_btn)
 
         self.save_preset_btn = QPushButton(tr("VelocityTab", "Save"))
         self.save_preset_btn.setMinimumHeight(35)
@@ -2058,6 +2064,50 @@ class VelocityTab(BasicEditor):
         self.user_presets_separator.setHidden(False)
         # Apply the saved preset to the keyboard
         self._apply_preset_to_keyboard(curve_index)
+
+    def on_new_linear_preset(self):
+        """Create a brand-new user preset defaulting to the Linear curve + settings.
+        Finds the first empty slot, names it, saves it, and selects it for editing."""
+        # Find first empty slot
+        empty_slot = None
+        for i in range(50):
+            if not self.user_preset_configured[i]:
+                empty_slot = i
+                break
+        if empty_slot is None:
+            QMessageBox.warning(None, "No Empty Slots", "All 50 user preset slots are in use.")
+            return
+
+        name, ok = QInputDialog.getText(
+            None,
+            "New Preset",
+            "Preset Name:",
+            text="User {}".format(empty_slot + 1)
+        )
+        if not ok or not name.strip():
+            return
+        name = name.strip()[:16]
+
+        # Reset the editor to the factory Linear curve + its settings so the new
+        # preset starts from Linear defaults (index 2 = Linear).
+        self.curve_editor.set_points(CurveEditorWidget.FACTORY_CURVE_POINTS[2])
+        self._apply_factory_preset_settings(2)
+
+        # Persist the Linear defaults into the empty slot
+        self.on_save_to_user_curve(empty_slot, name)
+        # Mark as configured and show in list
+        self.user_curve_names[empty_slot] = name
+        self.user_preset_configured[empty_slot] = True
+        item = self.preset_list_widget.item(8 + empty_slot)
+        if item:
+            item.setText(name)
+            item.setHidden(False)
+        self.user_presets_separator.setHidden(False)
+        self.update_velocity_keycode_labels(self.user_curve_names)
+        # Select, label, and apply the newly created preset
+        self.select_preset_by_index(7 + empty_slot)
+        self._update_preset_name_header(7 + empty_slot)
+        self._apply_preset_to_keyboard(7 + empty_slot)
 
     def on_save_as_new_preset(self):
         """Save current settings as a new user preset. Prompts for name, finds first empty slot."""
