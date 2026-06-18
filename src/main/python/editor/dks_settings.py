@@ -211,22 +211,18 @@ class KeyswitchDiagramWidget(QWidget):
             widget_width = self.width()
             widget_height = self.height()
 
-            # Scale the pixmap to fit the widget, but never upscale beyond the
-            # image's native resolution. The widget is fixed at 450x750 while the
-            # source image is only 401x367, so scaling to the full widget width
-            # enlarged (zoomed) the diagram. Cap at the native size and shrink to
-            # 60% (zoom out 40%) so it renders at its normal size.
-            zoom_factor = 0.6
-            target_width = int(min(widget_width, pixmap.width()) * zoom_factor)
-            # Base the height target on the source image (not the widget height)
-            # so the rendered diagram size stays constant regardless of the box
-            # height.
-            target_height = int(pixmap.height() * zoom_factor)
-            scaled_pixmap = pixmap.scaled(
-                target_width, target_height,
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation
-            )
+            # Size the diagram so its top and bottom pixels line up with the
+            # adjacent action bar (the actuation travel bar). That bar draws
+            # its rail from y = BAR_MARGIN_TOP to y = height - BAR_MARGIN_BOTTOM
+            # using the SAME widget height, and the two widgets are top-aligned
+            # in the row, so matching those margins here spans the image over
+            # exactly the bar's vertical extent (and enlarges it ~15%).
+            BAR_MARGIN_TOP = 40
+            BAR_MARGIN_BOTTOM = 20
+            target_height = max(1, widget_height - BAR_MARGIN_TOP - BAR_MARGIN_BOTTOM)
+            # scaledToHeight keeps the source aspect ratio and gives an exact
+            # height so the bottom edge lands on the bar's bottom pixel.
+            scaled_pixmap = pixmap.scaledToHeight(target_height, Qt.SmoothTransformation)
 
             # Invert colors if in dark mode
             if is_dark:
@@ -235,9 +231,10 @@ class KeyswitchDiagramWidget(QWidget):
                 scaled_pixmap = QPixmap.fromImage(image)
 
             # Center horizontally (nudged 35px left to sit beside the travel
-            # bar) and vertically within the widget's box.
+            # bar); align the top edge with the bar's top so the image spans
+            # exactly the bar's top..bottom range.
             x = (widget_width - scaled_pixmap.width()) // 2 - 35
-            y = (widget_height - scaled_pixmap.height()) // 2
+            y = BAR_MARGIN_TOP
 
             painter.drawPixmap(x, y, scaled_pixmap)
         else:
