@@ -961,23 +961,22 @@ class VelocityTab(BasicEditor):
         desc_label.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(desc_label)
 
-        # Layer chooser (row of buttons like keymap editor)
+        # Layer indicator — the velocity tab auto-follows the keyboard's
+        # currently-active layer (polled from the firmware); there is no manual
+        # layer switching here.
         layer_chooser_layout = QHBoxLayout()
         layer_chooser_layout.setSpacing(4)
         layer_chooser_layout.setContentsMargins(0, 0, 0, 0)
 
         layer_chooser_layout.addStretch()
-        layer_label = QLabel(tr("VelocityTab", "Layer:"))
-        layer_label.setStyleSheet("font-weight: bold; font-size: 10pt;")
-        layer_chooser_layout.addWidget(layer_label)
-
-        self.layer_buttons = []
-        self.layout_layers_velocity = QHBoxLayout()
-        self.layout_layers_velocity.setSpacing(2)
-        layer_chooser_layout.addLayout(self.layout_layers_velocity)
-
+        self.layer_status_label = QLabel(tr("VelocityTab", "Active Layer: 0  (auto-follows keyboard)"))
+        self.layer_status_label.setStyleSheet("font-weight: bold; font-size: 10pt;")
+        layer_chooser_layout.addWidget(self.layer_status_label)
         layer_chooser_layout.addStretch()
         main_layout.addLayout(layer_chooser_layout)
+
+        # Kept for back-compat with the helper methods (no buttons in auto mode)
+        self.layer_buttons = []
 
         # MIDI keys info label
         self.midi_info_label = QLabel(tr("VelocityTab", "MIDI Keys: 0"))
@@ -1172,41 +1171,48 @@ class VelocityTab(BasicEditor):
             print(f"VelocityTab rebuild error: {e}")
 
     def rebuild_layer_buttons(self):
-        """Create layer chooser buttons matching the keyboard's layer count"""
-        # Remove old buttons
-        for btn in self.layer_buttons:
-            btn.hide()
-            btn.deleteLater()
+        """Auto-follow mode: there are no manual layer buttons. Sync the view to
+        the keyboard's active layer immediately so the tab opens on the layer the
+        keyboard is physically on."""
         self.layer_buttons = []
-
         if not self.keyboard:
             return
-
-        for x in range(self.keyboard.layers):
-            btn = SquareButton(str(x))
-            btn.setFocusPolicy(Qt.NoFocus)
-            btn.setRelSize(1.667)
-            btn.setCheckable(True)
-            btn.clicked.connect(lambda state, idx=x: self.on_layer_button_clicked(idx))
-            self.layout_layers_velocity.addWidget(btn)
-            self.layer_buttons.append(btn)
-
-        # Select layer 0 by default
-        self.current_layer = 0
+        detected = self._read_active_layer()
+        self.current_layer = detected if detected is not None else 0
         self.refresh_layer_buttons()
 
-    def on_layer_button_clicked(self, idx):
-        """Handle layer button click"""
-        self.current_layer = idx
+    def refresh_layer_buttons(self):
+        """Update the active-layer indicator label."""
+        if hasattr(self, 'layer_status_label'):
+            self.layer_status_label.setText(
+                tr("VelocityTab", "Active Layer: {}  (auto-follows keyboard)").format(self.current_layer))
+
+    def _read_active_layer(self):
+        """Query the keyboard's current active layer over HID (None if the
+        firmware doesn't support it or on comms error)."""
+        if not self.keyboard:
+            return None
+        try:
+            return self.keyboard.get_active_layer()
+        except Exception:
+            return None
+
+    def _follow_active_layer(self):
+        """Poll the hardware's active layer and switch the view if it changed."""
+        detected = self._read_active_layer()
+        if detected is None:
+            # Old firmware (no layer query) — disable polling after a few misses.
+            self._layer_follow_fails = getattr(self, '_layer_follow_fails', 0) + 1
+            if self._layer_follow_fails >= 3:
+                self._layer_follow_supported = False
+            return
+        self._layer_follow_fails = 0
+        if detected == self.current_layer:
+            return
+        self.current_layer = detected
         self.refresh_layer_buttons()
         self.keyboard_widget.clear_velocities()
         self.scan_midi_keys()
-
-    def refresh_layer_buttons(self):
-        """Update layer button checked/enabled states"""
-        for idx, btn in enumerate(self.layer_buttons):
-            btn.setEnabled(idx != self.current_layer)
-            btn.setChecked(idx == self.current_layer)
 
     def activate(self):
         """Called when tab becomes active"""
@@ -1256,6 +1262,15 @@ class VelocityTab(BasicEditor):
         """Poll velocity and press time values from keyboard"""
         if not self.keyboard or not self.is_active:
             return
+
+        # Auto-follow the keyboard's active layer (~5 Hz, the poll runs at 20 Hz).
+        # Skipped if the firmware doesn't support the query (old firmware), so we
+        # don't stall on every poll waiting for a reply that never comes.
+        if getattr(self, '_layer_follow_supported', True):
+            self._layer_poll_counter = getattr(self, '_layer_poll_counter', 0) + 1
+            if self._layer_poll_counter >= 4:
+                self._layer_poll_counter = 0
+                self._follow_active_layer()
 
         if not self.midi_keys:
             return

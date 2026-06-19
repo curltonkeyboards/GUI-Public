@@ -36,6 +36,24 @@ EXAMPLE_KEYBOARDS = [
 # anything starting with this prefix should not be allowed
 EXAMPLE_KEYBOARD_PREFIX = 0xA6867BDFD3B00F
 
+# Restrict detection to OUR keyboard only — other Vial boards aren't compatible
+# with this app's custom features. Fast product-string match happens here at
+# enumeration; the unique Vial UID is confirmed before connecting (see
+# main_window.on_device_selected).
+MIDISWITCH_PRODUCT_STRING = "midiswitch"
+# Vial keyboard UID for MIDIswitch (firmware VIAL_KEYBOARD_UID, little-endian uint64)
+MIDISWITCH_KEYBOARD_UID = 0xB26D0425F36AC4F4
+# Latest firmware version bundled with this GUI release (major, minor, patch).
+# Bump in lockstep with the firmware's MIDISWITCH_FW_VERSION_* in config.h so the
+# startup "update available" check stays accurate.
+LATEST_FIRMWARE_VERSION = (1, 0, 0)
+
+
+def is_our_keyboard(dev):
+    """True if an enumerated HID device's product string is our keyboard."""
+    product = dev.get("product_string") or ""
+    return MIDISWITCH_PRODUCT_STRING in product.lower()
+
 
 def hid_send(dev, msg, retries=1):
     if len(msg) > MSG_LEN:
@@ -117,7 +135,7 @@ def find_vial_devices(via_stack_json, sideload_vid=None, sideload_pid=None, quie
                 ))
             if is_rawhid(dev, quiet):
                 filtered.append(VialKeyboard(dev, sideload=True))
-        elif VIAL_SERIAL_NUMBER_MAGIC in dev["serial_number"]:
+        elif VIAL_SERIAL_NUMBER_MAGIC in dev["serial_number"] and is_our_keyboard(dev):
             if not quiet:
                 logging.info("Matching VID={:04X}, PID={:04X}, serial={}, path={} - vial serial magic".format(
                     dev["vendor_id"], dev["product_id"], dev["serial_number"], dev["path"]
@@ -130,7 +148,7 @@ def find_vial_devices(via_stack_json, sideload_vid=None, sideload_pid=None, quie
                     dev["vendor_id"], dev["product_id"], dev["serial_number"], dev["path"]
                 ))
             filtered.append(VialBootloader(dev))
-        elif str(dev["vendor_id"] * 65536 + dev["product_id"]) in via_stack_json["definitions"]:
+        elif str(dev["vendor_id"] * 65536 + dev["product_id"]) in via_stack_json["definitions"] and is_our_keyboard(dev):
             if not quiet:
                 logging.info("Matching VID={:04X}, PID={:04X}, serial={}, path={} - VIA stack".format(
                     dev["vendor_id"], dev["product_id"], dev["serial_number"], dev["path"]

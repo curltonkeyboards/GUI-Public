@@ -155,6 +155,10 @@ HID_CMD_RESET_LAYER_ACTUATIONS = 0xEE    # Reset all layer actuations
 HID_CMD_VELOCITY_MATRIX_POLL = 0xD3      # Poll velocity + travel time for specific keys
 HID_CMD_VELOCITY_TIME_SETTINGS = 0xD4    # Get/Set global velocity min/max time settings
 
+# Device introspection (0xD6-0xD7)
+HID_CMD_GET_ACTIVE_LAYER = 0xD6          # Get the keyboard's currently-active layer
+HID_CMD_GET_FIRMWARE_VERSION = 0xD7      # Get firmware version (major, minor, patch)
+
 # Custom Names Command (0xCD) - OLED display names for macros/arp/seq/delay/toggles
 # Single command with sub-commands in payload[0] (see feature_names.py for sub-command IDs)
 HID_CMD_CUSTOM_NAMES = 0xCD
@@ -1337,6 +1341,32 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception as e:
             return 0
          
+    def get_active_layer(self):
+        """Return the keyboard's currently-active (highest) layer, or None if the
+        firmware doesn't support the query or on a comms error.
+        Response: [header(4), status=0x01, active_layer]."""
+        try:
+            packet = self._create_hid_packet(HID_CMD_GET_ACTIVE_LAYER, 0, None)
+            response = self.usb_send(self.dev, packet, retries=1)
+            if response and len(response) >= 6 and response[4] == 0x01:
+                return response[5]
+        except Exception:
+            pass
+        return None
+
+    def get_firmware_version(self):
+        """Return the firmware version as a (major, minor, patch) tuple, or None
+        if the firmware predates this command / on a comms error.
+        Response: [header(4), status=0x01, major, minor, patch]."""
+        try:
+            packet = self._create_hid_packet(HID_CMD_GET_FIRMWARE_VERSION, 0, None)
+            response = self.usb_send(self.dev, packet, retries=3)
+            if response and len(response) >= 8 and response[4] == 0x01:
+                return (response[5], response[6], response[7])
+        except Exception:
+            pass
+        return None
+
     def _create_hid_packet(self, command, macro_num, data):
         """Create a properly formatted 32-byte HID packet"""
         packet = bytearray(HID_PACKET_SIZE)
