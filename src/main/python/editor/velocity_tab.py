@@ -372,7 +372,9 @@ class VelocityTab(BasicEditor):
         controls['name_header'].addWidget(controls['preset_name_label'])
         controls['preset_rename_btn'] = QPushButton("Rename")
         controls['preset_rename_btn'].setToolTip("Rename preset")
-        controls['preset_rename_btn'].setMaximumHeight(24)
+        controls['preset_rename_btn'].setMinimumWidth(72)
+        controls['preset_rename_btn'].setMaximumHeight(26)
+        controls['preset_rename_btn'].setStyleSheet("QPushButton { padding: 2px 12px; }")
         controls['preset_rename_btn'].setVisible(False)  # Hidden for factory presets
         controls['name_header'].addWidget(controls['preset_rename_btn'])
         controls['name_header'].addStretch()
@@ -969,7 +971,7 @@ class VelocityTab(BasicEditor):
         layer_chooser_layout.setContentsMargins(0, 0, 0, 0)
 
         layer_chooser_layout.addStretch()
-        self.layer_status_label = QLabel(tr("VelocityTab", "Active Layer: 0  (auto-follows keyboard)"))
+        self.layer_status_label = QLabel(tr("VelocityTab", "Active Layer: 1  (auto-follows keyboard)"))
         self.layer_status_label.setStyleSheet("font-weight: bold; font-size: 10pt;")
         layer_chooser_layout.addWidget(self.layer_status_label)
         layer_chooser_layout.addStretch()
@@ -1185,7 +1187,7 @@ class VelocityTab(BasicEditor):
         """Update the active-layer indicator label."""
         if hasattr(self, 'layer_status_label'):
             self.layer_status_label.setText(
-                tr("VelocityTab", "Active Layer: {}  (auto-follows keyboard)").format(self.current_layer))
+                tr("VelocityTab", "Active Layer: {}  (auto-follows keyboard)").format(self.current_layer + 1))
 
     def _read_active_layer(self):
         """Query the keyboard's current active layer over HID (None if the
@@ -1255,7 +1257,7 @@ class VelocityTab(BasicEditor):
 
         # Update info label
         self.midi_info_label.setText(
-            tr("VelocityTab", f"MIDI Keys on Layer {self.current_layer}: {len(self.midi_keys)}")
+            tr("VelocityTab", f"MIDI Keys on Layer {self.current_layer + 1}: {len(self.midi_keys)}")
         )
 
     def poll_velocity(self):
