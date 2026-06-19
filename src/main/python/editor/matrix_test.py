@@ -3620,7 +3620,7 @@ class LayerActuationConfigurator(BasicEditor):
         self.layer_dropdown.setMinimumWidth(150)
         self.layer_dropdown.setStyleSheet("QComboBox { padding: 0px; text-align: center; }")
         for i in range(12):
-            self.layer_dropdown.addItem(f"Layer {i}", i)
+            self.layer_dropdown.addItem(f"Layer {i + 1}", i)
         self.layer_dropdown.setEditable(True)
         self.layer_dropdown.lineEdit().setReadOnly(True)
         self.layer_dropdown.lineEdit().setAlignment(Qt.AlignCenter)
@@ -4228,7 +4228,7 @@ class LayerActuationConfigurator(BasicEditor):
     
     def create_layer_group(self):
         """Create a group for the currently selected layer's settings"""
-        group = QGroupBox(tr("LayerActuationConfigurator", f"Layer {self.current_layer} Settings"))
+        group = QGroupBox(tr("LayerActuationConfigurator", f"Layer {self.current_layer + 1} Settings"))
         group.setMaximumWidth(500)
         group.setStyleSheet("QGroupBox { font-weight: bold; font-size: 11px; }")
         layout = QVBoxLayout()
@@ -4670,7 +4670,7 @@ class LayerActuationConfigurator(BasicEditor):
         self.current_layer = index
         
         # Update group title
-        self.layer_widgets['group'].setTitle(tr("LayerActuationConfigurator", f"Layer {self.current_layer} Settings"))
+        self.layer_widgets['group'].setTitle(tr("LayerActuationConfigurator", f"Layer {self.current_layer + 1} Settings"))
         
         # Load new layer data to UI
         self.load_layer_to_ui(self.current_layer)

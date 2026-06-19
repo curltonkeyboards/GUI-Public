@@ -1196,7 +1196,7 @@ class TriggerSettingsTab(BasicEditor):
 
         self.nullbind_layer_combo = QComboBox()
         for i in range(12):
-            self.nullbind_layer_combo.addItem(f"Layer {i}", i)
+            self.nullbind_layer_combo.addItem(f"Layer {i + 1}", i)
         self.nullbind_layer_combo.currentIndexChanged.connect(self.on_nullbind_layer_changed)
         self.nullbind_layer_combo.setFixedWidth(120)
         layer_row.addWidget(self.nullbind_layer_combo)
@@ -2656,7 +2656,7 @@ class TriggerSettingsTab(BasicEditor):
 
         combo = QComboBox()
         for i in range(12):
-            combo.addItem(f"Layer {i}", i)
+            combo.addItem(f"Layer {i + 1}", i)
         combo.setCurrentIndex(0 if self.current_layer == 0 else 0)
 
         msg.layout().addWidget(combo, 1, 1)

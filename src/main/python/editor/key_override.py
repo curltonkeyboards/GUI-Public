@@ -118,7 +118,8 @@ class LayersUI(QWidget):
         super().__init__()
         container = QGridLayout()
         buttons = QHBoxLayout()
-        self.layer_chks = [CheckBoxNoPadding(str(x)) for x in range(16)]
+        # 12 layers (0-11 internally), shown to the user as 1-12.
+        self.layer_chks = [CheckBoxNoPadding(str(x + 1)) for x in range(12)]
         for w in self.layer_chks:
             w.stateChanged.connect(self.on_change)
         btn_all_layers = QToolButton()
@@ -130,9 +131,9 @@ class LayersUI(QWidget):
         btn_all_layers.clicked.connect(self.on_enable_all_layers)
         btn_no_layers.clicked.connect(self.on_disable_all_layers)
 
-        for x in range(8):
+        for x in range(6):
             container.addWidget(self.layer_chks[x], 0, x)
-            container.addWidget(self.layer_chks[x + 8], 1, x)
+            container.addWidget(self.layer_chks[x + 6], 1, x)
 
         buttons.addWidget(btn_all_layers)
         buttons.addWidget(btn_no_layers)
