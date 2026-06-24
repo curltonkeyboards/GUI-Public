@@ -3,7 +3,7 @@
 MIDI Delay Settings Editor
 
 Configures delay slots (DELAY_01 - DELAY_100) that repeat MIDI notes
-with configurable timing, decay, channel routing, and transposition.
+with configurable timing, feedback, channel routing, and transposition.
 """
 
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -163,7 +163,7 @@ class DelaySlotEditor(QWidget):
         center_layout.setContentsMargins(0, 0, 0, 0)
         center_layout.setSpacing(8)
 
-        # ---- Rate & Decay (no group title) ----
+        # ---- Rate & Feedback (no group title) ----
         rate_group = QGroupBox()
         rate_layout = QVBoxLayout()
         rate_layout.setSpacing(6)
@@ -200,23 +200,23 @@ class DelaySlotEditor(QWidget):
         row.addStretch()
         rate_layout.addLayout(row)
 
-        # Row 2: Decay slider
+        # Row 2: Feedback slider
         row = QHBoxLayout()
-        row.addWidget(QLabel("Decay:"))
+        row.addWidget(QLabel("Feedback:"))
         row.addWidget(_make_help_label(
-            "Velocity reduction per repeat.\n"
-            "Higher values = echoes fade faster.\n"
-            "0% = all repeats at full velocity."))
-        self.decay_slider = QSlider(Qt.Horizontal)
-        self.decay_slider.setRange(0, 100)
-        self.decay_slider.setTickInterval(25)
-        self.decay_slider.setTickPosition(QSlider.TicksBelow)
-        row.addWidget(self.decay_slider)
-        self.decay_label = QLabel("50%")
-        self.decay_label.setMinimumWidth(36)
-        row.addWidget(self.decay_label)
-        self.decay_slider.valueChanged.connect(
-            lambda v: self.decay_label.setText(f"{v}%"))
+            "Feedback amount (delay-pedal style).\n"
+            "Higher = more / longer repeats; each echo\n"
+            "is this % of the previous one. 0% = no echo."))
+        self.feedback_slider = QSlider(Qt.Horizontal)
+        self.feedback_slider.setRange(0, 100)
+        self.feedback_slider.setTickInterval(25)
+        self.feedback_slider.setTickPosition(QSlider.TicksBelow)
+        row.addWidget(self.feedback_slider)
+        self.feedback_label = QLabel("50%")
+        self.feedback_label.setMinimumWidth(36)
+        row.addWidget(self.feedback_label)
+        self.feedback_slider.valueChanged.connect(
+            lambda v: self.feedback_label.setText(f"{v}%"))
         rate_layout.addLayout(row)
 
         # Row 3: Max Repeats slider
@@ -568,8 +568,8 @@ class DelaySlotEditor(QWidget):
             self.rate_combo.setCurrentIndex(rate_idx)
 
         self.fixed_ms_spin.setValue(slot.fixed_delay_ms)
-        self.decay_slider.setValue(slot.decay_percent)
-        self.decay_label.setText(f"{slot.decay_percent}%")
+        self.feedback_slider.setValue(slot.feedback_percent)
+        self.feedback_label.setText(f"{slot.feedback_percent}%")
         self.repeats_slider.setValue(repeats_to_slider(slot.max_repeats))
         self._on_repeats_changed(repeats_to_slider(slot.max_repeats))
 
@@ -628,7 +628,7 @@ class DelaySlotEditor(QWidget):
         slot.timing_mode = timing_mode
 
         slot.fixed_delay_ms = self.fixed_ms_spin.value()
-        slot.decay_percent = self.decay_slider.value()
+        slot.feedback_percent = self.feedback_slider.value()
         slot.max_repeats = slider_to_repeats(self.repeats_slider.value())
 
         slot.max_active_notes = slider_to_max_active(self.max_active_slider.value())
