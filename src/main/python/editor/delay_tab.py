@@ -208,7 +208,7 @@ class DelaySlotEditor(QWidget):
             "Higher = more / longer repeats; each echo\n"
             "is this % of the previous one. 0% = no echo."))
         self.feedback_slider = QSlider(Qt.Horizontal)
-        self.feedback_slider.setRange(0, 100)
+        self.feedback_slider.setRange(0, 99)
         self.feedback_slider.setTickInterval(25)
         self.feedback_slider.setTickPosition(QSlider.TicksBelow)
         row.addWidget(self.feedback_slider)
