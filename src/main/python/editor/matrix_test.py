@@ -3620,7 +3620,7 @@ class LayerActuationConfigurator(BasicEditor):
         self.layer_dropdown.setMinimumWidth(150)
         self.layer_dropdown.setStyleSheet("QComboBox { padding: 0px; text-align: center; }")
         for i in range(12):
-            self.layer_dropdown.addItem(f"Layer {i}", i)
+            self.layer_dropdown.addItem(f"Layer {i + 1}", i)
         self.layer_dropdown.setEditable(True)
         self.layer_dropdown.lineEdit().setReadOnly(True)
         self.layer_dropdown.lineEdit().setAlignment(Qt.AlignCenter)
@@ -3728,14 +3728,14 @@ class LayerActuationConfigurator(BasicEditor):
         )
         
         # Enable Rapidfire checkbox - ALWAYS VISIBLE
-        rapid_checkbox = QCheckBox(tr("LayerActuationConfigurator", "Enable Rapidfire"))
+        rapid_checkbox = QCheckBox(tr("LayerActuationConfigurator", "Enable RapidTrigger"))
         rapid_checkbox.setChecked(False)
         layout.addWidget(rapid_checkbox)
         rapid_checkbox.stateChanged.connect(self.on_rapidfire_toggled)
         
         # Rapidfire Sensitivity (slider) - hidden by default
         rapid_slider_layout = QHBoxLayout()
-        rapid_label = QLabel(tr("LayerActuationConfigurator", "Rapidfire Sensitivity:"))
+        rapid_label = QLabel(tr("LayerActuationConfigurator", "RapidTrigger Sensitivity:"))
         rapid_label.setMinimumWidth(200)
         rapid_slider_layout.addWidget(rapid_label)
         
@@ -3979,14 +3979,14 @@ class LayerActuationConfigurator(BasicEditor):
         advanced_layout.addLayout(combo_layout)
         
         # Enable MIDI Rapidfire checkbox
-        midi_rapid_checkbox = QCheckBox(tr("LayerActuationConfigurator", "Enable MIDI Rapidfire"))
+        midi_rapid_checkbox = QCheckBox(tr("LayerActuationConfigurator", "Enable MIDI RapidTrigger"))
         midi_rapid_checkbox.setChecked(False)
         advanced_layout.addWidget(midi_rapid_checkbox)
         midi_rapid_checkbox.stateChanged.connect(self.on_midi_rapidfire_toggled)
         
         # MIDI Rapidfire Sensitivity (slider) - hidden by default
         midi_rapid_sens_layout = QHBoxLayout()
-        midi_rapid_sens_label = QLabel(tr("LayerActuationConfigurator", "MIDI Rapidfire Sensitivity:"))
+        midi_rapid_sens_label = QLabel(tr("LayerActuationConfigurator", "MIDI RapidTrigger Sensitivity:"))
         midi_rapid_sens_label.setMinimumWidth(200)
         midi_rapid_sens_layout.addWidget(midi_rapid_sens_label)
         
@@ -4012,7 +4012,7 @@ class LayerActuationConfigurator(BasicEditor):
         
         # MIDI Rapidfire Velocity Range (slider) - hidden by default
         midi_rapid_vel_layout = QHBoxLayout()
-        midi_rapid_vel_label = QLabel(tr("LayerActuationConfigurator", "MIDI Rapidfire Velocity Range:"))
+        midi_rapid_vel_label = QLabel(tr("LayerActuationConfigurator", "MIDI RapidTrigger Velocity Range:"))
         midi_rapid_vel_label.setMinimumWidth(200)
         midi_rapid_vel_layout.addWidget(midi_rapid_vel_label)
         
@@ -4228,7 +4228,7 @@ class LayerActuationConfigurator(BasicEditor):
     
     def create_layer_group(self):
         """Create a group for the currently selected layer's settings"""
-        group = QGroupBox(tr("LayerActuationConfigurator", f"Layer {self.current_layer} Settings"))
+        group = QGroupBox(tr("LayerActuationConfigurator", f"Layer {self.current_layer + 1} Settings"))
         group.setMaximumWidth(500)
         group.setStyleSheet("QGroupBox { font-weight: bold; font-size: 11px; }")
         layout = QVBoxLayout()
@@ -4273,14 +4273,14 @@ class LayerActuationConfigurator(BasicEditor):
         self.layer_widgets['normal_label'] = normal_value_label
         
         # Enable Rapidfire checkbox - ALWAYS VISIBLE
-        rapid_checkbox = QCheckBox(tr("LayerActuationConfigurator", "Enable Rapidfire"))
+        rapid_checkbox = QCheckBox(tr("LayerActuationConfigurator", "Enable RapidTrigger"))
         rapid_checkbox.setStyleSheet("QCheckBox { font-size: 10px; }")
         layout.addWidget(rapid_checkbox)
         self.layer_widgets['rapid_checkbox'] = rapid_checkbox
         
         # Rapidfire Sensitivity slider - hidden by default
         rapid_sens_slider_layout = QHBoxLayout()
-        rapid_sens_label = QLabel(tr("LayerActuationConfigurator", "Rapidfire Sensitivity:"))
+        rapid_sens_label = QLabel(tr("LayerActuationConfigurator", "RapidTrigger Sensitivity:"))
         rapid_sens_label.setMinimumWidth(180)
         rapid_sens_slider_layout.addWidget(rapid_sens_label)
         
@@ -4443,14 +4443,14 @@ class LayerActuationConfigurator(BasicEditor):
         self.layer_widgets['vel_speed_combo'] = combo
         
         # Enable MIDI Rapidfire checkbox
-        midi_rapid_checkbox = QCheckBox(tr("LayerActuationConfigurator", "Enable MIDI Rapidfire"))
+        midi_rapid_checkbox = QCheckBox(tr("LayerActuationConfigurator", "Enable MIDI RapidTrigger"))
         midi_rapid_checkbox.setStyleSheet("QCheckBox { font-size: 10px; }")
         layer_advanced_layout.addWidget(midi_rapid_checkbox)
         self.layer_widgets['midi_rapid_checkbox'] = midi_rapid_checkbox
         
         # MIDI Rapidfire Sensitivity slider - hidden by default
         midi_rapid_sens_slider_layout = QHBoxLayout()
-        midi_rapid_sens_label = QLabel(tr("LayerActuationConfigurator", "MIDI Rapidfire Sensitivity:"))
+        midi_rapid_sens_label = QLabel(tr("LayerActuationConfigurator", "MIDI RapidTrigger Sensitivity:"))
         midi_rapid_sens_label.setMinimumWidth(180)
         midi_rapid_sens_slider_layout.addWidget(midi_rapid_sens_label)
         
@@ -4479,7 +4479,7 @@ class LayerActuationConfigurator(BasicEditor):
         
         # MIDI Rapidfire Velocity Range slider - hidden by default
         midi_rapid_vel_slider_layout = QHBoxLayout()
-        midi_rapid_vel_label = QLabel(tr("LayerActuationConfigurator", "MIDI Rapidfire Velocity Range:"))
+        midi_rapid_vel_label = QLabel(tr("LayerActuationConfigurator", "MIDI RapidTrigger Velocity Range:"))
         midi_rapid_vel_label.setMinimumWidth(180)
         midi_rapid_vel_slider_layout.addWidget(midi_rapid_vel_label)
         
@@ -4670,7 +4670,7 @@ class LayerActuationConfigurator(BasicEditor):
         self.current_layer = index
         
         # Update group title
-        self.layer_widgets['group'].setTitle(tr("LayerActuationConfigurator", f"Layer {self.current_layer} Settings"))
+        self.layer_widgets['group'].setTitle(tr("LayerActuationConfigurator", f"Layer {self.current_layer + 1} Settings"))
         
         # Load new layer data to UI
         self.load_layer_to_ui(self.current_layer)

@@ -7,9 +7,9 @@ Right Stick, Left Trigger, and Right Trigger. No presets - just direct
 4-point editing. Curves are persisted when "Save Configuration" is clicked.
 """
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QLabel
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QLabel, QApplication
 from PyQt5.QtCore import Qt, QPointF, pyqtSignal
-from PyQt5.QtGui import QPainter, QPen, QBrush, QColor
+from PyQt5.QtGui import QPainter, QPen, QBrush, QColor, QPalette
 
 
 # Linear default: 4 points on a straight diagonal
@@ -54,16 +54,44 @@ class GamingCurveCanvas(QWidget):
         validated[1][0] = max(1, min(validated[2][0] - 1, validated[1][0]))
         return validated
 
+    def _update_theme_colors(self):
+        """Pick graph colors from the app palette so the graph is light in
+        light mode and dark in dark mode (same brightness check used by the
+        other themed widgets)."""
+        window_color = QApplication.palette().color(QPalette.Window)
+        brightness = (window_color.red() * 0.299 +
+                      window_color.green() * 0.587 +
+                      window_color.blue() * 0.114)
+        if brightness < 127:  # Dark mode
+            self._c_bg = QColor(30, 30, 30)
+            self._c_grid = QColor(50, 50, 50)
+            self._c_label = QColor(150, 150, 150)
+            self._c_curve = QColor(255, 165, 0)
+            self._c_point = QColor(255, 165, 0)
+            self._c_point_constrained = QColor(200, 100, 50)
+            self._c_point_hover = QColor(255, 200, 0)
+            self._c_point_border = QColor(255, 255, 255)
+        else:  # Light mode
+            self._c_bg = QColor(250, 250, 250)
+            self._c_grid = QColor(210, 210, 210)
+            self._c_label = QColor(90, 90, 90)
+            self._c_curve = QColor(235, 140, 0)
+            self._c_point = QColor(235, 140, 0)
+            self._c_point_constrained = QColor(200, 100, 50)
+            self._c_point_hover = QColor(255, 170, 0)
+            self._c_point_border = QColor(80, 80, 80)
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.fillRect(self.rect(), QColor(30, 30, 30))
+        self._update_theme_colors()
+        painter.fillRect(self.rect(), self._c_bg)
         self._draw_grid(painter)
         self._draw_curve(painter)
         self._draw_points(painter)
 
     def _draw_grid(self, painter):
-        pen = QPen(QColor(50, 50, 50))
+        pen = QPen(self._c_grid)
         painter.setPen(pen)
         draw_area = self.canvas_size - 2 * self.margin
         step = draw_area // self.grid_divisions
@@ -73,14 +101,14 @@ class GamingCurveCanvas(QWidget):
         for i in range(self.grid_divisions + 1):
             y = self.margin + i * step
             painter.drawLine(self.margin, y, self.canvas_size - self.margin, y)
-        painter.setPen(QPen(QColor(150, 150, 150)))
+        painter.setPen(QPen(self._c_label))
         painter.drawText(self.margin - 15, self.canvas_size - self.margin + 15, "0%")
         painter.drawText(self.canvas_size - self.margin - 20, self.canvas_size - self.margin + 15, "100%")
         painter.drawText(5, self.margin + 5, "100%")
         painter.drawText(5, self.canvas_size - self.margin + 5, "0%")
 
     def _draw_curve(self, painter):
-        pen = QPen(QColor(255, 165, 0), 2)
+        pen = QPen(self._c_curve, 2)
         painter.setPen(pen)
         canvas_points = [self._value_to_canvas(p) for p in self.points]
         for i in range(len(canvas_points) - 1):
@@ -90,13 +118,13 @@ class GamingCurveCanvas(QWidget):
         for i, point in enumerate(self.points):
             cp = self._value_to_canvas(point)
             if i == self.hover_point or i == self.dragging_point:
-                color = QColor(255, 200, 0)
+                color = self._c_point_hover
             elif i == 0 or i == 3:
-                color = QColor(200, 100, 50)
+                color = self._c_point_constrained
             else:
-                color = QColor(255, 165, 0)
+                color = self._c_point
             painter.setBrush(QBrush(color))
-            painter.setPen(QPen(Qt.white, 2))
+            painter.setPen(QPen(self._c_point_border, 2))
             painter.drawEllipse(cp, self.point_radius, self.point_radius)
 
     def _value_to_canvas(self, point):

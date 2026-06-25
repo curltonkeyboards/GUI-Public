@@ -3,7 +3,7 @@
 MIDI Delay Protocol Handler
 
 Manages communication with the firmware's MIDI delay system.
-Each delay slot has configurable rate, decay, repeats, channel, and transpose settings.
+Each delay slot has configurable rate, feedback, repeats, channel, and transpose settings.
 """
 
 import struct
@@ -55,7 +55,7 @@ class DelaySlot:
         self.rate_mode = RATE_MODE_BPM       # 0=BPM-synced, 1=fixed ms
         self.note_value = 3                   # 0=1/1, 1=1/2, 2=1/4, 3=1/8, 4=1/16
         self.timing_mode = 0                  # 0=note, 1=triplet, 2=dotted
-        self.decay_percent = 50               # 0-100
+        self.feedback_percent = 50               # 0-100
         self.fixed_delay_ms = 500             # 10-5000
         self.max_repeats = 3                  # 0-255 (0=infinite)
         self.channel = 0                      # 0=same, 1-16=specific
@@ -73,7 +73,7 @@ class DelaySlot:
         data[0] = self.rate_mode & 0xFF
         data[1] = self.note_value & 0xFF
         data[2] = self.timing_mode & 0xFF
-        data[3] = self.decay_percent & 0xFF
+        data[3] = self.feedback_percent & 0xFF
         struct.pack_into('<H', data, 4, self.fixed_delay_ms)
         data[6] = self.max_repeats & 0xFF
         data[7] = self.channel & 0xFF
@@ -97,7 +97,7 @@ class DelaySlot:
         slot.rate_mode = data[0]
         slot.note_value = data[1]
         slot.timing_mode = data[2]
-        slot.decay_percent = data[3]
+        slot.feedback_percent = data[3]
         slot.fixed_delay_ms = struct.unpack_from('<H', data, 4)[0]
         slot.max_repeats = data[6]
         slot.channel = data[7]
@@ -117,7 +117,7 @@ class DelaySlot:
         return (self.rate_mode == RATE_MODE_BPM and
                 self.note_value == 3 and
                 self.timing_mode == 0 and
-                self.decay_percent == 50 and
+                self.feedback_percent == 50 and
                 self.fixed_delay_ms == 500 and
                 self.max_repeats == 3 and
                 self.channel == 0 and

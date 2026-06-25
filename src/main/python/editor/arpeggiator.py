@@ -2568,6 +2568,15 @@ class Arpeggiator(BasicEditor):
         self.combo_mode.addItem("Chord Synced", 2)
         self.combo_mode.addItem("Chord Unsynced", 3)
         self.combo_mode.addItem("Chord Advanced", 4)
+        # Advanced chord-ordering variants (one note per step, visited in a
+        # pitch-derived order). Mirror the firmware arp_mode_t enum values 5-10
+        # and the on-device quick-build "Sync" labels (Asc/Desc/Up-Down/...).
+        self.combo_mode.addItem("Chord Ascending", 5)
+        self.combo_mode.addItem("Chord Descending", 6)
+        self.combo_mode.addItem("Chord Up-Down", 7)
+        self.combo_mode.addItem("Chord Down-Up", 8)
+        self.combo_mode.addItem("Chord Mix 1", 9)
+        self.combo_mode.addItem("Chord Mix 2", 10)
         self.combo_mode.setToolTip("Select how the arpeggiator plays notes")
         self.combo_mode.currentIndexChanged.connect(self.on_mode_changed)
         params_layout.addWidget(lbl_mode, 0, 0)

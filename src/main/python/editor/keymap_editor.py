@@ -140,7 +140,7 @@ class QuickActuationWidget(QWidget):
         # Layer name header with rename button (matches toggle/macro/delay title style)
         layer_header = QHBoxLayout()
         layer_header.setContentsMargins(0, 0, 0, 0)
-        self.layer_title_label = QLabel("<b>Layer 0</b>")
+        self.layer_title_label = QLabel("<b>Layer 1</b>")
         self.layer_title_label.setStyleSheet("font-size: 14pt;")
         layer_header.addWidget(self.layer_title_label)
 
@@ -218,7 +218,7 @@ class QuickActuationWidget(QWidget):
         layout.addLayout(top_row_layout)
 
         # Layer indicator (only visible in per-layer mode)
-        self.layer_label = QLabel(tr("QuickActuationWidget", "Layer 0"))
+        self.layer_label = QLabel(tr("QuickActuationWidget", "Layer 1"))
         self.layer_label.setStyleSheet("QLabel { font-weight: bold; font-size: 10px; color: #666; }")
         self.layer_label.setVisible(False)
         layout.addWidget(self.layer_label, alignment=Qt.AlignCenter)
@@ -1869,12 +1869,12 @@ class QuickActuationWidget(QWidget):
     def set_layer(self, layer):
         """Set current layer and load its settings if in per-layer mode"""
         self.current_layer = layer
-        self.layer_label.setText(tr("QuickActuationWidget", f"Layer {layer}"))
+        self.layer_label.setText(tr("QuickActuationWidget", f"Layer {layer + 1}"))
         self.update_layer_title()
 
         # Update save button text if in per-layer mode
         if self.per_layer_enabled:
-            self.save_btn.setText(tr("QuickActuationWidget", f"Save to Layer {layer}"))
+            self.save_btn.setText(tr("QuickActuationWidget", f"Save to Layer {layer + 1}"))
             # Load from memory (fast, no device I/O)
             self.load_layer_from_memory()
 
@@ -1894,7 +1894,7 @@ class QuickActuationWidget(QWidget):
         current = mgr.get_name(FEATURE_LAYER, self.current_layer)
         new_name, ok = QInputDialog.getText(
             self, "Rename Layer",
-            "Name for Layer {} (max {} chars, uppercase):".format(self.current_layer, MAX_NAME_LENGTH),
+            "Name for Layer {} (max {} chars, uppercase):".format(self.current_layer + 1, MAX_NAME_LENGTH),
             text=current
         )
         if ok and new_name.strip():
@@ -2588,7 +2588,7 @@ class KeymapEditor(BasicEditor):
 
         warn = QLabel(tr("KeymapEditor",
                          "This will overwrite the selected rows on Layer {}.".format(
-                             self.current_layer)))
+                             self.current_layer + 1)))
         warn.setStyleSheet("color: #c00; font-size: 9pt;")
         layout.addWidget(warn)
 
@@ -2651,7 +2651,7 @@ class KeymapEditor(BasicEditor):
 
         warn = QLabel(tr("KeymapEditor",
                          "This will overwrite the selected row on Layer {}.".format(
-                             self.current_layer)))
+                             self.current_layer + 1)))
         warn.setStyleSheet("color: #c00; font-size: 9pt;")
         layout.addWidget(warn)
 
@@ -2689,7 +2689,7 @@ class KeymapEditor(BasicEditor):
                'Apply "{}" encoder preset to Layer {}?\n\n'
                '{}\n\n'
                'This will overwrite the encoder assignment.'.format(
-                   name, self.current_layer, description)),
+                   name, self.current_layer + 1, description)),
             QMessageBox.Yes | QMessageBox.No
         )
         if ret != QMessageBox.Yes:
@@ -2730,7 +2730,7 @@ class KeymapEditor(BasicEditor):
         # create new layer labels
         for x in range(self.keyboard.layers):
             layer_name = mgr.get_name(FEATURE_LAYER, x)
-            btn = SquareButton(str(x))
+            btn = SquareButton(str(x + 1))
             btn.setFocusPolicy(Qt.NoFocus)
             btn.setRelSize(1.667)
             btn.setCheckable(True)

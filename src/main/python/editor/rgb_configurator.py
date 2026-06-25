@@ -1413,7 +1413,7 @@ class LayerRGBHandler(BasicHandler):
 
         # Always create 12 buttons for 3x4 grid regardless of layer count
         for layer in range(12):
-            button = QPushButton(f"Layer {layer}")
+            button = QPushButton(f"Layer {layer + 1}")
             button.clicked.connect(lambda checked, l=layer: self.on_save_to_layer(l))
             button.setEnabled(self.per_layer_enabled)
             button.setMaximumWidth(80)  # Set a reasonable button width

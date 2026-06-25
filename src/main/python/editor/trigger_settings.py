@@ -1060,7 +1060,7 @@ class TriggerSettingsTab(BasicEditor):
         checkbox_container_layout.setContentsMargins(0, 0, 0, 0)
 
         # Enable checkbox
-        self.rapidfire_checkbox = QCheckBox(tr("TriggerSettings", "Enable Rapidfire"))
+        self.rapidfire_checkbox = QCheckBox(tr("TriggerSettings", "Enable RapidTrigger"))
         self.rapidfire_checkbox.setEnabled(False)
         self.rapidfire_checkbox.stateChanged.connect(self.on_rapidfire_toggled)
         # Make it bigger and bold when unchecked - will be updated in on_rapidfire_toggled
@@ -1196,7 +1196,7 @@ class TriggerSettingsTab(BasicEditor):
 
         self.nullbind_layer_combo = QComboBox()
         for i in range(12):
-            self.nullbind_layer_combo.addItem(f"Layer {i}", i)
+            self.nullbind_layer_combo.addItem(f"Layer {i + 1}", i)
         self.nullbind_layer_combo.currentIndexChanged.connect(self.on_nullbind_layer_changed)
         self.nullbind_layer_combo.setFixedWidth(120)
         layer_row.addWidget(self.nullbind_layer_combo)
@@ -1375,7 +1375,7 @@ class TriggerSettingsTab(BasicEditor):
         rapidfire_desc_container.setFixedWidth(210)
         rapidfire_desc_layout = QVBoxLayout()
         rapidfire_desc_layout.setContentsMargins(0, 0, 0, 0)
-        rapidfire_desc_title = QLabel(tr("TriggerSettings", "Rapidfire"))
+        rapidfire_desc_title = QLabel(tr("TriggerSettings", "RapidTrigger"))
         rapidfire_desc_title.setStyleSheet("font-weight: bold; font-size: 11pt;")
         rapidfire_desc_layout.addWidget(rapidfire_desc_title)
         rapidfire_desc_text = QLabel(tr("TriggerSettings",
@@ -1393,7 +1393,7 @@ class TriggerSettingsTab(BasicEditor):
         self.rf_enable_checkbox.clicked.connect(self.on_enable_changed)
         rapidfire_desc_layout.addWidget(self.rf_enable_checkbox)
         rf_per_key_desc = QLabel(tr("TriggerSettings",
-            "Per-Key: Each key can have its own rapidfire settings."))
+            "Per-Key: Each key can have its own RapidTrigger settings."))
         rf_per_key_desc.setWordWrap(True)
         rf_per_key_desc.setStyleSheet("color: gray; font-size: 8pt; margin-left: 18px;")
         rapidfire_desc_layout.addWidget(rf_per_key_desc)
@@ -1420,7 +1420,7 @@ class TriggerSettingsTab(BasicEditor):
         rapidfire_layout.addWidget(self.rapidfire_container, 1)
 
         rapidfire_tab.setLayout(rapidfire_layout)
-        self.settings_tabs.addTab(rapidfire_tab, "Rapidfire")
+        self.settings_tabs.addTab(rapidfire_tab, "RapidTrigger")
 
         # SOCD/Null Bind Tab
         nullbind_tab = QWidget()
@@ -2656,7 +2656,7 @@ class TriggerSettingsTab(BasicEditor):
 
         combo = QComboBox()
         for i in range(12):
-            combo.addItem(f"Layer {i}", i)
+            combo.addItem(f"Layer {i + 1}", i)
         combo.setCurrentIndex(0 if self.current_layer == 0 else 0)
 
         msg.layout().addWidget(combo, 1, 1)

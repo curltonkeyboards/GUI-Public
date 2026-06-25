@@ -125,8 +125,9 @@ class FeatureNameManager:
         if custom:
             return custom
         fmt = DEFAULT_FORMATS.get(feature_type, "Item {}")
-        # Arp and Seq use 1-based display index
-        if feature_type in (FEATURE_ARP, FEATURE_SEQ, FEATURE_DELAY):
+        # Arp/Seq/Delay and Layer use 1-based display index (layers are 0-11
+        # internally but shown to the user as 1-12)
+        if feature_type in (FEATURE_ARP, FEATURE_SEQ, FEATURE_DELAY, FEATURE_LAYER):
             return fmt.format(index + 1)
         return fmt.format(index)
 
@@ -164,7 +165,7 @@ class FeatureNameManager:
     def get_default_name(self, feature_type, index):
         """Get the default name for a feature slot (ignoring custom names)."""
         fmt = DEFAULT_FORMATS.get(feature_type, "Item {}")
-        if feature_type in (FEATURE_ARP, FEATURE_SEQ, FEATURE_DELAY):
+        if feature_type in (FEATURE_ARP, FEATURE_SEQ, FEATURE_DELAY, FEATURE_LAYER):
             return fmt.format(index + 1)
         return fmt.format(index)
 

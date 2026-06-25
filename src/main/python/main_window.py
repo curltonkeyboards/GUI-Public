@@ -43,7 +43,8 @@ from editor.rgb_configurator import RGBConfigurator
 from tabbed_keycodes import TabbedKeycodes
 from editor.tap_dance import TapDance
 from unlocker import Unlocker
-from util import tr, EXAMPLE_KEYBOARDS, KeycodeDisplay, EXAMPLE_KEYBOARD_PREFIX
+from util import tr, EXAMPLE_KEYBOARDS, KeycodeDisplay, EXAMPLE_KEYBOARD_PREFIX, \
+    MIDISWITCH_KEYBOARD_UID, LATEST_FIRMWARE_VERSION
 from vial_device import VialKeyboard
 from editor.matrix_test import MatrixTest
 from editor.matrix_test import MIDIswitchSettingsConfigurator
@@ -398,6 +399,15 @@ class MainWindow(QMainWindow):
             mgr.set_keyboard(keyboard_id, self.autorefresh.current_device.keyboard)
             mgr.sync_all_to_firmware()
 
+            # Confirm this is our keyboard via its unique Vial UID (the product
+            # string was already matched at enumeration). If it matches, run the
+            # startup firmware-version check.
+            if keyboard_id != MIDISWITCH_KEYBOARD_UID:
+                QMessageBox.warning(self, "", "This does not appear to be a MIDIswitch keyboard.\n"
+                                              "Some features may not work correctly.")
+            else:
+                self._check_firmware_update(self.autorefresh.current_device.keyboard)
+
         t0 = time.time()
         self.rebuild()
         _startup_log(f"  rebuild() total: {time.time()-t0:.2f}s")
@@ -406,6 +416,34 @@ class MainWindow(QMainWindow):
         self.refresh_tabs()
         _startup_log(f"  refresh_tabs(): {time.time()-t0:.2f}s")
         _startup_log("on_device_selected() complete")
+
+    def _check_firmware_update(self, keyboard):
+        """Compare the keyboard's firmware version against the version bundled
+        with this GUI and prompt once if an update is available. Detection only —
+        this does not flash anything. Silent if the version can't be read (e.g.
+        firmware predating the query) to avoid false alarms."""
+        try:
+            version = keyboard.get_firmware_version()
+        except Exception:
+            version = None
+        if not version:
+            return
+        if tuple(version) >= tuple(LATEST_FIRMWARE_VERSION):
+            return
+        # Only prompt once per keyboard UID per session
+        if not hasattr(self, "_fw_update_prompted"):
+            self._fw_update_prompted = set()
+        uid = getattr(keyboard, "keyboard_id", None)
+        if uid in self._fw_update_prompted:
+            return
+        self._fw_update_prompted.add(uid)
+        cur = ".".join(str(v) for v in version)
+        latest = ".".join(str(v) for v in LATEST_FIRMWARE_VERSION)
+        QMessageBox.information(
+            self, "Firmware update available",
+            "Your MIDIswitch is running firmware {}.\n"
+            "The latest version is {}.\n\n"
+            "A firmware update is available — see the MIDIswitch releases page to update.".format(cur, latest))
 
     def rebuild(self):
         _startup_log("MainWindow.rebuild() starting...")
