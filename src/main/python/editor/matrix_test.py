@@ -764,8 +764,10 @@ class ThruLoopConfigurator(BasicEditor):
         title_layout.addWidget(title_label)
 
         desc_label = QLabel(tr("ThruLoopConfigurator",
-            "Configure ThruLoop MIDI looping and LoopChop navigation. "
-            "Set up CC mappings for recording, playback, and loop control."))
+            "Configure the 8 ThruLoop tracks (keycodes DM_THRULOOP_1-8) and LoopChop navigation. "
+            "ThruLoop tracks are silent CC-only loops: they record their own timing and emit "
+            "these CCs to sync external gear — the regular MIDI loops no longer send them. "
+            "Each Thru column maps to one track; Overdub rows fire on the held Overdub button."))
         desc_label.setWordWrap(True)
         desc_label.setStyleSheet("color: gray; font-size: 9pt;")
         desc_label.setAlignment(QtCore.Qt.AlignCenter)
@@ -872,9 +874,9 @@ class ThruLoopConfigurator(BasicEditor):
         main_grid.setSpacing(5)
         main_grid.setContentsMargins(0, 0, 0, 0)
 
-        # Add column headers
+        # Add column headers (one per ThruLoop track 1-8)
         for col in range(8):
-            header = QLabel(f"Loop {col + 1}")
+            header = QLabel(f"Thru {col + 1}")
             header.setAlignment(QtCore.Qt.AlignCenter)
             header.setStyleSheet("font-weight: bold;")
             main_grid.addWidget(header, 0, col + 1)

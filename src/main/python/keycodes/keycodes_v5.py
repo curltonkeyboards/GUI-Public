@@ -1788,6 +1788,17 @@ class keycodes_v5:
         "DM_SLOW_3": 0xCC30,  # Individual slow toggle for macro 3
         "DM_SLOW_4": 0xCC31,  # Individual slow toggle for macro 4
 
+        # ThruLoop transport keys (0xCC32-0xCC39): silent CC-only loop tracks 1-8.
+        # Record/play/stop the track's timing + ThruLoop CCs (no MIDI notes).
+        "DM_THRULOOP_1": 0xCC32,
+        "DM_THRULOOP_2": 0xCC33,
+        "DM_THRULOOP_3": 0xCC34,
+        "DM_THRULOOP_4": 0xCC35,
+        "DM_THRULOOP_5": 0xCC36,
+        "DM_THRULOOP_6": 0xCC37,
+        "DM_THRULOOP_7": 0xCC38,
+        "DM_THRULOOP_8": 0xCC39,
+
         # Navigation controls:
         "DM_NAV_BWD_1S": 0xCC3A,  # Navigate backward 1 second
         "DM_NAV_FWD_1S": 0xCC3B,  # Navigate forward 1 second

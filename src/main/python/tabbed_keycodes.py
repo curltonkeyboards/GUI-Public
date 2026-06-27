@@ -4159,6 +4159,11 @@ class midiTab(QScrollArea):
             ("DM_REC5", "Loop\n5"), ("DM_REC6", "Loop\n6"),
             ("DM_REC7", "Loop\n7"), ("DM_REC8", "Loop\n8"),
             ("DM_OVERDUB", "Overdub\nLoop"), ("DM_MUTE", "Mute\nLoop"),
+            # ThruLoops (silent CC-only loop tracks)
+            ("DM_THRULOOP_1", "Thru\n1"), ("DM_THRULOOP_2", "Thru\n2"),
+            ("DM_THRULOOP_3", "Thru\n3"), ("DM_THRULOOP_4", "Thru\n4"),
+            ("DM_THRULOOP_5", "Thru\n5"), ("DM_THRULOOP_6", "Thru\n6"),
+            ("DM_THRULOOP_7", "Thru\n7"), ("DM_THRULOOP_8", "Thru\n8"),
             # Quick Build
             ("SEQ_QUICK_BUILD_1", "Seq 1\nQuick\nBuild"), ("ARP_QUICK_BUILD_1", "Arp 1\nQuick\nBuild"),
         ]
