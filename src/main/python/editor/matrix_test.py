@@ -1077,7 +1077,34 @@ class ThruLoopConfigurator(BasicEditor):
                 if idx < len(values):
                     self.set_cc_value(combo, values[idx])
                     idx += 1
-    
+
+    def get_combos_cc_values_banked(self, combos_array):
+        """Flatten a [function][track] combo grid into the firmware's BANKED
+        wire order. The firmware (handle_set_main_loop_ccs / handle_set_overdub_ccs
+        in process_dynamic_macro.c) reads each HID packet as one bank of 4 tracks
+        laid out function-major: data[0..3]=func0 for those 4 tracks, data[4..7]=
+        func1, etc. The full stream is bank0 (tracks 1-4) then bank1 (tracks 5-8).
+        The plain row-major get_combos_cc_values() does NOT match this, which is
+        what scrambled the ThruLoop CC assignments."""
+        values = []
+        for bank in range(2):                  # bank 0 = tracks 0-3, bank 1 = tracks 4-7
+            for row_combos in combos_array:    # one row per function (function-major within a bank)
+                for j in range(4):             # 4 tracks within the bank
+                    values.append(self.get_cc_value(row_combos[bank * 4 + j]))
+        return values
+
+    def set_combos_cc_values_banked(self, combos_array, values):
+        """Inverse of get_combos_cc_values_banked: scatter a firmware-order banked
+        stream (bank0 tracks 1-4, then bank1 tracks 5-8; function-major within each
+        bank) back into the [function][track] combo grid."""
+        idx = 0
+        for bank in range(2):
+            for row_combos in combos_array:
+                for j in range(4):
+                    if idx < len(values):
+                        self.set_cc_value(row_combos[bank * 4 + j], values[idx])
+                        idx += 1
+
     def get_restart_cc_values(self):
         """Get restart CCs from the main combos (last row)"""
         restart_values = []
@@ -1114,13 +1141,14 @@ class ThruLoopConfigurator(BasicEditor):
                 raise RuntimeError("Failed to set ThruLoop config")
             
             # 2. Send main loop CCs (excluding restart row - first 5 rows only, 5 rows x 8 cols = 40 values)
-            main_values = self.get_combos_cc_values(self.main_combos[:5])  # First 5 rows
+            #    Banked order so it matches the firmware's per-bank packet layout.
+            main_values = self.get_combos_cc_values_banked(self.main_combos[:5])  # First 5 rows
 
             if not self.device.keyboard.set_thruloop_main_ccs(main_values):
                 raise RuntimeError("Failed to set main CCs")
 
-            # 3. Send overdub CCs (all 6 rows x 8 cols = 48 values total)
-            overdub_values = self.get_combos_cc_values(self.overdub_combos)
+            # 3. Send overdub CCs (all 6 rows x 8 cols = 48 values total), banked order
+            overdub_values = self.get_combos_cc_values_banked(self.overdub_combos)
             if not self.device.keyboard.set_thruloop_overdub_ccs(overdub_values):
                 raise RuntimeError("Failed to set overdub CCs")
             
@@ -1186,15 +1214,17 @@ class ThruLoopConfigurator(BasicEditor):
             restart_ccs = config.get("restartCCs", [128] * 8)
             self.set_restart_cc_values(restart_ccs)
 
-        # Set main combos CCs (first 5 rows only, 5 x 8 = 40 values)
+        # Set main combos CCs (first 5 rows only, 5 x 8 = 40 values).
+        # config['mainCCs'] arrives in firmware banked order (bank0 then bank1),
+        # so scatter it back with the banked setter.
         if 'mainCCs' in config:
             main_ccs = config.get("mainCCs", [128] * 40)
-            self.set_combos_cc_values(self.main_combos[:5], main_ccs)
+            self.set_combos_cc_values_banked(self.main_combos[:5], main_ccs)
 
-        # Set overdub combos CCs (all 6 rows x 8 cols = 48 values)
+        # Set overdub combos CCs (all 6 rows x 8 cols = 48 values), banked order
         if 'overdubCCs' in config:
             overdub_ccs = config.get("overdubCCs", [128] * 48)
-            self.set_combos_cc_values(self.overdub_combos, overdub_ccs)
+            self.set_combos_cc_values_banked(self.overdub_combos, overdub_ccs)
         
         # Set navigation CCs
         if 'navCCs' in config:
