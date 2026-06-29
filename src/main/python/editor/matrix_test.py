@@ -2179,6 +2179,12 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.loop_messaging_enabled.addItem("Off", False)
         self.loop_messaging_enabled.addItem("On", True)
         loop_layout.addWidget(self.loop_messaging_enabled, 1, 2)
+        # ThruLoop messaging is ALWAYS ON now (the firmware ignores this flag), so the
+        # toggle is hidden. The widget is kept (defaulted to "On") so the existing
+        # save/load plumbing that references self.loop_messaging_enabled still works.
+        self.loop_messaging_enabled.setCurrentIndex(1)  # "On"
+        thruloop_label.hide()
+        self.loop_messaging_enabled.hide()
 
         # CC Loop Recording with help
         cc_loop_rec_label = QWidget()
