@@ -919,6 +919,18 @@ class VelocityTab(BasicEditor):
             controls['vibrato_decay_widget'].setVisible(is_vibrato)
             controls['aftertouch_cc_widget'].setVisible(not is_off)
             controls['velocity_as_at_widget'].setVisible(not is_off)
+            # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON: the note
+            # velocity IS the CC ceiling, so it's intrinsic and can't be toggled off.
+            is_post = (pair == 3)
+            vat = controls['velocity_as_at_checkbox']
+            vat.blockSignals(True)
+            if is_post:
+                vat.setChecked(True)
+                vat.setEnabled(False)
+            else:
+                vat.setChecked(bool(get_settings().get('velocity_as_at', False)))
+                vat.setEnabled(True)
+            vat.blockSignals(False)
             # Style/Sustain only apply when aftertouch is enabled
             controls['aftertouch_style_widget'].setVisible(not is_off)
             controls['aftertouch_sustain_widget'].setVisible(not is_off)
@@ -1468,6 +1480,13 @@ class VelocityTab(BasicEditor):
         self.vibrato_decay_widget.setVisible(is_vibrato)
         self.aftertouch_cc_widget.setVisible(not is_off)
         self.velocity_as_at_widget.setVisible(not is_off)
+        # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON (intrinsic cap).
+        is_post = (pair == 3)
+        self.velocity_as_at_checkbox.blockSignals(True)
+        self.velocity_as_at_checkbox.setEnabled(not is_post)
+        if is_post:
+            self.velocity_as_at_checkbox.setChecked(True)
+        self.velocity_as_at_checkbox.blockSignals(False)
         self.aftertouch_style_widget.setVisible(not is_off)
         self.aftertouch_sustain_widget.setVisible(not is_off)
         self.smoothness_widget.setVisible(not is_off)
@@ -1530,6 +1549,13 @@ class VelocityTab(BasicEditor):
         self.vibrato_decay_widget.setVisible(is_vibrato)
         self.aftertouch_cc_widget.setVisible(not is_off)
         self.velocity_as_at_widget.setVisible(not is_off)
+        # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON (intrinsic cap).
+        is_post = (pair == 3)
+        self.velocity_as_at_checkbox.blockSignals(True)
+        self.velocity_as_at_checkbox.setEnabled(not is_post)
+        if is_post:
+            self.velocity_as_at_checkbox.setChecked(True)
+        self.velocity_as_at_checkbox.blockSignals(False)
         self.aftertouch_style_widget.setVisible(not is_off)
         self.aftertouch_sustain_widget.setVisible(not is_off)
         # Smoothness replaces retrigger when aftertouch is active
@@ -1652,6 +1678,13 @@ class VelocityTab(BasicEditor):
         controls['vibrato_decay_widget'].setVisible(is_vibrato)
         controls['aftertouch_cc_widget'].setVisible(not is_off)
         controls['velocity_as_at_widget'].setVisible(not is_off)
+        # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON (intrinsic cap).
+        is_post = (pair == 3)
+        controls['velocity_as_at_checkbox'].blockSignals(True)
+        controls['velocity_as_at_checkbox'].setEnabled(not is_post)
+        if is_post:
+            controls['velocity_as_at_checkbox'].setChecked(True)
+        controls['velocity_as_at_checkbox'].blockSignals(False)
         controls['aftertouch_style_widget'].setVisible(not is_off)
         controls['aftertouch_sustain_widget'].setVisible(not is_off)
         controls['smoothness_widget'].setVisible(not is_off)
