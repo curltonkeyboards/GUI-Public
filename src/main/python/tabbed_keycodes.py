@@ -1024,6 +1024,7 @@ class midiadvancedTab(QScrollArea):
             return self._ADV_CATEGORIES
         from keycodes.keycodes import (
             KEYCODES_MIDI_CC, KEYCODES_MIDI_CC_UP, KEYCODES_MIDI_CC_DOWN, KEYCODES_MIDI_CC_FIXED,
+            KEYCODES_MOD_PRESS,
             KEYCODES_MIDI_CHANNEL, KEYCODES_MIDI_CHANNEL_OS, KEYCODES_MIDI_CHANNEL_HOLD,
             KEYCODES_MIDI_VELOCITY, KEYCODES_VELOCITY_STEPSIZE, KEYCODES_VELOCITY_SHUFFLE,
             KEYCODES_CC_ENCODERVALUE, KEYCODES_MIDI_KEY, KEYCODES_MIDI_KEY2, KEYCODES_MIDI_KEY3,
@@ -1042,6 +1043,7 @@ class midiadvancedTab(QScrollArea):
             ("CC On/Off", KEYCODES_MIDI_CC, "cc toggle on off", "value_input", "MI_CC_{}_TOG"),
             ("CC Up", KEYCODES_MIDI_CC_UP, "cc up increment", "value_input", "MI_CC_{}_UP"),
             ("CC Down", KEYCODES_MIDI_CC_DOWN, "cc down decrement", "value_input", "MI_CC_{}_DWN"),
+            ("Mod Press", KEYCODES_MOD_PRESS, "mod press cc key depth analog", "value_input", "MI_MOD_PRESS_{}"),
             ("CC Value", KEYCODES_MIDI_CC_FIXED, "cc fixed value set", "cc_xy", None),
             ("Touch Dial CC", KEYCODES_CC_ENCODERVALUE, "cc encoder touch dial", "value_input", "MI_CCENCODER_{}"),
             ("Program Change", KEYCODES_Program_Change, "program change", "value_input", "MI_PROG_{}"),

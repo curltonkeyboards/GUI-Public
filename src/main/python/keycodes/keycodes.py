@@ -3015,6 +3015,13 @@ for x in range (128):
                               "CC{}\n▼".format(x),
                               "Midi CC{} down".format(x)))
 
+KEYCODES_MOD_PRESS = []
+
+for x in range (128):
+    KEYCODES_MOD_PRESS.append(K("MI_MOD_PRESS_{}".format(x),
+                              "ModPrs\nCC{}".format(x),
+                              "Mod Press CC{} (key depth -> CC value, averaged across mapped keys)".format(x)))
+
 
 for x in range(128):
     for y in range(128):

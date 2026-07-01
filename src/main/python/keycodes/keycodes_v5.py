@@ -2029,6 +2029,9 @@ class keycodes_v5:
         "ARP_MODE_CHORD_BASIC": 0xEE25,  # Chord basic mode
         "ARP_MODE_CHORD_ADVANCED": 0xEE26,  # Chord advanced mode
 
+        # Mod Press Base (0xF300-0xF37F) - 128 codes, one per MIDI CC (key depth -> CC value)
+        "MI_MOD_PRESS_0": 0xF300,  # Base for Mod Press CC keycodes
+
         # Arpeggiator Preset Base (0xED40-0xED97) - 88 presets (0-87: 48 factory + 40 user)
         "ARP_PRESET_BASE": 0xED40,  # Base for arp preset selection
 
@@ -2328,6 +2331,7 @@ for x in range(128):
     keycodes_v5.kc["MI_BANK_LSB_{}".format(x)] = keycodes_v5.kc["MI_BANK_LSB_0"] + x
     keycodes_v5.kc["MI_PROG_{}".format(x)] = keycodes_v5.kc["MI_PROG_0"] + x
     keycodes_v5.kc["MI_VELOCITY_{}".format(x)] = keycodes_v5.kc["MI_VELOCITY_0"] + x
+    keycodes_v5.kc["MI_MOD_PRESS_{}".format(x)] = keycodes_v5.kc["MI_MOD_PRESS_0"] + x
 
 for x in range(128):
     for y in range(128):
