@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+import time
+
 from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWidget,
                               QSlider, QCheckBox, QPushButton, QComboBox, QFrame,
                               QSizePolicy, QScrollArea, QTabWidget, QApplication)
@@ -12,6 +14,11 @@ from widgets.square_button import SquareButton
 from widgets.range_slider import TriggerSlider, RapidTriggerSlider
 from util import tr, KeycodeDisplay
 from vial_device import VialKeyboard
+# Delay (seconds) inserted between per-layer HID reads during the connect load so
+# the burst doesn't saturate the shared USB device and stall firmware MIDI output.
+# ~24 layer reads x 3ms = ~72ms added to connect — imperceptible to the user.
+CONNECT_READ_PACING_S = 0.003
+
 from protocol.nullbind_protocol import (ProtocolNullBind, NullBindGroup,
                                          NULLBIND_NUM_GROUPS, NULLBIND_MAX_KEYS_PER_GROUP,
                                          NULLBIND_BEHAVIOR_NEUTRAL, NULLBIND_BEHAVIOR_LAST_INPUT,
@@ -2903,6 +2910,12 @@ class TriggerSettingsTab(BasicEditor):
                 bulk_success = True
                 for layer in range(12):
                     layer_data = self.keyboard.get_all_per_key_actuations(layer)
+                    # Pace the connect burst: each bulk layer read pulls ~24 HID
+                    # packets back. Firing all 12 back-to-back saturates the shared
+                    # USB device, which starves the MIDI IN endpoint and stalls the
+                    # firmware's blocking MIDI send (audible looper glitch on connect).
+                    # A few ms between reads lets the device drain MIDI between bursts.
+                    time.sleep(CONNECT_READ_PACING_S)
                     if layer_data and len(layer_data) == 70:
                         for key_index, settings in enumerate(layer_data):
                             self.per_key_values[layer][key_index] = settings
@@ -2958,6 +2971,7 @@ class TriggerSettingsTab(BasicEditor):
         try:
             for layer in range(12):
                 data = self.keyboard.get_layer_actuation(layer)
+                time.sleep(CONNECT_READ_PACING_S)  # pace burst (see _load_per_key_data note)
                 if data:
                     self.layer_data[layer] = {
                         'normal': data['normal'],
