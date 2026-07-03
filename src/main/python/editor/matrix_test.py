@@ -2154,37 +2154,33 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.sample_mode.addItem("On", True)
         loop_layout.addWidget(self.sample_mode, 0, 4)
 
-        # ThruLoop on/off with help
-        thruloop_label = QWidget()
-        thruloop_label_layout = QHBoxLayout()
-        thruloop_label_layout.setContentsMargins(0, 0, 0, 0)
-        thruloop_label_layout.setSpacing(5)
-        thruloop_label_layout.addWidget(self.create_help_label(
-            "Pass MIDI messages through the looper.\n"
-            "Off: MIDI is not passed through\n"
-            "On: MIDI messages are forwarded\n\n"
-            "Configure ThruLoop channel, restart messaging,\n"
-            "and CC mappings in the ThruLoop tab."
+        # Instant Start on/off with help (repurposes the old ThruLoop-enable
+        # settings byte — the firmware now reads it as "Instant Start")
+        instant_start_label = QWidget()
+        instant_start_label_layout = QHBoxLayout()
+        instant_start_label_layout.setContentsMargins(0, 0, 0, 0)
+        instant_start_label_layout.setSpacing(5)
+        instant_start_label_layout.addWidget(self.create_help_label(
+            "Instant Start for loop playback controls.\n"
+            "Off: play/stop/mute wait for the next musical boundary\n"
+            "On: loop, overdub and ThruLoop play/stop/mute happen\n"
+            "immediately and join in time with the other loops\n"
+            "(resuming from the current position in the loop).\n\n"
+            "Recording start/stop always stays synced to the boundary."
         ))
-        thruloop_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Thruloop:")))
-        thruloop_label.setLayout(thruloop_label_layout)
-        loop_layout.addWidget(thruloop_label, 1, 1)
-        self.loop_messaging_enabled = ArrowComboBox()
-        self.loop_messaging_enabled.setMinimumWidth(120)
-        self.loop_messaging_enabled.setMinimumHeight(25)
-        self.loop_messaging_enabled.setMaximumHeight(25)
-        self.loop_messaging_enabled.setEditable(True)
-        self.loop_messaging_enabled.lineEdit().setReadOnly(True)
-        self.loop_messaging_enabled.lineEdit().setAlignment(Qt.AlignCenter)
-        self.loop_messaging_enabled.addItem("Off", False)
-        self.loop_messaging_enabled.addItem("On", True)
-        loop_layout.addWidget(self.loop_messaging_enabled, 1, 2)
-        # ThruLoop messaging is ALWAYS ON now (the firmware ignores this flag), so the
-        # toggle is hidden. The widget is kept (defaulted to "On") so the existing
-        # save/load plumbing that references self.loop_messaging_enabled still works.
-        self.loop_messaging_enabled.setCurrentIndex(1)  # "On"
-        thruloop_label.hide()
-        self.loop_messaging_enabled.hide()
+        instant_start_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Instant Start:")))
+        instant_start_label.setLayout(instant_start_label_layout)
+        loop_layout.addWidget(instant_start_label, 1, 1)
+        self.instant_loop_start = ArrowComboBox()
+        self.instant_loop_start.setMinimumWidth(120)
+        self.instant_loop_start.setMinimumHeight(25)
+        self.instant_loop_start.setMaximumHeight(25)
+        self.instant_loop_start.setEditable(True)
+        self.instant_loop_start.lineEdit().setReadOnly(True)
+        self.instant_loop_start.lineEdit().setAlignment(Qt.AlignCenter)
+        self.instant_loop_start.addItem("Off", False)
+        self.instant_loop_start.addItem("On", True)
+        loop_layout.addWidget(self.instant_loop_start, 1, 2)
 
         # CC Loop Recording with help
         cc_loop_rec_label = QWidget()
@@ -3159,7 +3155,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "custom_layer_animations_enabled": self.custom_layer_animations.currentData(),
             "unsynced_mode_active": self.unsynced_mode.currentData(),
             "sample_mode_active": self.sample_mode.currentData(),
-            "loop_messaging_enabled": self.loop_messaging_enabled.currentData(),
+            "instant_loop_start": self.instant_loop_start.currentData(),
             "colorblindmode": self.colorblind_mode.currentData(),
             "cclooprecording": self.cc_loop_recording.currentData(),
             "truesustain": self.true_sustain.currentData(),
@@ -3265,7 +3261,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         set_combo_by_data(self.custom_layer_animations, config.get("custom_layer_animations_enabled"), False)
         set_combo_by_data(self.unsynced_mode, config.get("unsynced_mode_active"), False)
         set_combo_by_data(self.sample_mode, config.get("sample_mode_active"), False)
-        set_combo_by_data(self.loop_messaging_enabled, config.get("loop_messaging_enabled"), False)
+        set_combo_by_data(self.instant_loop_start, config.get("instant_loop_start"), False)
         set_combo_by_data(self.colorblind_mode, config.get("colorblindmode"), 0)
         set_combo_by_data(self.cc_loop_recording, config.get("cclooprecording"), 0)
         set_combo_by_data(self.true_sustain, config.get("truesustain"), False)
@@ -3354,7 +3350,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         data[offset] = 1 if settings["custom_layer_animations_enabled"] else 0; offset += 1
         data[offset] = settings["unsynced_mode_active"]; offset += 1
         data[offset] = 1 if settings["sample_mode_active"] else 0; offset += 1
-        data[offset] = 1 if settings["loop_messaging_enabled"] else 0; offset += 1
+        data[offset] = 1 if settings["instant_loop_start"] else 0; offset += 1
         data[offset] = settings["colorblindmode"]; offset += 1
         data[offset] = settings["cclooprecording"]; offset += 1
         data[offset] = 1 if settings["truesustain"] else 0; offset += 1
@@ -3498,7 +3494,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "custom_layer_animations_enabled": False,
             "unsynced_mode_active": 0,
             "sample_mode_active": False,
-            "loop_messaging_enabled": False,
+            "instant_loop_start": False,
             "colorblindmode": 0,
             "cclooprecording": 0,
             "truesustain": False,

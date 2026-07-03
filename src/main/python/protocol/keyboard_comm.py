@@ -1885,7 +1885,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                     "custom_layer_animations_enabled": data[5] != 0,
                     "unsynced_mode_active": data[6],
                     "sample_mode_active": data[7] != 0,
-                    "loop_messaging_enabled": data[8] != 0,
+                    "instant_loop_start": data[8] != 0,
                     # Note: channel/sync/restart now in ThruLoop packet (0xB0)
                     "colorblindmode": data[9],
                     "cclooprecording": data[10],
