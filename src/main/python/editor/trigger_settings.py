@@ -2329,6 +2329,15 @@ class TriggerSettingsTab(BasicEditor):
                 return True
             return False
 
+        # Mod Press keys (MI_MOD_PRESS_*) are analog travel keys that map key
+        # depth to a CC. They use per-key actuation/deadzone exactly like MIDI
+        # note keys, so group them with MIDI so the MIDI actuation/deadzone
+        # sliders (and per-key edits) reach them. Without this they fell into
+        # the "Normal" bucket, so the MIDI deadzone slider silently skipped
+        # them and they kept the default ~0.1mm deadzone.
+        if keycode.startswith("MI_MOD_PRESS"):
+            return True
+
         # Check for MI_ prefix (base MIDI notes like MI_C, MI_C_1, MI_Cs, etc.)
         if keycode.startswith("MI_"):
             # Filter out non-note MIDI keycodes (controls, channels, etc.)
