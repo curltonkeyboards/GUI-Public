@@ -155,9 +155,10 @@ HID_CMD_RESET_LAYER_ACTUATIONS = 0xEE    # Reset all layer actuations
 HID_CMD_VELOCITY_MATRIX_POLL = 0xD3      # Poll velocity + travel time for specific keys
 HID_CMD_VELOCITY_TIME_SETTINGS = 0xD4    # Get/Set global velocity min/max time settings
 
-# Device introspection (0xD6-0xD7)
-HID_CMD_GET_ACTIVE_LAYER = 0xD6          # Get the keyboard's currently-active layer
-HID_CMD_GET_FIRMWARE_VERSION = 0xD7      # Get firmware version (major, minor, patch)
+# Device introspection (0x92-0x93; moved from 0xD6-0xD7, which collided with
+# the MIDI-delay slot commands and the gaming-curve commands in firmware)
+HID_CMD_GET_ACTIVE_LAYER = 0x92          # Get the keyboard's currently-active layer
+HID_CMD_GET_FIRMWARE_VERSION = 0x93      # Get firmware version (major, minor, patch)
 
 # Custom Names Command (0xCD) - OLED display names for macros/arp/seq/delay/toggles
 # Single command with sub-commands in payload[0] (see feature_names.py for sub-command IDs)
@@ -2588,7 +2589,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             point_bytes.append(int(p[0]) & 0xFF)
             point_bytes.append(int(p[1]) & 0xFF)
         data = bytearray([int(curve_id) & 0xFF]) + point_bytes
-        packet = self._create_hid_packet(0xD6, 0, data)
+        packet = self._create_hid_packet(0x90, 0, data)  # HID_CMD_GAMING_SET_CURVE (moved from 0xD6)
         response = self.usb_send(self.dev, packet, retries=20)
         return response and len(response) > 5 and response[5] == 0x01
 
@@ -2602,7 +2603,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             list: [[x0,y0], [x1,y1], [x2,y2], [x3,y3]] or None
         """
         data = bytearray([int(curve_id) & 0xFF])
-        packet = self._create_hid_packet(0xD7, 0, data)
+        packet = self._create_hid_packet(0x91, 0, data)  # HID_CMD_GAMING_GET_CURVE (moved from 0xD7)
         response = self.usb_send(self.dev, packet, retries=3)
 
         if not response or len(response) < 14 or response[5] != 0x01:

@@ -2051,8 +2051,9 @@ class keycodes_v6:
         # Mod Press Base (0xF300-0xF37F) - 128 codes, one per MIDI CC (key depth -> CC value)
         "MI_MOD_PRESS_0": 0xF300,  # Base for Mod Press CC keycodes
 
-        # Arpeggiator Preset Base (0xED40-0xED97) - 88 presets (0-87: 48 factory + 40 user)
-        "ARP_PRESET_BASE": 0xED40,  # Base for arp preset selection
+        # Arpeggiator Preset Base (0xF200-0xF29E) - 159 presets (0-158: 119 factory patterns + 40 user)
+        # Moved from 0xED40: firmware relocated the arp preset keycode block
+        "ARP_PRESET_BASE": 0xF200,  # Base for arp preset selection
 
         # Step Sequencer Control (0xEE80-0xEE86)
         "SEQ_PLAY": 0xEE80,  # Sequencer play
@@ -2370,8 +2371,8 @@ for x in range(32):
    keycodes_v6.kc["USER{:02}".format(x)] = keycodes_v6.kc["QK_KB"] + x
 
 
-# Generate Arpeggiator preset selection keycodes (48 factory + 40 user = 88 presets)
-for x in range(88):
+# Generate Arpeggiator preset selection keycodes (119 factory patterns + 40 user = 159)
+for x in range(159):
     keycodes_v6.kc["ARP_PRESET_{}".format(x)] = keycodes_v6.kc["ARP_PRESET_BASE"] + x
 
 # Generate Step Sequencer preset selection keycodes (48 factory + 40 user = 88 presets)

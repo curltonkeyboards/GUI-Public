@@ -2497,7 +2497,7 @@ class Arpeggiator(BasicEditor):
 
         logger.info("Arpeggiator tab initialized")
 
-        self.current_preset_id = 0  # Presets 0-47 for arpeggiator factory, 48-63 user
+        self.current_preset_id = 0  # Presets 0-118 factory rhythm patterns, 119-158 user
         self.is_step_sequencer = False  # This is the arpeggiator tab
         self.preset_data = {
             'preset_type': 0,  # PRESET_TYPE_ARPEGGIATOR
@@ -2529,12 +2529,12 @@ class Arpeggiator(BasicEditor):
         # === Top Preset Tabs (User Arp 1-40, pool-based) ===
         self.preset_tabs = QTabWidget()
 
-        # Create all 40 user preset entry widgets (presets 48-87 for arpeggiator, pool-based)
+        # Create all 40 user preset entry widgets (presets 119-158 for arpeggiator, pool-based)
         from protocol.feature_names import get_feature_name_manager, FEATURE_ARP
         mgr = get_feature_name_manager()
         self.entry_widgets = []
         for i in range(40):
-            preset_id = 48 + i  # User Arp presets start at 48
+            preset_id = 119 + i  # User Arp presets start at 119 (after 119 factory patterns)
             entry = self._create_preset_entry(i, preset_id)
             self.entry_widgets.append(entry)
 
@@ -3283,14 +3283,14 @@ class Arpeggiator(BasicEditor):
         self.current_preset_id = index
 
         # Update UI state - use correct threshold based on preset type
-        # Arpeggiator: factory 0-47, user 48-87 (pool-based)
+        # Arpeggiator: factory 0-118, user 119-158 (pool-based)
         # Step Sequencer: factory 68-115, user 116-155 (pool-based)
         if self.is_step_sequencer:
             is_factory = (index < 116)
             factory_range = "68-115"
         else:
-            is_factory = (index < 48)
-            factory_range = "0-47"
+            is_factory = (index < 119)
+            factory_range = "0-118"
 
         self.btn_save.setEnabled(not is_factory)
 
@@ -3446,7 +3446,8 @@ class Arpeggiator(BasicEditor):
             logger.info("No notes to send")
             return True
 
-        chunk_size = 9  # Maximum 9 notes per packet (27 bytes + 3 byte header = 30 bytes)
+        chunk_size = 8  # Max 8 notes per packet: note data starts at byte 7 of the
+        # 32-byte HID packet, so 9 notes (27 bytes) would run 2 bytes past the end
         total_notes = len(notes)
         total_chunks = (total_notes + chunk_size - 1) // chunk_size
         chunks_sent = 0
@@ -3534,7 +3535,7 @@ class Arpeggiator(BasicEditor):
         if note_count == 0:
             return []
 
-        chunk_size = 9  # Max 9 notes per packet (matches firmware)
+        chunk_size = 8  # Max 8 notes per packet (matches firmware response-buffer limit)
         notes = []
         total_chunks = (note_count + chunk_size - 1) // chunk_size
 
@@ -3707,7 +3708,9 @@ class Arpeggiator(BasicEditor):
         preset_id = self.current_preset_id
         self.update_status(f"Requesting preset {preset_id} from device...")
 
-        if self.send_hid_command(self.ARP_CMD_GET_PRESET, [preset_id]):
+        # params[1] = explicit type selector (1=arp, 2=seq): arp/seq preset ID
+        # ranges overlap, so the firmware cannot infer the pool from the ID alone
+        if self.send_hid_command(self.ARP_CMD_GET_PRESET, [preset_id, 2 if self.is_step_sequencer else 1]):
             # Response was processed in _process_hid_response which calls apply_preset_data
             # and sets status to "Loaded preset X"
             if hasattr(self, 'debug_console'):
@@ -3727,7 +3730,7 @@ class Arpeggiator(BasicEditor):
                        f"type={preset_type_name}", "INFO")
 
         # Check factory preset threshold based on preset type
-        # Arpeggiator: factory 0-47, user 48-87 (pool-based)
+        # Arpeggiator: factory 0-118, user 119-158 (pool-based)
         # Step Sequencer: factory 68-115, user 116-155 (pool-based)
         if self.is_step_sequencer:
             if self.current_preset_id < 116:
@@ -3737,9 +3740,9 @@ class Arpeggiator(BasicEditor):
                     self.debug_console.mark_operation_end(success=False)
                 return
         else:
-            if self.current_preset_id < 48:
-                self.debug_log(f"SAVE: BLOCKED - preset_id {self.current_preset_id} is factory (< 48)", "ERROR")
-                self.update_status("Cannot save to factory preset (0-47)!", error=True)
+            if self.current_preset_id < 119:
+                self.debug_log(f"SAVE: BLOCKED - preset_id {self.current_preset_id} is factory (< 119)", "ERROR")
+                self.update_status("Cannot save to factory preset (0-118)!", error=True)
                 if hasattr(self, 'debug_console'):
                     self.debug_console.mark_operation_end(success=False)
                 return

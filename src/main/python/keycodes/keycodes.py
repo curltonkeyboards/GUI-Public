@@ -2642,16 +2642,59 @@ KEYCODES_ARPEGGIATOR = [
     K("ARP_QUICK_BUILD_4", "Arp 4\nQuick\nBuild", "Quick build arpeggiator slot 4"),
 ]
 
-# Generate preset selection keycodes (48 factory + 40 user = 88 total)
+# Generate preset selection keycodes (200 factory rhythm arps + 40 user = 240 total)
+#
+# Factory presets 0-199 are single-note "rhythm arpeggios": 10 categories x 20,
+# id = category*20 + slot. The name (category prefix + rate + tag) mirrors the
+# firmware generator in arp_factory_presets.c so the GUI label matches the OLED.
+def _arp_factory_name(idn):
+    # Mirrors arp_fac_describe() in arp_factory_presets.c. One entry per PATTERN
+    # (rate/gate are per-master flags, not separate presets). 10 categories:
+    #   Basic 0, Ascending 1-3, Descending 4-6, Syncopated 7-29, Off Beat 30-38,
+    #   Rock 39-50, Funk 51-67, Hip 68-82, Dance 83-100, Chords 101-118.
+    # Returns (pfx, tag).
+    gap_grids = {
+        3:  ("Syn", ["Tres", "Clave", "Rmba", "Hban", "Dmbw", "Boss", "Smba", "Cscr", "Funk",
+                     "Son23", "Rmb23", "Bmbe", "ChaCh", "Cumb", "Baio", "Part", "Mrct", "Gahu",
+                     "Calyp", "Soca", "Plena", "Bomba", "Guajr"]),
+        4:  ("Off", ["Off8", "Off16", "Push", "Chrl", "Stab", "Drop", "Lilt", "Sync", "OneDr"]),
+        5:  ("Rock", None), 6: ("Funk", None), 7: ("Hip", None), 8: ("EDM", None),  # numbered
+    }
+    ch_pfx   = ["5th", "Maj", "Min", "Maj7", "Min7", "Dom7"]
+    cats     = [(0, 1), (1, 3), (4, 3), (7, 23), (30, 9),
+                (39, 12), (51, 17), (68, 15), (83, 18), (101, 18)]
+    cat = 0
+    for ci, (off, cnt) in enumerate(cats):
+        if off <= idn < off + cnt:
+            cat, base = ci, off
+            break
+    k = idn - base
+    if cat == 0:        # Basic
+        return "Basic", ""
+    if cat in (1, 2):   # Ascending / Descending (velocity ramp x1/x2/x4)
+        ramp = [1, 2, 4][k if k < 3 else 0]
+        return ("Asc" if cat == 1 else "Desc"), "x{}".format(ramp)
+    if cat in gap_grids:   # Syncopated / Off Beat / Rock / Funk / Hip / Dance
+        pfx, names = gap_grids[cat]
+        if names is None:           # Western banks are numbered
+            return pfx, str(k + 1)
+        return pfx, names[k]
+    # Chords: 6 types x {Flat/Rise/Fall}
+    t, vs = k // 3, k % 3
+    return ch_pfx[t], ["Flat", "Rise", "Fall"][vs]
+
 KEYCODES_ARPEGGIATOR_PRESETS = []
-# Factory presets 0-47
-for x in range(48):
+# Factory rhythm PATTERNS 0-118 (rate/gate applied as per-master flags)
+for x in range(119):
+    _pfx, _tag = _arp_factory_name(x)
+    _label = "Arp\n{}\n{}".format(_pfx, _tag) if _tag else "Arp\n{}".format(_pfx)
     KEYCODES_ARPEGGIATOR_PRESETS.append(
-        K("ARP_PRESET_{}".format(x), "Arp\nPreset\n{}".format(x), "Load arpeggiator preset {}".format(x))
+        K("ARP_PRESET_{}".format(x), _label,
+          "Arp rhythm pattern {}: {} {}".format(x, _pfx, _tag))
     )
-# User presets 48-87 (displayed as User 1-40)
-for x in range(48, 88):
-    user_num = x - 47
+# User presets 119-158 (displayed as User 1-40)
+for x in range(119, 159):
+    user_num = x - 118
     KEYCODES_ARPEGGIATOR_PRESETS.append(
         K("ARP_PRESET_{}".format(x), "Arp\nUser\n{}".format(user_num), "Load arpeggiator user preset {}".format(user_num))
     )

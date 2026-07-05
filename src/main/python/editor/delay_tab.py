@@ -807,6 +807,12 @@ class DelayTab(BasicEditor):
         slot = self.slot_editors[index].save_to_slot()
         if self.delay_protocol.set_slot(unified, slot):
             self.loaded_slots[index] = slot
+            # set_slot only updates firmware RAM — persist to EEPROM so the
+            # slot survives a power cycle
+            if not self.delay_protocol.save_to_eeprom():
+                QMessageBox.warning(None, "Error",
+                                    f"Delay slot {index + 1} saved, but writing to keyboard memory failed - "
+                                    "it may be lost when the keyboard is unplugged.")
         else:
             QMessageBox.warning(None, "Error", f"Failed to save user delay slot {index + 1}")
 
@@ -833,6 +839,8 @@ class DelayTab(BasicEditor):
         if self.delay_protocol.set_slot(unified, slot):
             self.loaded_slots[target] = slot
             self.slot_editors[target].load_from_slot(slot)
+            # Persist to EEPROM so the new slot survives a power cycle
+            self.delay_protocol.save_to_eeprom()
 
             # Ensure the new tab is visible
             if target >= self._visible_tab_count:
