@@ -77,7 +77,10 @@ def hid_send(dev, msg, retries=1):
             if not data:
                 continue
         except OSError:
-            continue
+            # OSError from hidapi means the device handle is gone (unplugged).
+            # Retrying with 0.5s sleeps here blocks the Qt main thread for
+            # ~10s per call (minutes across multi-call flows) — fail fast.
+            raise RuntimeError("failed to communicate with the device")
         break
 
     if not data:

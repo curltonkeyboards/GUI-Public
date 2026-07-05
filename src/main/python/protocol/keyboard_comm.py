@@ -1453,6 +1453,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                                HID_CMD_SET_OVERDUB_CCS, HID_CMD_SET_NAVIGATION_CONFIG]
             expected_packet_count = 6  # config + 2x main CCs + 2x overdub CCs + nav
 
+            # The usb_send() above already consumed the first of the 6 response
+            # packets — record it, otherwise the collector can never complete.
+            if response and len(response) >= 4 and response[0] == HID_MANUFACTURER_ID:
+                cmd = response[3]
+                if cmd in expected_commands:
+                    packets[cmd] = [response]
+
             # Try multiple times to collect all expected packets
             for attempt in range(30):
                 try:
@@ -1480,21 +1487,14 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                     time.sleep(0.01)
                     continue
             
-            # If we didn't get packets through direct reading, try alternative method
+            # If the response set is incomplete, fail the read rather than
+            # parsing partial data. (A previous "fallback" here re-sent the
+            # expected commands as zero-payload packets — but these are SET
+            # commands, so the firmware executed them as real writes and
+            # persisted zeroed loop config to EEPROM. Never send SETs to read.)
             total_collected = sum(len(v) for v in packets.values()) if packets else 0
             if total_collected < expected_packet_count:
-                # Send another request and try to get the cached responses
-                for cmd in expected_commands:
-                    if cmd not in packets:
-                        try:
-                            test_packet = self._create_hid_packet(cmd, 0, None)
-                            data = self.usb_send(self.dev, test_packet, retries=1)
-                            if data and len(data) >= 4 and data[0] == HID_MANUFACTURER_ID and data[3] == cmd:
-                                if cmd not in packets:
-                                    packets[cmd] = []
-                                packets[cmd].append(data)
-                        except:
-                            pass
+                return None
 
             # Parse collected packets (8-loop banked protocol)
             config = {}
@@ -1827,20 +1827,15 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                     time.sleep(0.01)
                     continue
             
-            # If we didn't get packets through direct reading, try alternative method
+            # If the response set is incomplete, fail the read rather than
+            # parsing partial data. (A previous "fallback" here re-sent the
+            # expected commands as zero-payload packets — but 0xBB is a SET
+            # command, so the firmware executed it as a real settings write,
+            # zeroing and persisting the user's advanced MIDI configuration.
+            # Never send SETs to read.)
             if len(packets) < 2:
-                # Send another request and try to get the cached responses
-                for cmd in expected_commands:
-                    if cmd not in packets:
-                        try:
-                            # Send a specific request for this command type
-                            test_packet = self._create_hid_packet(cmd, 0, None)
-                            data = self.usb_send(self.dev, test_packet, retries=1)
-                            if data and len(data) >= 4 and data[0] == HID_MANUFACTURER_ID and data[3] == cmd:
-                                packets[cmd] = data
-                        except:
-                            pass
-            
+                return None
+
             # Parse collected packets
             config = {}
             
@@ -2366,9 +2361,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         packet = self._create_hid_packet(0xDA, 0, data)  # HID_CMD_VELOCITY_PRESET_GET
 
         # Firmware sends 2 response packets
-        # Receive Chunk 0: name
+        # Receive Chunk 0: name — verify command byte and slot, not just status,
+        # so a stale packet from another command can't be parsed as this preset.
         response0 = self.usb_send(self.dev, packet, retries=3)
-        if not response0 or len(response0) < 32 or response0[5] != 0x01:
+        if (not response0 or len(response0) < 32 or response0[3] != 0xDA or
+                response0[5] != 0x01 or response0[6] != slot):
             return None
 
         if response0[7] != 0:
@@ -2378,27 +2375,18 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         name_bytes = bytes(response0[8:24])
         name = name_bytes.decode('utf-8', errors='ignore').rstrip('\x00')
 
-        # Default zone settings
-        default_zone = {
-            'points': [[0, 0], [85, 85], [170, 170], [255, 255]],
-            'velocity_min': 1, 'velocity_max': 127,
-            'slow_press_time': 200, 'fast_press_time': 20,
-            'aftertouch_mode': 0, 'aftertouch_cc': 255,
-            'vibrato_sensitivity': 100, 'vibrato_decay': 200,
-            'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 50, 'retrigger_distance': 0,
-            'aftertouch_smoothness': 0
-        }
-
-        # Receive Chunk 1: zone settings
+        # Receive Chunk 1: zone settings. A missing or invalid chunk fails the
+        # whole read — silently substituting factory defaults here made the
+        # editor display defaults as the user's preset, and a subsequent save
+        # would overwrite the real preset with those defaults.
         try:
             response1 = bytes(self.dev.read(32, timeout_ms=500))
         except Exception:
             response1 = None
-        if response1 and len(response1) >= 31 and response1[5] == 0x01 and response1[7] == 1:
-            zone = self._deserialize_zone_settings(response1)
-        else:
-            zone = default_zone.copy()
+        if (not response1 or len(response1) < 31 or response1[3] != 0xDA or
+                response1[5] != 0x01 or response1[6] != slot or response1[7] != 1):
+            return None
+        zone = self._deserialize_zone_settings(response1)
 
         # Build flat result
         result = {'name': name}
@@ -2734,8 +2722,15 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             KEYS_PER_PACKET = 3
             packets = {}
 
-            # Read packets with short timeout - firmware sends them all quickly
-            for attempt in range(100):  # Max 100 read attempts
+            # Read packets with short timeout - firmware sends them all quickly.
+            # On a bad packet we must NOT return early: the firmware keeps
+            # streaming the rest of the 24-packet response, and any packet left
+            # in the HID FIFO would be misparsed as the reply to the NEXT
+            # command (hid_send has no command/response correlation). Keep
+            # draining until the stream goes quiet, then fail.
+            failed = False
+            empty_reads = 0
+            for attempt in range(200):  # Max 200 read attempts
                 try:
                     if hasattr(self.dev, 'read'):
                         response = bytes(self.dev.read(32, timeout_ms=50))
@@ -2743,7 +2738,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                         response = bytes(self.dev.get_feature_report(0, 32))
 
                     if not response or len(response) < 8:
+                        empty_reads += 1
+                        # After a failure, stop once the stream has drained
+                        # (a few consecutive empty reads = firmware is done).
+                        if failed and empty_reads >= 3:
+                            break
                         continue
+                    empty_reads = 0
 
                     # Check if this is a response to our command
                     if (response[0] == HID_MANUFACTURER_ID and
@@ -2754,22 +2755,23 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                         packet_num = response[6]
                         total_packets = response[7]
 
-                        # Validate response
+                        # Validate response — mark failure but keep draining
                         if status != 0x01 or resp_layer != layer:
-                            return None  # Error response
+                            failed = True
+                            continue
 
                         if packet_num < EXPECTED_PACKETS and packet_num not in packets:
                             # Extract key data (bytes 8-31, up to 24 bytes = 3 keys × 8)
                             key_data = response[8:32]
                             packets[packet_num] = key_data
 
-                    if len(packets) >= EXPECTED_PACKETS:
+                    if not failed and len(packets) >= EXPECTED_PACKETS:
                         break
 
                 except Exception:
                     continue
 
-            if len(packets) < EXPECTED_PACKETS:
+            if failed or len(packets) < EXPECTED_PACKETS:
                 # Bulk read failed, return None to trigger fallback
                 return None
 
