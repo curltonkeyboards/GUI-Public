@@ -63,7 +63,17 @@ class Unlocker(QDialog):
         self.keyboard_reference.updateGeometry()
 
     def unlock_poller(self):
-        data = self.keyboard.unlock_poll()
+        try:
+            data = self.keyboard.unlock_poll()
+        except Exception:
+            # Keyboard was unplugged (or errored) mid-unlock. Stop polling and
+            # close the dialog with a reject so the modal wait loop in unlock()
+            # resolves — otherwise the app spins forever with the UI locked.
+            self.timer.stop()
+            self.reject()
+            return
+        if not data or len(data) < 3:
+            return
         unlocked = data[0]
         unlock_counter = data[2]
 

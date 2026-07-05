@@ -2792,10 +2792,18 @@ KEYCODES_OCTAVE_DOUBLER = [
     K("TEMP_TRANS_MINUS12", "Temp\nTrans\n-12", "Hold: temporarily add -12 to transposition"),
 ]
 
-# Generate preset selection keycodes (48 factory + 40 user = 88 total)
+# Generate preset selection keycodes.
+# NOTE: the first 20 SEQ_PRESET keycodes (0xED98-0xEDAB) are the persistent
+# DRUM MACHINE slots (MAX_FACTORY_SEQ_SLOTS = 20), not step-sequencer presets —
+# tapping one opens/plays its drum slot. Only 20-87 are step-seq presets.
 KEYCODES_STEP_SEQUENCER_PRESETS = []
-# Factory presets 0-47
-for x in range(48):
+# Drum machine slots 0-19
+for x in range(20):
+    KEYCODES_STEP_SEQUENCER_PRESETS.append(
+        K("SEQ_PRESET_{}".format(x), "Drum\nSlot\n{}".format(x + 1), "Drum machine slot {}".format(x + 1))
+    )
+# Step-sequencer factory presets 20-47
+for x in range(20, 48):
     KEYCODES_STEP_SEQUENCER_PRESETS.append(
         K("SEQ_PRESET_{}".format(x), "Seq\nPreset\n{}".format(x), "Load sequencer preset {}".format(x))
     )

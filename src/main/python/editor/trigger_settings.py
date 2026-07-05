@@ -1887,6 +1887,22 @@ class TriggerSettingsTab(BasicEditor):
         if not has_layer_changes and not has_per_key_changes:
             return
 
+        # If the initial per-key read from the device failed, per_key_values holds
+        # substituted defaults, not the device's real config. Saving now (a
+        # layer-wide change enqueues every key) would overwrite the real config
+        # with defaults. Refuse and offer a re-read instead.
+        if not getattr(self, '_per_key_read_ok', True):
+            ret = QMessageBox.warning(
+                None, tr("TriggerSettings", "Reading from keyboard failed"),
+                tr("TriggerSettings",
+                   "Per-key settings could not be read from the keyboard, so the "
+                   "values shown are defaults. Saving now would overwrite the "
+                   "keyboard's real settings.\n\nReload from the keyboard first?"),
+                QMessageBox.Yes | QMessageBox.Cancel)
+            if ret == QMessageBox.Yes:
+                self._load_per_key_data()
+            return
+
         # Apply pending layer changes to local state
         if has_layer_changes:
             for i in range(12):
@@ -2911,6 +2927,12 @@ class TriggerSettingsTab(BasicEditor):
         """Load all per-key actuation data from device"""
         print("TriggerSettingsTab: Loading per-key data...")
 
+        # Tracks whether the values now in per_key_values reflect the device.
+        # If a read fails we substitute defaults for display, but those must NOT
+        # be saved back (a layer-wide actuation change enqueues ALL keys, which
+        # would then overwrite the device's real per-key config with defaults).
+        self._per_key_read_ok = True
+
         # Try bulk read first (much faster - 12 calls instead of 840)
         bulk_success = False
         if hasattr(self.keyboard, 'get_all_per_key_actuations'):
@@ -2962,6 +2984,9 @@ class TriggerSettingsTab(BasicEditor):
 
             # If communication failed, set all keys to safe defaults
             if communication_failed:
+                # Defaults are for DISPLAY ONLY — mark the read as failed so
+                # on_save() refuses to persist them over the device's real config.
+                self._per_key_read_ok = False
                 print("Setting all keys to safe defaults: 0.1mm deadzones, 2.0mm actuation")
                 for layer in range(12):
                     for key_index in range(70):

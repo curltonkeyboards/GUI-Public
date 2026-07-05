@@ -32,11 +32,21 @@ class AutorefreshThread(QThread):
         self.sideload_vid = self.sideload_pid = -1
         # create empty VIA definitions. Easier than setting it to none and handling a bunch of exceptions
         self.via_stack_json = {"definitions": {}}
+        self._running = True
+
+    def stop(self):
+        """Ask the run loop to exit; call thread.wait() afterwards to join."""
+        self._running = False
 
     def run(self):
-        while True:
+        while self._running:
             self.update()
-            time.sleep(1)
+            # Sleep in short slices so stop() is honored within ~50ms instead of
+            # blocking app exit for up to a full second.
+            for _ in range(20):
+                if not self._running:
+                    break
+                time.sleep(0.05)
 
     def lock(self):
         with self.mutex:

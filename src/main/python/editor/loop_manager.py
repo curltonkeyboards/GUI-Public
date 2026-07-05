@@ -1388,8 +1388,21 @@ class LoopManager(BasicEditor):
         except Exception as e:
             QMessageBox.critical(None, "Error", f"Failed to open log file: {str(e)}")
 
+    def _transfer_in_progress(self):
+        """True if a loop save/load transfer is currently running. Used to make
+        the transfer buttons non-re-entrant — starting a second transfer while
+        one is active clobbers current_transfer and corrupts both."""
+        return bool(getattr(self, 'current_transfer', None) and self.current_transfer.get('active'))
+
+    def _warn_transfer_busy(self):
+        QMessageBox.warning(None, "Busy",
+                            "A loop transfer is already in progress. Please wait for it to finish.")
+
     def on_save_loop(self, loop_num):
         """Request to save a specific loop from device"""
+        if self._transfer_in_progress():
+            self._warn_transfer_busy()
+            return
         try:
             # Don't prompt for filename yet - wait for data and BPM extraction
             logger.info(f"\n=== Requesting Loop {loop_num} from device ===")
@@ -1487,6 +1500,9 @@ class LoopManager(BasicEditor):
 
     def on_save_all_loops(self):
         """Save all loops from device to a single file"""
+        if self._transfer_in_progress():
+            self._warn_transfer_busy()
+            return
         try:
             # Determine format and prompt for single filename
             save_format = 'midi' if self.format_midi_radio.isChecked() else 'loop'
@@ -2231,6 +2247,9 @@ class LoopManager(BasicEditor):
 
     def on_load_all_tracks(self):
         """Load all tracks from selected file"""
+        if self._transfer_in_progress():
+            self._warn_transfer_busy()
+            return
         try:
             # Get currently selected file
             current_item = self.file_list.currentItem()
@@ -2351,6 +2370,9 @@ class LoopManager(BasicEditor):
 
     def on_load_assignments(self):
         """Load assigned tracks to device"""
+        if self._transfer_in_progress():
+            self._warn_transfer_busy()
+            return
         try:
             if not self.pending_assignments:
                 QMessageBox.warning(None, "Warning", "No tracks assigned. Please assign tracks first.")

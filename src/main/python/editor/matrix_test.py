@@ -2362,6 +2362,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.oled_keyboard.lineEdit().setAlignment(Qt.AlignCenter)
         self.oled_keyboard.addItem("Keyboard 1", 0)
         self.oled_keyboard.addItem("Keyboard 2", 1)
+        self.oled_keyboard.addItem("Keyboard 3", 5)  # firmware enum value 5
         self.oled_keyboard.addItem("Guitar Low", 2)
         self.oled_keyboard.addItem("Guitar Med", 3)
         self.oled_keyboard.addItem("Guitar High", 4)
@@ -3212,8 +3213,8 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         _oled_kbd_value = config.get("oled_keyboard", 0)
         if _oled_kbd_value == 12:
             _oled_kbd_value = 1
-        elif _oled_kbd_value is None or _oled_kbd_value < 0 or _oled_kbd_value > 4:
-            _oled_kbd_value = 0
+        elif _oled_kbd_value is None or _oled_kbd_value < 0 or _oled_kbd_value > 5:
+            _oled_kbd_value = 0  # valid modes: 0-5 (5 = Keyboard 3)
         set_combo_by_data(self.oled_keyboard, _oled_kbd_value, 0)
         set_combo_by_data(self.smart_chord_light, config.get("smart_chord_light"), 0)
         set_combo_by_data(self.smart_chord_light_mode, config.get("smart_chord_light_mode"), 0)
