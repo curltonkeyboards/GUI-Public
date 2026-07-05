@@ -19,6 +19,11 @@ from util import tr
 from vial_device import VialKeyboard
 import math
 
+# The firmware looper has 8 loop slots (MAX_MACROS). "Save All Loops" and the
+# file import/export paths must cover all 8 — several loops here were left at
+# the old 4-slot bound, which silently dropped loops 5-8.
+NUM_LOOPS = 8
+
 # Setup logging to file for standalone builds
 LOG_FILE = os.path.join(os.path.expanduser("~"), "vial-loop-manager.log")
 logging.basicConfig(
@@ -402,7 +407,7 @@ class LoopManager(BasicEditor):
 
         # Collect all tracks
         tracks = []
-        for loop_num in range(1, 5):
+        for loop_num in range(1, NUM_LOOPS + 1):
             if loop_num not in loops_data:
                 continue
 
@@ -1542,7 +1547,7 @@ class LoopManager(BasicEditor):
         """Continue save all sequence - request next loop"""
         loop_num = self.current_transfer.get('save_all_current', 0)
 
-        if loop_num > 4:
+        if loop_num > NUM_LOOPS:
             # All loops received, now save to file
             logger.info("All loops received, creating combined file...")
             self.save_all_loops_to_file()
@@ -1557,8 +1562,8 @@ class LoopManager(BasicEditor):
         self.current_transfer['received_data'] = bytearray()
 
         # Update UI
-        self.save_progress_label.setText(f"Requesting Loop {loop_num} of 4...")
-        self.save_progress_bar.setValue((loop_num - 1) * 25)
+        self.save_progress_label.setText(f"Requesting Loop {loop_num} of {NUM_LOOPS}...")
+        self.save_progress_bar.setValue(int((loop_num - 1) * 100 / NUM_LOOPS))
         self.save_progress_bar.setVisible(True)
 
         # Send request
@@ -1774,6 +1779,18 @@ class LoopManager(BasicEditor):
 
                     logger.info(f"Loop {loop_num}: BPM={loop_bpm}, size={loop_size} bytes")
 
+                    # loop_num is read straight from the file and later sent to
+                    # the keyboard as a slot selector; reject out-of-range values
+                    # so a hand-edited/corrupt file can never target an invalid
+                    # firmware slot. Skip the payload and keep parsing.
+                    if not (1 <= loop_num <= NUM_LOOPS):
+                        logger.warning(f"Skipping loop with out-of-range number {loop_num}")
+                        if loop_size > 0 and offset + loop_size <= len(data):
+                            offset += loop_size
+                        else:
+                            break
+                        continue
+
                     if loop_size > 0:
                         if offset + loop_size > len(data):
                             logger.info(f"Invalid loop size for loop {loop_num}")
@@ -1813,7 +1830,7 @@ class LoopManager(BasicEditor):
                 tracks = []
                 loops_data = {}
 
-                for loop_num in range(1, 5):
+                for loop_num in range(1, loop_count + 1):
                     if offset + 4 > len(data):
                         break
 
@@ -2156,6 +2173,12 @@ class LoopManager(BasicEditor):
 
     def load_loop_data_to_device(self, loop_data, loop_num):
         """Load loop data to device via HID - matches webapp loadLoopData()"""
+        # loop_num is used by the firmware as a slot index (loop_num - 1); a bad
+        # value causes out-of-bounds writes on the keyboard. Guard here so every
+        # caller (file import, restore, drag/drop) is covered.
+        if not (1 <= loop_num <= NUM_LOOPS):
+            logger.error(f"Refusing to load loop: invalid loop number {loop_num}")
+            return False
         try:
             logger.info(f"\n=== Loading loop data to device: Loop {loop_num}, {len(loop_data)} bytes ===")
 
