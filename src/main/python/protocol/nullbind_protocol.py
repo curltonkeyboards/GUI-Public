@@ -255,6 +255,12 @@ class ProtocolNullBind:
             if not response or len(response) < (5 + NULLBIND_GROUP_SIZE):
                 return None
 
+            # Verify the command byte (response[3]) — hid_send does not correlate
+            # responses to commands, so a stale packet from another command could
+            # otherwise be parsed as this group's data.
+            if response[3] != HID_CMD_NULLBIND_GET_GROUP:
+                return None
+
             # Check status byte (firmware puts it at index 4)
             if response[4] != 0:
                 return None
