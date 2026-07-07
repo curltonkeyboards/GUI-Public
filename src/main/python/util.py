@@ -61,27 +61,30 @@ def hid_send(dev, msg, retries=1):
     msg += b"\x00" * (MSG_LEN - len(msg))
 
     data = b""
-    first = True
-
-    while retries > 0:
-        retries -= 1
-        if not first:
-            time.sleep(0.5)
-        first = False
-        try:
-            # add 00 at start for hidapi report id
-            if dev.write(b"\x00" + msg) != MSG_LEN + 1:
-                continue
-
-            data = bytes(dev.read(MSG_LEN, timeout_ms=500))
-            if not data:
-                continue
-        except OSError:
-            # OSError from hidapi means the device handle is gone (unplugged).
-            # Retrying with 0.5s sleeps here blocks the Qt main thread for
-            # ~10s per call (minutes across multi-call flows) — fail fast.
+    try:
+        # add 00 at start for hidapi report id
+        if dev.write(b"\x00" + msg) != MSG_LEN + 1:
             raise RuntimeError("failed to communicate with the device")
-        break
+
+        # Poll for the response WITHOUT re-sending the command. The old code
+        # re-wrote msg on every read timeout (up to `retries` times). Commands
+        # that do slow synchronous EEPROM work (e.g. reset-per-key rewrites the
+        # whole 6,720-byte region) reply only after that work finishes — often
+        # past the 500 ms read timeout. A re-write then makes the firmware
+        # execute the command a SECOND time and queue a duplicate response, so
+        # every subsequent call reads the previous command's stale response and
+        # the request/response stream is permanently offset by one — the GUI
+        # shows and can save back garbage. Sending exactly once and only
+        # extending the read window removes that desync while still waiting out
+        # a slow reply. (H4)
+        attempts = retries if retries > 0 else 1
+        for _ in range(attempts):
+            data = bytes(dev.read(MSG_LEN, timeout_ms=500))
+            if data:
+                break
+    except OSError:
+        # OSError from hidapi means the device handle is gone (unplugged).
+        raise RuntimeError("failed to communicate with the device")
 
     if not data:
         raise RuntimeError("failed to communicate with the device")

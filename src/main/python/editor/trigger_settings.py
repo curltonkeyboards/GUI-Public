@@ -1914,9 +1914,26 @@ class TriggerSettingsTab(BasicEditor):
 
         # Send pending per-key changes to device (includes layer-wide actuation changes)
         if has_per_key_changes and self.device and isinstance(self.device, VialKeyboard):
-            for layer, key_index in self.pending_per_key_keys:
+            failed = set()
+            for layer, key_index in list(self.pending_per_key_keys):
                 settings = self.per_key_values[layer][key_index]
-                self.device.keyboard.set_per_key_actuation(layer, key_index, settings)
+                # set_per_key_actuation returns False (and swallows exceptions) when
+                # the write does not reach the device (busy / unplugged). The old
+                # code ignored the result and cleared the whole pending set below,
+                # so a failed save silently dropped those edits while the GUI
+                # reported success and diverged from the device. (M16)
+                if not self.device.keyboard.set_per_key_actuation(layer, key_index, settings):
+                    failed.add((layer, key_index))
+            if failed:
+                # Keep the un-written keys pending and tell the user; do not clear.
+                self.pending_per_key_keys = failed
+                self.has_unsaved_changes = True
+                QMessageBox.warning(
+                    None, tr("TriggerSettings", "Save incomplete"),
+                    tr("TriggerSettings",
+                       "{} changed key(s) could not be written to the keyboard and "
+                       "remain unsaved. Check the connection and save again.").format(len(failed)))
+                return
 
         # Clear all unsaved changes flags
         self.has_unsaved_changes = False

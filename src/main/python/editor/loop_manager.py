@@ -1344,9 +1344,35 @@ class LoopManager(BasicEditor):
         self.hid_listener_thread = threading.Thread(target=self.hid_listener_loop, daemon=True)
         self.hid_listener_thread.start()
 
+        # Watchdog: if the transfer never completes or errors (device unplugged
+        # mid-transfer, or the final SAVE_END/LOAD_END packet is lost), the
+        # completion handlers that reset current_transfer['active'] never run, so
+        # every later transfer is rejected with "already in progress" until the
+        # app restarts. Force-reset after a generous window. Healthy transfers
+        # finish in well under a second, so this only fires on a genuinely stuck
+        # one. (M4)
+        if getattr(self, '_transfer_watchdog', None) is None:
+            self._transfer_watchdog = QTimer()
+            self._transfer_watchdog.setSingleShot(True)
+            self._transfer_watchdog.timeout.connect(self._on_transfer_watchdog_timeout)
+        self._transfer_watchdog.start(20000)
+
+    def _on_transfer_watchdog_timeout(self):
+        """Force-reset a transfer that neither completed nor errored in time. (M4)"""
+        if self._transfer_in_progress():
+            logger.error("Loop transfer watchdog fired — forcing reset")
+            QMessageBox.warning(
+                None, "Transfer Timed Out",
+                "The loop transfer did not complete (the device may have been "
+                "disconnected or a packet was lost). It has been cancelled — "
+                "please try again.")
+            self.reset_transfer_state()
+
     def stop_hid_listener(self):
         """Stop the HID listener thread"""
         self.hid_listening = False
+        if getattr(self, '_transfer_watchdog', None) is not None:
+            self._transfer_watchdog.stop()
         if self.hid_listener_thread:
             self.hid_listener_thread.join(timeout=1.0)
 
@@ -2827,6 +2853,29 @@ class LoopManager(BasicEditor):
                 received_data = bytes(self.current_transfer['received_data'])
                 received_size = len(received_data)
                 logger.info(f"Received {received_size} bytes for loop {macro_num}")
+
+                # Verify the transfer actually completed before writing anything.
+                # A SAVE_END with status 0 is not proof every chunk arrived — a
+                # dropped or cross-thread-stolen packet leaves received_data short.
+                # The old code wrote it anyway, producing a silently truncated
+                # .loop/.midi with a "Saved" message, discovered only on reload
+                # (after the on-device take may be gone). (M1)
+                expected_packets = self.current_transfer.get('expected_packets', 0)
+                received_packets = self.current_transfer.get('received_packets', 0)
+                total_size = self.current_transfer.get('total_size', 0)
+                if (expected_packets and received_packets != expected_packets) or \
+                   (total_size and received_size != total_size):
+                    logger.error(
+                        f"Incomplete transfer for loop {macro_num}: "
+                        f"{received_packets}/{expected_packets} packets, "
+                        f"{received_size}/{total_size} bytes")
+                    QMessageBox.warning(
+                        None, "Save Failed",
+                        f"Loop {macro_num} transfer was incomplete "
+                        f"({received_size} of {total_size} bytes). The file was "
+                        f"NOT saved. Please try again.")
+                    self.reset_transfer_state()
+                    return
 
                 # Check if in save all mode
                 if self.current_transfer.get('save_all_mode'):
