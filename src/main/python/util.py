@@ -16,6 +16,29 @@ from keymaps import KEYMAPS
 
 tr = QCoreApplication.translate
 
+# --- Exclusive HID access during a loop transfer (H3) -----------------------
+# A loop save/load runs a background listener thread that continuously reads the
+# device handle. The matrix/velocity live pollers read the SAME raw handle from
+# the Qt main thread via hid_send, with no request/response correlation, so a
+# poll fired during a transfer steals the transfer's packets (truncated file)
+# and vice-versa (garbage telemetry). While a transfer is active the listener is
+# the designated reader; the pollers must stand down. Both the loop manager and
+# the pollers run on the Qt main thread, so this plain flag is set/checked
+# without a race relative to the pollers.
+_hid_transfer_active = False
+
+
+def set_hid_transfer_active(active):
+    """Mark a loop transfer as in progress so live pollers pause their HID reads."""
+    global _hid_transfer_active
+    _hid_transfer_active = bool(active)
+
+
+def is_hid_transfer_active():
+    """True while a loop transfer owns the HID handle; pollers should skip."""
+    return _hid_transfer_active
+
+
 # For Vial keyboard
 VIAL_SERIAL_NUMBER_MAGIC = "vial:f64c2b3c"
 

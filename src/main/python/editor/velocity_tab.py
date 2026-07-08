@@ -26,7 +26,7 @@ from widgets.square_button import SquareButton
 from editor.basic_editor import BasicEditor
 from widgets.keyboard_widget import KeyboardWidgetSimple
 from themes import Theme
-from util import tr
+from util import tr, is_hid_transfer_active
 from vial_device import VialKeyboard
 from protocol.keyboard_comm import (
     PARAM_SPEED_PEAK_RATIO, PARAM_AFTERTOUCH_MODE, PARAM_AFTERTOUCH_CC,
@@ -1379,6 +1379,10 @@ class VelocityTab(BasicEditor):
 
     def poll_velocity(self):
         """Poll velocity and press time values from keyboard"""
+        # A loop transfer owns the HID handle; skip this tick so we don't steal
+        # its packets (or read garbage). The poll timer keeps running. (H3)
+        if is_hid_transfer_active():
+            return
         if not self.keyboard or not self.is_active:
             return
 

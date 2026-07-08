@@ -34,7 +34,7 @@ from protocol.keyboard_comm import (
     PARAM_CHORD_DISPLAY_MODE
 )
 from widgets.keyboard_widget import KeyboardWidget2, KeyboardWidgetSimple
-from util import tr
+from util import tr, is_hid_transfer_active
 from vial_device import VialKeyboard
 from unlocker import Unlocker
 
@@ -490,6 +490,10 @@ class MatrixTest(BasicEditor):
         self.KeyboardWidget2.updateGeometry()
 
     def matrix_poller(self):
+        # A loop transfer owns the HID handle; skip this tick (timer keeps
+        # running, so polling resumes when the transfer finishes). (H3)
+        if is_hid_transfer_active():
+            return
         if not self.valid():
             self.timer.stop()
             return
@@ -558,6 +562,8 @@ class MatrixTest(BasicEditor):
 
     def adc_poller(self):
         """Poll ADC values for half the matrix rows each cycle"""
+        if is_hid_transfer_active():  # transfer owns the HID handle; skip (H3)
+            return
         if not self.valid():
             self.adc_timer.stop()
             return
@@ -631,6 +637,8 @@ class MatrixTest(BasicEditor):
 
     def distance_poller(self):
         """Poll distance and calibration values for specific keys to update actuation visualizers"""
+        if is_hid_transfer_active():  # transfer owns the HID handle; skip (H3)
+            return
         if not self.valid():
             self.distance_timer.stop()
             return

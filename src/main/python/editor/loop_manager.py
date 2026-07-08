@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import (QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QSi
                              QTabWidget)
 
 from editor.basic_editor import BasicEditor
-from util import tr
+from util import tr, set_hid_transfer_active
 from vial_device import VialKeyboard
 import math
 
@@ -1341,6 +1341,10 @@ class LoopManager(BasicEditor):
             return
 
         self.hid_listening = True
+        # Claim exclusive HID access: the live matrix/velocity pollers stand down
+        # while this listener owns the handle, so they can't steal transfer
+        # packets (or have theirs stolen). (H3)
+        set_hid_transfer_active(True)
         self.hid_listener_thread = threading.Thread(target=self.hid_listener_loop, daemon=True)
         self.hid_listener_thread.start()
 
@@ -1375,6 +1379,8 @@ class LoopManager(BasicEditor):
             self._transfer_watchdog.stop()
         if self.hid_listener_thread:
             self.hid_listener_thread.join(timeout=1.0)
+        # Release exclusive HID access so the live pollers resume. (H3)
+        set_hid_transfer_active(False)
 
     def hid_listener_loop(self):
         """Background thread loop to receive HID data"""
