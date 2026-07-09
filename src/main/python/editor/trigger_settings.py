@@ -1914,26 +1914,34 @@ class TriggerSettingsTab(BasicEditor):
 
         # Send pending per-key changes to device (includes layer-wide actuation changes)
         if has_per_key_changes and self.device and isinstance(self.device, VialKeyboard):
-            failed = set()
-            for layer, key_index in list(self.pending_per_key_keys):
-                settings = self.per_key_values[layer][key_index]
-                # set_per_key_actuation returns False (and swallows exceptions) when
-                # the write does not reach the device (busy / unplugged). The old
-                # code ignored the result and cleared the whole pending set below,
-                # so a failed save silently dropped those edits while the GUI
-                # reported success and diverged from the device. (M16)
-                if not self.device.keyboard.set_per_key_actuation(layer, key_index, settings):
-                    failed.add((layer, key_index))
-            if failed:
-                # Keep the un-written keys pending and tell the user; do not clear.
-                self.pending_per_key_keys = failed
-                self.has_unsaved_changes = True
-                QMessageBox.warning(
-                    None, tr("TriggerSettings", "Save incomplete"),
-                    tr("TriggerSettings",
-                       "{} changed key(s) could not be written to the keyboard and "
-                       "remain unsaved. Check the connection and save again.").format(len(failed)))
-                return
+            # Disable the button up-front so a rapid double-click can't queue a
+            # second overlapping batch of transfers; re-enabled in finally.
+            self.save_btn.setEnabled(False)
+            try:
+                failed = set()
+                for layer, key_index in list(self.pending_per_key_keys):
+                    settings = self.per_key_values[layer][key_index]
+                    # set_per_key_actuation returns False (and swallows exceptions) when
+                    # the write does not reach the device (busy / unplugged). The old
+                    # code ignored the result and cleared the whole pending set below,
+                    # so a failed save silently dropped those edits while the GUI
+                    # reported success and diverged from the device. (M16)
+                    if not self.device.keyboard.set_per_key_actuation(layer, key_index, settings):
+                        failed.add((layer, key_index))
+                if failed:
+                    # Keep the un-written keys pending and tell the user; do not clear.
+                    self.pending_per_key_keys = failed
+                    self.has_unsaved_changes = True
+                    QMessageBox.warning(
+                        None, tr("TriggerSettings", "Save incomplete"),
+                        tr("TriggerSettings",
+                           "{} changed key(s) could not be written to the keyboard and "
+                           "remain unsaved. Check the connection and save again.").format(len(failed)))
+                    return
+            finally:
+                # Re-enable if anything remains unsaved so the user can retry;
+                # the full-success path disables it again below.
+                self.save_btn.setEnabled(self.has_unsaved_changes or bool(self.pending_per_key_keys))
 
         # Clear all unsaved changes flags
         self.has_unsaved_changes = False
@@ -2721,7 +2729,11 @@ class TriggerSettingsTab(BasicEditor):
 
             # Copy on device
             if self.device and isinstance(self.device, VialKeyboard):
-                self.device.keyboard.copy_layer_actuations(source_layer, dest_layer)
+                self.copy_layer_btn.setEnabled(False)
+                try:
+                    self.device.keyboard.copy_layer_actuations(source_layer, dest_layer)
+                finally:
+                    self.copy_layer_btn.setEnabled(self.mode_enabled)
 
             self.refresh_layer_display()
 
@@ -2741,22 +2753,37 @@ class TriggerSettingsTab(BasicEditor):
             source_layer = self.current_layer
 
             # Copy to all layers in memory and on device
-            for dest_layer in range(12):
-                if dest_layer != source_layer:
-                    # Copy in memory (deep copy of dicts)
-                    for key_index in range(70):
-                        self.per_key_values[dest_layer][key_index] = self.per_key_values[source_layer][key_index].copy()
+            all_ok = True
+            self.copy_all_layers_btn.setEnabled(False)
+            try:
+                for dest_layer in range(12):
+                    if dest_layer != source_layer:
+                        # Copy in memory (deep copy of dicts)
+                        for key_index in range(70):
+                            self.per_key_values[dest_layer][key_index] = self.per_key_values[source_layer][key_index].copy()
 
-                    # Copy on device
-                    if self.device and isinstance(self.device, VialKeyboard):
-                        self.device.keyboard.copy_layer_actuations(source_layer, dest_layer)
+                        # Copy on device
+                        if self.device and isinstance(self.device, VialKeyboard):
+                            if not self.device.keyboard.copy_layer_actuations(source_layer, dest_layer):
+                                all_ok = False
+            finally:
+                self.copy_all_layers_btn.setEnabled(self.mode_enabled)
 
             self.refresh_layer_display()
-            QMessageBox.information(
-                self.widget(),
-                tr("TriggerSettings", "Copy Complete"),
-                tr("TriggerSettings", f"Per-key settings copied to all layers.")
-            )
+            if all_ok:
+                QMessageBox.information(
+                    self.widget(),
+                    tr("TriggerSettings", "Copy Complete"),
+                    tr("TriggerSettings", f"Per-key settings copied to all layers.")
+                )
+            else:
+                QMessageBox.warning(
+                    self.widget(),
+                    tr("TriggerSettings", "Copy Incomplete"),
+                    tr("TriggerSettings",
+                       "Some layers could not be written to the keyboard. "
+                       "Check the connection and try again.")
+                )
 
     def on_reset_all(self):
         """Reset all actuations to default with confirmation"""
@@ -2784,7 +2811,11 @@ class TriggerSettingsTab(BasicEditor):
 
             # Reset on device
             if self.device and isinstance(self.device, VialKeyboard):
-                self.device.keyboard.reset_per_key_actuations()
+                self.reset_btn.setEnabled(False)
+                try:
+                    self.device.keyboard.reset_per_key_actuations()
+                finally:
+                    self.reset_btn.setEnabled(self.mode_enabled)
 
             self.refresh_layer_display()
 
@@ -3415,35 +3446,45 @@ class TriggerSettingsTab(BasicEditor):
         if not self.nullbind_protocol:
             return
 
-        # Send all groups to keyboard
-        success = True
-        for i, group in enumerate(self.nullbind_groups):
-            if not self.nullbind_protocol.set_group(i, group):
-                success = False
-                break
+        # Disable the button up-front so rapid double-clicks can't queue
+        # overlapping transfers; re-enabled in finally (kept disabled on the
+        # full-success path since there is nothing left to save).
+        self.nullbind_save_btn.setEnabled(False)
+        saved_ok = False
+        try:
+            # Send all groups to keyboard
+            success = True
+            for i, group in enumerate(self.nullbind_groups):
+                if not self.nullbind_protocol.set_group(i, group):
+                    success = False
+                    break
 
-        if success:
-            # Save to EEPROM
-            if self.nullbind_protocol.save_to_eeprom():
-                QMessageBox.information(
-                    self.widget(),
-                    tr("TriggerSettings", "Success"),
-                    tr("TriggerSettings", "Null bind settings saved to keyboard.")
-                )
-                self.nullbind_pending_changes = False
-                self.nullbind_save_btn.setEnabled(False)
+            if success:
+                # Save to EEPROM
+                if self.nullbind_protocol.save_to_eeprom():
+                    QMessageBox.information(
+                        self.widget(),
+                        tr("TriggerSettings", "Success"),
+                        tr("TriggerSettings", "Null bind settings saved to keyboard.")
+                    )
+                    self.nullbind_pending_changes = False
+                    saved_ok = True
+                else:
+                    QMessageBox.warning(
+                        self.widget(),
+                        tr("TriggerSettings", "Error"),
+                        tr("TriggerSettings", "Failed to save null bind settings to EEPROM.")
+                    )
             else:
                 QMessageBox.warning(
                     self.widget(),
                     tr("TriggerSettings", "Error"),
-                    tr("TriggerSettings", "Failed to save null bind settings to EEPROM.")
+                    tr("TriggerSettings", "Failed to send null bind settings to keyboard.")
                 )
-        else:
-            QMessageBox.warning(
-                self.widget(),
-                tr("TriggerSettings", "Error"),
-                tr("TriggerSettings", "Failed to send null bind settings to keyboard.")
-            )
+        finally:
+            # Leave disabled only when everything saved; otherwise re-enable
+            # so the user can retry.
+            self.nullbind_save_btn.setEnabled(not saved_ok)
 
     def load_nullbind_groups(self):
         """Load null bind groups from keyboard"""

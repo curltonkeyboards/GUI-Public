@@ -1872,7 +1872,14 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 oled_keyboard = struct.unpack('<I', data[16:20])[0]
                 smart_chord_light = data[20]
                 smart_chord_light_mode = data[21]
-                
+                # Bytes 22-25: firmware now carries these here (packet 2 was full).
+                # Previously they had NO GET path, so the GUI defaulted them and a
+                # slot-load clobbered the device. See firmware handle_get_keyboard_config.
+                chord_display_mode = data[22] if len(data) > 22 else 2
+                base_sustain = data[23] if len(data) > 23 else 0
+                keysplit_sustain = data[24] if len(data) > 24 else 0
+                triplesplit_sustain = data[25] if len(data) > 25 else 0
+
                 config.update({
                     "velocity_sensitivity": velocity_sensitivity,
                     "cc_sensitivity": cc_sensitivity,
@@ -1883,7 +1890,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                     "random_velocity_modifier": random_velocity_modifier,
                     "oled_keyboard": oled_keyboard,
                     "smart_chord_light": smart_chord_light,
-                    "smart_chord_light_mode": smart_chord_light_mode
+                    "smart_chord_light_mode": smart_chord_light_mode,
+                    "chord_display_mode": chord_display_mode,
+                    "base_sustain": base_sustain,
+                    "keysplit_sustain": keysplit_sustain,
+                    "triplesplit_sustain": triplesplit_sustain
                 })
                 
             if HID_CMD_SET_KEYBOARD_CONFIG_ADVANCED in packets:
@@ -1920,9 +1931,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                     # Velocity curve indices (bytes 23-25)
                     "he_velocity_curve": data[23] if len(data) > 23 else 2,
                     "keysplit_he_velocity_curve": data[24] if len(data) > 24 else 2,
-                    "triplesplit_he_velocity_curve": data[25] if len(data) > 25 else 2,
-                    # Chord progression OLED display mode (byte 26): 0=Chords, 1=Numerals, 2=Name
-                    "chord_display_mode": data[26] if len(data) > 26 else 2
+                    "triplesplit_he_velocity_curve": data[25] if len(data) > 25 else 2
+                    # chord_display_mode now comes from the BASIC packet (bytes 22);
+                    # the advanced packet is full at 26 bytes so data[26] was always
+                    # out of range and pinned it to the default.
                 })
                 
             return config if config else None

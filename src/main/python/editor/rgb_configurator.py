@@ -3586,7 +3586,9 @@ class AdvancedKeyLightingHandler(QObject):
             h, s, v, blink = self.state_data[state_idx]
             data = struct.pack("BBBBBBB", CMD_VIA_VIAL_PREFIX, HID_CMD_FUNC_LED_SET,
                                state_idx, h, s, v, blink)
-            self.keyboard.usb_send(self.keyboard.dev, data, retries=20)
+            response = self.keyboard.usb_send(self.keyboard.dev, data, retries=20)
+            if not response:
+                print(f"Error sending functional LED state {state_idx}: no response from keyboard")
         except Exception as e:
             print(f"Error sending functional LED state {state_idx}: {e}")
 
@@ -3628,7 +3630,12 @@ class AdvancedKeyLightingHandler(QObject):
         try:
             import struct
             data = struct.pack("BBB", CMD_VIA_VIAL_PREFIX, HID_CMD_FUNC_LED_SAVE, 0x00)
-            self.keyboard.usb_send(self.keyboard.dev, data, retries=20)
+            response = self.keyboard.usb_send(self.keyboard.dev, data, retries=20)
+            if not response:
+                print("Error saving functional LED config: no response from keyboard")
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(None, "Error",
+                                    "Failed to save functional LED settings to the keyboard.")
         except Exception as e:
             print(f"Error saving functional LED config: {e}")
 

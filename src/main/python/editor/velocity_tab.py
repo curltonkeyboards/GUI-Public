@@ -2407,6 +2407,12 @@ class VelocityTab(BasicEditor):
             )
             return
 
+        # Re-entrancy guard: rapid double-clicks (overwrite / Save As) funnel
+        # through here; block a second synchronous transfer while one is in flight.
+        if getattr(self, '_save_busy', False):
+            return
+        self._save_busy = True
+
         try:
             points = self.curve_editor.get_points()
             settings = self.global_midi_settings
@@ -2471,6 +2477,8 @@ class VelocityTab(BasicEditor):
                 tr("VelocityTab", "Save Failed"),
                 tr("VelocityTab", f"Error saving velocity preset: {e}")
             )
+        finally:
+            self._save_busy = False
 
     def on_save_curve(self):
         """Save velocity curve selection to keyboard (sets the active curve index)"""

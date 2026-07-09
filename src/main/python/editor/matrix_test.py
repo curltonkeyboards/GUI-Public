@@ -571,6 +571,7 @@ class MatrixTest(BasicEditor):
         try:
             unlocked = self.keyboard.get_unlock_status(1)
         except (RuntimeError, ValueError):
+            self.adc_timer.stop()  # device gone (e.g. unplug) — stop polling like matrix_poller does
             return
 
         if not unlocked:
@@ -646,6 +647,7 @@ class MatrixTest(BasicEditor):
         try:
             unlocked = self.keyboard.get_unlock_status(1)
         except (RuntimeError, ValueError):
+            self.distance_timer.stop()  # device gone (e.g. unplug) — stop polling like matrix_poller does
             return
 
         if not unlocked:
@@ -3201,15 +3203,26 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
     def apply_settings(self, config):
         """Apply settings dictionary to UI"""
         def set_combo_by_data(combo, value, default_value=None):
-            for i in range(combo.count()):
-                if combo.itemData(i) == value:
-                    combo.setCurrentIndex(i)
-                    return
-            if default_value is not None:
+            # CRITICAL: block signals while populating from a loaded config.
+            # Many of these combos have currentIndexChanged wired to a live
+            # send_param_update() (e.g. sustain -> PARAM 15/16/17, chord display
+            # -> PARAM 55). Without blocking, loading a slot whose value the GET
+            # packet can't report (defaulting the combo to 0/2) fires a live
+            # PARAM write that overwrites the value the device JUST loaded — so a
+            # GUI "Load Slot" silently wiped the device's sustain / chord-display.
+            combo.blockSignals(True)
+            try:
                 for i in range(combo.count()):
-                    if combo.itemData(i) == default_value:
+                    if combo.itemData(i) == value:
                         combo.setCurrentIndex(i)
                         return
+                if default_value is not None:
+                    for i in range(combo.count()):
+                        if combo.itemData(i) == default_value:
+                            combo.setCurrentIndex(i)
+                            return
+            finally:
+                combo.blockSignals(False)
         
         set_combo_by_data(self.velocity_sensitivity, config.get("velocity_sensitivity"), 1)
         set_combo_by_data(self.cc_sensitivity, config.get("cc_sensitivity"), 1)
