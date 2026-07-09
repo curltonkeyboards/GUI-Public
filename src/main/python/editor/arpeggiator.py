@@ -3357,6 +3357,18 @@ class Arpeggiator(BasicEditor):
                 resp_cmd_name = cmd_names.get(resp_cmd, f"0x{resp_cmd:02X}")
                 self.debug_log(f"HID RX: cmd={resp_cmd_name} status=0x{resp_status:02X}", "HID_RX")
 
+                # (#8) Correlate the reply to the command we sent. The custom protocol
+                # echoes the command byte at response[3]; a mismatch means we read a
+                # stale/out-of-order reply (e.g. a slow command answering after its
+                # read window). Do NOT apply it as this command's data — treat it as a
+                # failed transfer so the caller can retry rather than showing/saving
+                # another command's payload.
+                if resp_cmd != cmd:
+                    self.debug_log(
+                        f"HID RX: reply cmd 0x{resp_cmd:02X} != sent 0x{cmd:02X} "
+                        f"(stale/mismatched) — ignoring", "WARN")
+                    return None if return_response else False
+
                 if return_response:
                     return response
 

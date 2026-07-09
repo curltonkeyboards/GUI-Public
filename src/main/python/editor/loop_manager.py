@@ -491,6 +491,13 @@ class LoopManager(BasicEditor):
 
     def create_midi_track(self, track, bpm, tpqn, shortest_track_ref=None):
         """Create a MIDI track from events with loopLength silence and sync adjustment"""
+        # (#14) A device loop with the BPM flag set but a zero value yields bpm=0.0,
+        # which would raise ZeroDivisionError at the tempo/tick math below. Fall back
+        # to sane defaults so "Save as MIDI" produces a valid file instead of crashing.
+        if not bpm or bpm <= 0:
+            bpm = 120.0
+        if not tpqn or tpqn <= 0:
+            tpqn = 480
         track_events = bytearray()
 
         # Track name event
@@ -654,11 +661,22 @@ class LoopManager(BasicEditor):
 
     def ticks_to_ms(self, ticks, bpm, tpqn=480):
         """Convert MIDI ticks to milliseconds - matches webapp ticksToMs()"""
+        # (#14) Guard against a 0 bpm/tpqn (corrupt loop data or a malformed .mid)
+        # that would otherwise raise ZeroDivisionError.
+        if not bpm or bpm <= 0:
+            bpm = 120.0
+        if not tpqn or tpqn <= 0:
+            tpqn = 480
         ms_per_tick = 60000.0 / (bpm * tpqn)
         return int(round(ticks * ms_per_tick))
 
     def ms_to_ticks(self, ms, bpm, tpqn=480):
         """Convert milliseconds to MIDI ticks - matches webapp msToTicks()"""
+        # (#14) Same zero-guard as ticks_to_ms.
+        if not bpm or bpm <= 0:
+            bpm = 120.0
+        if not tpqn or tpqn <= 0:
+            tpqn = 480
         ms_per_tick = 60000.0 / (bpm * tpqn)
         return int(round(ms / ms_per_tick))
 
@@ -720,6 +738,10 @@ class LoopManager(BasicEditor):
                 elif meta_type == 0x51 and meta_length == 3:
                     # Tempo
                     microseconds_per_quarter = (data[offset] << 16) | (data[offset + 1] << 8) | data[offset + 2]
+                    # (#14) A malformed .mid with a zero tempo value would raise
+                    # ZeroDivisionError; fall back to 120 BPM (500000 us/quarter).
+                    if microseconds_per_quarter <= 0:
+                        microseconds_per_quarter = 500000
                     tempo = round(60000000 / microseconds_per_quarter)
                 elif meta_type == 0x2F:
                     # End of track
@@ -862,7 +884,8 @@ class LoopManager(BasicEditor):
             logger.info(f"SHORTEST LOOP: Preserving exact timing: {loop_length}ms (no quantization)")
         else:
             # Smart quantization to bar boundaries
-            ms_per_beat = 60000 / bpm
+            # (#14) Guard a 0/negative bpm before dividing.
+            ms_per_beat = 60000 / (bpm if bpm and bpm > 0 else 120)
             ms_per_bar = ms_per_beat * 4  # 4/4 time
             threshold = ms_per_bar * 0.05  # 5% of a bar
 
@@ -1504,13 +1527,21 @@ class LoopManager(BasicEditor):
                 self.loop_contents.clear()
                 self.overdub_contents.clear()
 
-                # Update UI to show empty loops
+                # Update UI to show empty loops.
+                # (#2) These referenced self.main_loop_btns / self.overdub_btns, which
+                # do NOT exist (the real attributes are main_assign_btns /
+                # overdub_assign_btns, see __init__). On the SUCCESS path that raised
+                # AttributeError, caught below, so the user ALWAYS saw "Error clearing
+                # loops" after the loops were in fact cleared. Use the correct names and
+                # reset each button to its empty state (default label + no assigned style).
                 for i in range(8):
-                    if i < len(self.main_loop_btns):
-                        self.main_loop_btns[i].setText(f"Main {i+1}\n(empty)")
-                    if i < len(self.overdub_btns):
-                        self.overdub_btns[i].setText(f"Overdub {i+1}\n(empty)")
-                        self.overdub_btns[i].setEnabled(False)
+                    if i < len(self.main_assign_btns):
+                        self.main_assign_btns[i].setText(f"Loop {i+1}")
+                        self.main_assign_btns[i].setStyleSheet("")
+                    if i < len(self.overdub_assign_btns):
+                        self.overdub_assign_btns[i].setText(f"Overdub {i+1}")
+                        self.overdub_assign_btns[i].setStyleSheet("")
+                        self.overdub_assign_btns[i].setEnabled(False)
                     # Hide clear buttons
                     if hasattr(self, 'main_clear_btns') and i < len(self.main_clear_btns):
                         self.main_clear_btns[i].setVisible(False)
@@ -2324,7 +2355,7 @@ class LoopManager(BasicEditor):
             elif 'loop_data' in file_info:
                 # Single .loop file - ask which loop to load to
                 loop_num, ok = QInputDialog.getInt(
-                    None, "Select Loop", "Load to which loop (1-4)?", 1, 1, 4
+                    None, "Select Loop", f"Load to which loop (1-{NUM_LOOPS})?", 1, 1, NUM_LOOPS
                 )
                 if not ok:
                     return
@@ -2361,15 +2392,16 @@ class LoopManager(BasicEditor):
                 self.load_progress_bar.setValue(0)
                 self.load_progress_bar.setVisible(True)
 
-                # Load up to 4 tracks
-                for idx, track in enumerate(tracks[:4]):
+                # (#28) Load up to NUM_LOOPS (8) tracks, not 4 — the device has 8 loop
+                # slots, so a 5-8 track import previously dropped tracks 5-8 silently.
+                for idx, track in enumerate(tracks[:NUM_LOOPS]):
                     loop_num = idx + 1
 
                     if not track['events']:
                         logger.info(f"Track {idx + 1} has no events, skipping")
                         continue
 
-                    progress = int(((idx + 1) / min(len(tracks), 4)) * 100)
+                    progress = int(((idx + 1) / min(len(tracks), NUM_LOOPS)) * 100)
                     self.load_progress_label.setText(f"Loading track {idx + 1} '{track['name']}' to Loop {loop_num}...")
                     self.load_progress_bar.setValue(progress)
 
@@ -2807,7 +2839,12 @@ class LoopManager(BasicEditor):
 
             logger.info(f"SAVE_START: {total_packets} packets, {total_size} bytes total")
         else:
-            logger.info(f"Warning: SAVE_START payload too short: {len(data)} bytes")
+            # (#13) A truncated SAVE_START leaves expected_packets/total_size at 0,
+            # which makes the SAVE_END completeness check pass for ANY number of
+            # received chunks — a truncated take written as "Saved". Flag the
+            # transfer invalid so SAVE_END fails it instead.
+            logger.error(f"SAVE_START payload too short: {len(data)} bytes - marking transfer invalid")
+            self.current_transfer['start_invalid'] = True
 
         self.transfer_progress.emit(0,
             f"Receiving Loop {macro_num}: 0 / {self.current_transfer['total_size']} bytes")
@@ -2869,12 +2906,14 @@ class LoopManager(BasicEditor):
                 expected_packets = self.current_transfer.get('expected_packets', 0)
                 received_packets = self.current_transfer.get('received_packets', 0)
                 total_size = self.current_transfer.get('total_size', 0)
-                if (expected_packets and received_packets != expected_packets) or \
+                if self.current_transfer.get('start_invalid') or \
+                   (expected_packets and received_packets != expected_packets) or \
                    (total_size and received_size != total_size):
                     logger.error(
                         f"Incomplete transfer for loop {macro_num}: "
                         f"{received_packets}/{expected_packets} packets, "
-                        f"{received_size}/{total_size} bytes")
+                        f"{received_size}/{total_size} bytes"
+                        f"{' (SAVE_START header was truncated)' if self.current_transfer.get('start_invalid') else ''}")
                     QMessageBox.warning(
                         None, "Save Failed",
                         f"Loop {macro_num} transfer was incomplete "

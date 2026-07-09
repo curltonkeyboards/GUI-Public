@@ -2,6 +2,7 @@
 import struct
 import json
 import lzma
+import logging
 import time
 from collections import OrderedDict
 
@@ -121,7 +122,7 @@ PARAM_MACRO_CANCEL_ALL = 54              # trigger: cancel all playing Vial macr
 PARAM_CHORD_DISPLAY_MODE = 55            # 0=Chords, 1=Numerals, 2=Name (chord progression OLED label)
 
 # Gaming/Joystick Commands (0xCE-0xD2)
-HID_CMD_GAMING_SET_MODE = 0xCE           # Set gaming mode on/off
+HID_CMD_GAMING_SET_MODE = 0xBC           # Set gaming mode on/off (moved from 0xCE, which the firmware arp handler claims as GET_NOTES_CHUNK)
 HID_CMD_GAMING_SET_KEY_MAP = 0xCF        # Map key to joystick control
 HID_CMD_GAMING_SET_ANALOG_CONFIG = 0xD0  # Set min/max travel and deadzone
 HID_CMD_GAMING_GET_SETTINGS = 0xD1       # Get current gaming settings
@@ -572,7 +573,18 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         if self.vial_protocol < VIAL_PROTOCOL_QMK_SETTINGS:
             return
         cur = 0
+        # (#11) This loop terminates only when a response contains the 0xFFFF
+        # sentinel (which makes cur == 0xFFFF). A malformed or empty reply (no
+        # 0xFFFF, and no qsid higher than the current cur) would leave cur
+        # unchanged and spin forever, hanging the connect path. Break out when the
+        # query makes no progress, with an absolute iteration backstop as well.
+        _query_guard = 0
         while cur != 0xFFFF:
+            _query_guard += 1
+            if _query_guard > 2048:
+                logging.warning("reload_settings: aborting QMK settings query (too many blocks / malformed stream)")
+                break
+            _prev_cur = cur
             data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_QUERY, cur),
                                  retries=20)
             for x in range(0, len(data), 2):
@@ -580,6 +592,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 cur = max(cur, qsid)
                 if qsid != 0xFFFF:
                     self.supported_settings.add(qsid)
+            if cur == _prev_cur:
+                # No 0xFFFF terminator and no higher qsid this round -> stop rather
+                # than re-querying the same block indefinitely.
+                logging.warning("reload_settings: QMK settings query stalled (malformed response); stopping")
+                break
 
         for qsid in self.supported_settings:
             from editor.qmk_settings import QmkSettings
