@@ -2379,8 +2379,7 @@ class CustomLightsHandler(BasicHandler):
         live_brightness.setMinimum(0)
         live_brightness.setMaximum(255)
         live_brightness.setValue(255)
-        live_brightness.setTracking(False)  # only emit on release (debounce HID writes)
-        live_brightness.valueChanged.connect(lambda value, s=slot: self.on_live_brightness_changed(s, value))
+        self._connect_throttled(live_brightness, self.on_live_brightness_changed, slot)  # ~1 HID/sec while dragging + on release
         layout.addWidget(live_brightness, row, 1)
         live_speed_label = QLabel(tr("RGBConfigurator", "Speed:"))
         layout.addWidget(live_speed_label, row, 2)
@@ -2388,8 +2387,7 @@ class CustomLightsHandler(BasicHandler):
         live_speed.setMinimum(0)
         live_speed.setMaximum(255)
         live_speed.setValue(128)
-        live_speed.setTracking(False)  # only emit on release (debounce HID writes)
-        live_speed.valueChanged.connect(lambda value, s=slot: self.on_live_speed_changed(s, value))
+        self._connect_throttled(live_speed, self.on_live_speed_changed, slot)  # ~1 HID/sec while dragging + on release
         layout.addWidget(live_speed, row, 3)
         row += 1
 
@@ -2436,8 +2434,7 @@ class CustomLightsHandler(BasicHandler):
         macro_brightness.setMinimum(0)
         macro_brightness.setMaximum(255)
         macro_brightness.setValue(255)
-        macro_brightness.setTracking(False)  # only emit on release (debounce HID writes)
-        macro_brightness.valueChanged.connect(lambda value, s=slot: self.on_macro_brightness_changed(s, value))
+        self._connect_throttled(macro_brightness, self.on_macro_brightness_changed, slot)  # ~1 HID/sec while dragging + on release
         layout.addWidget(macro_brightness, row, 1)
         macro_speed_label = QLabel(tr("RGBConfigurator", "Speed:"))
         layout.addWidget(macro_speed_label, row, 2)
@@ -2445,8 +2442,7 @@ class CustomLightsHandler(BasicHandler):
         macro_speed.setMinimum(0)
         macro_speed.setMaximum(255)
         macro_speed.setValue(128)
-        macro_speed.setTracking(False)  # only emit on release (debounce HID writes)
-        macro_speed.valueChanged.connect(lambda value, s=slot: self.on_macro_speed_changed(s, value))
+        self._connect_throttled(macro_speed, self.on_macro_speed_changed, slot)  # ~1 HID/sec while dragging + on release
         layout.addWidget(macro_speed, row, 3)
         row += 1
 
@@ -2484,8 +2480,7 @@ class CustomLightsHandler(BasicHandler):
         background_brightness.setMinimum(0)
         background_brightness.setMaximum(100)
         background_brightness.setValue(30)
-        background_brightness.setTracking(False)  # only emit on release (debounce HID writes)
-        background_brightness.valueChanged.connect(lambda value, s=slot: self.on_background_brightness_changed(s, value))
+        self._connect_throttled(background_brightness, self.on_background_brightness_changed, slot)  # ~1 HID/sec while dragging + on release
         layout.addWidget(background_brightness, row, 1)
         bg_speed_label = QLabel(tr("RGBConfigurator", "Speed:"))
         layout.addWidget(bg_speed_label, row, 2)
@@ -2493,9 +2488,8 @@ class CustomLightsHandler(BasicHandler):
         bg_speed.setMinimum(0)
         bg_speed.setMaximum(255)
         bg_speed.setValue(128)
-        bg_speed.setTracking(False)  # only emit on release (debounce HID writes)
         bg_speed.setToolTip("Background animation speed.\n0 = Slowest, 128 = Normal, 255 = Fastest")
-        bg_speed.valueChanged.connect(lambda value, s=slot: self.on_bg_speed_changed(s, value))
+        self._connect_throttled(bg_speed, self.on_bg_speed_changed, slot)  # ~1 HID/sec while dragging + on release
         layout.addWidget(bg_speed, row, 3)
         row += 1
 
@@ -2597,6 +2591,7 @@ class CustomLightsHandler(BasicHandler):
         self.block_signals()
         self.load_slot_from_eeprom(lowest_slot)
         self._apply_slot_rgb_to_keyboard(lowest_slot)
+        self._preview_slot_on_keyboard(lowest_slot)
         self.unblock_signals()
 
     def on_sub_tab_changed(self, index, start_slot):
@@ -2606,7 +2601,43 @@ class CustomLightsHandler(BasicHandler):
         self.block_signals()
         self.load_slot_from_eeprom(actual_slot)
         self._apply_slot_rgb_to_keyboard(actual_slot)
+        self._preview_slot_on_keyboard(actual_slot)
         self.unblock_signals()
+
+    def _preview_slot_on_keyboard(self, slot):
+        """Switch the device's live RGB mode to this slot so it previews the tab
+        being edited. Non-persistent on the firmware side (restored on power
+        cycle). Slots 0..48 have a dedicated effect; 49 is the randomize scratch."""
+        if slot < 0 or slot >= 49:
+            return
+        kb = getattr(getattr(self, 'device', None), 'keyboard', None)
+        if kb is not None and hasattr(kb, 'activate_custom_slot_preview'):
+            try:
+                kb.activate_custom_slot_preview(slot)
+            except Exception as e:
+                print(f"Slot preview failed: {e}")
+
+    def _connect_throttled(self, slider, handler, slot):
+        """Wire a slider so it emits at most ~1 HID write per second while being
+        dragged, and always sends the final value when released. Avoids the
+        per-tick write storm without losing live feedback (the value updates
+        roughly once a second during a drag)."""
+        import time
+        state = {'last': 0.0}
+
+        def on_changed(value, s=slot):
+            now = time.monotonic()
+            if now - state['last'] >= 1.0:
+                state['last'] = now
+                handler(s, value)
+
+        def on_released(s=slot):
+            state['last'] = time.monotonic()
+            handler(s, slider.value())
+
+        slider.setTracking(True)
+        slider.valueChanged.connect(on_changed)
+        slider.sliderReleased.connect(on_released)
 
     def _apply_slot_rgb_to_keyboard(self, slot):
         """Send a slot's stored hue/sat to the keyboard for live preview"""

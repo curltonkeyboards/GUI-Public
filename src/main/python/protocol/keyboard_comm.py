@@ -30,6 +30,7 @@ from protocol.constants import CMD_VIA_GET_PROTOCOL_VERSION, CMD_VIA_GET_KEYBOAR
     CMD_VIAL_CUSTOM_ANIM_SET_PARAM, CMD_VIAL_CUSTOM_ANIM_GET_PARAM, CMD_VIAL_CUSTOM_ANIM_SET_ALL, \
     CMD_VIAL_CUSTOM_ANIM_GET_ALL, CMD_VIAL_CUSTOM_ANIM_SAVE, CMD_VIAL_CUSTOM_ANIM_LOAD, \
     CMD_VIAL_CUSTOM_ANIM_RESET_SLOT, CMD_VIAL_CUSTOM_ANIM_GET_STATUS, CMD_VIAL_CUSTOM_ANIM_RESCAN_LEDS, \
+    CMD_VIAL_CUSTOM_ANIM_ACTIVATE_SLOT, \
     CMD_VIAL_KEYMAP_RAM_RESCAN
 from protocol.dynamic import ProtocolDynamic
 from protocol.key_override import ProtocolKeyOverride
@@ -1234,6 +1235,18 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             data = self.usb_send(self.dev, struct.pack("BBBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_CUSTOM_ANIM_SET_PARAM, slot, param_index, value), retries=20)
             return data and len(data) > 0 and data[0] == 0x01
         except Exception as e:
+            return False
+
+    def activate_custom_slot_preview(self, slot):
+        """Ask the device to render (live-preview) a custom-animation slot.
+        Non-persistent (firmware uses rgb_matrix_mode_noeeprom), so a power
+        cycle restores the user's saved RGB mode. Slots 0..48 only."""
+        try:
+            if slot < 0 or slot >= 49:
+                return False
+            data = self.usb_send(self.dev, struct.pack("BBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_CUSTOM_ANIM_ACTIVATE_SLOT, slot), retries=20)
+            return data and len(data) > 0 and data[0] == 0x01
+        except Exception:
             return False
 
     def set_custom_slot_all_parameters(self, slot, live_pos, macro_pos, live_anim, macro_anim, flags,
