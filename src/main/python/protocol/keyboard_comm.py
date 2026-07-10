@@ -2652,15 +2652,17 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         Args:
             layer: Layer number (0-11)
             key_index: Key index (0-69, calculated as row * 14 + col)
-            settings: dict with keys:
-                - actuation: Actuation point (0-100, where 60 = 1.5mm)
-                - deadzone_top: Top deadzone (0-100, default 4 = 0.1mm)
-                - deadzone_bottom: Bottom deadzone (0-100, default 4 = 0.1mm)
+            settings: dict with keys (firmware uses 0-255 = 0-4.0mm distance units):
+                - actuation: Actuation point (0-255, default 127 = 2.0mm)
+                - deadzone_top: Top deadzone (0-51, default 6 ~ 0.1mm; firmware clamps to 51)
+                - deadzone_bottom: Bottom deadzone (0-51, default 6 ~ 0.1mm; firmware clamps to 51)
                 - velocity_curve: Velocity curve (0-16: 0-6 Factory curves, 7-16 User curves)
-                - flags: Flags byte (Bit 0: rapidfire_enabled, Bit 1: use_per_key_velocity_curve)
-                - rapidfire_press_sens: Rapidfire press sensitivity (0-100, default 4 = 0.1mm)
-                - rapidfire_release_sens: Rapidfire release sensitivity (0-100, default 4 = 0.1mm)
-                - rapidfire_velocity_mod: Rapidfire velocity modifier (-64 to +64)
+                - flags: Flags byte (Bit 0: rapidfire_enabled, Bit 1: use_per_key_velocity_curve,
+                         Bit 2: continuous_rt)
+                - rapidfire_press_sens: Rapidfire press sensitivity (0-255, default 6 ~ 0.1mm)
+                - rapidfire_release_sens: Rapidfire release sensitivity (0-255, default 6 ~ 0.1mm)
+                - rapidfire_velocity_mod: Rapidfire velocity modifier (-64 to +64). NOTE:
+                  currently inert — the firmware forces this to 0 in the velocity path.
 
         Returns:
             bool: True if successful, False otherwise

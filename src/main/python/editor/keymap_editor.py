@@ -80,8 +80,8 @@ class QuickActuationWidget(QWidget):
         self.layer_data = []
         for _ in range(12):
             self.layer_data.append({
-                'normal': 80,
-                'midi': 80,
+                'normal': 127,
+                'midi': 127,
                 'velocity': 3,  # Velocity mode: 3=Speed+Peak (only supported mode)
                 'vel_speed': 10,  # Velocity speed scale
                 'aftertouch_mode': 0,  # 0=Off, 1-8 = various modes
@@ -255,8 +255,8 @@ class QuickActuationWidget(QWidget):
 
         self.normal_slider = QSlider(Qt.Horizontal)
         self.normal_slider.setMinimum(0)
-        self.normal_slider.setMaximum(100)
-        self.normal_slider.setValue(80)
+        self.normal_slider.setMaximum(255)
+        self.normal_slider.setValue(127)
         slider_layout.addWidget(self.normal_slider, 1)
 
         self.normal_value_label = QLabel("2.00mm")
@@ -282,8 +282,8 @@ class QuickActuationWidget(QWidget):
 
         self.midi_slider = QSlider(Qt.Horizontal)
         self.midi_slider.setMinimum(0)
-        self.midi_slider.setMaximum(100)
-        self.midi_slider.setValue(80)
+        self.midi_slider.setMaximum(255)
+        self.midi_slider.setValue(127)
         midi_slider_layout.addWidget(self.midi_slider, 1)
 
         self.midi_value_label = QLabel("2.00mm")
@@ -1108,7 +1108,7 @@ class QuickActuationWidget(QWidget):
             return
 
         if key in ['normal', 'midi']:
-            label.setText(f"{value * 0.025:.2f}mm")
+            label.setText(f"{value * 4.0 / 255.0:.2f}mm")
         elif key == 'midi_rapid_vel':
             label.setText(f"±{value}")
         else:
@@ -1124,10 +1124,10 @@ class QuickActuationWidget(QWidget):
 
             if key == 'normal':
                 ts.global_normal_slider.set_actuation(value)
-                ts.global_normal_value_label.setText(f"Act: {value * 0.025:.2f}mm")
+                ts.global_normal_value_label.setText(f"Act: {value * 4.0 / 255.0:.2f}mm")
             elif key == 'midi':
                 ts.global_midi_slider.set_actuation(value)
-                ts.global_midi_value_label.setText(f"Act: {value * 0.025:.2f}mm")
+                ts.global_midi_value_label.setText(f"Act: {value * 4.0 / 255.0:.2f}mm")
 
             # Initialize pending_layer_data if not already
             if ts.pending_layer_data is None:
@@ -1194,10 +1194,10 @@ class QuickActuationWidget(QWidget):
 
         # Set sliders and immediately update labels
         self.normal_slider.setValue(data['normal'])
-        self.normal_value_label.setText(f"{data['normal'] * 0.025:.2f}mm")
+        self.normal_value_label.setText(f"{data['normal'] * 4.0 / 255.0:.2f}mm")
 
         self.midi_slider.setValue(data['midi'])
-        self.midi_value_label.setText(f"{data['midi'] * 0.025:.2f}mm")
+        self.midi_value_label.setText(f"{data['midi'] * 4.0 / 255.0:.2f}mm")
 
         # NOTE: Velocity mode is now managed in VelocityTab, not here
 

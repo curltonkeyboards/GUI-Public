@@ -3592,8 +3592,8 @@ class LayerActuationConfigurator(BasicEditor):
         self.layer_data = []
         for _ in range(12):
             self.layer_data.append({
-                'normal': 80,
-                'midi': 80,
+                'normal': 127,
+                'midi': 127,
                 'aftertouch': 0,
                 'velocity': 3,  # Speed+Peak (only supported mode)
                 'rapid': 4,
@@ -3769,8 +3769,8 @@ class LayerActuationConfigurator(BasicEditor):
         
         normal_slider = QSlider(Qt.Horizontal)
         normal_slider.setMinimum(0)
-        normal_slider.setMaximum(100)
-        normal_slider.setValue(80)
+        normal_slider.setMaximum(255)
+        normal_slider.setValue(127)
         slider_layout.addWidget(normal_slider)
         
         normal_value_label = QLabel("2.00mm (80)")
@@ -3978,8 +3978,8 @@ class LayerActuationConfigurator(BasicEditor):
         
         midi_slider = QSlider(Qt.Horizontal)
         midi_slider.setMinimum(0)
-        midi_slider.setMaximum(100)
-        midi_slider.setValue(80)
+        midi_slider.setMaximum(255)
+        midi_slider.setValue(127)
         midi_slider_layout.addWidget(midi_slider)
         
         midi_value_label = QLabel("2.00mm (80)")
@@ -4312,8 +4312,8 @@ class LayerActuationConfigurator(BasicEditor):
         
         normal_slider = QSlider(Qt.Horizontal)
         normal_slider.setMinimum(0)
-        normal_slider.setMaximum(100)
-        normal_slider.setValue(80)
+        normal_slider.setMaximum(255)
+        normal_slider.setValue(127)
         normal_slider_layout.addWidget(normal_slider)
         
         normal_value_label = QLabel("2.00mm (80)")
@@ -4389,8 +4389,8 @@ class LayerActuationConfigurator(BasicEditor):
         
         midi_slider = QSlider(Qt.Horizontal)
         midi_slider.setMinimum(0)
-        midi_slider.setMaximum(100)
-        midi_slider.setValue(80)
+        midi_slider.setMaximum(255)
+        midi_slider.setValue(127)
         midi_slider_layout.addWidget(midi_slider)
         
         midi_value_label = QLabel("2.00mm (80)")
@@ -4820,7 +4820,7 @@ class LayerActuationConfigurator(BasicEditor):
     def on_master_slider_changed(self, key, value, label):
         """Handle master slider changes"""
         if key in ['normal', 'midi']:
-            label.setText(f"{value * 0.025:.2f}mm ({value})")
+            label.setText(f"{value * 4.0 / 255.0:.2f}mm ({value})")
         elif key == 'midi_rapid_vel':
             label.setText(f"±{value}")
         elif key == 'vibrato_sensitivity':
@@ -4833,7 +4833,7 @@ class LayerActuationConfigurator(BasicEditor):
         # If changing normal actuation and advanced is NOT shown, also update MIDI
         if key == 'normal' and not self.advanced_shown:
             self.master_widgets['midi_slider'].setValue(value)
-            self.master_widgets['midi_label'].setText(f"{value * 0.025:.2f}mm ({value})")
+            self.master_widgets['midi_label'].setText(f"{value * 4.0 / 255.0:.2f}mm ({value})")
         
         if not self.per_layer_enabled:
             for layer_data in self.layer_data:
@@ -4852,7 +4852,7 @@ class LayerActuationConfigurator(BasicEditor):
     def on_layer_slider_changed(self, key, value, label):
         """Handle layer slider changes"""
         if key in ['normal', 'midi']:
-            label.setText(f"{value * 0.025:.2f}mm ({value})")
+            label.setText(f"{value * 4.0 / 255.0:.2f}mm ({value})")
         elif key == 'midi_rapid_vel':
             label.setText(f"±{value}")
         else:
@@ -4861,7 +4861,7 @@ class LayerActuationConfigurator(BasicEditor):
         # If changing normal actuation and advanced is NOT shown, also update MIDI
         if key == 'normal' and not self.layer_widgets['advanced_checkbox'].isChecked():
             self.layer_widgets['midi_slider'].setValue(value)
-            self.layer_widgets['midi_label'].setText(f"{value * 0.025:.2f}mm ({value})")
+            self.layer_widgets['midi_label'].setText(f"{value * 4.0 / 255.0:.2f}mm ({value})")
             self.layer_data[self.current_layer]['midi'] = value
         
         # Update layer data
@@ -5103,8 +5103,8 @@ class LayerActuationConfigurator(BasicEditor):
                 
                 # Update UI to defaults
                 defaults = {
-                    'normal': 80,
-                    'midi': 80,
+                    'normal': 127,
+                    'midi': 127,
                     'aftertouch': 0,
                     'velocity': 3,  # Speed+Peak (only supported mode)
                     'rapid': 4,
