@@ -1216,7 +1216,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             source = 1 if from_eeprom else 0
             data = self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_CUSTOM_ANIM_GET_ALL, slot, source), retries=20)
             if data and len(data) > 2 and data[0] == 0x01:
-                return data[3:18]
+                return data[3:19]
             return None
         except Exception as e:
             return None

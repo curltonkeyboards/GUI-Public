@@ -1445,7 +1445,9 @@ class LayerRGBHandler(BasicHandler):
                 try:
                     status = self.device.keyboard.get_layer_rgb_status()
                     if status is not None:
-                        keyboard_state = bool(status)
+                        # status is get_layer_rgb_status() -> data[2:]; byte 0 is the enable flag.
+                        # Test the flag byte, not truthiness of the whole buffer.
+                        keyboard_state = bool(status[0]) if len(status) > 0 else False
                         self.per_layer_enabled = keyboard_state
                         self.user_set_state = keyboard_state  # Initialize user state
                         print(f"Initial layer RGB status from keyboard: {keyboard_state}")
@@ -2377,6 +2379,7 @@ class CustomLightsHandler(BasicHandler):
         live_brightness.setMinimum(0)
         live_brightness.setMaximum(255)
         live_brightness.setValue(255)
+        live_brightness.setTracking(False)  # only emit on release (debounce HID writes)
         live_brightness.valueChanged.connect(lambda value, s=slot: self.on_live_brightness_changed(s, value))
         layout.addWidget(live_brightness, row, 1)
         live_speed_label = QLabel(tr("RGBConfigurator", "Speed:"))
@@ -2385,6 +2388,7 @@ class CustomLightsHandler(BasicHandler):
         live_speed.setMinimum(0)
         live_speed.setMaximum(255)
         live_speed.setValue(128)
+        live_speed.setTracking(False)  # only emit on release (debounce HID writes)
         live_speed.valueChanged.connect(lambda value, s=slot: self.on_live_speed_changed(s, value))
         layout.addWidget(live_speed, row, 3)
         row += 1
@@ -2432,6 +2436,7 @@ class CustomLightsHandler(BasicHandler):
         macro_brightness.setMinimum(0)
         macro_brightness.setMaximum(255)
         macro_brightness.setValue(255)
+        macro_brightness.setTracking(False)  # only emit on release (debounce HID writes)
         macro_brightness.valueChanged.connect(lambda value, s=slot: self.on_macro_brightness_changed(s, value))
         layout.addWidget(macro_brightness, row, 1)
         macro_speed_label = QLabel(tr("RGBConfigurator", "Speed:"))
@@ -2440,6 +2445,7 @@ class CustomLightsHandler(BasicHandler):
         macro_speed.setMinimum(0)
         macro_speed.setMaximum(255)
         macro_speed.setValue(128)
+        macro_speed.setTracking(False)  # only emit on release (debounce HID writes)
         macro_speed.valueChanged.connect(lambda value, s=slot: self.on_macro_speed_changed(s, value))
         layout.addWidget(macro_speed, row, 3)
         row += 1
@@ -2478,6 +2484,7 @@ class CustomLightsHandler(BasicHandler):
         background_brightness.setMinimum(0)
         background_brightness.setMaximum(100)
         background_brightness.setValue(30)
+        background_brightness.setTracking(False)  # only emit on release (debounce HID writes)
         background_brightness.valueChanged.connect(lambda value, s=slot: self.on_background_brightness_changed(s, value))
         layout.addWidget(background_brightness, row, 1)
         bg_speed_label = QLabel(tr("RGBConfigurator", "Speed:"))
@@ -2486,6 +2493,7 @@ class CustomLightsHandler(BasicHandler):
         bg_speed.setMinimum(0)
         bg_speed.setMaximum(255)
         bg_speed.setValue(128)
+        bg_speed.setTracking(False)  # only emit on release (debounce HID writes)
         bg_speed.setToolTip("Background animation speed.\n0 = Slowest, 128 = Normal, 255 = Fastest")
         bg_speed.valueChanged.connect(lambda value, s=slot: self.on_bg_speed_changed(s, value))
         layout.addWidget(bg_speed, row, 3)
@@ -2785,8 +2793,13 @@ class CustomLightsHandler(BasicHandler):
         try:
             if hasattr(self.device.keyboard, 'get_custom_animation_status'):
                 status = self.device.keyboard.get_custom_animation_status()
-                randomize_active = status[6] if len(status) > 6 else 0
-                active_slot = status[2] if len(status) > 2 else 0
+                # status = get_custom_animation_status() (already stripped of the leading byte).
+                # status[1] is the slot the device is currently RENDERING. There is no
+                # "active slot" at status[2] (that's the per-slot enabled bitmap) and no
+                # "randomize" field at status[6] — reading those triggered spurious color
+                # changes off unrelated bitmap bits. Disable the randomize path entirely.
+                randomize_active = False
+                active_slot = status[1] if len(status) > 1 else 0
 
                 prev_active = self.current_active_slot
 
@@ -2881,8 +2894,8 @@ class CustomLightsHandler(BasicHandler):
 
      # Event handlers - ALL FIXED to use current slot
     def on_live_effect_changed(self, slot, index):
-        """Handle live effect change - send to CURRENT slot"""
-        current_slot = self.get_currently_active_slot()
+        """Handle live effect change - send to this tab's slot"""
+        current_slot = slot
         print(f"Live effect changed on tab {slot}, sending to current slot {current_slot}")
         
         if hasattr(self.device.keyboard, 'set_custom_slot_parameter'):
@@ -2891,8 +2904,8 @@ class CustomLightsHandler(BasicHandler):
             print(f"Live effect changed: tab {slot} -> current slot {current_slot}, effect {index}")
 
     def on_live_style_changed(self, slot, index):
-        """Handle live style change - send to CURRENT slot"""
-        current_slot = self.get_currently_active_slot()
+        """Handle live style change - send to this tab's slot"""
+        current_slot = slot
         print(f"Live style changed on tab {slot}, sending to current slot {current_slot}")
         
         if hasattr(self.device.keyboard, 'set_custom_slot_parameter'):
@@ -2901,8 +2914,8 @@ class CustomLightsHandler(BasicHandler):
             print(f"Live style changed: tab {slot} -> current slot {current_slot}, style {index}")
 
     def on_live_speed_changed(self, slot, value):
-        """Handle live animation speed change - send to CURRENT slot"""
-        current_slot = self.get_currently_active_slot()
+        """Handle live animation speed change - send to this tab's slot"""
+        current_slot = slot
         print(f"Live speed changed on tab {slot}, sending to current slot {current_slot}")
         
         if hasattr(self.device.keyboard, 'set_custom_slot_parameter'):
@@ -2911,8 +2924,8 @@ class CustomLightsHandler(BasicHandler):
             print(f"Live speed changed: tab {slot} -> current slot {current_slot}, speed {value}")
 
     def on_macro_effect_changed(self, slot, index):
-        """Handle macro effect change - send to CURRENT slot"""
-        current_slot = self.get_currently_active_slot()
+        """Handle macro effect change - send to this tab's slot"""
+        current_slot = slot
         print(f"Macro effect changed on tab {slot}, sending to current slot {current_slot}")
         
         if hasattr(self.device.keyboard, 'set_custom_slot_parameter'):
@@ -2921,8 +2934,8 @@ class CustomLightsHandler(BasicHandler):
             print(f"Macro effect changed: tab {slot} -> current slot {current_slot}, effect {index}")
 
     def on_macro_style_changed(self, slot, index):
-        """Handle macro style change - send to CURRENT slot"""
-        current_slot = self.get_currently_active_slot()
+        """Handle macro style change - send to this tab's slot"""
+        current_slot = slot
         print(f"Macro style changed on tab {slot}, sending to current slot {current_slot}")
         
         if hasattr(self.device.keyboard, 'set_custom_slot_parameter'):
@@ -2931,8 +2944,8 @@ class CustomLightsHandler(BasicHandler):
             print(f"Macro style changed: tab {slot} -> current slot {current_slot}, style {index}")
 
     def on_macro_speed_changed(self, slot, value):
-        """Handle macro animation speed change - send to CURRENT slot"""
-        current_slot = self.get_currently_active_slot()
+        """Handle macro animation speed change - send to this tab's slot"""
+        current_slot = slot
         print(f"Macro speed changed on tab {slot}, sending to current slot {current_slot}")
         
         if hasattr(self.device.keyboard, 'set_custom_slot_parameter'):
@@ -2941,8 +2954,8 @@ class CustomLightsHandler(BasicHandler):
             print(f"Macro speed changed: tab {slot} -> current slot {current_slot}, speed {value}")
 
     def on_background_changed(self, slot, index):
-        """Handle background change - send to CURRENT slot"""
-        current_slot = self.get_currently_active_slot()
+        """Handle background change - send to this tab's slot"""
+        current_slot = slot
         print(f"Background changed on tab {slot}, sending to current slot {current_slot}")
         
         if hasattr(self.device.keyboard, 'set_custom_slot_parameter'):
@@ -2951,8 +2964,8 @@ class CustomLightsHandler(BasicHandler):
             print(f"Background changed: tab {slot} -> current slot {current_slot}, index {index}")
 
     def on_background_brightness_changed(self, slot, value):
-        """Handle background brightness change - send to CURRENT slot"""
-        current_slot = self.get_currently_active_slot()
+        """Handle background brightness change - send to this tab's slot"""
+        current_slot = slot
         print(f"Background brightness changed on tab {slot}, sending to current slot {current_slot}")
         
         if hasattr(self.device.keyboard, 'set_custom_slot_parameter'):
@@ -2961,8 +2974,8 @@ class CustomLightsHandler(BasicHandler):
             print(f"Background brightness changed: tab {slot} -> current slot {current_slot}, brightness {value}%")
 
     def on_vel_brightness_live_changed(self, slot, state):
-        """Handle live velocity brightness toggle - send flags to CURRENT slot"""
-        current_slot = self.get_currently_active_slot()
+        """Handle live velocity brightness toggle - send flags to this tab's slot"""
+        current_slot = slot
         enabled = state != 0
 
         current_flags = 0
@@ -2980,8 +2993,8 @@ class CustomLightsHandler(BasicHandler):
             self.device.keyboard.set_custom_slot_parameter(current_slot, 4, current_flags)
 
     def on_vel_brightness_macro_changed(self, slot, state):
-        """Handle macro velocity brightness toggle - send flags to CURRENT slot"""
-        current_slot = self.get_currently_active_slot()
+        """Handle macro velocity brightness toggle - send flags to this tab's slot"""
+        current_slot = slot
         enabled = state != 0
 
         current_flags = 0
@@ -2999,26 +3012,26 @@ class CustomLightsHandler(BasicHandler):
             self.device.keyboard.set_custom_slot_parameter(current_slot, 4, current_flags)
 
     def on_live_brightness_changed(self, slot, value):
-        """Handle live brightness slider change - send to CURRENT slot"""
-        current_slot = self.get_currently_active_slot()
+        """Handle live brightness slider change - send to this tab's slot"""
+        current_slot = slot
         if hasattr(self.device.keyboard, 'set_custom_slot_parameter'):
             self.device.keyboard.set_custom_slot_parameter(current_slot, 12, value)
 
     def on_macro_brightness_changed(self, slot, value):
-        """Handle macro brightness slider change - send to CURRENT slot"""
-        current_slot = self.get_currently_active_slot()
+        """Handle macro brightness slider change - send to this tab's slot"""
+        current_slot = slot
         if hasattr(self.device.keyboard, 'set_custom_slot_parameter'):
             self.device.keyboard.set_custom_slot_parameter(current_slot, 13, value)
 
     def on_bg_speed_changed(self, slot, value):
-        """Handle background speed change - send to CURRENT slot (param 14 / background_speed)"""
-        current_slot = self.get_currently_active_slot()
+        """Handle background speed change - send to this tab's slot (param 14 / background_speed)"""
+        current_slot = slot
         if hasattr(self.device.keyboard, 'set_custom_slot_parameter'):
             self.device.keyboard.set_custom_slot_parameter(current_slot, 14, value)
 
     def on_color_type_changed(self, slot, index):
-        """Handle color type change - send to CURRENT slot"""
-        current_slot = self.get_currently_active_slot()
+        """Handle color type change - send to this tab's slot"""
+        current_slot = slot
         print(f"Color type changed on tab {slot}, sending to current slot {current_slot}")
 
         if hasattr(self.device.keyboard, 'set_custom_slot_parameter'):
