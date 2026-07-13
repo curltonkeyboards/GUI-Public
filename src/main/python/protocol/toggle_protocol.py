@@ -208,6 +208,13 @@ class ProtocolToggle:
                 self._log(f"GET_SLOT slot={slot_num}: response too short ({len(response) if response else 0} bytes)", "ERROR")
                 return None
 
+            # Verify the command byte (response[3]) — hid_send does not correlate
+            # responses to commands, so a stale packet from another command could
+            # otherwise be parsed as this slot's data.
+            if response[3] != HID_CMD_TOGGLE_GET_SLOT:
+                self._log(f"GET_SLOT slot={slot_num}: wrong command 0x{response[3]:02X} (expected 0x{HID_CMD_TOGGLE_GET_SLOT:02X}) - stale packet", "ERROR")
+                return None
+
             if response[4] != 0:
                 self._log(f"GET_SLOT slot={slot_num}: error status {response[4]}", "ERROR")
                 return None
@@ -236,6 +243,11 @@ class ProtocolToggle:
 
             if not response or len(response) < (5 + TOGGLE_MULTI_EXTRA_KEYS * 2):
                 self._log(f"GET_MULTI slot={slot_num}: response too short ({len(response) if response else 0} bytes)", "ERROR")
+                return
+
+            # Verify the command byte (stale-packet guard — see get_slot).
+            if response[3] != HID_CMD_TOGGLE_GET_MULTI:
+                self._log(f"GET_MULTI slot={slot_num}: wrong command 0x{response[3]:02X} (expected 0x{HID_CMD_TOGGLE_GET_MULTI:02X}) - stale packet", "ERROR")
                 return
 
             self._log(f"GET_MULTI slot={slot_num}: raw response[4:26]=[{self._hex_bytes(response[4:27])}]", "HID_RX")

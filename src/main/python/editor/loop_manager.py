@@ -15,9 +15,14 @@ from PyQt5.QtWidgets import (QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QSi
                              QTabWidget)
 
 from editor.basic_editor import BasicEditor
-from util import tr
+from util import tr, set_hid_transfer_active
 from vial_device import VialKeyboard
 import math
+
+# The firmware looper has 8 loop slots (MAX_MACROS). "Save All Loops" and the
+# file import/export paths must cover all 8 — several loops here were left at
+# the old 4-slot bound, which silently dropped loops 5-8.
+NUM_LOOPS = 8
 
 # Setup logging to file for standalone builds
 LOG_FILE = os.path.join(os.path.expanduser("~"), "vial-loop-manager.log")
@@ -402,7 +407,7 @@ class LoopManager(BasicEditor):
 
         # Collect all tracks
         tracks = []
-        for loop_num in range(1, 5):
+        for loop_num in range(1, NUM_LOOPS + 1):
             if loop_num not in loops_data:
                 continue
 
@@ -486,6 +491,13 @@ class LoopManager(BasicEditor):
 
     def create_midi_track(self, track, bpm, tpqn, shortest_track_ref=None):
         """Create a MIDI track from events with loopLength silence and sync adjustment"""
+        # (#14) A device loop with the BPM flag set but a zero value yields bpm=0.0,
+        # which would raise ZeroDivisionError at the tempo/tick math below. Fall back
+        # to sane defaults so "Save as MIDI" produces a valid file instead of crashing.
+        if not bpm or bpm <= 0:
+            bpm = 120.0
+        if not tpqn or tpqn <= 0:
+            tpqn = 480
         track_events = bytearray()
 
         # Track name event
@@ -649,11 +661,22 @@ class LoopManager(BasicEditor):
 
     def ticks_to_ms(self, ticks, bpm, tpqn=480):
         """Convert MIDI ticks to milliseconds - matches webapp ticksToMs()"""
+        # (#14) Guard against a 0 bpm/tpqn (corrupt loop data or a malformed .mid)
+        # that would otherwise raise ZeroDivisionError.
+        if not bpm or bpm <= 0:
+            bpm = 120.0
+        if not tpqn or tpqn <= 0:
+            tpqn = 480
         ms_per_tick = 60000.0 / (bpm * tpqn)
         return int(round(ticks * ms_per_tick))
 
     def ms_to_ticks(self, ms, bpm, tpqn=480):
         """Convert milliseconds to MIDI ticks - matches webapp msToTicks()"""
+        # (#14) Same zero-guard as ticks_to_ms.
+        if not bpm or bpm <= 0:
+            bpm = 120.0
+        if not tpqn or tpqn <= 0:
+            tpqn = 480
         ms_per_tick = 60000.0 / (bpm * tpqn)
         return int(round(ms / ms_per_tick))
 
@@ -715,6 +738,10 @@ class LoopManager(BasicEditor):
                 elif meta_type == 0x51 and meta_length == 3:
                     # Tempo
                     microseconds_per_quarter = (data[offset] << 16) | (data[offset + 1] << 8) | data[offset + 2]
+                    # (#14) A malformed .mid with a zero tempo value would raise
+                    # ZeroDivisionError; fall back to 120 BPM (500000 us/quarter).
+                    if microseconds_per_quarter <= 0:
+                        microseconds_per_quarter = 500000
                     tempo = round(60000000 / microseconds_per_quarter)
                 elif meta_type == 0x2F:
                     # End of track
@@ -857,7 +884,8 @@ class LoopManager(BasicEditor):
             logger.info(f"SHORTEST LOOP: Preserving exact timing: {loop_length}ms (no quantization)")
         else:
             # Smart quantization to bar boundaries
-            ms_per_beat = 60000 / bpm
+            # (#14) Guard a 0/negative bpm before dividing.
+            ms_per_beat = 60000 / (bpm if bpm and bpm > 0 else 120)
             ms_per_bar = ms_per_beat * 4  # 4/4 time
             threshold = ms_per_bar * 0.05  # 5% of a bar
 
@@ -1336,14 +1364,46 @@ class LoopManager(BasicEditor):
             return
 
         self.hid_listening = True
+        # Claim exclusive HID access: the live matrix/velocity pollers stand down
+        # while this listener owns the handle, so they can't steal transfer
+        # packets (or have theirs stolen). (H3)
+        set_hid_transfer_active(True)
         self.hid_listener_thread = threading.Thread(target=self.hid_listener_loop, daemon=True)
         self.hid_listener_thread.start()
+
+        # Watchdog: if the transfer never completes or errors (device unplugged
+        # mid-transfer, or the final SAVE_END/LOAD_END packet is lost), the
+        # completion handlers that reset current_transfer['active'] never run, so
+        # every later transfer is rejected with "already in progress" until the
+        # app restarts. Force-reset after a generous window. Healthy transfers
+        # finish in well under a second, so this only fires on a genuinely stuck
+        # one. (M4)
+        if getattr(self, '_transfer_watchdog', None) is None:
+            self._transfer_watchdog = QTimer()
+            self._transfer_watchdog.setSingleShot(True)
+            self._transfer_watchdog.timeout.connect(self._on_transfer_watchdog_timeout)
+        self._transfer_watchdog.start(20000)
+
+    def _on_transfer_watchdog_timeout(self):
+        """Force-reset a transfer that neither completed nor errored in time. (M4)"""
+        if self._transfer_in_progress():
+            logger.error("Loop transfer watchdog fired — forcing reset")
+            QMessageBox.warning(
+                None, "Transfer Timed Out",
+                "The loop transfer did not complete (the device may have been "
+                "disconnected or a packet was lost). It has been cancelled — "
+                "please try again.")
+            self.reset_transfer_state()
 
     def stop_hid_listener(self):
         """Stop the HID listener thread"""
         self.hid_listening = False
+        if getattr(self, '_transfer_watchdog', None) is not None:
+            self._transfer_watchdog.stop()
         if self.hid_listener_thread:
             self.hid_listener_thread.join(timeout=1.0)
+        # Release exclusive HID access so the live pollers resume. (H3)
+        set_hid_transfer_active(False)
 
     def hid_listener_loop(self):
         """Background thread loop to receive HID data"""
@@ -1383,8 +1443,21 @@ class LoopManager(BasicEditor):
         except Exception as e:
             QMessageBox.critical(None, "Error", f"Failed to open log file: {str(e)}")
 
+    def _transfer_in_progress(self):
+        """True if a loop save/load transfer is currently running. Used to make
+        the transfer buttons non-re-entrant — starting a second transfer while
+        one is active clobbers current_transfer and corrupts both."""
+        return bool(getattr(self, 'current_transfer', None) and self.current_transfer.get('active'))
+
+    def _warn_transfer_busy(self):
+        QMessageBox.warning(None, "Busy",
+                            "A loop transfer is already in progress. Please wait for it to finish.")
+
     def on_save_loop(self, loop_num):
         """Request to save a specific loop from device"""
+        if self._transfer_in_progress():
+            self._warn_transfer_busy()
+            return
         try:
             # Don't prompt for filename yet - wait for data and BPM extraction
             logger.info(f"\n=== Requesting Loop {loop_num} from device ===")
@@ -1454,13 +1527,21 @@ class LoopManager(BasicEditor):
                 self.loop_contents.clear()
                 self.overdub_contents.clear()
 
-                # Update UI to show empty loops
+                # Update UI to show empty loops.
+                # (#2) These referenced self.main_loop_btns / self.overdub_btns, which
+                # do NOT exist (the real attributes are main_assign_btns /
+                # overdub_assign_btns, see __init__). On the SUCCESS path that raised
+                # AttributeError, caught below, so the user ALWAYS saw "Error clearing
+                # loops" after the loops were in fact cleared. Use the correct names and
+                # reset each button to its empty state (default label + no assigned style).
                 for i in range(8):
-                    if i < len(self.main_loop_btns):
-                        self.main_loop_btns[i].setText(f"Main {i+1}\n(empty)")
-                    if i < len(self.overdub_btns):
-                        self.overdub_btns[i].setText(f"Overdub {i+1}\n(empty)")
-                        self.overdub_btns[i].setEnabled(False)
+                    if i < len(self.main_assign_btns):
+                        self.main_assign_btns[i].setText(f"Loop {i+1}")
+                        self.main_assign_btns[i].setStyleSheet("")
+                    if i < len(self.overdub_assign_btns):
+                        self.overdub_assign_btns[i].setText(f"Overdub {i+1}")
+                        self.overdub_assign_btns[i].setStyleSheet("")
+                        self.overdub_assign_btns[i].setEnabled(False)
                     # Hide clear buttons
                     if hasattr(self, 'main_clear_btns') and i < len(self.main_clear_btns):
                         self.main_clear_btns[i].setVisible(False)
@@ -1482,6 +1563,9 @@ class LoopManager(BasicEditor):
 
     def on_save_all_loops(self):
         """Save all loops from device to a single file"""
+        if self._transfer_in_progress():
+            self._warn_transfer_busy()
+            return
         try:
             # Determine format and prompt for single filename
             save_format = 'midi' if self.format_midi_radio.isChecked() else 'loop'
@@ -1542,7 +1626,7 @@ class LoopManager(BasicEditor):
         """Continue save all sequence - request next loop"""
         loop_num = self.current_transfer.get('save_all_current', 0)
 
-        if loop_num > 4:
+        if loop_num > NUM_LOOPS:
             # All loops received, now save to file
             logger.info("All loops received, creating combined file...")
             self.save_all_loops_to_file()
@@ -1557,8 +1641,8 @@ class LoopManager(BasicEditor):
         self.current_transfer['received_data'] = bytearray()
 
         # Update UI
-        self.save_progress_label.setText(f"Requesting Loop {loop_num} of 4...")
-        self.save_progress_bar.setValue((loop_num - 1) * 25)
+        self.save_progress_label.setText(f"Requesting Loop {loop_num} of {NUM_LOOPS}...")
+        self.save_progress_bar.setValue(int((loop_num - 1) * 100 / NUM_LOOPS))
         self.save_progress_bar.setVisible(True)
 
         # Send request
@@ -1774,6 +1858,18 @@ class LoopManager(BasicEditor):
 
                     logger.info(f"Loop {loop_num}: BPM={loop_bpm}, size={loop_size} bytes")
 
+                    # loop_num is read straight from the file and later sent to
+                    # the keyboard as a slot selector; reject out-of-range values
+                    # so a hand-edited/corrupt file can never target an invalid
+                    # firmware slot. Skip the payload and keep parsing.
+                    if not (1 <= loop_num <= NUM_LOOPS):
+                        logger.warning(f"Skipping loop with out-of-range number {loop_num}")
+                        if loop_size > 0 and offset + loop_size <= len(data):
+                            offset += loop_size
+                        else:
+                            break
+                        continue
+
                     if loop_size > 0:
                         if offset + loop_size > len(data):
                             logger.info(f"Invalid loop size for loop {loop_num}")
@@ -1813,7 +1909,7 @@ class LoopManager(BasicEditor):
                 tracks = []
                 loops_data = {}
 
-                for loop_num in range(1, 5):
+                for loop_num in range(1, loop_count + 1):
                     if offset + 4 > len(data):
                         break
 
@@ -2156,6 +2252,12 @@ class LoopManager(BasicEditor):
 
     def load_loop_data_to_device(self, loop_data, loop_num):
         """Load loop data to device via HID - matches webapp loadLoopData()"""
+        # loop_num is used by the firmware as a slot index (loop_num - 1); a bad
+        # value causes out-of-bounds writes on the keyboard. Guard here so every
+        # caller (file import, restore, drag/drop) is covered.
+        if not (1 <= loop_num <= NUM_LOOPS):
+            logger.error(f"Refusing to load loop: invalid loop number {loop_num}")
+            return False
         try:
             logger.info(f"\n=== Loading loop data to device: Loop {loop_num}, {len(loop_data)} bytes ===")
 
@@ -2208,6 +2310,9 @@ class LoopManager(BasicEditor):
 
     def on_load_all_tracks(self):
         """Load all tracks from selected file"""
+        if self._transfer_in_progress():
+            self._warn_transfer_busy()
+            return
         try:
             # Get currently selected file
             current_item = self.file_list.currentItem()
@@ -2250,7 +2355,7 @@ class LoopManager(BasicEditor):
             elif 'loop_data' in file_info:
                 # Single .loop file - ask which loop to load to
                 loop_num, ok = QInputDialog.getInt(
-                    None, "Select Loop", "Load to which loop (1-4)?", 1, 1, 4
+                    None, "Select Loop", f"Load to which loop (1-{NUM_LOOPS})?", 1, 1, NUM_LOOPS
                 )
                 if not ok:
                     return
@@ -2287,15 +2392,16 @@ class LoopManager(BasicEditor):
                 self.load_progress_bar.setValue(0)
                 self.load_progress_bar.setVisible(True)
 
-                # Load up to 4 tracks
-                for idx, track in enumerate(tracks[:4]):
+                # (#28) Load up to NUM_LOOPS (8) tracks, not 4 — the device has 8 loop
+                # slots, so a 5-8 track import previously dropped tracks 5-8 silently.
+                for idx, track in enumerate(tracks[:NUM_LOOPS]):
                     loop_num = idx + 1
 
                     if not track['events']:
                         logger.info(f"Track {idx + 1} has no events, skipping")
                         continue
 
-                    progress = int(((idx + 1) / min(len(tracks), 4)) * 100)
+                    progress = int(((idx + 1) / min(len(tracks), NUM_LOOPS)) * 100)
                     self.load_progress_label.setText(f"Loading track {idx + 1} '{track['name']}' to Loop {loop_num}...")
                     self.load_progress_bar.setValue(progress)
 
@@ -2328,6 +2434,9 @@ class LoopManager(BasicEditor):
 
     def on_load_assignments(self):
         """Load assigned tracks to device"""
+        if self._transfer_in_progress():
+            self._warn_transfer_busy()
+            return
         try:
             if not self.pending_assignments:
                 QMessageBox.warning(None, "Warning", "No tracks assigned. Please assign tracks first.")
@@ -2730,7 +2839,12 @@ class LoopManager(BasicEditor):
 
             logger.info(f"SAVE_START: {total_packets} packets, {total_size} bytes total")
         else:
-            logger.info(f"Warning: SAVE_START payload too short: {len(data)} bytes")
+            # (#13) A truncated SAVE_START leaves expected_packets/total_size at 0,
+            # which makes the SAVE_END completeness check pass for ANY number of
+            # received chunks — a truncated take written as "Saved". Flag the
+            # transfer invalid so SAVE_END fails it instead.
+            logger.error(f"SAVE_START payload too short: {len(data)} bytes - marking transfer invalid")
+            self.current_transfer['start_invalid'] = True
 
         self.transfer_progress.emit(0,
             f"Receiving Loop {macro_num}: 0 / {self.current_transfer['total_size']} bytes")
@@ -2782,6 +2896,31 @@ class LoopManager(BasicEditor):
                 received_data = bytes(self.current_transfer['received_data'])
                 received_size = len(received_data)
                 logger.info(f"Received {received_size} bytes for loop {macro_num}")
+
+                # Verify the transfer actually completed before writing anything.
+                # A SAVE_END with status 0 is not proof every chunk arrived — a
+                # dropped or cross-thread-stolen packet leaves received_data short.
+                # The old code wrote it anyway, producing a silently truncated
+                # .loop/.midi with a "Saved" message, discovered only on reload
+                # (after the on-device take may be gone). (M1)
+                expected_packets = self.current_transfer.get('expected_packets', 0)
+                received_packets = self.current_transfer.get('received_packets', 0)
+                total_size = self.current_transfer.get('total_size', 0)
+                if self.current_transfer.get('start_invalid') or \
+                   (expected_packets and received_packets != expected_packets) or \
+                   (total_size and received_size != total_size):
+                    logger.error(
+                        f"Incomplete transfer for loop {macro_num}: "
+                        f"{received_packets}/{expected_packets} packets, "
+                        f"{received_size}/{total_size} bytes"
+                        f"{' (SAVE_START header was truncated)' if self.current_transfer.get('start_invalid') else ''}")
+                    QMessageBox.warning(
+                        None, "Save Failed",
+                        f"Loop {macro_num} transfer was incomplete "
+                        f"({received_size} of {total_size} bytes). The file was "
+                        f"NOT saved. Please try again.")
+                    self.reset_transfer_state()
+                    return
 
                 # Check if in save all mode
                 if self.current_transfer.get('save_all_mode'):

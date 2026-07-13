@@ -770,11 +770,14 @@ Audited + de-overlapped 2026-06 (see "EEPROM de-overlap" below).
 | 22000-22399 | 400 bytes | Toggle-key config (`TOGGLE_EEPROM_ADDR`) |
 | 23000-35339 | 12,340 bytes | Arp/Seq preset pool (header 8B + arp dir 320B + seq dir 320B + note pool ~11,692B) |
 | 36000-36749 | 750 bytes | Custom animations (50 × 15B) |
-| 37000-37399 | ~300 bytes | Loop settings (`LOOP_SETTINGS_EEPROM_ADDR`) |
+| 37000-37199 | 200 bytes | Loop settings (`LOOP_SETTINGS_EEPROM_ADDR`) |
+| 37200-37827 | 628 bytes | Factory-seq (drum-slot) configs (`FACTORY_SEQ_EEPROM_ADDR`, moved from 59500) |
 | 38000-38249 | 5 x 250 bytes | Keyboard settings (5 slots, `SETTINGS_BASE_ADDR`) |
 | 38500 | 2 bytes | RGB defaults magic |
 | 39000-39107 | 108 bytes | Layer RGB settings |
+| 39108-39791 | 684 bytes | Factory-seq chains (`FACTORY_SEQ_CHAIN_EEPROM_ADDR`, moved from 60128) |
 | 40000-40059 | 60 bytes | Layer actuation settings (deprecated) |
+| 40100-40301 | 202 bytes | Factory-arp QB-master rate/gate (magic 0xAE01 + 100×2: rate index 0-9 + gate % 0/5-100, `ARP_MASTER_RG_EEPROM_BASE`) |
 | 40500-42501 | 2,002 bytes | User velocity curves (50 × 40 + magic) |
 | 42600-42699 | 100 bytes | Gaming settings (`GAMING_SETTINGS_EEPROM_ADDR`) |
 | 42800-42825 | 26 bytes | EQ curve (legacy, unused after sensor swap) |
@@ -784,9 +787,8 @@ Audited + de-overlapped 2026-06 (see "EEPROM de-overlap" below).
 | 45000-51719 | 6,720 bytes | Per-key actuations (70 x 8 x 12 layers) |
 | 52000-53603 | 1,604 bytes | DKS configurations (`EEPROM_DKS_BASE`) |
 | 54000-55401 | 1,402 bytes | Toggle multi-key keycodes |
-| 56000-59441 | 3,442 bytes | Custom names (OLED display names for macros/arp/seq/delay/toggles) |
-| 59500-60127 | 628 bytes | Factory-seq (drum-slot) configs — 20 drum slots' channel/curve/humanize/voice bindings (NOT factory patterns; those are in flash) |
-| 60128-60811 | 684 bytes | Factory-seq chains (20 × 34: chain_length + 16 pattern indices). END marker fixed ×33→×34 |
+| 56000-60273 | 4,274 bytes | Custom names (OLED display names for macros/arp/seq/delay/toggles/**layers**). Magic 0x4E41 @56000; macros 56002, arp 56402, seq 57042, delay 57682, toggle 58482, layer 60082. |
+| 60274-60811 | 538 bytes | Free (was Factory-seq chains, relocated to 39108) |
 | 60812-61051 | 240 bytes | Ear trainer (`ET_EEPROM_BASE`, moved from 60284) |
 | 61052-61055 | 4 bytes | DAW selection (magic 0xDA01 + index + os, `EEPROM_DAW_BASE`, moved from 60280) |
 | 61100-61541 | 442 bytes | QB fader configs (40 x 11B, magic 0xFA01) |
@@ -813,6 +815,20 @@ were relocated to clean addresses above 60,812 / in the top free block; the
 chain END marker was corrected to ×34. Each relocated region reinitializes to
 defaults once on the first boot after this change (magic-mismatch at the new
 address). The factory-seq/chain regions stayed put (chain now correctly sized).
+
+### Layer-name corruption fix — custom-names vs factory-seq overlap (2026-06)
+
+The custom-names region (`CN_EEPROM_BASE` 56000) was budgeted 3,442 bytes but
+`CN_TOGGLE_COUNT` grew 48→100, pushing the real layout to **4,274 bytes** (ends
+60273): toggle names 58482–60081, layer names **60082–60273** — directly on top
+of the factory-seq drum configs (59500–60127) and chains (60128–60811). Every
+layer-name save corrupted factory-seq data and vice versa. **Fix:** relocated
+both factory-seq regions out of the custom-names footprint — drum configs
+59500→**37200** (ends 37827), chains 60128→**39108** (ends 39791); magic bumped
+to force a clean one-time re-init. Custom names now own 56000–60273 with no
+overlap; 60274–60811 is free. (One-time first-boot effect: drum-slot configs +
+chains reset to GM defaults; previously-corrupt layer/high-toggle names must be
+re-entered.)
 
 ## EMA Filter Status
 

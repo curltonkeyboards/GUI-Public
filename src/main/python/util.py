@@ -16,6 +16,29 @@ from keymaps import KEYMAPS
 
 tr = QCoreApplication.translate
 
+# --- Exclusive HID access during a loop transfer (H3) -----------------------
+# A loop save/load runs a background listener thread that continuously reads the
+# device handle. The matrix/velocity live pollers read the SAME raw handle from
+# the Qt main thread via hid_send, with no request/response correlation, so a
+# poll fired during a transfer steals the transfer's packets (truncated file)
+# and vice-versa (garbage telemetry). While a transfer is active the listener is
+# the designated reader; the pollers must stand down. Both the loop manager and
+# the pollers run on the Qt main thread, so this plain flag is set/checked
+# without a race relative to the pollers.
+_hid_transfer_active = False
+
+
+def set_hid_transfer_active(active):
+    """Mark a loop transfer as in progress so live pollers pause their HID reads."""
+    global _hid_transfer_active
+    _hid_transfer_active = bool(active)
+
+
+def is_hid_transfer_active():
+    """True while a loop transfer owns the HID handle; pollers should skip."""
+    return _hid_transfer_active
+
+
 # For Vial keyboard
 VIAL_SERIAL_NUMBER_MAGIC = "vial:f64c2b3c"
 
@@ -61,24 +84,30 @@ def hid_send(dev, msg, retries=1):
     msg += b"\x00" * (MSG_LEN - len(msg))
 
     data = b""
-    first = True
+    try:
+        # add 00 at start for hidapi report id
+        if dev.write(b"\x00" + msg) != MSG_LEN + 1:
+            raise RuntimeError("failed to communicate with the device")
 
-    while retries > 0:
-        retries -= 1
-        if not first:
-            time.sleep(0.5)
-        first = False
-        try:
-            # add 00 at start for hidapi report id
-            if dev.write(b"\x00" + msg) != MSG_LEN + 1:
-                continue
-
+        # Poll for the response WITHOUT re-sending the command. The old code
+        # re-wrote msg on every read timeout (up to `retries` times). Commands
+        # that do slow synchronous EEPROM work (e.g. reset-per-key rewrites the
+        # whole 6,720-byte region) reply only after that work finishes — often
+        # past the 500 ms read timeout. A re-write then makes the firmware
+        # execute the command a SECOND time and queue a duplicate response, so
+        # every subsequent call reads the previous command's stale response and
+        # the request/response stream is permanently offset by one — the GUI
+        # shows and can save back garbage. Sending exactly once and only
+        # extending the read window removes that desync while still waiting out
+        # a slow reply. (H4)
+        attempts = retries if retries > 0 else 1
+        for _ in range(attempts):
             data = bytes(dev.read(MSG_LEN, timeout_ms=500))
-            if not data:
-                continue
-        except OSError:
-            continue
-        break
+            if data:
+                break
+    except OSError:
+        # OSError from hidapi means the device handle is gone (unplugged).
+        raise RuntimeError("failed to communicate with the device")
 
     if not data:
         raise RuntimeError("failed to communicate with the device")

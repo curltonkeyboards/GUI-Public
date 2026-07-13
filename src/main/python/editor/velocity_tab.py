@@ -26,7 +26,7 @@ from widgets.square_button import SquareButton
 from editor.basic_editor import BasicEditor
 from widgets.keyboard_widget import KeyboardWidgetSimple
 from themes import Theme
-from util import tr
+from util import tr, is_hid_transfer_active
 from vial_device import VialKeyboard
 from protocol.keyboard_comm import (
     PARAM_SPEED_PEAK_RATIO, PARAM_AFTERTOUCH_MODE, PARAM_AFTERTOUCH_CC,
@@ -120,6 +120,35 @@ def get_midi_key_type(keycode):
         return 'triplesplit'
 
     return None
+
+
+# Aftertouch mode byte (0-16) <-> three-control decomposition.
+# Base mode pairs: Bottom=1, Reverse=3, Post=5, Vibrato=7. +1 for Sustain OFF (NS),
+# +8 for Legato style. 0 = Off. The "pair" index used by the Mode combo itemData is
+# 1=Bottom, 2=Reverse, 3=Post, 4=Vibrato (0=Off).
+_AT_PAIR_TO_BASE = {1: 1, 2: 3, 3: 5, 4: 7}
+
+
+def encode_aftertouch_byte(pair, sustain_on, legato):
+    """Combine (mode pair, sustain on, legato) into the packed 0-16 byte."""
+    if not pair:
+        return 0
+    base = _AT_PAIR_TO_BASE.get(pair, 1)
+    return base + (0 if sustain_on else 1) + (8 if legato else 0)
+
+
+def decode_aftertouch_byte(byte):
+    """Split the packed 0-16 byte into (mode pair, sustain on, legato).
+
+    pair: 0=Off, 1=Bottom, 2=Reverse, 3=Post, 4=Vibrato.
+    """
+    if not byte:
+        return 0, True, False
+    legato = byte > 8
+    b = byte - 8 if byte > 8 else byte
+    sustain_on = (b & 1) == 1
+    pair = (b + 1) // 2
+    return pair, sustain_on, legato
 
 
 class VelocityKeyboardWidget(KeyboardWidgetSimple):
@@ -285,7 +314,7 @@ class VelocityTab(BasicEditor):
         self.global_midi_settings = {
             'velocity_min': 1,          # 1-127 (minimum MIDI velocity)
             'velocity_max': 127,        # 1-127 (maximum MIDI velocity)
-            'aftertouch_mode': 0,       # 0=Off, 1=Bottom-out, 2=Bottom-out(NS), 3=Reverse, 4=Reverse(NS), 5=Post-actuation, 6=Post-actuation(NS), 7=Vibrato, 8=Vibrato(NS)
+            'aftertouch_mode': 0,       # packed byte 0-16: 0=Off; base Bottom=1/Reverse=3/Post=5/Vibrato=7, +1 Sustain OFF (NS), +8 Legato style
             'aftertouch_smoothness': 0, # 0-100% EMA smoothing (shares retrigger byte when aftertouch active)
             'aftertouch_cc': 255,       # 0-127=CC number, 255=off (poly AT only)
             'velocity_as_at': False,    # Pre-load aftertouch from velocity on note-on
@@ -483,19 +512,77 @@ class VelocityTab(BasicEditor):
         controls['aftertouch_mode_combo'].setEditable(True)
         controls['aftertouch_mode_combo'].lineEdit().setReadOnly(True)
         controls['aftertouch_mode_combo'].lineEdit().setAlignment(Qt.AlignCenter)
+        # Mode combo stores the "pair" index as itemData:
+        # 0=Off, 1=Bottom, 2=Reverse, 3=Post, 4=Vibrato
         controls['aftertouch_mode_combo'].addItem("Off", 0)
-        controls['aftertouch_mode_combo'].addItem("Bottom-Out", 1)
-        controls['aftertouch_mode_combo'].addItem("Bottom-Out (NS)", 2)
-        controls['aftertouch_mode_combo'].addItem("Reverse", 3)
-        controls['aftertouch_mode_combo'].addItem("Reverse (NS)", 4)
-        controls['aftertouch_mode_combo'].addItem("Post-Actuation", 5)
-        controls['aftertouch_mode_combo'].addItem("Post-Actuation (NS)", 6)
-        controls['aftertouch_mode_combo'].addItem("Vibrato", 7)
-        controls['aftertouch_mode_combo'].addItem("Vibrato (NS)", 8)
+        controls['aftertouch_mode_combo'].addItem("Post Actuation", 3)
+        controls['aftertouch_mode_combo'].addItem("Bottom Out", 1)
+        controls['aftertouch_mode_combo'].addItem("Reverse", 2)
+        controls['aftertouch_mode_combo'].addItem("Vibrato", 4)
         controls['aftertouch_mode_combo'].setCurrentIndex(0)
         controls['aftertouch_mode_combo'].setProperty('zone', zone_name)
         mode_layout.addWidget(controls['aftertouch_mode_combo'], 1)
         layout.addLayout(mode_layout)
+
+        # Aftertouch Style (Chord vs Legato) - hidden when aftertouch is Off
+        controls['aftertouch_style_widget'] = QWidget()
+        style_layout = QHBoxLayout()
+        style_layout.setContentsMargins(0, 0, 0, 0)
+        style_layout.setSpacing(4)
+        controls['aftertouch_style_widget'].setLayout(style_layout)
+        style_layout.addWidget(self.create_help_label(
+            "Aftertouch style:\n"
+            "Chord: Average pressure across held keys\n"
+            "Legato: Single (last-pressed) key drives aftertouch"
+        ))
+        style_label = QLabel(tr("VelocityTab", "AT Style:"))
+        style_label.setMinimumWidth(85)
+        style_layout.addWidget(style_label)
+
+        controls['aftertouch_style_combo'] = ArrowComboBox()
+        controls['aftertouch_style_combo'].setMaximumHeight(25)
+        controls['aftertouch_style_combo'].setMaximumWidth(150)
+        controls['aftertouch_style_combo'].setStyleSheet("QComboBox { padding: 0px; font-size: 10px; }")
+        controls['aftertouch_style_combo'].setEditable(True)
+        controls['aftertouch_style_combo'].lineEdit().setReadOnly(True)
+        controls['aftertouch_style_combo'].lineEdit().setAlignment(Qt.AlignCenter)
+        controls['aftertouch_style_combo'].addItem("Chord", 0)   # legato False
+        controls['aftertouch_style_combo'].addItem("Legato", 1)  # legato True
+        controls['aftertouch_style_combo'].setCurrentIndex(0)
+        controls['aftertouch_style_combo'].setProperty('zone', zone_name)
+        style_layout.addWidget(controls['aftertouch_style_combo'], 1)
+        layout.addWidget(controls['aftertouch_style_widget'])
+        controls['aftertouch_style_widget'].setVisible(False)  # Hidden when aftertouch is Off
+
+        # Sustain (On/Off) - hidden when aftertouch is Off
+        controls['aftertouch_sustain_widget'] = QWidget()
+        sustain_layout = QHBoxLayout()
+        sustain_layout.setContentsMargins(0, 0, 0, 0)
+        sustain_layout.setSpacing(4)
+        controls['aftertouch_sustain_widget'].setLayout(sustain_layout)
+        sustain_layout.addWidget(self.create_help_label(
+            "Sustain suppression:\n"
+            "On: Aftertouch suppresses note-on/off (held note)\n"
+            "Off: No sustain suppression (NS)"
+        ))
+        sustain_label = QLabel(tr("VelocityTab", "Sustain:"))
+        sustain_label.setMinimumWidth(85)
+        sustain_layout.addWidget(sustain_label)
+
+        controls['aftertouch_sustain_combo'] = ArrowComboBox()
+        controls['aftertouch_sustain_combo'].setMaximumHeight(25)
+        controls['aftertouch_sustain_combo'].setMaximumWidth(150)
+        controls['aftertouch_sustain_combo'].setStyleSheet("QComboBox { padding: 0px; font-size: 10px; }")
+        controls['aftertouch_sustain_combo'].setEditable(True)
+        controls['aftertouch_sustain_combo'].lineEdit().setReadOnly(True)
+        controls['aftertouch_sustain_combo'].lineEdit().setAlignment(Qt.AlignCenter)
+        controls['aftertouch_sustain_combo'].addItem("On", 1)   # sustain on
+        controls['aftertouch_sustain_combo'].addItem("Off", 0)  # sustain off (NS)
+        controls['aftertouch_sustain_combo'].setCurrentIndex(0)
+        controls['aftertouch_sustain_combo'].setProperty('zone', zone_name)
+        sustain_layout.addWidget(controls['aftertouch_sustain_combo'], 1)
+        layout.addWidget(controls['aftertouch_sustain_widget'])
+        controls['aftertouch_sustain_widget'].setVisible(False)  # Hidden when aftertouch is Off
 
         # Aftertouch CC (hidden when aftertouch is Off)
         controls['aftertouch_cc_widget'] = QWidget()
@@ -817,15 +904,36 @@ class VelocityTab(BasicEditor):
 
         controls['press_time_range_slider'].range_changed.connect(on_press_time_range_changed)
 
-        # Aftertouch mode
+        # Aftertouch mode / style / sustain -> packed byte (0-16)
+        def compute_aftertouch_byte():
+            pair = controls['aftertouch_mode_combo'].currentData() or 0
+            sustain_on = (controls['aftertouch_sustain_combo'].currentData() == 1)
+            legato = (controls['aftertouch_style_combo'].currentData() == 1)
+            return encode_aftertouch_byte(pair, sustain_on, legato)
+
         def on_aftertouch_mode_changed(index):
-            mode = controls['aftertouch_mode_combo'].currentData()
-            is_vibrato = (mode in (7, 8))
-            is_off = (mode == 0)
+            pair = controls['aftertouch_mode_combo'].currentData() or 0
+            is_vibrato = (pair == 4)
+            is_off = (pair == 0)
             controls['vibrato_sens_widget'].setVisible(is_vibrato)
             controls['vibrato_decay_widget'].setVisible(is_vibrato)
             controls['aftertouch_cc_widget'].setVisible(not is_off)
             controls['velocity_as_at_widget'].setVisible(not is_off)
+            # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON: the note
+            # velocity IS the CC ceiling, so it's intrinsic and can't be toggled off.
+            is_post = (pair == 3)
+            vat = controls['velocity_as_at_checkbox']
+            vat.blockSignals(True)
+            if is_post:
+                vat.setChecked(True)
+                vat.setEnabled(False)
+            else:
+                vat.setChecked(bool(get_settings().get('velocity_as_at', False)))
+                vat.setEnabled(True)
+            vat.blockSignals(False)
+            # Style/Sustain only apply when aftertouch is enabled
+            controls['aftertouch_style_widget'].setVisible(not is_off)
+            controls['aftertouch_sustain_widget'].setVisible(not is_off)
             # Smoothness replaces retrigger when aftertouch is active
             controls['smoothness_widget'].setVisible(not is_off)
             # Disable retrigger when aftertouch is enabled
@@ -834,9 +942,14 @@ class VelocityTab(BasicEditor):
             if not is_off:
                 controls['retrigger_checkbox'].setChecked(False)
                 controls['retrigger_widget'].setVisible(False)
-            set_setting('aftertouch_mode', mode)
+            set_setting('aftertouch_mode', compute_aftertouch_byte())
+
+        def on_aftertouch_style_or_sustain_changed(index):
+            set_setting('aftertouch_mode', compute_aftertouch_byte())
 
         controls['aftertouch_mode_combo'].currentIndexChanged.connect(on_aftertouch_mode_changed)
+        controls['aftertouch_style_combo'].currentIndexChanged.connect(on_aftertouch_style_or_sustain_changed)
+        controls['aftertouch_sustain_combo'].currentIndexChanged.connect(on_aftertouch_style_or_sustain_changed)
 
         # Aftertouch CC
         def on_aftertouch_cc_changed(index):
@@ -1092,6 +1205,10 @@ class VelocityTab(BasicEditor):
         self.press_time_range_slider = base_controls['press_time_range_slider']
         self.press_time_range_value = base_controls['press_time_range_value']
         self.aftertouch_mode_combo = base_controls['aftertouch_mode_combo']
+        self.aftertouch_style_combo = base_controls['aftertouch_style_combo']
+        self.aftertouch_style_widget = base_controls['aftertouch_style_widget']
+        self.aftertouch_sustain_combo = base_controls['aftertouch_sustain_combo']
+        self.aftertouch_sustain_widget = base_controls['aftertouch_sustain_widget']
         self.aftertouch_cc_combo = base_controls['aftertouch_cc_combo']
         self.aftertouch_cc_widget = base_controls['aftertouch_cc_widget']
         self.velocity_as_at_widget = base_controls['velocity_as_at_widget']
@@ -1262,6 +1379,10 @@ class VelocityTab(BasicEditor):
 
     def poll_velocity(self):
         """Poll velocity and press time values from keyboard"""
+        # A loop transfer owns the HID handle; skip this tick so we don't steal
+        # its packets (or read garbage). The poll timer keeps running. (H3)
+        if is_hid_transfer_active():
+            return
         if not self.keyboard or not self.is_active:
             return
 
@@ -1326,6 +1447,8 @@ class VelocityTab(BasicEditor):
         self.velocity_range_slider.blockSignals(True)
         self.press_time_range_slider.blockSignals(True)
         self.aftertouch_mode_combo.blockSignals(True)
+        self.aftertouch_style_combo.blockSignals(True)
+        self.aftertouch_sustain_combo.blockSignals(True)
         self.aftertouch_cc_combo.blockSignals(True)
         self.smoothness_slider.blockSignals(True)
         self.vibrato_sens_slider.blockSignals(True)
@@ -1344,20 +1467,32 @@ class VelocityTab(BasicEditor):
         self.press_time_range_slider.setValues(fast_press, slow_press)
         self.press_time_range_value.setText(f"{fast_press} - {slow_press} ms")
 
-        # Set aftertouch mode
+        # Set aftertouch mode / style / sustain (decode the packed 0-16 byte)
         mode = settings.get('aftertouch_mode', 0)
+        pair, sustain_on, legato = decode_aftertouch_byte(mode)
         for i in range(self.aftertouch_mode_combo.count()):
-            if self.aftertouch_mode_combo.itemData(i) == mode:
+            if self.aftertouch_mode_combo.itemData(i) == pair:
                 self.aftertouch_mode_combo.setCurrentIndex(i)
                 break
+        self.aftertouch_style_combo.setCurrentIndex(1 if legato else 0)
+        self.aftertouch_sustain_combo.setCurrentIndex(0 if sustain_on else 1)
 
         # Show/hide vibrato controls, smoothness, aftertouch CC, and velocity_as_at
-        is_vibrato = (mode in (7, 8))
-        is_off = (mode == 0)
+        is_vibrato = (pair == 4)
+        is_off = (pair == 0)
         self.vibrato_sens_widget.setVisible(is_vibrato)
         self.vibrato_decay_widget.setVisible(is_vibrato)
         self.aftertouch_cc_widget.setVisible(not is_off)
         self.velocity_as_at_widget.setVisible(not is_off)
+        # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON (intrinsic cap).
+        is_post = (pair == 3)
+        self.velocity_as_at_checkbox.blockSignals(True)
+        self.velocity_as_at_checkbox.setEnabled(not is_post)
+        if is_post:
+            self.velocity_as_at_checkbox.setChecked(True)
+        self.velocity_as_at_checkbox.blockSignals(False)
+        self.aftertouch_style_widget.setVisible(not is_off)
+        self.aftertouch_sustain_widget.setVisible(not is_off)
         self.smoothness_widget.setVisible(not is_off)
 
         # Disable retrigger when aftertouch is enabled
@@ -1398,6 +1533,8 @@ class VelocityTab(BasicEditor):
         self.velocity_range_slider.blockSignals(False)
         self.press_time_range_slider.blockSignals(False)
         self.aftertouch_mode_combo.blockSignals(False)
+        self.aftertouch_style_combo.blockSignals(False)
+        self.aftertouch_sustain_combo.blockSignals(False)
         self.aftertouch_cc_combo.blockSignals(False)
         self.smoothness_slider.blockSignals(False)
         self.vibrato_sens_slider.blockSignals(False)
@@ -1406,13 +1543,25 @@ class VelocityTab(BasicEditor):
 
     def on_aftertouch_mode_changed(self, index):
         """Handle aftertouch mode change - show/hide vibrato, smoothness, and CC controls"""
-        mode = self.aftertouch_mode_combo.currentData()
-        is_vibrato = (mode in (7, 8))
-        is_off = (mode == 0)
+        pair = self.aftertouch_mode_combo.currentData() or 0
+        sustain_on = (self.aftertouch_sustain_combo.currentData() == 1)
+        legato = (self.aftertouch_style_combo.currentData() == 1)
+        mode = encode_aftertouch_byte(pair, sustain_on, legato)
+        is_vibrato = (pair == 4)
+        is_off = (pair == 0)
         self.vibrato_sens_widget.setVisible(is_vibrato)
         self.vibrato_decay_widget.setVisible(is_vibrato)
         self.aftertouch_cc_widget.setVisible(not is_off)
         self.velocity_as_at_widget.setVisible(not is_off)
+        # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON (intrinsic cap).
+        is_post = (pair == 3)
+        self.velocity_as_at_checkbox.blockSignals(True)
+        self.velocity_as_at_checkbox.setEnabled(not is_post)
+        if is_post:
+            self.velocity_as_at_checkbox.setChecked(True)
+        self.velocity_as_at_checkbox.blockSignals(False)
+        self.aftertouch_style_widget.setVisible(not is_off)
+        self.aftertouch_sustain_widget.setVisible(not is_off)
         # Smoothness replaces retrigger when aftertouch is active
         self.smoothness_widget.setVisible(not is_off)
         # Disable retrigger when aftertouch is enabled
@@ -1516,20 +1665,32 @@ class VelocityTab(BasicEditor):
         controls['press_time_range_slider'].setValues(fast_press, slow_press)
         controls['press_time_range_value'].setText(f"{fast_press} - {slow_press} ms")
 
-        # Update aftertouch mode
+        # Update aftertouch mode / style / sustain (decode the packed 0-16 byte)
         at_mode = zone_data.get('aftertouch_mode', 0)
+        pair, sustain_on, legato = decode_aftertouch_byte(at_mode)
         for i in range(controls['aftertouch_mode_combo'].count()):
-            if controls['aftertouch_mode_combo'].itemData(i) == at_mode:
+            if controls['aftertouch_mode_combo'].itemData(i) == pair:
                 controls['aftertouch_mode_combo'].setCurrentIndex(i)
                 break
+        controls['aftertouch_style_combo'].setCurrentIndex(1 if legato else 0)
+        controls['aftertouch_sustain_combo'].setCurrentIndex(0 if sustain_on else 1)
 
         # Show/hide vibrato controls, smoothness, and aftertouch CC based on mode
-        is_vibrato = (at_mode in (7, 8))
-        is_off = (at_mode == 0)
+        is_vibrato = (pair == 4)
+        is_off = (pair == 0)
         controls['vibrato_sens_widget'].setVisible(is_vibrato)
         controls['vibrato_decay_widget'].setVisible(is_vibrato)
         controls['aftertouch_cc_widget'].setVisible(not is_off)
         controls['velocity_as_at_widget'].setVisible(not is_off)
+        # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON (intrinsic cap).
+        is_post = (pair == 3)
+        controls['velocity_as_at_checkbox'].blockSignals(True)
+        controls['velocity_as_at_checkbox'].setEnabled(not is_post)
+        if is_post:
+            controls['velocity_as_at_checkbox'].setChecked(True)
+        controls['velocity_as_at_checkbox'].blockSignals(False)
+        controls['aftertouch_style_widget'].setVisible(not is_off)
+        controls['aftertouch_sustain_widget'].setVisible(not is_off)
         controls['smoothness_widget'].setVisible(not is_off)
 
         # Disable retrigger when aftertouch is enabled
@@ -2213,7 +2374,10 @@ class VelocityTab(BasicEditor):
             'velocity_max': controls['velocity_range_slider'].highValue(),
             'slow_press_time': controls['press_time_range_slider'].highValue(),  # slow is high value
             'fast_press_time': controls['press_time_range_slider'].lowValue(),   # fast is low value
-            'aftertouch_mode': controls['aftertouch_mode_combo'].currentData(),
+            'aftertouch_mode': encode_aftertouch_byte(
+                controls['aftertouch_mode_combo'].currentData() or 0,
+                controls['aftertouch_sustain_combo'].currentData() == 1,
+                controls['aftertouch_style_combo'].currentData() == 1),
             'aftertouch_smoothness': controls['smoothness_slider'].value(),
             'aftertouch_cc': controls['aftertouch_cc_combo'].currentData(),
             'vibrato_sensitivity': controls['vibrato_sens_slider'].value(),
@@ -2242,6 +2406,12 @@ class VelocityTab(BasicEditor):
                 tr("VelocityTab", "Keyboard not connected.")
             )
             return
+
+        # Re-entrancy guard: rapid double-clicks (overwrite / Save As) funnel
+        # through here; block a second synchronous transfer while one is in flight.
+        if getattr(self, '_save_busy', False):
+            return
+        self._save_busy = True
 
         try:
             points = self.curve_editor.get_points()
@@ -2307,6 +2477,8 @@ class VelocityTab(BasicEditor):
                 tr("VelocityTab", "Save Failed"),
                 tr("VelocityTab", f"Error saving velocity preset: {e}")
             )
+        finally:
+            self._save_busy = False
 
     def on_save_curve(self):
         """Save velocity curve selection to keyboard (sets the active curve index)"""

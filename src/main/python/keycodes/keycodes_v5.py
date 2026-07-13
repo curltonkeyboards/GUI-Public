@@ -1788,6 +1788,17 @@ class keycodes_v5:
         "DM_SLOW_3": 0xCC30,  # Individual slow toggle for macro 3
         "DM_SLOW_4": 0xCC31,  # Individual slow toggle for macro 4
 
+        # ThruLoop transport keys (0xCC32-0xCC39): silent CC-only loop tracks 1-8.
+        # Record/play/stop the track's timing + ThruLoop CCs (no MIDI notes).
+        "DM_THRULOOP_1": 0xCC32,
+        "DM_THRULOOP_2": 0xCC33,
+        "DM_THRULOOP_3": 0xCC34,
+        "DM_THRULOOP_4": 0xCC35,
+        "DM_THRULOOP_5": 0xCC36,
+        "DM_THRULOOP_6": 0xCC37,
+        "DM_THRULOOP_7": 0xCC38,
+        "DM_THRULOOP_8": 0xCC39,
+
         # Navigation controls:
         "DM_NAV_BWD_1S": 0xCC3A,  # Navigate backward 1 second
         "DM_NAV_FWD_1S": 0xCC3B,  # Navigate forward 1 second
@@ -2018,8 +2029,12 @@ class keycodes_v5:
         "ARP_MODE_CHORD_BASIC": 0xEE25,  # Chord basic mode
         "ARP_MODE_CHORD_ADVANCED": 0xEE26,  # Chord advanced mode
 
-        # Arpeggiator Preset Base (0xED40-0xED97) - 88 presets (0-87: 48 factory + 40 user)
-        "ARP_PRESET_BASE": 0xED40,  # Base for arp preset selection
+        # Mod Press Base (0xF300-0xF37F) - 128 codes, one per MIDI CC (key depth -> CC value)
+        "MI_MOD_PRESS_0": 0xF300,  # Base for Mod Press CC keycodes
+
+        # Arpeggiator Preset Base (0xF200-0xF29E) - 159 presets (0-158: 119 factory patterns + 40 user)
+        # Moved from 0xED40: firmware relocated the arp preset keycode block
+        "ARP_PRESET_BASE": 0xF200,  # Base for arp preset selection
 
         # Step Sequencer Control (0xEE80-0xEE86)
         "SEQ_PLAY": 0xEE80,  # Sequencer play
@@ -2317,6 +2332,7 @@ for x in range(128):
     keycodes_v5.kc["MI_BANK_LSB_{}".format(x)] = keycodes_v5.kc["MI_BANK_LSB_0"] + x
     keycodes_v5.kc["MI_PROG_{}".format(x)] = keycodes_v5.kc["MI_PROG_0"] + x
     keycodes_v5.kc["MI_VELOCITY_{}".format(x)] = keycodes_v5.kc["MI_VELOCITY_0"] + x
+    keycodes_v5.kc["MI_MOD_PRESS_{}".format(x)] = keycodes_v5.kc["MI_MOD_PRESS_0"] + x
 
 for x in range(128):
     for y in range(128):
@@ -2351,8 +2367,8 @@ for x in range(16):
 for x in range(32):
    keycodes_v5.kc["USER{:02}".format(x)] = keycodes_v5.kc["QK_KB"] + x
 
-# Generate Arpeggiator preset selection keycodes (48 factory + 40 user = 88 presets)
-for x in range(88):
+# Generate Arpeggiator preset selection keycodes (119 factory patterns + 40 user = 159)
+for x in range(159):
     keycodes_v5.kc["ARP_PRESET_{}".format(x)] = keycodes_v5.kc["ARP_PRESET_BASE"] + x
 
 # Generate Step Sequencer preset selection keycodes (48 factory + 40 user = 88 presets)

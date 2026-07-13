@@ -34,7 +34,7 @@ from protocol.keyboard_comm import (
     PARAM_CHORD_DISPLAY_MODE
 )
 from widgets.keyboard_widget import KeyboardWidget2, KeyboardWidgetSimple
-from util import tr
+from util import tr, is_hid_transfer_active
 from vial_device import VialKeyboard
 from unlocker import Unlocker
 
@@ -490,6 +490,10 @@ class MatrixTest(BasicEditor):
         self.KeyboardWidget2.updateGeometry()
 
     def matrix_poller(self):
+        # A loop transfer owns the HID handle; skip this tick (timer keeps
+        # running, so polling resumes when the transfer finishes). (H3)
+        if is_hid_transfer_active():
+            return
         if not self.valid():
             self.timer.stop()
             return
@@ -558,6 +562,8 @@ class MatrixTest(BasicEditor):
 
     def adc_poller(self):
         """Poll ADC values for half the matrix rows each cycle"""
+        if is_hid_transfer_active():  # transfer owns the HID handle; skip (H3)
+            return
         if not self.valid():
             self.adc_timer.stop()
             return
@@ -565,6 +571,7 @@ class MatrixTest(BasicEditor):
         try:
             unlocked = self.keyboard.get_unlock_status(1)
         except (RuntimeError, ValueError):
+            self.adc_timer.stop()  # device gone (e.g. unplug) — stop polling like matrix_poller does
             return
 
         if not unlocked:
@@ -631,6 +638,8 @@ class MatrixTest(BasicEditor):
 
     def distance_poller(self):
         """Poll distance and calibration values for specific keys to update actuation visualizers"""
+        if is_hid_transfer_active():  # transfer owns the HID handle; skip (H3)
+            return
         if not self.valid():
             self.distance_timer.stop()
             return
@@ -638,6 +647,7 @@ class MatrixTest(BasicEditor):
         try:
             unlocked = self.keyboard.get_unlock_status(1)
         except (RuntimeError, ValueError):
+            self.distance_timer.stop()  # device gone (e.g. unplug) — stop polling like matrix_poller does
             return
 
         if not unlocked:
@@ -764,8 +774,10 @@ class ThruLoopConfigurator(BasicEditor):
         title_layout.addWidget(title_label)
 
         desc_label = QLabel(tr("ThruLoopConfigurator",
-            "Configure ThruLoop MIDI looping and LoopChop navigation. "
-            "Set up CC mappings for recording, playback, and loop control."))
+            "Configure the 8 ThruLoop tracks (keycodes DM_THRULOOP_1-8) and LoopChop navigation. "
+            "ThruLoop tracks are silent CC-only loops: they record their own timing and emit "
+            "these CCs to sync external gear — the regular MIDI loops no longer send them. "
+            "Each Thru column maps to one track; Overdub rows fire on the held Overdub button."))
         desc_label.setWordWrap(True)
         desc_label.setStyleSheet("color: gray; font-size: 9pt;")
         desc_label.setAlignment(QtCore.Qt.AlignCenter)
@@ -872,9 +884,9 @@ class ThruLoopConfigurator(BasicEditor):
         main_grid.setSpacing(5)
         main_grid.setContentsMargins(0, 0, 0, 0)
 
-        # Add column headers
+        # Add column headers (one per ThruLoop track 1-8)
         for col in range(8):
-            header = QLabel(f"Loop {col + 1}")
+            header = QLabel(f"Thru {col + 1}")
             header.setAlignment(QtCore.Qt.AlignCenter)
             header.setStyleSheet("font-weight: bold;")
             main_grid.addWidget(header, 0, col + 1)
@@ -1075,7 +1087,34 @@ class ThruLoopConfigurator(BasicEditor):
                 if idx < len(values):
                     self.set_cc_value(combo, values[idx])
                     idx += 1
-    
+
+    def get_combos_cc_values_banked(self, combos_array):
+        """Flatten a [function][track] combo grid into the firmware's BANKED
+        wire order. The firmware (handle_set_main_loop_ccs / handle_set_overdub_ccs
+        in process_dynamic_macro.c) reads each HID packet as one bank of 4 tracks
+        laid out function-major: data[0..3]=func0 for those 4 tracks, data[4..7]=
+        func1, etc. The full stream is bank0 (tracks 1-4) then bank1 (tracks 5-8).
+        The plain row-major get_combos_cc_values() does NOT match this, which is
+        what scrambled the ThruLoop CC assignments."""
+        values = []
+        for bank in range(2):                  # bank 0 = tracks 0-3, bank 1 = tracks 4-7
+            for row_combos in combos_array:    # one row per function (function-major within a bank)
+                for j in range(4):             # 4 tracks within the bank
+                    values.append(self.get_cc_value(row_combos[bank * 4 + j]))
+        return values
+
+    def set_combos_cc_values_banked(self, combos_array, values):
+        """Inverse of get_combos_cc_values_banked: scatter a firmware-order banked
+        stream (bank0 tracks 1-4, then bank1 tracks 5-8; function-major within each
+        bank) back into the [function][track] combo grid."""
+        idx = 0
+        for bank in range(2):
+            for row_combos in combos_array:
+                for j in range(4):
+                    if idx < len(values):
+                        self.set_cc_value(row_combos[bank * 4 + j], values[idx])
+                        idx += 1
+
     def get_restart_cc_values(self):
         """Get restart CCs from the main combos (last row)"""
         restart_values = []
@@ -1112,13 +1151,14 @@ class ThruLoopConfigurator(BasicEditor):
                 raise RuntimeError("Failed to set ThruLoop config")
             
             # 2. Send main loop CCs (excluding restart row - first 5 rows only, 5 rows x 8 cols = 40 values)
-            main_values = self.get_combos_cc_values(self.main_combos[:5])  # First 5 rows
+            #    Banked order so it matches the firmware's per-bank packet layout.
+            main_values = self.get_combos_cc_values_banked(self.main_combos[:5])  # First 5 rows
 
             if not self.device.keyboard.set_thruloop_main_ccs(main_values):
                 raise RuntimeError("Failed to set main CCs")
 
-            # 3. Send overdub CCs (all 6 rows x 8 cols = 48 values total)
-            overdub_values = self.get_combos_cc_values(self.overdub_combos)
+            # 3. Send overdub CCs (all 6 rows x 8 cols = 48 values total), banked order
+            overdub_values = self.get_combos_cc_values_banked(self.overdub_combos)
             if not self.device.keyboard.set_thruloop_overdub_ccs(overdub_values):
                 raise RuntimeError("Failed to set overdub CCs")
             
@@ -1184,15 +1224,17 @@ class ThruLoopConfigurator(BasicEditor):
             restart_ccs = config.get("restartCCs", [128] * 8)
             self.set_restart_cc_values(restart_ccs)
 
-        # Set main combos CCs (first 5 rows only, 5 x 8 = 40 values)
+        # Set main combos CCs (first 5 rows only, 5 x 8 = 40 values).
+        # config['mainCCs'] arrives in firmware banked order (bank0 then bank1),
+        # so scatter it back with the banked setter.
         if 'mainCCs' in config:
             main_ccs = config.get("mainCCs", [128] * 40)
-            self.set_combos_cc_values(self.main_combos[:5], main_ccs)
+            self.set_combos_cc_values_banked(self.main_combos[:5], main_ccs)
 
-        # Set overdub combos CCs (all 6 rows x 8 cols = 48 values)
+        # Set overdub combos CCs (all 6 rows x 8 cols = 48 values), banked order
         if 'overdubCCs' in config:
             overdub_ccs = config.get("overdubCCs", [128] * 48)
-            self.set_combos_cc_values(self.overdub_combos, overdub_ccs)
+            self.set_combos_cc_values_banked(self.overdub_combos, overdub_ccs)
         
         # Set navigation CCs
         if 'navCCs' in config:
@@ -2122,31 +2164,33 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.sample_mode.addItem("On", True)
         loop_layout.addWidget(self.sample_mode, 0, 4)
 
-        # ThruLoop on/off with help
-        thruloop_label = QWidget()
-        thruloop_label_layout = QHBoxLayout()
-        thruloop_label_layout.setContentsMargins(0, 0, 0, 0)
-        thruloop_label_layout.setSpacing(5)
-        thruloop_label_layout.addWidget(self.create_help_label(
-            "Pass MIDI messages through the looper.\n"
-            "Off: MIDI is not passed through\n"
-            "On: MIDI messages are forwarded\n\n"
-            "Configure ThruLoop channel, restart messaging,\n"
-            "and CC mappings in the ThruLoop tab."
+        # Instant Start on/off with help (repurposes the old ThruLoop-enable
+        # settings byte — the firmware now reads it as "Instant Start")
+        instant_start_label = QWidget()
+        instant_start_label_layout = QHBoxLayout()
+        instant_start_label_layout.setContentsMargins(0, 0, 0, 0)
+        instant_start_label_layout.setSpacing(5)
+        instant_start_label_layout.addWidget(self.create_help_label(
+            "Instant Start for loop playback controls.\n"
+            "Off: play/stop/mute wait for the next musical boundary\n"
+            "On: loop, overdub and ThruLoop play/stop/mute happen\n"
+            "immediately and join in time with the other loops\n"
+            "(resuming from the current position in the loop).\n\n"
+            "Recording start/stop always stays synced to the boundary."
         ))
-        thruloop_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Thruloop:")))
-        thruloop_label.setLayout(thruloop_label_layout)
-        loop_layout.addWidget(thruloop_label, 1, 1)
-        self.loop_messaging_enabled = ArrowComboBox()
-        self.loop_messaging_enabled.setMinimumWidth(120)
-        self.loop_messaging_enabled.setMinimumHeight(25)
-        self.loop_messaging_enabled.setMaximumHeight(25)
-        self.loop_messaging_enabled.setEditable(True)
-        self.loop_messaging_enabled.lineEdit().setReadOnly(True)
-        self.loop_messaging_enabled.lineEdit().setAlignment(Qt.AlignCenter)
-        self.loop_messaging_enabled.addItem("Off", False)
-        self.loop_messaging_enabled.addItem("On", True)
-        loop_layout.addWidget(self.loop_messaging_enabled, 1, 2)
+        instant_start_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Instant Start:")))
+        instant_start_label.setLayout(instant_start_label_layout)
+        loop_layout.addWidget(instant_start_label, 1, 1)
+        self.instant_loop_start = ArrowComboBox()
+        self.instant_loop_start.setMinimumWidth(120)
+        self.instant_loop_start.setMinimumHeight(25)
+        self.instant_loop_start.setMaximumHeight(25)
+        self.instant_loop_start.setEditable(True)
+        self.instant_loop_start.lineEdit().setReadOnly(True)
+        self.instant_loop_start.lineEdit().setAlignment(Qt.AlignCenter)
+        self.instant_loop_start.addItem("Off", False)
+        self.instant_loop_start.addItem("On", True)
+        loop_layout.addWidget(self.instant_loop_start, 1, 2)
 
         # CC Loop Recording with help
         cc_loop_rec_label = QWidget()
@@ -2328,6 +2372,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.oled_keyboard.lineEdit().setAlignment(Qt.AlignCenter)
         self.oled_keyboard.addItem("Keyboard 1", 0)
         self.oled_keyboard.addItem("Keyboard 2", 1)
+        self.oled_keyboard.addItem("Keyboard 3", 5)  # firmware enum value 5
         self.oled_keyboard.addItem("Guitar Low", 2)
         self.oled_keyboard.addItem("Guitar Med", 3)
         self.oled_keyboard.addItem("Guitar High", 4)
@@ -3121,7 +3166,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "custom_layer_animations_enabled": self.custom_layer_animations.currentData(),
             "unsynced_mode_active": self.unsynced_mode.currentData(),
             "sample_mode_active": self.sample_mode.currentData(),
-            "loop_messaging_enabled": self.loop_messaging_enabled.currentData(),
+            "instant_loop_start": self.instant_loop_start.currentData(),
             "colorblindmode": self.colorblind_mode.currentData(),
             "cclooprecording": self.cc_loop_recording.currentData(),
             "truesustain": self.true_sustain.currentData(),
@@ -3158,15 +3203,26 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
     def apply_settings(self, config):
         """Apply settings dictionary to UI"""
         def set_combo_by_data(combo, value, default_value=None):
-            for i in range(combo.count()):
-                if combo.itemData(i) == value:
-                    combo.setCurrentIndex(i)
-                    return
-            if default_value is not None:
+            # CRITICAL: block signals while populating from a loaded config.
+            # Many of these combos have currentIndexChanged wired to a live
+            # send_param_update() (e.g. sustain -> PARAM 15/16/17, chord display
+            # -> PARAM 55). Without blocking, loading a slot whose value the GET
+            # packet can't report (defaulting the combo to 0/2) fires a live
+            # PARAM write that overwrites the value the device JUST loaded — so a
+            # GUI "Load Slot" silently wiped the device's sustain / chord-display.
+            combo.blockSignals(True)
+            try:
                 for i in range(combo.count()):
-                    if combo.itemData(i) == default_value:
+                    if combo.itemData(i) == value:
                         combo.setCurrentIndex(i)
                         return
+                if default_value is not None:
+                    for i in range(combo.count()):
+                        if combo.itemData(i) == default_value:
+                            combo.setCurrentIndex(i)
+                            return
+            finally:
+                combo.blockSignals(False)
         
         set_combo_by_data(self.velocity_sensitivity, config.get("velocity_sensitivity"), 1)
         set_combo_by_data(self.cc_sensitivity, config.get("cc_sensitivity"), 1)
@@ -3178,8 +3234,8 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         _oled_kbd_value = config.get("oled_keyboard", 0)
         if _oled_kbd_value == 12:
             _oled_kbd_value = 1
-        elif _oled_kbd_value is None or _oled_kbd_value < 0 or _oled_kbd_value > 4:
-            _oled_kbd_value = 0
+        elif _oled_kbd_value is None or _oled_kbd_value < 0 or _oled_kbd_value > 5:
+            _oled_kbd_value = 0  # valid modes: 0-5 (5 = Keyboard 3)
         set_combo_by_data(self.oled_keyboard, _oled_kbd_value, 0)
         set_combo_by_data(self.smart_chord_light, config.get("smart_chord_light"), 0)
         set_combo_by_data(self.smart_chord_light_mode, config.get("smart_chord_light_mode"), 0)
@@ -3227,7 +3283,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         set_combo_by_data(self.custom_layer_animations, config.get("custom_layer_animations_enabled"), False)
         set_combo_by_data(self.unsynced_mode, config.get("unsynced_mode_active"), False)
         set_combo_by_data(self.sample_mode, config.get("sample_mode_active"), False)
-        set_combo_by_data(self.loop_messaging_enabled, config.get("loop_messaging_enabled"), False)
+        set_combo_by_data(self.instant_loop_start, config.get("instant_loop_start"), False)
         set_combo_by_data(self.colorblind_mode, config.get("colorblindmode"), 0)
         set_combo_by_data(self.cc_loop_recording, config.get("cclooprecording"), 0)
         set_combo_by_data(self.true_sustain, config.get("truesustain"), False)
@@ -3316,7 +3372,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         data[offset] = 1 if settings["custom_layer_animations_enabled"] else 0; offset += 1
         data[offset] = settings["unsynced_mode_active"]; offset += 1
         data[offset] = 1 if settings["sample_mode_active"] else 0; offset += 1
-        data[offset] = 1 if settings["loop_messaging_enabled"] else 0; offset += 1
+        data[offset] = 1 if settings["instant_loop_start"] else 0; offset += 1
         data[offset] = settings["colorblindmode"]; offset += 1
         data[offset] = settings["cclooprecording"]; offset += 1
         data[offset] = 1 if settings["truesustain"] else 0; offset += 1
@@ -3460,7 +3516,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "custom_layer_animations_enabled": False,
             "unsynced_mode_active": 0,
             "sample_mode_active": False,
-            "loop_messaging_enabled": False,
+            "instant_loop_start": False,
             "colorblindmode": 0,
             "cclooprecording": 0,
             "truesustain": False,
@@ -3536,8 +3592,8 @@ class LayerActuationConfigurator(BasicEditor):
         self.layer_data = []
         for _ in range(12):
             self.layer_data.append({
-                'normal': 80,
-                'midi': 80,
+                'normal': 127,
+                'midi': 127,
                 'aftertouch': 0,
                 'velocity': 3,  # Speed+Peak (only supported mode)
                 'rapid': 4,
@@ -3713,8 +3769,8 @@ class LayerActuationConfigurator(BasicEditor):
         
         normal_slider = QSlider(Qt.Horizontal)
         normal_slider.setMinimum(0)
-        normal_slider.setMaximum(100)
-        normal_slider.setValue(80)
+        normal_slider.setMaximum(255)
+        normal_slider.setValue(127)
         slider_layout.addWidget(normal_slider)
         
         normal_value_label = QLabel("2.00mm (80)")
@@ -3922,8 +3978,8 @@ class LayerActuationConfigurator(BasicEditor):
         
         midi_slider = QSlider(Qt.Horizontal)
         midi_slider.setMinimum(0)
-        midi_slider.setMaximum(100)
-        midi_slider.setValue(80)
+        midi_slider.setMaximum(255)
+        midi_slider.setValue(127)
         midi_slider_layout.addWidget(midi_slider)
         
         midi_value_label = QLabel("2.00mm (80)")
@@ -4256,8 +4312,8 @@ class LayerActuationConfigurator(BasicEditor):
         
         normal_slider = QSlider(Qt.Horizontal)
         normal_slider.setMinimum(0)
-        normal_slider.setMaximum(100)
-        normal_slider.setValue(80)
+        normal_slider.setMaximum(255)
+        normal_slider.setValue(127)
         normal_slider_layout.addWidget(normal_slider)
         
         normal_value_label = QLabel("2.00mm (80)")
@@ -4333,8 +4389,8 @@ class LayerActuationConfigurator(BasicEditor):
         
         midi_slider = QSlider(Qt.Horizontal)
         midi_slider.setMinimum(0)
-        midi_slider.setMaximum(100)
-        midi_slider.setValue(80)
+        midi_slider.setMaximum(255)
+        midi_slider.setValue(127)
         midi_slider_layout.addWidget(midi_slider)
         
         midi_value_label = QLabel("2.00mm (80)")
@@ -4764,7 +4820,7 @@ class LayerActuationConfigurator(BasicEditor):
     def on_master_slider_changed(self, key, value, label):
         """Handle master slider changes"""
         if key in ['normal', 'midi']:
-            label.setText(f"{value * 0.025:.2f}mm ({value})")
+            label.setText(f"{value * 4.0 / 255.0:.2f}mm ({value})")
         elif key == 'midi_rapid_vel':
             label.setText(f"±{value}")
         elif key == 'vibrato_sensitivity':
@@ -4777,7 +4833,7 @@ class LayerActuationConfigurator(BasicEditor):
         # If changing normal actuation and advanced is NOT shown, also update MIDI
         if key == 'normal' and not self.advanced_shown:
             self.master_widgets['midi_slider'].setValue(value)
-            self.master_widgets['midi_label'].setText(f"{value * 0.025:.2f}mm ({value})")
+            self.master_widgets['midi_label'].setText(f"{value * 4.0 / 255.0:.2f}mm ({value})")
         
         if not self.per_layer_enabled:
             for layer_data in self.layer_data:
@@ -4796,7 +4852,7 @@ class LayerActuationConfigurator(BasicEditor):
     def on_layer_slider_changed(self, key, value, label):
         """Handle layer slider changes"""
         if key in ['normal', 'midi']:
-            label.setText(f"{value * 0.025:.2f}mm ({value})")
+            label.setText(f"{value * 4.0 / 255.0:.2f}mm ({value})")
         elif key == 'midi_rapid_vel':
             label.setText(f"±{value}")
         else:
@@ -4805,7 +4861,7 @@ class LayerActuationConfigurator(BasicEditor):
         # If changing normal actuation and advanced is NOT shown, also update MIDI
         if key == 'normal' and not self.layer_widgets['advanced_checkbox'].isChecked():
             self.layer_widgets['midi_slider'].setValue(value)
-            self.layer_widgets['midi_label'].setText(f"{value * 0.025:.2f}mm ({value})")
+            self.layer_widgets['midi_label'].setText(f"{value * 4.0 / 255.0:.2f}mm ({value})")
             self.layer_data[self.current_layer]['midi'] = value
         
         # Update layer data
@@ -5047,8 +5103,8 @@ class LayerActuationConfigurator(BasicEditor):
                 
                 # Update UI to defaults
                 defaults = {
-                    'normal': 80,
-                    'midi': 80,
+                    'normal': 127,
+                    'midi': 127,
                     'aftertouch': 0,
                     'velocity': 3,  # Speed+Peak (only supported mode)
                     'rapid': 4,

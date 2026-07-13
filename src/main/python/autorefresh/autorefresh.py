@@ -44,6 +44,13 @@ class Autorefresh(QObject):
         self.thread.devices_updated.connect(self.on_devices_updated)
         self.thread.start()
 
+    def stop(self):
+        """Stop the device-polling thread and wait for it to exit (call on quit)."""
+        if self.thread is not None:
+            if hasattr(self.thread, "stop"):
+                self.thread.stop()
+            self.thread.wait(2000)
+
     def _lock(self):
         self.thread.lock()
 

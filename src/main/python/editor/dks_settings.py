@@ -9,7 +9,7 @@ Users configure DKS slots (DKS_00 - DKS_49) and then assign them to keys via the
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
                               QComboBox, QSlider, QGroupBox, QMessageBox, QFrame,
                               QSizePolicy, QCheckBox, QSpinBox, QScrollArea, QApplication, QTabWidget)
-from PyQt5.QtCore import Qt, pyqtSignal, QSize
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QTimer
 from PyQt5.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPalette, QPixmap, QImage
 
 from editor.basic_editor import BasicEditor
@@ -1158,6 +1158,14 @@ class DKSEntryUI(QWidget):
         self.selected_key_widget = None  # Track which key widget is selected
         self._loading = False  # Guard flag: True while loading from keyboard/slot
 
+        # Debounce for live sends: slider/visualizer drags fire _on_action_changed
+        # continuously (8 HID writes each). Coalesce them into one send when the
+        # drag settles so we don't queue overlapping transfers.
+        self._send_timer = QTimer(self)
+        self._send_timer.setSingleShot(True)
+        self._send_timer.timeout.connect(self._do_debounced_send)
+        self._send_failed = False  # Track persistent send-failure state
+
         # Set minimum height to prevent squishing - allows scroll instead
         self.setMinimumHeight(400)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
@@ -1210,6 +1218,12 @@ class DKSEntryUI(QWidget):
         self.load_eeprom_btn.setFixedWidth(150)
         self.load_eeprom_btn.clicked.connect(self._on_load_eeprom)
         button_layout.addWidget(self.load_eeprom_btn)
+
+        # Non-modal indicator surfaced when a live send to the keyboard fails
+        # (shown once, cleared on the next successful send).
+        self._send_status_label = QLabel("")
+        self._send_status_label.setStyleSheet("color: red; font-size: 10px;")
+        button_layout.addWidget(self._send_status_label)
 
         button_layout.addStretch()
 
@@ -1301,8 +1315,21 @@ class DKSEntryUI(QWidget):
         if self._loading:
             return
         self._update_travel_bar()
-        self._send_to_keyboard()
+        # Coalesce rapid changes (slider/visualizer drags) into a single send.
+        self._send_timer.start(75)
         self.changed.emit()
+
+    def _do_debounced_send(self):
+        """Fire one send after a drag settles and surface failures non-modally."""
+        ok = self._send_to_keyboard()
+        if not ok:
+            # Show the failure once; don't spam while it persists.
+            if not self._send_failed:
+                self._send_failed = True
+                self._send_status_label.setText("Send to keyboard failed")
+        elif self._send_failed:
+            self._send_failed = False
+            self._send_status_label.setText("")
 
     def _on_key_selected(self, widget):
         """Handle key widget selection - update visual feedback"""
@@ -1320,12 +1347,15 @@ class DKSEntryUI(QWidget):
             self.selected_key_widget.on_keycode_changed(keycode)
 
     def _send_to_keyboard(self):
-        """Send current configuration to keyboard"""
+        """Send current configuration to keyboard. Returns True if every write
+        succeeded, False if any write failed."""
         if not self.dks_protocol:
             self._log(f"Slot {self.slot_idx}: _send_to_keyboard skipped - no protocol", "WARN")
-            return
+            return False
 
         self._log(f"Slot {self.slot_idx}: sending all 8 actions to keyboard...", "INFO")
+
+        all_ok = True
 
         # Send press actions
         for i, editor in enumerate(self.press_editors):
@@ -1334,6 +1364,7 @@ class DKSEntryUI(QWidget):
                 self.slot_idx, True, i, keycode, actuation, behavior
             )
             if not success:
+                all_ok = False
                 self._log(f"Slot {self.slot_idx}: FAILED to send Press[{i}]", "ERROR")
 
         # Send release actions
@@ -1343,7 +1374,10 @@ class DKSEntryUI(QWidget):
                 self.slot_idx, False, i, keycode, actuation, behavior
             )
             if not success:
+                all_ok = False
                 self._log(f"Slot {self.slot_idx}: FAILED to send Release[{i}]", "ERROR")
+
+        return all_ok
 
     def _update_travel_bar(self):
         """Update travel bar visualization"""
@@ -1374,7 +1408,12 @@ class DKSEntryUI(QWidget):
 
         if reply == QMessageBox.Yes:
             self._log(f"User requested reset of slot {self.slot_idx}", "INFO")
-            if self.dks_protocol.reset_slot(self.slot_idx):
+            self.reset_btn.setEnabled(False)
+            try:
+                ok = self.dks_protocol.reset_slot(self.slot_idx)
+            finally:
+                self.reset_btn.setEnabled(True)
+            if ok:
                 self._log(f"Slot {self.slot_idx} reset OK, reloading...", "INFO")
                 QMessageBox.information(self, "Success", "Slot reset to defaults")
                 self._on_load()
@@ -1391,7 +1430,11 @@ class DKSEntryUI(QWidget):
         if console:
             console.mark_operation_start()
         self._log("User requested SAVE TO EEPROM", "INFO")
-        success = self.dks_protocol.save_to_eeprom()
+        self.save_eeprom_btn.setEnabled(False)
+        try:
+            success = self.dks_protocol.save_to_eeprom()
+        finally:
+            self.save_eeprom_btn.setEnabled(True)
         if success:
             self._log("Save to EEPROM: SUCCESS", "INFO")
             QMessageBox.information(self, "Success", "DKS configuration saved to EEPROM")
@@ -1414,7 +1457,12 @@ class DKSEntryUI(QWidget):
 
         if reply == QMessageBox.Yes:
             self._log("User requested RESET ALL SLOTS", "INFO")
-            if self.dks_protocol.reset_all_slots():
+            self.reset_all_btn.setEnabled(False)
+            try:
+                ok = self.dks_protocol.reset_all_slots()
+            finally:
+                self.reset_all_btn.setEnabled(True)
+            if ok:
                 self._log("Reset all slots: SUCCESS, reloading...", "INFO")
                 QMessageBox.information(self, "Success", "All slots reset to defaults")
                 self._on_load()
@@ -1431,7 +1479,11 @@ class DKSEntryUI(QWidget):
         if console:
             console.mark_operation_start()
         self._log("User requested LOAD FROM EEPROM", "INFO")
-        success = self.dks_protocol.load_from_eeprom()
+        self.load_eeprom_btn.setEnabled(False)
+        try:
+            success = self.dks_protocol.load_from_eeprom()
+        finally:
+            self.load_eeprom_btn.setEnabled(True)
         if success:
             self._log("Load from EEPROM: SUCCESS, reloading current slot...", "INFO")
             QMessageBox.information(self, "Success", "DKS configurations loaded from EEPROM")

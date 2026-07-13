@@ -38,8 +38,10 @@ class AutorefreshThreadWin(AutorefreshThread):
             win32con.DEVICE_NOTIFY_WINDOW_HANDLE | DEVICE_NOTIFY_ALL_INTERFACE_CLASSES
         )
 
-        while True:
+        while self._running:
             for x in range(100):
+                if not self._running:
+                    break
                 win32gui.PumpWaitingMessages()
                 time.sleep(0.01)
 

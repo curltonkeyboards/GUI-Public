@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+import time
+
 from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWidget,
                               QSlider, QCheckBox, QPushButton, QComboBox, QFrame,
                               QSizePolicy, QScrollArea, QTabWidget, QApplication)
@@ -12,6 +14,11 @@ from widgets.square_button import SquareButton
 from widgets.range_slider import TriggerSlider, RapidTriggerSlider
 from util import tr, KeycodeDisplay
 from vial_device import VialKeyboard
+# Delay (seconds) inserted between per-layer HID reads during the connect load so
+# the burst doesn't saturate the shared USB device and stall firmware MIDI output.
+# ~24 layer reads x 3ms = ~72ms added to connect — imperceptible to the user.
+CONNECT_READ_PACING_S = 0.003
+
 from protocol.nullbind_protocol import (ProtocolNullBind, NullBindGroup,
                                          NULLBIND_NUM_GROUPS, NULLBIND_MAX_KEYS_PER_GROUP,
                                          NULLBIND_BEHAVIOR_NEUTRAL, NULLBIND_BEHAVIOR_LAST_INPUT,
@@ -724,8 +731,8 @@ class TriggerSettingsTab(BasicEditor):
         self.layer_data = []
         for _ in range(12):
             self.layer_data.append({
-                'normal': 80,
-                'midi': 80,
+                'normal': 127,  # 2.0mm default (0-255 = 0-4.0mm, matches firmware scale)
+                'midi': 127,    # 2.0mm default
                 'velocity': 2,  # Velocity mode (0=Fixed, 1=Peak, 2=Speed, 3=Speed+Peak)
                 'vel_speed': 10  # Velocity speed scale
             })
@@ -911,15 +918,15 @@ class TriggerSettingsTab(BasicEditor):
 
         # Normal Keys header with values
         normal_header = QHBoxLayout()
-        self.global_normal_dz_min_value_label = QLabel("DZ: 0.10mm")
+        self.global_normal_dz_min_value_label = QLabel(f"DZ: {self.deadzone_to_mm(6)}")
         self.global_normal_dz_min_value_label.setStyleSheet("QLabel { font-size: 8pt; }")
         normal_header.addWidget(self.global_normal_dz_min_value_label)
         normal_header.addStretch()
-        self.global_normal_value_label = QLabel("Act: 2.00mm")
+        self.global_normal_value_label = QLabel(f"Act: {self.value_to_mm(127)}")
         self.global_normal_value_label.setStyleSheet("QLabel { font-weight: bold; color: palette(highlight); }")
         normal_header.addWidget(self.global_normal_value_label)
         normal_header.addStretch()
-        self.global_normal_dz_max_value_label = QLabel("DZ: 0.10mm")
+        self.global_normal_dz_max_value_label = QLabel(f"DZ: {self.deadzone_to_mm(6)}")
         self.global_normal_dz_max_value_label.setStyleSheet("QLabel { font-size: 8pt; }")
         normal_header.addWidget(self.global_normal_dz_max_value_label)
         global_actuation_layout.addLayout(normal_header)
@@ -948,15 +955,15 @@ class TriggerSettingsTab(BasicEditor):
 
         # MIDI Keys header with values
         midi_header = QHBoxLayout()
-        self.global_midi_dz_min_value_label = QLabel("DZ: 0.10mm")
+        self.global_midi_dz_min_value_label = QLabel(f"DZ: {self.deadzone_to_mm(6)}")
         self.global_midi_dz_min_value_label.setStyleSheet("QLabel { font-size: 8pt; }")
         midi_header.addWidget(self.global_midi_dz_min_value_label)
         midi_header.addStretch()
-        self.global_midi_value_label = QLabel("Act: 2.00mm")
+        self.global_midi_value_label = QLabel(f"Act: {self.value_to_mm(127)}")
         self.global_midi_value_label.setStyleSheet("QLabel { font-weight: bold; color: palette(link); }")
         midi_header.addWidget(self.global_midi_value_label)
         midi_header.addStretch()
-        self.global_midi_dz_max_value_label = QLabel("DZ: 0.10mm")
+        self.global_midi_dz_max_value_label = QLabel(f"DZ: {self.deadzone_to_mm(6)}")
         self.global_midi_dz_max_value_label.setStyleSheet("QLabel { font-size: 8pt; }")
         midi_header.addWidget(self.global_midi_dz_max_value_label)
         global_actuation_layout.addLayout(midi_header)
@@ -994,7 +1001,7 @@ class TriggerSettingsTab(BasicEditor):
         dz_bottom_container = QVBoxLayout()
         dz_bottom_title = QLabel("DZ Min")
         dz_bottom_title.setStyleSheet("QLabel { color: gray; font-size: 7pt; }")
-        self.deadzone_bottom_value_label = QLabel("0.1mm")
+        self.deadzone_bottom_value_label = QLabel(self.deadzone_to_mm(6))
         self.deadzone_bottom_value_label.setStyleSheet("QLabel { font-weight: bold; font-size: 9pt; }")
         dz_bottom_container.addWidget(dz_bottom_title, 0, Qt.AlignCenter)
         dz_bottom_container.addWidget(self.deadzone_bottom_value_label, 0, Qt.AlignCenter)
@@ -1006,7 +1013,7 @@ class TriggerSettingsTab(BasicEditor):
         actuation_container = QVBoxLayout()
         actuation_title = QLabel("Actuation")
         actuation_title.setStyleSheet("QLabel { color: gray; font-size: 7pt; }")
-        self.actuation_value_label = QLabel("2.0mm")
+        self.actuation_value_label = QLabel(self.value_to_mm(127))
         self.actuation_value_label.setStyleSheet("QLabel { font-weight: bold; font-size: 10pt; color: palette(highlight); }")
         actuation_container.addWidget(actuation_title, 0, Qt.AlignCenter)
         actuation_container.addWidget(self.actuation_value_label, 0, Qt.AlignCenter)
@@ -1018,7 +1025,7 @@ class TriggerSettingsTab(BasicEditor):
         dz_top_container = QVBoxLayout()
         dz_top_title = QLabel("DZ Max")
         dz_top_title.setStyleSheet("QLabel { color: gray; font-size: 7pt; }")
-        self.deadzone_top_value_label = QLabel("0.1mm")
+        self.deadzone_top_value_label = QLabel(self.deadzone_to_mm(6))
         self.deadzone_top_value_label.setStyleSheet("QLabel { font-weight: bold; font-size: 9pt; }")
         dz_top_container.addWidget(dz_top_title, 0, Qt.AlignCenter)
         dz_top_container.addWidget(self.deadzone_top_value_label, 0, Qt.AlignCenter)
@@ -1073,6 +1080,18 @@ class TriggerSettingsTab(BasicEditor):
         self.rapidfire_checkbox_container.setLayout(checkbox_container_layout)
         layout.addWidget(self.rapidfire_checkbox_container)
 
+        # MIDI-note notice: the firmware never runs per-key Rapid Trigger on MIDI
+        # note keys (they use velocity-based retrigger instead), so enabling it
+        # there would silently do nothing. Shown/hidden per selected key.
+        self.rf_midi_note_label = QLabel(tr("TriggerSettings",
+            "Rapid Trigger is not available on MIDI note keys.\n"
+            "They use velocity-based retrigger instead."))
+        self.rf_midi_note_label.setWordWrap(True)
+        self.rf_midi_note_label.setAlignment(Qt.AlignCenter)
+        self.rf_midi_note_label.setStyleSheet("QLabel { color: palette(mid); font-style: italic; }")
+        self.rf_midi_note_label.setVisible(False)
+        layout.addWidget(self.rf_midi_note_label)
+
         # Rapidfire widget
         self.rf_widget = QWidget()
         rf_layout = QVBoxLayout()
@@ -1091,7 +1110,7 @@ class TriggerSettingsTab(BasicEditor):
         press_container = QVBoxLayout()
         press_title = QLabel("Press")
         press_title.setStyleSheet("QLabel { color: gray; font-size: 7pt; }")
-        self.rf_press_value_label = QLabel("0.1mm")
+        self.rf_press_value_label = QLabel(self.value_to_mm(6))
         self.rf_press_value_label.setStyleSheet("QLabel { font-weight: bold; font-size: 9pt; color: palette(highlight); }")
         press_container.addWidget(press_title, 0, Qt.AlignCenter)
         press_container.addWidget(self.rf_press_value_label, 0, Qt.AlignCenter)
@@ -1103,7 +1122,7 @@ class TriggerSettingsTab(BasicEditor):
         release_container = QVBoxLayout()
         release_title = QLabel("Release")
         release_title.setStyleSheet("QLabel { color: gray; font-size: 7pt; }")
-        self.rf_release_value_label = QLabel("0.1mm")
+        self.rf_release_value_label = QLabel(self.value_to_mm(6))
         self.rf_release_value_label.setStyleSheet("QLabel { font-weight: bold; font-size: 9pt; color: palette(link); }")
         release_container.addWidget(release_title, 0, Qt.AlignCenter)
         release_container.addWidget(self.rf_release_value_label, 0, Qt.AlignCenter)
@@ -1865,6 +1884,43 @@ class TriggerSettingsTab(BasicEditor):
         self.refresh_layer_display()
         self.update_actuation_visualizer()
 
+    def _push_per_key_to_device(self, items):
+        """Write per-key settings for each (layer, key_index) in `items` to the
+        device, showing a modal progress dialog so the UI stays responsive during
+        large batches (a layer-wide change enqueues up to 840 keys). Returns the
+        set of (layer, key_index) that failed to write.
+        """
+        from PyQt5.QtWidgets import QProgressDialog
+        items = list(items)
+        if not (self.device and isinstance(self.device, VialKeyboard)):
+            return set(items)
+
+        failed = set()
+        total = len(items)
+        progress = None
+        # Only bother with a dialog for large batches; small edits are instant.
+        if total > 24:
+            progress = QProgressDialog(
+                tr("TriggerSettings", "Writing key settings to keyboard..."),
+                None, 0, total, self.widget())
+            progress.setWindowTitle(tr("TriggerSettings", "Saving"))
+            progress.setWindowModality(Qt.WindowModal)
+            progress.setMinimumDuration(300)
+            progress.setCancelButton(None)  # not safely cancellable mid-batch
+
+        try:
+            for i, (layer, key_index) in enumerate(items):
+                settings = self.per_key_values[layer][key_index]
+                if not self.device.keyboard.set_per_key_actuation(layer, key_index, settings):
+                    failed.add((layer, key_index))
+                if progress is not None:
+                    progress.setValue(i + 1)
+                    QApplication.processEvents()
+        finally:
+            if progress is not None:
+                progress.close()
+        return failed
+
     def on_save(self):
         """Save pending global actuation and per-key changes to device
 
@@ -1876,8 +1932,27 @@ class TriggerSettingsTab(BasicEditor):
         """
         has_layer_changes = self.has_unsaved_changes and self.pending_layer_data is not None
         has_per_key_changes = len(self.pending_per_key_keys) > 0
+        has_nullbind_changes = self.nullbind_pending_changes
 
-        if not has_layer_changes and not has_per_key_changes:
+        if not has_layer_changes and not has_per_key_changes and not has_nullbind_changes:
+            return
+
+        # If the initial per-key read from the device failed, per_key_values holds
+        # substituted defaults, not the device's real config. Saving now (a
+        # layer-wide change enqueues every key) would overwrite the real config
+        # with defaults. Refuse and offer a re-read instead. (Null-bind changes use
+        # an independent protocol and are unaffected, so only guard when there are
+        # actuation/per-key changes to write.)
+        if (has_layer_changes or has_per_key_changes) and not getattr(self, '_per_key_read_ok', True):
+            ret = QMessageBox.warning(
+                None, tr("TriggerSettings", "Reading from keyboard failed"),
+                tr("TriggerSettings",
+                   "Per-key settings could not be read from the keyboard, so the "
+                   "values shown are defaults. Saving now would overwrite the "
+                   "keyboard's real settings.\n\nReload from the keyboard first?"),
+                QMessageBox.Yes | QMessageBox.Cancel)
+            if ret == QMessageBox.Yes:
+                self._load_per_key_data()
             return
 
         # Apply pending layer changes to local state
@@ -1891,9 +1966,46 @@ class TriggerSettingsTab(BasicEditor):
 
         # Send pending per-key changes to device (includes layer-wide actuation changes)
         if has_per_key_changes and self.device and isinstance(self.device, VialKeyboard):
-            for layer, key_index in self.pending_per_key_keys:
-                settings = self.per_key_values[layer][key_index]
-                self.device.keyboard.set_per_key_actuation(layer, key_index, settings)
+            # Disable the button up-front so a rapid double-click can't queue a
+            # second overlapping batch of transfers; re-enabled in finally.
+            self.save_btn.setEnabled(False)
+            try:
+                # set_per_key_actuation returns False (and swallows exceptions) when
+                # the write does not reach the device (busy / unplugged). The old
+                # code ignored the result and cleared the whole pending set, so a
+                # failed save silently dropped those edits while the GUI reported
+                # success and diverged from the device. (M16)
+                failed = self._push_per_key_to_device(self.pending_per_key_keys)
+                if failed:
+                    # Keep the un-written keys pending and tell the user; do not clear.
+                    self.pending_per_key_keys = failed
+                    self.has_unsaved_changes = True
+                    QMessageBox.warning(
+                        None, tr("TriggerSettings", "Save incomplete"),
+                        tr("TriggerSettings",
+                           "{} changed key(s) could not be written to the keyboard and "
+                           "remain unsaved. Check the connection and save again.").format(len(failed)))
+                    return
+            finally:
+                # Re-enable if anything remains unsaved so the user can retry;
+                # the full-success path disables it again below.
+                self.save_btn.setEnabled(self.has_unsaved_changes or bool(self.pending_per_key_keys))
+
+        # Also flush pending SOCD / Null Bind changes so the single "Save" button
+        # persists everything on this tab (they otherwise had a separate button
+        # and were silently left unsaved).
+        if has_nullbind_changes:
+            result = self._persist_nullbind_groups()
+            if result != 'ok':
+                self.has_unsaved_changes = True
+                self.save_btn.setEnabled(True)
+                QMessageBox.warning(
+                    None, tr("TriggerSettings", "Save incomplete"),
+                    tr("TriggerSettings",
+                       "SOCD / Null Bind settings could not be written to the "
+                       "keyboard and remain unsaved. Check the connection and save again."))
+                return
+            self.nullbind_save_btn.setEnabled(False)
 
         # Clear all unsaved changes flags
         self.has_unsaved_changes = False
@@ -1955,13 +2067,19 @@ class TriggerSettingsTab(BasicEditor):
 
         self.syncing = False
 
+        # Rapid Trigger only runs on non-MIDI keys in firmware. For MIDI note
+        # keys, disable the RT controls and show a notice so the user isn't
+        # misled into thinking RT is active where it does nothing.
+        key_is_midi = self._key_index_is_midi(row, col)
+        self.rf_midi_note_label.setVisible(key_is_midi)
+
         # Enable controls when key is selected
         key_selected = self.container.active_key is not None
         self.trigger_slider.setEnabled(key_selected and self.mode_enabled)
-        self.rapidfire_checkbox.setEnabled(key_selected)
-        self.rapid_trigger_slider.setEnabled(key_selected and rapidfire_enabled)
-        self.rf_widget.setVisible(rapidfire_enabled)
-        self.continuous_rt_checkbox.setEnabled(key_selected and rapidfire_enabled)
+        self.rapidfire_checkbox.setEnabled(key_selected and not key_is_midi)
+        self.rapid_trigger_slider.setEnabled(key_selected and rapidfire_enabled and not key_is_midi)
+        self.rf_widget.setVisible(rapidfire_enabled and not key_is_midi)
+        self.continuous_rt_checkbox.setEnabled(key_selected and rapidfire_enabled and not key_is_midi)
 
         # Update actuation visualizer
         self.update_actuation_visualizer()
@@ -1973,6 +2091,8 @@ class TriggerSettingsTab(BasicEditor):
         self.rapid_trigger_slider.setEnabled(False)
         self.continuous_rt_checkbox.setEnabled(False)
         self.rf_widget.setVisible(False)
+        if hasattr(self, 'rf_midi_note_label'):
+            self.rf_midi_note_label.setVisible(False)
 
         # Update actuation visualizer
         self.update_actuation_visualizer()
@@ -2142,7 +2262,9 @@ class TriggerSettingsTab(BasicEditor):
                     row, col = key.desc.row, key.desc.col
                     key_index = row * 14 + col
 
-                    if key_index < 70:
+                    # Rapid Trigger has no effect on MIDI note keys in firmware,
+                    # so don't set the (inert) flag on them.
+                    if key_index < 70 and not self._key_index_is_midi(row, col):
                         # Update flags field: set or clear bit 0
                         if enabled:
                             self.per_key_values[layer][key_index]['flags'] |= 0x01  # Set bit 0
@@ -2303,6 +2425,17 @@ class TriggerSettingsTab(BasicEditor):
         # DEPRECATED - do not use
         pass
 
+    def _key_index_is_midi(self, row, col):
+        """Return True if the key at (row, col) on the current layer is a MIDI note key.
+
+        Firmware never runs per-key Rapid Trigger on MIDI note keys, so the GUI
+        disables the RT controls for them.
+        """
+        if not self.keyboard or not hasattr(self.keyboard, 'layout'):
+            return False
+        keycode = self.keyboard.layout.get((self.current_layer, row, col), "KC_NO")
+        return self.is_midi_keycode(keycode)
+
     def is_midi_keycode(self, keycode):
         """Check if a keycode is a MIDI note keycode (base, keysplit, or triplesplit)"""
         if not keycode or keycode == "KC_NO" or keycode == "KC_TRNS":
@@ -2321,6 +2454,15 @@ class TriggerSettingsTab(BasicEditor):
             if remaining and remaining[0] in 'CDEFGAB':
                 return True
             return False
+
+        # Mod Press keys (MI_MOD_PRESS_*) are analog travel keys that map key
+        # depth to a CC. They use per-key actuation/deadzone exactly like MIDI
+        # note keys, so group them with MIDI so the MIDI actuation/deadzone
+        # sliders (and per-key edits) reach them. Without this they fell into
+        # the "Normal" bucket, so the MIDI deadzone slider silently skipped
+        # them and they kept the default ~0.1mm deadzone.
+        if keycode.startswith("MI_MOD_PRESS"):
+            return True
 
         # Check for MI_ prefix (base MIDI notes like MI_C, MI_C_1, MI_Cs, etc.)
         if keycode.startswith("MI_"):
@@ -2387,6 +2529,7 @@ class TriggerSettingsTab(BasicEditor):
             midi_dz_top = DEFAULT_DEADZONE
 
         # Apply to ALL 12 layers for uniformity (firmware always uses per-key per-layer)
+        touched = []
         for layer in range(12):
             # Scan all keys in the keymap and assign actuation values
             for key in self.container.widgets:
@@ -2408,15 +2551,16 @@ class TriggerSettingsTab(BasicEditor):
                             dz_bottom = normal_dz_bottom
                             dz_top = normal_dz_top
 
-                        # Update per-key values in memory
+                        # Update per-key values in memory (velocity_curve/flags untouched)
                         self.per_key_values[layer][key_index]['actuation'] = actuation_value
                         self.per_key_values[layer][key_index]['deadzone_bottom'] = dz_bottom
                         self.per_key_values[layer][key_index]['deadzone_top'] = dz_top
+                        touched.append((layer, key_index))
 
-                        # Send to device
-                        if self.device and isinstance(self.device, VialKeyboard):
-                            settings = self.per_key_values[layer][key_index]
-                            self.device.keyboard.set_per_key_actuation(layer, key_index, settings)
+        # Send to device via the responsive batched writer (up to 840 keys). This
+        # replaces the old inline synchronous loop that froze the UI and saturated
+        # the shared USB device with hundreds of back-to-back writes.
+        self._push_per_key_to_device(touched)
 
         # Update layer_data with the safe values used, so global sliders show correct values
         for layer in range(12):
@@ -2672,7 +2816,11 @@ class TriggerSettingsTab(BasicEditor):
 
             # Copy on device
             if self.device and isinstance(self.device, VialKeyboard):
-                self.device.keyboard.copy_layer_actuations(source_layer, dest_layer)
+                self.copy_layer_btn.setEnabled(False)
+                try:
+                    self.device.keyboard.copy_layer_actuations(source_layer, dest_layer)
+                finally:
+                    self.copy_layer_btn.setEnabled(self.mode_enabled)
 
             self.refresh_layer_display()
 
@@ -2692,52 +2840,94 @@ class TriggerSettingsTab(BasicEditor):
             source_layer = self.current_layer
 
             # Copy to all layers in memory and on device
-            for dest_layer in range(12):
-                if dest_layer != source_layer:
-                    # Copy in memory (deep copy of dicts)
-                    for key_index in range(70):
-                        self.per_key_values[dest_layer][key_index] = self.per_key_values[source_layer][key_index].copy()
+            all_ok = True
+            self.copy_all_layers_btn.setEnabled(False)
+            try:
+                for dest_layer in range(12):
+                    if dest_layer != source_layer:
+                        # Copy in memory (deep copy of dicts)
+                        for key_index in range(70):
+                            self.per_key_values[dest_layer][key_index] = self.per_key_values[source_layer][key_index].copy()
 
-                    # Copy on device
-                    if self.device and isinstance(self.device, VialKeyboard):
-                        self.device.keyboard.copy_layer_actuations(source_layer, dest_layer)
+                        # Copy on device
+                        if self.device and isinstance(self.device, VialKeyboard):
+                            if not self.device.keyboard.copy_layer_actuations(source_layer, dest_layer):
+                                all_ok = False
+            finally:
+                self.copy_all_layers_btn.setEnabled(self.mode_enabled)
 
             self.refresh_layer_display()
-            QMessageBox.information(
-                self.widget(),
-                tr("TriggerSettings", "Copy Complete"),
-                tr("TriggerSettings", f"Per-key settings copied to all layers.")
-            )
+            if all_ok:
+                QMessageBox.information(
+                    self.widget(),
+                    tr("TriggerSettings", "Copy Complete"),
+                    tr("TriggerSettings", f"Per-key settings copied to all layers.")
+                )
+            else:
+                QMessageBox.warning(
+                    self.widget(),
+                    tr("TriggerSettings", "Copy Incomplete"),
+                    tr("TriggerSettings",
+                       "Some layers could not be written to the keyboard. "
+                       "Check the connection and try again.")
+                )
 
     def on_reset_all(self):
-        """Reset all actuations to default with confirmation"""
+        """Reset all actuation/deadzone/rapid-trigger settings to default.
+
+        Per-key VELOCITY CURVES (set on the Velocity tab) are preserved — this
+        button only resets the Trigger-Settings fields, so it does not silently
+        wipe the user's velocity-curve assignments. The firmware's blanket reset
+        command would clear velocity curves too, so we write the preserved values
+        per key instead.
+        """
         ret = QMessageBox.question(
             self.widget(),
             tr("TriggerSettings", "Reset All"),
-            tr("TriggerSettings", "Reset all per-key actuations to default (2.0mm)?"),
+            tr("TriggerSettings",
+               "Reset actuation (2.0mm), deadzones and rapid trigger for all keys "
+               "to default?\n\nPer-key velocity curves are kept."),
             QMessageBox.Yes | QMessageBox.No
         )
 
-        if ret == QMessageBox.Yes:
-            # Reset in memory to defaults (deadzones always enabled)
-            for layer in range(12):
-                for key_index in range(70):
-                    self.per_key_values[layer][key_index] = {
-                        'actuation': 127,                   # 2.0mm (127/255 of 4mm)
-                        'deadzone_top': 6,                  # ~0.1mm from right
-                        'deadzone_bottom': 6,               # ~0.1mm from left
-                        'velocity_curve': 2,                # Medium
-                        'flags': 0,                         # Both rapidfire and per-key velocity curve disabled
-                        'rapidfire_press_sens': 6,          # ~0.1mm from left
-                        'rapidfire_release_sens': 6,        # ~0.1mm from right
-                        'rapidfire_velocity_mod': 0         # No modifier
-                    }
+        if ret != QMessageBox.Yes:
+            return
 
-            # Reset on device
-            if self.device and isinstance(self.device, VialKeyboard):
-                self.device.keyboard.reset_per_key_actuations()
+        # Reset the actuation-related fields in memory, PRESERVING each key's
+        # velocity_curve and the per-key-velocity flag bit (bit 1).
+        for layer in range(12):
+            for key_index in range(70):
+                existing = self.per_key_values[layer][key_index]
+                self.per_key_values[layer][key_index] = {
+                    'actuation': 127,                   # 2.0mm (127/255 of 4mm)
+                    'deadzone_top': 6,                  # ~0.1mm from right
+                    'deadzone_bottom': 6,               # ~0.1mm from left
+                    'velocity_curve': existing.get('velocity_curve', 0),  # preserved
+                    # Clear RT bits (0, 2) but keep the per-key-velocity flag (bit 1)
+                    'flags': existing.get('flags', 0) & 0x02,
+                    'rapidfire_press_sens': 6,          # ~0.1mm from left
+                    'rapidfire_release_sens': 6,        # ~0.1mm from right
+                    'rapidfire_velocity_mod': 0         # No modifier
+                }
 
-            self.refresh_layer_display()
+        # Write the reset values to the device per key (preserving velocity
+        # curves). A progress dialog keeps the UI responsive for the 840 writes.
+        if self.device and isinstance(self.device, VialKeyboard):
+            self.reset_btn.setEnabled(False)
+            try:
+                items = [(layer, k) for layer in range(12) for k in range(70)]
+                failed = self._push_per_key_to_device(items)
+                if failed:
+                    QMessageBox.warning(
+                        self.widget(),
+                        tr("TriggerSettings", "Reset Incomplete"),
+                        tr("TriggerSettings",
+                           "{} key(s) could not be written to the keyboard. "
+                           "Check the connection and try again.").format(len(failed)))
+            finally:
+                self.reset_btn.setEnabled(self.mode_enabled)
+
+        self.refresh_layer_display()
 
     def rebuild_layers(self):
         """Create layer selection buttons"""
@@ -2891,9 +3081,39 @@ class TriggerSettingsTab(BasicEditor):
             self._load_per_key_data()
             self._needs_loading = False
 
+    def deactivate(self):
+        """Called when the user switches away from this tab.
+
+        Everything on this tab (actuation / rapid trigger / deadzone AND SOCD /
+        Null Bind) is saved through the one "Save" button, so warn before the
+        edits are silently lost on navigation and offer to save them.
+        """
+        if not self.valid():
+            return
+        has_pending = (self.has_unsaved_changes
+                       or bool(self.pending_per_key_keys)
+                       or self.nullbind_pending_changes)
+        if not has_pending:
+            return
+        ret = QMessageBox.question(
+            self.widget(),
+            tr("TriggerSettings", "Unsaved Changes"),
+            tr("TriggerSettings",
+               "You have unsaved trigger/SOCD changes. Save them to the keyboard now?"),
+            QMessageBox.Save | QMessageBox.Discard,
+            QMessageBox.Save)
+        if ret == QMessageBox.Save:
+            self.on_save()
+
     def _load_per_key_data(self):
         """Load all per-key actuation data from device"""
         print("TriggerSettingsTab: Loading per-key data...")
+
+        # Tracks whether the values now in per_key_values reflect the device.
+        # If a read fails we substitute defaults for display, but those must NOT
+        # be saved back (a layer-wide actuation change enqueues ALL keys, which
+        # would then overwrite the device's real per-key config with defaults).
+        self._per_key_read_ok = True
 
         # Try bulk read first (much faster - 12 calls instead of 840)
         bulk_success = False
@@ -2903,6 +3123,12 @@ class TriggerSettingsTab(BasicEditor):
                 bulk_success = True
                 for layer in range(12):
                     layer_data = self.keyboard.get_all_per_key_actuations(layer)
+                    # Pace the connect burst: each bulk layer read pulls ~24 HID
+                    # packets back. Firing all 12 back-to-back saturates the shared
+                    # USB device, which starves the MIDI IN endpoint and stalls the
+                    # firmware's blocking MIDI send (audible looper glitch on connect).
+                    # A few ms between reads lets the device drain MIDI between bursts.
+                    time.sleep(CONNECT_READ_PACING_S)
                     if layer_data and len(layer_data) == 70:
                         for key_index, settings in enumerate(layer_data):
                             self.per_key_values[layer][key_index] = settings
@@ -2940,6 +3166,9 @@ class TriggerSettingsTab(BasicEditor):
 
             # If communication failed, set all keys to safe defaults
             if communication_failed:
+                # Defaults are for DISPLAY ONLY — mark the read as failed so
+                # on_save() refuses to persist them over the device's real config.
+                self._per_key_read_ok = False
                 print("Setting all keys to safe defaults: 0.1mm deadzones, 2.0mm actuation")
                 for layer in range(12):
                     for key_index in range(70):
@@ -2947,7 +3176,7 @@ class TriggerSettingsTab(BasicEditor):
                             'actuation': 127,                   # 2.0mm (127/255 of 4mm)
                             'deadzone_top': 6,                  # ~0.1mm from right
                             'deadzone_bottom': 6,               # ~0.1mm from left
-                            'velocity_curve': 2,                # Medium
+                            'velocity_curve': 0,                # Linear (firmware default)
                             'flags': 0,                         # All disabled
                             'rapidfire_press_sens': 6,          # ~0.1mm from left
                             'rapidfire_release_sens': 6,        # ~0.1mm from right
@@ -2958,6 +3187,7 @@ class TriggerSettingsTab(BasicEditor):
         try:
             for layer in range(12):
                 data = self.keyboard.get_layer_actuation(layer)
+                time.sleep(CONNECT_READ_PACING_S)  # pace burst (see _load_per_key_data note)
                 if data:
                     self.layer_data[layer] = {
                         'normal': data['normal'],
@@ -3214,6 +3444,7 @@ class TriggerSettingsTab(BasicEditor):
             group.behavior = behavior
             self.nullbind_pending_changes = True
             self.nullbind_save_btn.setEnabled(True)
+            self.save_btn.setEnabled(True)  # main Save also covers SOCD changes
             self.update_nullbind_behavior_description()
             self.update_nullbind_display()
 
@@ -3235,6 +3466,7 @@ class TriggerSettingsTab(BasicEditor):
             group.layer = layer
             self.nullbind_pending_changes = True
             self.nullbind_save_btn.setEnabled(True)
+            self.save_btn.setEnabled(True)  # main Save also covers SOCD changes
 
     def on_nullbind_add_keys(self):
         """Add selected keys to current null bind group"""
@@ -3291,6 +3523,7 @@ class TriggerSettingsTab(BasicEditor):
         if added_count > 0:
             self.nullbind_pending_changes = True
             self.nullbind_save_btn.setEnabled(True)
+            self.save_btn.setEnabled(True)  # main Save also covers SOCD changes
             self.update_nullbind_display()
             self.refresh_layer_display()
         elif len(group.keys) >= NULLBIND_MAX_KEYS_PER_GROUP:
@@ -3321,6 +3554,7 @@ class TriggerSettingsTab(BasicEditor):
         if removed_count > 0:
             self.nullbind_pending_changes = True
             self.nullbind_save_btn.setEnabled(True)
+            self.save_btn.setEnabled(True)  # main Save also covers SOCD changes
             self.update_nullbind_display()
             self.refresh_layer_display()
 
@@ -3342,43 +3576,61 @@ class TriggerSettingsTab(BasicEditor):
             group.clear()
             self.nullbind_pending_changes = True
             self.nullbind_save_btn.setEnabled(True)
+            self.save_btn.setEnabled(True)  # main Save also covers SOCD changes
             self.update_nullbind_display()
             self.refresh_layer_display()
+
+    def _persist_nullbind_groups(self):
+        """Send all null-bind groups to the keyboard and commit to EEPROM.
+
+        Returns 'ok' on success, 'send' if a group failed to transmit, or
+        'eeprom' if the EEPROM commit failed. No dialogs — callers decide how to
+        report. Clears the pending flag on success.
+        """
+        if not self.nullbind_protocol:
+            return 'send'
+        for i, group in enumerate(self.nullbind_groups):
+            if not self.nullbind_protocol.set_group(i, group):
+                return 'send'
+        if not self.nullbind_protocol.save_to_eeprom():
+            return 'eeprom'
+        self.nullbind_pending_changes = False
+        return 'ok'
 
     def on_nullbind_save(self):
         """Save null bind settings to keyboard"""
         if not self.nullbind_protocol:
             return
 
-        # Send all groups to keyboard
-        success = True
-        for i, group in enumerate(self.nullbind_groups):
-            if not self.nullbind_protocol.set_group(i, group):
-                success = False
-                break
-
-        if success:
-            # Save to EEPROM
-            if self.nullbind_protocol.save_to_eeprom():
+        # Disable the button up-front so rapid double-clicks can't queue
+        # overlapping transfers; re-enabled in finally (kept disabled on the
+        # full-success path since there is nothing left to save).
+        self.nullbind_save_btn.setEnabled(False)
+        result = 'send'
+        try:
+            result = self._persist_nullbind_groups()
+            if result == 'ok':
                 QMessageBox.information(
                     self.widget(),
                     tr("TriggerSettings", "Success"),
                     tr("TriggerSettings", "Null bind settings saved to keyboard.")
                 )
-                self.nullbind_pending_changes = False
-                self.nullbind_save_btn.setEnabled(False)
-            else:
+            elif result == 'eeprom':
                 QMessageBox.warning(
                     self.widget(),
                     tr("TriggerSettings", "Error"),
                     tr("TriggerSettings", "Failed to save null bind settings to EEPROM.")
                 )
-        else:
-            QMessageBox.warning(
-                self.widget(),
-                tr("TriggerSettings", "Error"),
-                tr("TriggerSettings", "Failed to send null bind settings to keyboard.")
-            )
+            else:
+                QMessageBox.warning(
+                    self.widget(),
+                    tr("TriggerSettings", "Error"),
+                    tr("TriggerSettings", "Failed to send null bind settings to keyboard.")
+                )
+        finally:
+            # Leave disabled only when everything saved; otherwise re-enable
+            # so the user can retry.
+            self.nullbind_save_btn.setEnabled(result != 'ok')
 
     def load_nullbind_groups(self):
         """Load null bind groups from keyboard"""

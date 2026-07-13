@@ -805,10 +805,21 @@ class DelayTab(BasicEditor):
 
         unified = self._user_to_unified(index)
         slot = self.slot_editors[index].save_to_slot()
-        if self.delay_protocol.set_slot(unified, slot):
-            self.loaded_slots[index] = slot
-        else:
-            QMessageBox.warning(None, "Error", f"Failed to save user delay slot {index + 1}")
+        btn = self.slot_editors[index].save_btn
+        btn.setEnabled(False)
+        try:
+            if self.delay_protocol.set_slot(unified, slot):
+                self.loaded_slots[index] = slot
+                # set_slot only updates firmware RAM — persist to EEPROM so the
+                # slot survives a power cycle
+                if not self.delay_protocol.save_to_eeprom():
+                    QMessageBox.warning(None, "Error",
+                                        f"Delay slot {index + 1} saved, but writing to keyboard memory failed - "
+                                        "it may be lost when the keyboard is unplugged.")
+            else:
+                QMessageBox.warning(None, "Error", f"Failed to save user delay slot {index + 1}")
+        finally:
+            btn.setEnabled(True)
 
     def _on_save_as_new_slot(self, source_index):
         """Save current settings as a new slot (next available)"""
@@ -830,22 +841,33 @@ class DelayTab(BasicEditor):
         slot = self.slot_editors[source_index].save_to_slot()
         unified = self._user_to_unified(target)
 
-        if self.delay_protocol.set_slot(unified, slot):
-            self.loaded_slots[target] = slot
-            self.slot_editors[target].load_from_slot(slot)
+        btn = self.slot_editors[source_index].save_new_btn
+        btn.setEnabled(False)
+        try:
+            if self.delay_protocol.set_slot(unified, slot):
+                self.loaded_slots[target] = slot
+                self.slot_editors[target].load_from_slot(slot)
+                # Persist to EEPROM so the new slot survives a power cycle
+                if not self.delay_protocol.save_to_eeprom():
+                    QMessageBox.warning(None, "Error",
+                                        f"Delay slot {target + 1} saved, but writing to keyboard memory failed - "
+                                        "it may be lost when the keyboard is unplugged.")
+                    return
 
-            # Ensure the new tab is visible
-            if target >= self._visible_tab_count:
-                self._manually_expanded_count = max(
-                    self._manually_expanded_count,
-                    target - max(1, self._find_last_used_index() + 1) + 1
-                )
-                self._update_visible_tabs()
+                # Ensure the new tab is visible
+                if target >= self._visible_tab_count:
+                    self._manually_expanded_count = max(
+                        self._manually_expanded_count,
+                        target - max(1, self._find_last_used_index() + 1) + 1
+                    )
+                    self._update_visible_tabs()
 
-            # Switch to the new tab
-            self.tabs.setCurrentIndex(target)
-        else:
-            QMessageBox.warning(None, "Error", f"Failed to save to delay slot {target + 1}")
+                # Switch to the new tab
+                self.tabs.setCurrentIndex(target)
+            else:
+                QMessageBox.warning(None, "Error", f"Failed to save to delay slot {target + 1}")
+        finally:
+            btn.setEnabled(True)
 
     def _on_load_slot(self, editor_index=None):
         """Reload slot from keyboard"""
@@ -853,8 +875,13 @@ class DelayTab(BasicEditor):
         if 0 <= index < DELAY_USER_SLOT_COUNT:
             self.loaded_slots.pop(index, None)
             if self.delay_protocol:
-                unified = self._user_to_unified(index)
-                slot = self.delay_protocol.get_slot(unified)
-                if slot:
-                    self.loaded_slots[index] = slot
-                    self.slot_editors[index].load_from_slot(slot)
+                btn = self.slot_editors[index].load_btn
+                btn.setEnabled(False)
+                try:
+                    unified = self._user_to_unified(index)
+                    slot = self.delay_protocol.get_slot(unified)
+                    if slot:
+                        self.loaded_slots[index] = slot
+                        self.slot_editors[index].load_from_slot(slot)
+                finally:
+                    btn.setEnabled(True)

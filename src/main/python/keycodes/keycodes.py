@@ -2364,7 +2364,17 @@ KEYCODES_LOOP_BUTTONS = [
     K("DM_REC6", "Loop\n6", "Main loop/macro key 6"),
     K("DM_REC7", "Loop\n7", "Main loop/macro key 7"),
     K("DM_REC8", "Loop\n8", "Main loop/macro key 8"),
-    
+
+    # ThruLoop transport keys (silent CC-only loop tracks 1-8)
+    K("DM_THRULOOP_1", "Thru\n1", "ThruLoop 1: record/play/stop timing + ThruLoop CCs (no MIDI notes). Hold for menu."),
+    K("DM_THRULOOP_2", "Thru\n2", "ThruLoop 2: record/play/stop timing + ThruLoop CCs (no MIDI notes). Hold for menu."),
+    K("DM_THRULOOP_3", "Thru\n3", "ThruLoop 3: record/play/stop timing + ThruLoop CCs (no MIDI notes). Hold for menu."),
+    K("DM_THRULOOP_4", "Thru\n4", "ThruLoop 4: record/play/stop timing + ThruLoop CCs (no MIDI notes). Hold for menu."),
+    K("DM_THRULOOP_5", "Thru\n5", "ThruLoop 5: record/play/stop timing + ThruLoop CCs (no MIDI notes). Hold for menu."),
+    K("DM_THRULOOP_6", "Thru\n6", "ThruLoop 6: record/play/stop timing + ThruLoop CCs (no MIDI notes). Hold for menu."),
+    K("DM_THRULOOP_7", "Thru\n7", "ThruLoop 7: record/play/stop timing + ThruLoop CCs (no MIDI notes). Hold for menu."),
+    K("DM_THRULOOP_8", "Thru\n8", "ThruLoop 8: record/play/stop timing + ThruLoop CCs (no MIDI notes). Hold for menu."),
+
     # Core control buttons
     K("DM_MUTE", "Mute\nButton", "Global mute button"),
     K("DM_OVERDUB", "Overdub\nButton", "Overdub recording button"),
@@ -2632,16 +2642,59 @@ KEYCODES_ARPEGGIATOR = [
     K("ARP_QUICK_BUILD_4", "Arp 4\nQuick\nBuild", "Quick build arpeggiator slot 4"),
 ]
 
-# Generate preset selection keycodes (48 factory + 40 user = 88 total)
+# Generate preset selection keycodes (200 factory rhythm arps + 40 user = 240 total)
+#
+# Factory presets 0-199 are single-note "rhythm arpeggios": 10 categories x 20,
+# id = category*20 + slot. The name (category prefix + rate + tag) mirrors the
+# firmware generator in arp_factory_presets.c so the GUI label matches the OLED.
+def _arp_factory_name(idn):
+    # Mirrors arp_fac_describe() in arp_factory_presets.c. One entry per PATTERN
+    # (rate/gate are per-master flags, not separate presets). 10 categories:
+    #   Basic 0, Ascending 1-3, Descending 4-6, Syncopated 7-29, Off Beat 30-38,
+    #   Rock 39-50, Funk 51-67, Hip 68-82, Dance 83-100, Chords 101-118.
+    # Returns (pfx, tag).
+    gap_grids = {
+        3:  ("Syn", ["Tres", "Clave", "Rmba", "Hban", "Dmbw", "Boss", "Smba", "Cscr", "Funk",
+                     "Son23", "Rmb23", "Bmbe", "ChaCh", "Cumb", "Baio", "Part", "Mrct", "Gahu",
+                     "Calyp", "Soca", "Plena", "Bomba", "Guajr"]),
+        4:  ("Off", ["Off8", "Off16", "Push", "Chrl", "Stab", "Drop", "Lilt", "Sync", "OneDr"]),
+        5:  ("Rock", None), 6: ("Funk", None), 7: ("Hip", None), 8: ("EDM", None),  # numbered
+    }
+    ch_pfx   = ["5th", "Maj", "Min", "Maj7", "Min7", "Dom7"]
+    cats     = [(0, 1), (1, 3), (4, 3), (7, 23), (30, 9),
+                (39, 12), (51, 17), (68, 15), (83, 18), (101, 18)]
+    cat = 0
+    for ci, (off, cnt) in enumerate(cats):
+        if off <= idn < off + cnt:
+            cat, base = ci, off
+            break
+    k = idn - base
+    if cat == 0:        # Basic
+        return "Basic", ""
+    if cat in (1, 2):   # Ascending / Descending (velocity ramp x1/x2/x4)
+        ramp = [1, 2, 4][k if k < 3 else 0]
+        return ("Asc" if cat == 1 else "Desc"), "x{}".format(ramp)
+    if cat in gap_grids:   # Syncopated / Off Beat / Rock / Funk / Hip / Dance
+        pfx, names = gap_grids[cat]
+        if names is None:           # Western banks are numbered
+            return pfx, str(k + 1)
+        return pfx, names[k]
+    # Chords: 6 types x {Flat/Rise/Fall}
+    t, vs = k // 3, k % 3
+    return ch_pfx[t], ["Flat", "Rise", "Fall"][vs]
+
 KEYCODES_ARPEGGIATOR_PRESETS = []
-# Factory presets 0-47
-for x in range(48):
+# Factory rhythm PATTERNS 0-118 (rate/gate applied as per-master flags)
+for x in range(119):
+    _pfx, _tag = _arp_factory_name(x)
+    _label = "Arp\n{}\n{}".format(_pfx, _tag) if _tag else "Arp\n{}".format(_pfx)
     KEYCODES_ARPEGGIATOR_PRESETS.append(
-        K("ARP_PRESET_{}".format(x), "Arp\nPreset\n{}".format(x), "Load arpeggiator preset {}".format(x))
+        K("ARP_PRESET_{}".format(x), _label,
+          "Arp rhythm pattern {}: {} {}".format(x, _pfx, _tag))
     )
-# User presets 48-87 (displayed as User 1-40)
-for x in range(48, 88):
-    user_num = x - 47
+# User presets 119-158 (displayed as User 1-40)
+for x in range(119, 159):
+    user_num = x - 118
     KEYCODES_ARPEGGIATOR_PRESETS.append(
         K("ARP_PRESET_{}".format(x), "Arp\nUser\n{}".format(user_num), "Load arpeggiator user preset {}".format(user_num))
     )
@@ -2739,10 +2792,18 @@ KEYCODES_OCTAVE_DOUBLER = [
     K("TEMP_TRANS_MINUS12", "Temp\nTrans\n-12", "Hold: temporarily add -12 to transposition"),
 ]
 
-# Generate preset selection keycodes (48 factory + 40 user = 88 total)
+# Generate preset selection keycodes.
+# NOTE: the first 20 SEQ_PRESET keycodes (0xED98-0xEDAB) are the persistent
+# DRUM MACHINE slots (MAX_FACTORY_SEQ_SLOTS = 20), not step-sequencer presets —
+# tapping one opens/plays its drum slot. Only 20-87 are step-seq presets.
 KEYCODES_STEP_SEQUENCER_PRESETS = []
-# Factory presets 0-47
-for x in range(48):
+# Drum machine slots 0-19
+for x in range(20):
+    KEYCODES_STEP_SEQUENCER_PRESETS.append(
+        K("SEQ_PRESET_{}".format(x), "Drum\nSlot\n{}".format(x + 1), "Drum machine slot {}".format(x + 1))
+    )
+# Step-sequencer factory presets 20-47
+for x in range(20, 48):
     KEYCODES_STEP_SEQUENCER_PRESETS.append(
         K("SEQ_PRESET_{}".format(x), "Seq\nPreset\n{}".format(x), "Load sequencer preset {}".format(x))
     )
@@ -3005,6 +3066,13 @@ for x in range (128):
                               "CC{}\n▼".format(x),
                               "Midi CC{} down".format(x)))
 
+KEYCODES_MOD_PRESS = []
+
+for x in range (128):
+    KEYCODES_MOD_PRESS.append(K("MI_MOD_PRESS_{}".format(x),
+                              "ModPrs\nCC{}".format(x),
+                              "Mod Press CC{} (key depth -> CC value, averaged across mapped keys)".format(x)))
+
 
 for x in range(128):
     for y in range(128):
@@ -3141,7 +3209,7 @@ def recreate_keycodes():
     KEYCODES.extend(KEYCODES_SPECIAL + KEYCODES_BASIC + KEYCODES_SHIFTED + KEYCODES_ISO + KEYCODES_LAYERS + KEYCODES_LAYERS_DF + KEYCODES_LAYERS_MO + KEYCODES_LAYERS_TG + KEYCODES_LAYERS_TT + KEYCODES_LAYERS_OSL + KEYCODES_LAYERS_TO + KEYCODES_LAYERS_LT +
                     KEYCODES_BOOT + KEYCODES_MODIFIERS + KEYCODES_QUANTUM + KEYCODES_BACKLIGHT + KEYCODES_MEDIA + KEYCODES_OLED + KEYCODES_CLEAR + KEYCODES_RGB_KC_COLOR + KEYCODES_MIDI_OCTAVE2 + KEYCODES_MIDI_OCTAVE3 + KEYCODES_MIDI_KEY2 + KEYCODES_MIDI_KEY3 + KEYCODES_MIDI_VELOCITY2 + KEYCODES_MIDI_VELOCITY3 +
                     KEYCODES_TAP_DANCE + KEYCODES_MACRO + KEYCODES_MACRO_BASE + KEYCODES_EARTRAINER + KEYCODES_SAVE + KEYCODES_SETTINGS1 + KEYCODES_SETTINGS2 + KEYCODES_SETTINGS3 + KEYCODES_CHORDTRAINER + KEYCODES_USER + KEYCODES_HIDDEN + KEYCODES_MIDI+ KEYCODES_MIDI_CHANNEL_OS + KEYCODES_MIDI_CHANNEL_HOLD + KEYCODES_RGB_KC_CUSTOM + KEYCODES_RGB_KC_CUSTOM2 + KEYCODES_RGBSAVE + KEYCODES_MIDI_CHANNEL_KEYSPLIT + KEYCODES_MIDI_CHANNEL_KEYSPLIT2 + KEYCODES_KEYSPLIT_BUTTONS +
-                    KEYCODES_MIDI_CC_FIXED+KEYCODES_MIDI_CC+KEYCODES_MIDI_CC_DOWN+KEYCODES_MIDI_CC_UP+KEYCODES_MIDI_BANK+KEYCODES_Program_Change+KEYCODES_MIDI_SMARTCHORDBUTTONS+KEYCODES_VELOCITY_STEPSIZE+KEYCODES_VELOCITY_SHUFFLE + KEYCODES_CC_ENCODERVALUE+ KEYCODES_EXWHEEL +
+                    KEYCODES_MIDI_CC_FIXED+KEYCODES_MIDI_CC+KEYCODES_MIDI_CC_DOWN+KEYCODES_MIDI_CC_UP+KEYCODES_MOD_PRESS+KEYCODES_MIDI_BANK+KEYCODES_Program_Change+KEYCODES_MIDI_SMARTCHORDBUTTONS+KEYCODES_VELOCITY_STEPSIZE+KEYCODES_VELOCITY_SHUFFLE + KEYCODES_CC_ENCODERVALUE+ KEYCODES_EXWHEEL +
                     KEYCODES_MIDI_VELOCITY+KEYCODES_CC_STEPSIZE+KEYCODES_MIDI_CHANNEL+KEYCODES_MIDI_UPDOWN+KEYCODES_MIDI_CHORD_0+KEYCODES_MIDI_CHORD_1+KEYCODES_MIDI_CHORD_2+KEYCODES_MIDI_CHORD_3+KEYCODES_MIDI_CHORD_4+KEYCODES_MIDI_CHORD_5+KEYCODES_MIDI_SPLIT+KEYCODES_MIDI_SPLIT2+
                     KEYCODES_HE_VELOCITY_CURVE+KEYCODES_HE_MACRO_CURVE+KEYCODES_HE_VELOCITY_RANGE+
                     KEYCODES_ARPEGGIATOR+KEYCODES_ARPEGGIATOR_PRESETS+KEYCODES_STEP_SEQUENCER+KEYCODES_STEP_SEQUENCER_PRESETS+KEYCODES_OCTAVE_DOUBLER+KEYCODES_DKS+KEYCODES_TOGGLE+KEYCODES_DELAY_CLEAR+KEYCODES_DELAY+KEYCODES_DELAY_QB+KEYCODES_CHORD_QB+KEYCODES_SMARTCHORD_VL+KEYCODES_DYNCHORD_QB+KEYCODES_FADER_QB+KEYCODES_QB_MASTER+KEYCODES_EARTRAINER_QB+

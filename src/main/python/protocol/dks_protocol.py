@@ -226,6 +226,13 @@ class ProtocolDKS:
                     self._log(f"  Raw response: [{' '.join(f'0x{b:02X}' for b in response[:min(len(response), 32)])}]", "DATA")
                 return None
 
+            # Verify the command byte (response[3]) matches our request. hid_send
+            # has no command/response correlation, so a stale packet from another
+            # command left in the HID FIFO could otherwise be parsed as slot data.
+            if response[3] != HID_CMD_DKS_GET_SLOT:
+                self._log(f"GET slot {slot_num}: RX wrong command 0x{response[3]:02X} (expected 0x{HID_CMD_DKS_GET_SLOT:02X}) - stale packet", "ERROR")
+                return None
+
             # Check status byte (response[5])
             if response[5] != 0:  # 0 = success
                 self._log(f"GET slot {slot_num}: RX status=0x{response[5]:02X} (expected 0x00)", "ERROR")

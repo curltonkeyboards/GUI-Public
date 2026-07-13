@@ -2,6 +2,7 @@
 import struct
 import json
 import lzma
+import logging
 import time
 from collections import OrderedDict
 
@@ -29,6 +30,7 @@ from protocol.constants import CMD_VIA_GET_PROTOCOL_VERSION, CMD_VIA_GET_KEYBOAR
     CMD_VIAL_CUSTOM_ANIM_SET_PARAM, CMD_VIAL_CUSTOM_ANIM_GET_PARAM, CMD_VIAL_CUSTOM_ANIM_SET_ALL, \
     CMD_VIAL_CUSTOM_ANIM_GET_ALL, CMD_VIAL_CUSTOM_ANIM_SAVE, CMD_VIAL_CUSTOM_ANIM_LOAD, \
     CMD_VIAL_CUSTOM_ANIM_RESET_SLOT, CMD_VIAL_CUSTOM_ANIM_GET_STATUS, CMD_VIAL_CUSTOM_ANIM_RESCAN_LEDS, \
+    CMD_VIAL_CUSTOM_ANIM_ACTIVATE_SLOT, \
     CMD_VIAL_KEYMAP_RAM_RESCAN
 from protocol.dynamic import ProtocolDynamic
 from protocol.key_override import ProtocolKeyOverride
@@ -121,7 +123,7 @@ PARAM_MACRO_CANCEL_ALL = 54              # trigger: cancel all playing Vial macr
 PARAM_CHORD_DISPLAY_MODE = 55            # 0=Chords, 1=Numerals, 2=Name (chord progression OLED label)
 
 # Gaming/Joystick Commands (0xCE-0xD2)
-HID_CMD_GAMING_SET_MODE = 0xCE           # Set gaming mode on/off
+HID_CMD_GAMING_SET_MODE = 0xBC           # Set gaming mode on/off (moved from 0xCE, which the firmware arp handler claims as GET_NOTES_CHUNK)
 HID_CMD_GAMING_SET_KEY_MAP = 0xCF        # Map key to joystick control
 HID_CMD_GAMING_SET_ANALOG_CONFIG = 0xD0  # Set min/max travel and deadzone
 HID_CMD_GAMING_GET_SETTINGS = 0xD1       # Get current gaming settings
@@ -155,9 +157,10 @@ HID_CMD_RESET_LAYER_ACTUATIONS = 0xEE    # Reset all layer actuations
 HID_CMD_VELOCITY_MATRIX_POLL = 0xD3      # Poll velocity + travel time for specific keys
 HID_CMD_VELOCITY_TIME_SETTINGS = 0xD4    # Get/Set global velocity min/max time settings
 
-# Device introspection (0xD6-0xD7)
-HID_CMD_GET_ACTIVE_LAYER = 0xD6          # Get the keyboard's currently-active layer
-HID_CMD_GET_FIRMWARE_VERSION = 0xD7      # Get firmware version (major, minor, patch)
+# Device introspection (0x92-0x93; moved from 0xD6-0xD7, which collided with
+# the MIDI-delay slot commands and the gaming-curve commands in firmware)
+HID_CMD_GET_ACTIVE_LAYER = 0x92          # Get the keyboard's currently-active layer
+HID_CMD_GET_FIRMWARE_VERSION = 0x93      # Get firmware version (major, minor, patch)
 
 # Custom Names Command (0xCD) - OLED display names for macros/arp/seq/delay/toggles
 # Single command with sub-commands in payload[0] (see feature_names.py for sub-command IDs)
@@ -571,7 +574,18 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         if self.vial_protocol < VIAL_PROTOCOL_QMK_SETTINGS:
             return
         cur = 0
+        # (#11) This loop terminates only when a response contains the 0xFFFF
+        # sentinel (which makes cur == 0xFFFF). A malformed or empty reply (no
+        # 0xFFFF, and no qsid higher than the current cur) would leave cur
+        # unchanged and spin forever, hanging the connect path. Break out when the
+        # query makes no progress, with an absolute iteration backstop as well.
+        _query_guard = 0
         while cur != 0xFFFF:
+            _query_guard += 1
+            if _query_guard > 2048:
+                logging.warning("reload_settings: aborting QMK settings query (too many blocks / malformed stream)")
+                break
+            _prev_cur = cur
             data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_QUERY, cur),
                                  retries=20)
             for x in range(0, len(data), 2):
@@ -579,6 +593,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 cur = max(cur, qsid)
                 if qsid != 0xFFFF:
                     self.supported_settings.add(qsid)
+            if cur == _prev_cur:
+                # No 0xFFFF terminator and no higher qsid this round -> stop rather
+                # than re-querying the same block indefinitely.
+                logging.warning("reload_settings: QMK settings query stalled (malformed response); stopping")
+                break
 
         for qsid in self.supported_settings:
             from editor.qmk_settings import QmkSettings
@@ -1198,7 +1217,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             source = 1 if from_eeprom else 0
             data = self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_CUSTOM_ANIM_GET_ALL, slot, source), retries=20)
             if data and len(data) > 2 and data[0] == 0x01:
-                return data[3:18]
+                return data[3:19]
             return None
         except Exception as e:
             return None
@@ -1216,6 +1235,18 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             data = self.usb_send(self.dev, struct.pack("BBBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_CUSTOM_ANIM_SET_PARAM, slot, param_index, value), retries=20)
             return data and len(data) > 0 and data[0] == 0x01
         except Exception as e:
+            return False
+
+    def activate_custom_slot_preview(self, slot):
+        """Ask the device to render (live-preview) a custom-animation slot.
+        Non-persistent (firmware uses rgb_matrix_mode_noeeprom), so a power
+        cycle restores the user's saved RGB mode. Slots 0..48 only."""
+        try:
+            if slot < 0 or slot >= 49:
+                return False
+            data = self.usb_send(self.dev, struct.pack("BBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_CUSTOM_ANIM_ACTIVATE_SLOT, slot), retries=20)
+            return data and len(data) > 0 and data[0] == 0x01
+        except Exception:
             return False
 
     def set_custom_slot_all_parameters(self, slot, live_pos, macro_pos, live_anim, macro_anim, flags,
@@ -1452,6 +1483,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                                HID_CMD_SET_OVERDUB_CCS, HID_CMD_SET_NAVIGATION_CONFIG]
             expected_packet_count = 6  # config + 2x main CCs + 2x overdub CCs + nav
 
+            # The usb_send() above already consumed the first of the 6 response
+            # packets — record it, otherwise the collector can never complete.
+            if response and len(response) >= 4 and response[0] == HID_MANUFACTURER_ID:
+                cmd = response[3]
+                if cmd in expected_commands:
+                    packets[cmd] = [response]
+
             # Try multiple times to collect all expected packets
             for attempt in range(30):
                 try:
@@ -1479,21 +1517,14 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                     time.sleep(0.01)
                     continue
             
-            # If we didn't get packets through direct reading, try alternative method
+            # If the response set is incomplete, fail the read rather than
+            # parsing partial data. (A previous "fallback" here re-sent the
+            # expected commands as zero-payload packets — but these are SET
+            # commands, so the firmware executed them as real writes and
+            # persisted zeroed loop config to EEPROM. Never send SETs to read.)
             total_collected = sum(len(v) for v in packets.values()) if packets else 0
             if total_collected < expected_packet_count:
-                # Send another request and try to get the cached responses
-                for cmd in expected_commands:
-                    if cmd not in packets:
-                        try:
-                            test_packet = self._create_hid_packet(cmd, 0, None)
-                            data = self.usb_send(self.dev, test_packet, retries=1)
-                            if data and len(data) >= 4 and data[0] == HID_MANUFACTURER_ID and data[3] == cmd:
-                                if cmd not in packets:
-                                    packets[cmd] = []
-                                packets[cmd].append(data)
-                        except:
-                            pass
+                return None
 
             # Parse collected packets (8-loop banked protocol)
             config = {}
@@ -1826,20 +1857,15 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                     time.sleep(0.01)
                     continue
             
-            # If we didn't get packets through direct reading, try alternative method
+            # If the response set is incomplete, fail the read rather than
+            # parsing partial data. (A previous "fallback" here re-sent the
+            # expected commands as zero-payload packets — but 0xBB is a SET
+            # command, so the firmware executed it as a real settings write,
+            # zeroing and persisting the user's advanced MIDI configuration.
+            # Never send SETs to read.)
             if len(packets) < 2:
-                # Send another request and try to get the cached responses
-                for cmd in expected_commands:
-                    if cmd not in packets:
-                        try:
-                            # Send a specific request for this command type
-                            test_packet = self._create_hid_packet(cmd, 0, None)
-                            data = self.usb_send(self.dev, test_packet, retries=1)
-                            if data and len(data) >= 4 and data[0] == HID_MANUFACTURER_ID and data[3] == cmd:
-                                packets[cmd] = data
-                        except:
-                            pass
-            
+                return None
+
             # Parse collected packets
             config = {}
             
@@ -1859,7 +1885,14 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 oled_keyboard = struct.unpack('<I', data[16:20])[0]
                 smart_chord_light = data[20]
                 smart_chord_light_mode = data[21]
-                
+                # Bytes 22-25: firmware now carries these here (packet 2 was full).
+                # Previously they had NO GET path, so the GUI defaulted them and a
+                # slot-load clobbered the device. See firmware handle_get_keyboard_config.
+                chord_display_mode = data[22] if len(data) > 22 else 2
+                base_sustain = data[23] if len(data) > 23 else 0
+                keysplit_sustain = data[24] if len(data) > 24 else 0
+                triplesplit_sustain = data[25] if len(data) > 25 else 0
+
                 config.update({
                     "velocity_sensitivity": velocity_sensitivity,
                     "cc_sensitivity": cc_sensitivity,
@@ -1870,7 +1903,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                     "random_velocity_modifier": random_velocity_modifier,
                     "oled_keyboard": oled_keyboard,
                     "smart_chord_light": smart_chord_light,
-                    "smart_chord_light_mode": smart_chord_light_mode
+                    "smart_chord_light_mode": smart_chord_light_mode,
+                    "chord_display_mode": chord_display_mode,
+                    "base_sustain": base_sustain,
+                    "keysplit_sustain": keysplit_sustain,
+                    "triplesplit_sustain": triplesplit_sustain
                 })
                 
             if HID_CMD_SET_KEYBOARD_CONFIG_ADVANCED in packets:
@@ -1885,7 +1922,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                     "custom_layer_animations_enabled": data[5] != 0,
                     "unsynced_mode_active": data[6],
                     "sample_mode_active": data[7] != 0,
-                    "loop_messaging_enabled": data[8] != 0,
+                    "instant_loop_start": data[8] != 0,
                     # Note: channel/sync/restart now in ThruLoop packet (0xB0)
                     "colorblindmode": data[9],
                     "cclooprecording": data[10],
@@ -1907,9 +1944,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                     # Velocity curve indices (bytes 23-25)
                     "he_velocity_curve": data[23] if len(data) > 23 else 2,
                     "keysplit_he_velocity_curve": data[24] if len(data) > 24 else 2,
-                    "triplesplit_he_velocity_curve": data[25] if len(data) > 25 else 2,
-                    # Chord progression OLED display mode (byte 26): 0=Chords, 1=Numerals, 2=Name
-                    "chord_display_mode": data[26] if len(data) > 26 else 2
+                    "triplesplit_he_velocity_curve": data[25] if len(data) > 25 else 2
+                    # chord_display_mode now comes from the BASIC packet (bytes 22);
+                    # the advanced packet is full at 26 bytes so data[26] was always
+                    # out of range and pinned it to the default.
                 })
                 
             return config if config else None
@@ -2365,9 +2403,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         packet = self._create_hid_packet(0xDA, 0, data)  # HID_CMD_VELOCITY_PRESET_GET
 
         # Firmware sends 2 response packets
-        # Receive Chunk 0: name
+        # Receive Chunk 0: name — verify command byte and slot, not just status,
+        # so a stale packet from another command can't be parsed as this preset.
         response0 = self.usb_send(self.dev, packet, retries=3)
-        if not response0 or len(response0) < 32 or response0[5] != 0x01:
+        if (not response0 or len(response0) < 32 or response0[3] != 0xDA or
+                response0[5] != 0x01 or response0[6] != slot):
             return None
 
         if response0[7] != 0:
@@ -2377,27 +2417,18 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         name_bytes = bytes(response0[8:24])
         name = name_bytes.decode('utf-8', errors='ignore').rstrip('\x00')
 
-        # Default zone settings
-        default_zone = {
-            'points': [[0, 0], [85, 85], [170, 170], [255, 255]],
-            'velocity_min': 1, 'velocity_max': 127,
-            'slow_press_time': 200, 'fast_press_time': 20,
-            'aftertouch_mode': 0, 'aftertouch_cc': 255,
-            'vibrato_sensitivity': 100, 'vibrato_decay': 200,
-            'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 50, 'retrigger_distance': 0,
-            'aftertouch_smoothness': 0
-        }
-
-        # Receive Chunk 1: zone settings
+        # Receive Chunk 1: zone settings. A missing or invalid chunk fails the
+        # whole read — silently substituting factory defaults here made the
+        # editor display defaults as the user's preset, and a subsequent save
+        # would overwrite the real preset with those defaults.
         try:
             response1 = bytes(self.dev.read(32, timeout_ms=500))
         except Exception:
             response1 = None
-        if response1 and len(response1) >= 31 and response1[5] == 0x01 and response1[7] == 1:
-            zone = self._deserialize_zone_settings(response1)
-        else:
-            zone = default_zone.copy()
+        if (not response1 or len(response1) < 31 or response1[3] != 0xDA or
+                response1[5] != 0x01 or response1[6] != slot or response1[7] != 1):
+            return None
+        zone = self._deserialize_zone_settings(response1)
 
         # Build flat result
         result = {'name': name}
@@ -2588,7 +2619,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             point_bytes.append(int(p[0]) & 0xFF)
             point_bytes.append(int(p[1]) & 0xFF)
         data = bytearray([int(curve_id) & 0xFF]) + point_bytes
-        packet = self._create_hid_packet(0xD6, 0, data)
+        packet = self._create_hid_packet(0x90, 0, data)  # HID_CMD_GAMING_SET_CURVE (moved from 0xD6)
         response = self.usb_send(self.dev, packet, retries=20)
         return response and len(response) > 5 and response[5] == 0x01
 
@@ -2602,7 +2633,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             list: [[x0,y0], [x1,y1], [x2,y2], [x3,y3]] or None
         """
         data = bytearray([int(curve_id) & 0xFF])
-        packet = self._create_hid_packet(0xD7, 0, data)
+        packet = self._create_hid_packet(0x91, 0, data)  # HID_CMD_GAMING_GET_CURVE (moved from 0xD7)
         response = self.usb_send(self.dev, packet, retries=3)
 
         if not response or len(response) < 14 or response[5] != 0x01:
@@ -2621,15 +2652,17 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         Args:
             layer: Layer number (0-11)
             key_index: Key index (0-69, calculated as row * 14 + col)
-            settings: dict with keys:
-                - actuation: Actuation point (0-100, where 60 = 1.5mm)
-                - deadzone_top: Top deadzone (0-100, default 4 = 0.1mm)
-                - deadzone_bottom: Bottom deadzone (0-100, default 4 = 0.1mm)
+            settings: dict with keys (firmware uses 0-255 = 0-4.0mm distance units):
+                - actuation: Actuation point (0-255, default 127 = 2.0mm)
+                - deadzone_top: Top deadzone (0-51, default 6 ~ 0.1mm; firmware clamps to 51)
+                - deadzone_bottom: Bottom deadzone (0-51, default 6 ~ 0.1mm; firmware clamps to 51)
                 - velocity_curve: Velocity curve (0-16: 0-6 Factory curves, 7-16 User curves)
-                - flags: Flags byte (Bit 0: rapidfire_enabled, Bit 1: use_per_key_velocity_curve)
-                - rapidfire_press_sens: Rapidfire press sensitivity (0-100, default 4 = 0.1mm)
-                - rapidfire_release_sens: Rapidfire release sensitivity (0-100, default 4 = 0.1mm)
-                - rapidfire_velocity_mod: Rapidfire velocity modifier (-64 to +64)
+                - flags: Flags byte (Bit 0: rapidfire_enabled, Bit 1: use_per_key_velocity_curve,
+                         Bit 2: continuous_rt)
+                - rapidfire_press_sens: Rapidfire press sensitivity (0-255, default 6 ~ 0.1mm)
+                - rapidfire_release_sens: Rapidfire release sensitivity (0-255, default 6 ~ 0.1mm)
+                - rapidfire_velocity_mod: Rapidfire velocity modifier (-64 to +64). NOTE:
+                  currently inert — the firmware forces this to 0 in the velocity path.
 
         Returns:
             bool: True if successful, False otherwise
@@ -2733,8 +2766,15 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             KEYS_PER_PACKET = 3
             packets = {}
 
-            # Read packets with short timeout - firmware sends them all quickly
-            for attempt in range(100):  # Max 100 read attempts
+            # Read packets with short timeout - firmware sends them all quickly.
+            # On a bad packet we must NOT return early: the firmware keeps
+            # streaming the rest of the 24-packet response, and any packet left
+            # in the HID FIFO would be misparsed as the reply to the NEXT
+            # command (hid_send has no command/response correlation). Keep
+            # draining until the stream goes quiet, then fail.
+            failed = False
+            empty_reads = 0
+            for attempt in range(200):  # Max 200 read attempts
                 try:
                     if hasattr(self.dev, 'read'):
                         response = bytes(self.dev.read(32, timeout_ms=50))
@@ -2742,7 +2782,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                         response = bytes(self.dev.get_feature_report(0, 32))
 
                     if not response or len(response) < 8:
+                        empty_reads += 1
+                        # After a failure, stop once the stream has drained
+                        # (a few consecutive empty reads = firmware is done).
+                        if failed and empty_reads >= 3:
+                            break
                         continue
+                    empty_reads = 0
 
                     # Check if this is a response to our command
                     if (response[0] == HID_MANUFACTURER_ID and
@@ -2753,22 +2799,23 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                         packet_num = response[6]
                         total_packets = response[7]
 
-                        # Validate response
+                        # Validate response — mark failure but keep draining
                         if status != 0x01 or resp_layer != layer:
-                            return None  # Error response
+                            failed = True
+                            continue
 
                         if packet_num < EXPECTED_PACKETS and packet_num not in packets:
                             # Extract key data (bytes 8-31, up to 24 bytes = 3 keys × 8)
                             key_data = response[8:32]
                             packets[packet_num] = key_data
 
-                    if len(packets) >= EXPECTED_PACKETS:
+                    if not failed and len(packets) >= EXPECTED_PACKETS:
                         break
 
                 except Exception:
                     continue
 
-            if len(packets) < EXPECTED_PACKETS:
+            if failed or len(packets) < EXPECTED_PACKETS:
                 # Bulk read failed, return None to trigger fallback
                 return None
 

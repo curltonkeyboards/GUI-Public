@@ -336,15 +336,28 @@ class MainWindow(QMainWindow):
         self.about_menu.addAction(about_vial_act)
 
     def on_layout_load(self):
+        # Guard: a layout can only be applied to a connected keyboard.
+        if not isinstance(self.autorefresh.current_device, VialKeyboard):
+            QMessageBox.warning(self, "No keyboard",
+                                tr("MainWindow", "Connect a keyboard before loading a layout."))
+            return
+
         dialog = QFileDialog()
         dialog.setDefaultSuffix("vil")
         dialog.setAcceptMode(QFileDialog.AcceptOpen)
         dialog.setNameFilters(["Vial layout (*.vil)"])
         if dialog.exec_() == QDialog.Accepted:
-            with open(dialog.selectedFiles()[0], "rb") as inf:
-                data = inf.read()
-            self.keymap_editor.restore_layout(data)
-            self.rebuild()
+            try:
+                with open(dialog.selectedFiles()[0], "rb") as inf:
+                    data = inf.read()
+                self.keymap_editor.restore_layout(data)
+                self.rebuild()
+            except Exception as e:
+                # Malformed/hand-edited/wrong-version .vil: report instead of
+                # crashing (JSON decode error, missing keys, bad keycodes).
+                logging.exception("Failed to load layout")
+                QMessageBox.critical(self, "Load failed",
+                                     tr("MainWindow", "Could not load this layout file:\n{}").format(e))
 
     def on_layout_save(self):
         dialog = QFileDialog()
@@ -388,6 +401,19 @@ class MainWindow(QMainWindow):
         except ProtocolError:
             QMessageBox.warning(self, "", "Unsupported protocol version!\n"
                                           "Please download latest Vial from https://get.vial.today/")
+        except Exception as e:
+            # Opening the HID device can fail if it's claimed by another
+            # process or was unplugged between enumeration and selection.
+            # Reset to "no device" and report, instead of leaving a stale UI
+            # pointed at a half-open device.
+            logging.exception("Failed to open selected device")
+            try:
+                self.autorefresh.select_device(-1)
+            except Exception:
+                pass
+            QMessageBox.warning(self, "", tr("MainWindow",
+                                "Could not open the selected keyboard. It may be in use by "
+                                "another application or was disconnected.\n\n{}").format(e))
 
         if isinstance(self.autorefresh.current_device, VialKeyboard):
             keyboard_id = self.autorefresh.current_device.keyboard.keyboard_id
@@ -667,5 +693,13 @@ class MainWindow(QMainWindow):
     def closeEvent(self, e):
         self.settings.setValue("size", self.size())
         self.settings.setValue("pos", self.pos())
+
+        # Stop the background device-polling thread so it doesn't keep running
+        # (and potentially crash on a half-torn-down device) after the window
+        # closes.
+        try:
+            self.autorefresh.stop()
+        except Exception:
+            logging.exception("Error stopping autorefresh thread on close")
 
         e.accept()
