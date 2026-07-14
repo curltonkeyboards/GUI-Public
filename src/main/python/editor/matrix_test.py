@@ -1315,9 +1315,53 @@ class ThruLoopConfigurator(BasicEditor):
 
 class MIDIswitchSettingsConfigurator(BasicEditor):
 
+    # Per-function Stop Mode bits — mirror the firmware STOP_MODE_* defines
+    # (process_dynamic_macro.h). Bit CLEAR = Mute (default), bit SET = Stop.
+    STOP_MODE_LOOP     = 0x01
+    STOP_MODE_THRULOOP = 0x02
+    STOP_MODE_SEQ      = 0x04
+    STOP_MODE_DRUM     = 0x08
+    STOP_MODE_CPROG    = 0x10
+    STOP_MODE_MASK_ALL = 0x1F
+
     def __init__(self):
         super().__init__()
         self.setup_ui()
+
+    def get_stop_mode_mask(self):
+        """Build the 5-bit Stop Mode bitmask from the per-family combos."""
+        mask = 0
+        for bit, combo in self.stop_mode_combos.items():
+            if combo.currentData():
+                mask |= bit
+        return mask & self.STOP_MODE_MASK_ALL
+
+    def _apply_stop_mode(self, mask, supported):
+        """Populate the Stop Mode combos from a firmware bitmask.
+
+        supported=False means the connected firmware predates Stop Mode
+        (GET byte 20 had bit 7 clear): show the all-Mute defaults and
+        disable the combos so nothing misleading can be edited.
+        """
+        self.stop_mode_supported = bool(supported)
+        if not supported:
+            mask = 0
+        for bit, combo in self.stop_mode_combos.items():
+            combo.blockSignals(True)
+            combo.setCurrentIndex(1 if (mask & bit) else 0)
+            combo.blockSignals(False)
+            combo.setEnabled(self.stop_mode_supported)
+
+    def on_lcd_theme_changed(self, index):
+        """LCD colour theme changed - apply immediately to the keyboard.
+
+        Global setting (own EEPROM region + dedicated HID command), so it takes
+        effect and persists right away without the Save button.
+        """
+        if self.device and isinstance(self.device, VialKeyboard):
+            theme_idx = self.lcd_theme.currentData()
+            if theme_idx is not None:
+                self.device.keyboard.set_lcd_theme(theme_idx)
 
     def create_help_label(self, tooltip_text):
         """Create a small question mark button with tooltip for help"""
@@ -2164,33 +2208,8 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.sample_mode.addItem("On", True)
         loop_layout.addWidget(self.sample_mode, 0, 4)
 
-        # Instant Start on/off with help (repurposes the old ThruLoop-enable
-        # settings byte — the firmware now reads it as "Instant Start")
-        instant_start_label = QWidget()
-        instant_start_label_layout = QHBoxLayout()
-        instant_start_label_layout.setContentsMargins(0, 0, 0, 0)
-        instant_start_label_layout.setSpacing(5)
-        instant_start_label_layout.addWidget(self.create_help_label(
-            "Instant Start for loop playback controls.\n"
-            "Off: play/stop/mute wait for the next musical boundary\n"
-            "On: loop, overdub and ThruLoop play/stop/mute happen\n"
-            "immediately and join in time with the other loops\n"
-            "(resuming from the current position in the loop).\n\n"
-            "Recording start/stop always stays synced to the boundary."
-        ))
-        instant_start_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Instant Start:")))
-        instant_start_label.setLayout(instant_start_label_layout)
-        loop_layout.addWidget(instant_start_label, 1, 1)
-        self.instant_loop_start = ArrowComboBox()
-        self.instant_loop_start.setMinimumWidth(120)
-        self.instant_loop_start.setMinimumHeight(25)
-        self.instant_loop_start.setMaximumHeight(25)
-        self.instant_loop_start.setEditable(True)
-        self.instant_loop_start.lineEdit().setReadOnly(True)
-        self.instant_loop_start.lineEdit().setAlignment(Qt.AlignCenter)
-        self.instant_loop_start.addItem("Off", False)
-        self.instant_loop_start.addItem("On", True)
-        loop_layout.addWidget(self.instant_loop_start, 1, 2)
+        # Instant Start moved to the new "Stop Mode" group below (mirrors the
+        # on-device Advanced Settings > Stop Mode menu, where it now lives).
 
         # CC Loop Recording with help
         cc_loop_rec_label = QWidget()
@@ -2204,7 +2223,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ))
         cc_loop_rec_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Loop Recording:")))
         cc_loop_rec_label.setLayout(cc_loop_rec_label_layout)
-        loop_layout.addWidget(cc_loop_rec_label, 1, 3)
+        loop_layout.addWidget(cc_loop_rec_label, 1, 1)
         self.cc_loop_recording = ArrowComboBox()
         self.cc_loop_recording.setMinimumWidth(120)
         self.cc_loop_recording.setMinimumHeight(25)
@@ -2216,15 +2235,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.cc_loop_recording.addItem("AT Only", 1)
         self.cc_loop_recording.addItem("CC Only", 2)
         self.cc_loop_recording.addItem("CC + AT", 3)
-        loop_layout.addWidget(self.cc_loop_recording, 1, 4)
-
-        # Overdub Mode REMOVED — firmware overdub_advanced_mode was deleted (stub
-        # always-false). The hidden self.smart_chord_light widget is kept so the
-        # slot save/load HID packet format is unchanged — its value is always 0.
-        self.smart_chord_light = ArrowComboBox()
-        self.smart_chord_light.addItem("Default", 0)
-        self.smart_chord_light.setCurrentIndex(0)
-        self.smart_chord_light.hide()
+        loop_layout.addWidget(self.cc_loop_recording, 1, 2)
 
         # Live Note Priority with help
         macro_override_label = QWidget()
@@ -2238,7 +2249,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ))
         macro_override_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Live Note Priority:")))
         macro_override_label.setLayout(macro_override_label_layout)
-        loop_layout.addWidget(macro_override_label, 2, 3)
+        loop_layout.addWidget(macro_override_label, 1, 3)
         self.macro_override_live_notes = ArrowComboBox()
         self.macro_override_live_notes.setMinimumWidth(120)
         self.macro_override_live_notes.setMinimumHeight(25)
@@ -2248,7 +2259,118 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.macro_override_live_notes.lineEdit().setAlignment(Qt.AlignCenter)
         self.macro_override_live_notes.addItem("Off", True)    # Off = live notes don't have priority = macro_override_live_notes=true
         self.macro_override_live_notes.addItem("On", False)    # On = live notes have priority = macro_override_live_notes=false
-        loop_layout.addWidget(self.macro_override_live_notes, 2, 4)
+        loop_layout.addWidget(self.macro_override_live_notes, 1, 4)
+
+        # =================================================================
+        # Stop Mode Group — per-function Mute/Stop behavior of the stop key.
+        # Mirrors the on-device Advanced Settings > Stop Mode menu.
+        # The 5-bit mask rides keyboard-config packet 1 byte 20 as
+        # 0x80 | mask (bit 7 = "field valid" feature-detect marker; old
+        # firmware sends 0 there and ignores anything without bit 7 set).
+        # =================================================================
+        stopmode_row_container = QWidget()
+        stopmode_row_layout = QHBoxLayout()
+        stopmode_row_layout.setContentsMargins(0, 0, 0, 0)
+        stopmode_row_container.setLayout(stopmode_row_layout)
+
+        stopmode_title_widget = QWidget()
+        stopmode_title_widget.setFixedWidth(150)
+        stopmode_title_layout = QVBoxLayout()
+        stopmode_title_layout.setContentsMargins(0, 0, 0, 0)
+        stopmode_title_widget.setLayout(stopmode_title_layout)
+
+        stopmode_title_layout.addStretch()
+        stopmode_title_label = QLabel(tr("MIDIswitchSettingsConfigurator", "Stop Mode"))
+        stopmode_title_layout.addWidget(stopmode_title_label)
+        stopmode_title_layout.addStretch()
+
+        stopmode_group = QGroupBox()
+        stopmode_layout = QGridLayout()
+        stopmode_layout.setHorizontalSpacing(25)
+        stopmode_group.setLayout(stopmode_layout)
+
+        stopmode_row_layout.addStretch()
+        stopmode_row_layout.addWidget(stopmode_title_widget)
+        stopmode_row_layout.addWidget(stopmode_group)
+        stopmode_row_layout.addStretch()
+
+        # Instant Start (moved here from Loop Settings — it dictates whether
+        # the Mute/Stop toggles below, and loop play/stop generally, resolve
+        # on the key press or defer to the next loop trigger).
+        instant_start_label = QWidget()
+        instant_start_label_layout = QHBoxLayout()
+        instant_start_label_layout.setContentsMargins(0, 0, 0, 0)
+        instant_start_label_layout.setSpacing(5)
+        instant_start_label_layout.addWidget(self.create_help_label(
+            "Instant Start for loop playback controls.\n"
+            "Off: play/stop/mute wait for the next musical boundary\n"
+            "On: loop, overdub and ThruLoop play/stop/mute (and the\n"
+            "Mute/Stop toggles below) happen immediately and join in\n"
+            "time with the other loops (resuming from the current\n"
+            "position in the loop).\n\n"
+            "Recording start/stop always stays synced to the boundary."
+        ))
+        instant_start_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Instant Start:")))
+        instant_start_label.setLayout(instant_start_label_layout)
+        stopmode_layout.addWidget(instant_start_label, 0, 1)
+        self.instant_loop_start = ArrowComboBox()
+        self.instant_loop_start.setMinimumWidth(120)
+        self.instant_loop_start.setMinimumHeight(25)
+        self.instant_loop_start.setMaximumHeight(25)
+        self.instant_loop_start.setEditable(True)
+        self.instant_loop_start.lineEdit().setReadOnly(True)
+        self.instant_loop_start.lineEdit().setAlignment(Qt.AlignCenter)
+        self.instant_loop_start.addItem("Off", False)
+        self.instant_loop_start.addItem("On", True)
+        stopmode_layout.addWidget(self.instant_loop_start, 0, 2)
+
+        # One Mute/Stop combo per transport family. Bit values mirror the
+        # firmware STOP_MODE_* defines (process_dynamic_macro.h):
+        # bit CLEAR = Mute (default), bit SET = Stop.
+        _stopmode_help = (
+            "Mute: the stop key only silences this function while anything\n"
+            "else is playing — it keeps running in time (timers, phase,\n"
+            "chain beats, clock mastership) and the next press brings it\n"
+            "back in phase. Stop: the stop key really stops it.\n\n"
+            "Instant Start makes the mute/stop act on the key press instead\n"
+            "of waiting for the loop trigger.\n\n"
+            "Applied when settings are saved. Shared by every instance of\n"
+            "the family (all 8 loops share the Loop setting, etc.)."
+        )
+        # (label, STOP_MODE_* bit, grid row, grid col-pair)
+        _stopmode_families = [
+            ("Loop",           self.STOP_MODE_LOOP,     0, 3),
+            ("ThruLoop",       self.STOP_MODE_THRULOOP, 0, 5),
+            ("Step Sequencer", self.STOP_MODE_SEQ,      1, 1),
+            ("Drum Machine",   self.STOP_MODE_DRUM,     1, 3),
+            ("Rhythm Engine",  self.STOP_MODE_CPROG,    1, 5),
+        ]
+        # Assume supported until a GET reports a byte without the bit-7
+        # marker (old firmware) — apply_settings() then disables the combos.
+        self.stop_mode_supported = True
+        self.stop_mode_combos = {}
+        for _sm_name, _sm_bit, _sm_row, _sm_col in _stopmode_families:
+            _sm_label = QWidget()
+            _sm_label_layout = QHBoxLayout()
+            _sm_label_layout.setContentsMargins(0, 0, 0, 0)
+            _sm_label_layout.setSpacing(5)
+            _sm_label_layout.addWidget(self.create_help_label(_stopmode_help))
+            _sm_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", _sm_name + ":")))
+            _sm_label.setLayout(_sm_label_layout)
+            stopmode_layout.addWidget(_sm_label, _sm_row, _sm_col)
+            _sm_combo = ArrowComboBox()
+            _sm_combo.setMinimumWidth(120)
+            _sm_combo.setMinimumHeight(25)
+            _sm_combo.setMaximumHeight(25)
+            _sm_combo.setEditable(True)
+            _sm_combo.lineEdit().setReadOnly(True)
+            _sm_combo.lineEdit().setAlignment(Qt.AlignCenter)
+            _sm_combo.addItem("Mute", 0)   # bit clear = Mute (firmware default)
+            _sm_combo.addItem("Stop", 1)   # bit set = Stop (legacy behavior)
+            stopmode_layout.addWidget(_sm_combo, _sm_row, _sm_col + 1)
+            self.stop_mode_combos[_sm_bit] = _sm_combo
+
+        main_layout.addWidget(stopmode_row_container)
 
         # Advanced Settings Group with title on left, container centered
         advanced_row_container = QWidget()
@@ -2350,17 +2472,18 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             self.random_velocity_modifier.addItem(str(i), i)
         advanced_layout.addWidget(self.random_velocity_modifier, 1, 2)
 
-        # OLED Keyboard with help
+        # Virtual Instrument with help (formerly "OLED Keyboard") — selects the
+        # LCD display mode: piano keyboards or guitar-tab views.
         oled_label = QWidget()
         oled_label_layout = QHBoxLayout()
         oled_label_layout.setContentsMargins(0, 0, 0, 0)
         oled_label_layout.setSpacing(5)
         oled_label_layout.addWidget(self.create_help_label(
-            "OLED display keyboard visualization style.\n"
-            "Style 1: Standard keyboard display\n"
-            "Style 2: Alternative keyboard layout"
+            "LCD virtual instrument / display style.\n"
+            "Keyboard 1/2/3: piano keyboard at different octaves\n"
+            "Guitar Low/Med/High: guitar tablature views"
         ))
-        oled_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "OLED Keyboard:")))
+        oled_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Virtual Instrument:")))
         oled_label.setLayout(oled_label_layout)
         advanced_layout.addWidget(oled_label, 1, 3)
         self.oled_keyboard = ArrowComboBox()
@@ -2377,6 +2500,39 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.oled_keyboard.addItem("Guitar Med", 3)
         self.oled_keyboard.addItem("Guitar High", 4)
         advanced_layout.addWidget(self.oled_keyboard, 1, 4)
+
+        # LCD Theme with help — global LCD colour theme. Lives in its own
+        # EEPROM region on the keyboard and is synced over a dedicated HID
+        # command (not the per-slot settings packet), so it applies and
+        # persists immediately on change.
+        lcd_theme_label = QWidget()
+        lcd_theme_label_layout = QHBoxLayout()
+        lcd_theme_label_layout.setContentsMargins(0, 0, 0, 0)
+        lcd_theme_label_layout.setSpacing(5)
+        lcd_theme_label_layout.addWidget(self.create_help_label(
+            "LCD colour theme — recolours the text + keyboard on the LCD.\n"
+            "Orange, Matrix Green, White, Light Blue (bright on black).\n"
+            "Applies and saves to the keyboard instantly."
+        ))
+        lcd_theme_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "LCD Theme:")))
+        lcd_theme_label.setLayout(lcd_theme_label_layout)
+        advanced_layout.addWidget(lcd_theme_label, 3, 3)
+        self.lcd_theme = ArrowComboBox()
+        self.lcd_theme.setMinimumWidth(120)
+        self.lcd_theme.setMinimumHeight(25)
+        self.lcd_theme.setMaximumHeight(25)
+        self.lcd_theme.setEditable(True)
+        self.lcd_theme.lineEdit().setReadOnly(True)
+        self.lcd_theme.lineEdit().setAlignment(Qt.AlignCenter)
+        # Keep this list + order in sync with lcd_themes[] in the firmware
+        # (keyboards/orthomidi5x14/orthomidi5x14.c). Foreground (text + piano)
+        # colour on a black background.
+        for _idx, _name in enumerate([
+            "Orange", "Matrix Green", "White", "Light Blue",
+        ]):
+            self.lcd_theme.addItem(_name, _idx)
+        self.lcd_theme.currentIndexChanged.connect(self.on_lcd_theme_changed)
+        advanced_layout.addWidget(self.lcd_theme, 3, 4)
 
         # SC Light Mode with help
         guide_lights_label = QWidget()
@@ -3149,7 +3305,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "transpose_number3": self.transpose_number3.currentData(),
             "random_velocity_modifier": self.random_velocity_modifier.currentData(),
             "oled_keyboard": self.oled_keyboard.currentData(),
-            "smart_chord_light": self.smart_chord_light.currentData(),
+            # Per-function Stop Mode bitmask (rides basic packet byte 20 as
+            # 0x80 | mask; replaces the old reserved/overdub byte)
+            "stop_mode": self.get_stop_mode_mask(),
             "smart_chord_light_mode": self.smart_chord_light_mode.currentData(),
             "key_split_channel": self.key_split_channel.currentData(),
             "key_split2_channel": self.key_split2_channel.currentData(),
@@ -3237,7 +3395,28 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         elif _oled_kbd_value is None or _oled_kbd_value < 0 or _oled_kbd_value > 5:
             _oled_kbd_value = 0  # valid modes: 0-5 (5 = Keyboard 3)
         set_combo_by_data(self.oled_keyboard, _oled_kbd_value, 0)
-        set_combo_by_data(self.smart_chord_light, config.get("smart_chord_light"), 0)
+
+        # Per-function Stop Mode (basic packet byte 20). A GET from real
+        # hardware reports "stop_mode_supported" (bit 7 marker present);
+        # local defaults dicts omit it, in which case we keep the current
+        # support state and only reapply the mask.
+        if "stop_mode_supported" in config:
+            self._apply_stop_mode(config.get("stop_mode", 0),
+                                  config.get("stop_mode_supported"))
+        elif "stop_mode" in config:
+            self._apply_stop_mode(config.get("stop_mode", 0),
+                                  self.stop_mode_supported)
+
+        # LCD colour theme is a global setting carried over a dedicated HID
+        # command (not the per-slot config packet), so fetch it directly and
+        # populate the combo without re-sending it back to the keyboard.
+        if self.device and isinstance(self.device, VialKeyboard):
+            theme_idx = self.device.keyboard.get_lcd_theme()
+            if theme_idx is not None:
+                self.lcd_theme.blockSignals(True)
+                set_combo_by_data(self.lcd_theme, theme_idx, 0)
+                self.lcd_theme.blockSignals(False)
+
         set_combo_by_data(self.smart_chord_light_mode, config.get("smart_chord_light_mode"), 0)
         set_combo_by_data(self.key_split_channel, config.get("key_split_channel"), 0)
         set_combo_by_data(self.key_split2_channel, config.get("key_split2_channel"), 0)
@@ -3330,7 +3509,11 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         - Byte 14: octave_number3 (always 0)
         - Byte 15: random_velocity_modifier
         - Bytes 16-19: oled_keyboard (uint32)
-        - Byte 20: smart_chord_light
+        - Byte 20: Stop Mode bitmask, sent as 0x80 | mask (bit 7 = "field
+                   valid" marker; was the reserved/overdub_advanced_mode
+                   byte). When the firmware didn't advertise Stop Mode
+                   support we send 0, which the firmware ignores — so the
+                   GUI can never silently reset the on-device setting.
         - Byte 21: smart_chord_light_mode
         """
         data = bytearray(22)
@@ -3350,7 +3533,11 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
 
         struct.pack_into('<I', data, offset, settings["oled_keyboard"]); offset += 4
 
-        data[offset] = settings["smart_chord_light"]; offset += 1
+        if self.stop_mode_supported:
+            data[offset] = 0x80 | (settings.get("stop_mode", 0) & self.STOP_MODE_MASK_ALL)
+        else:
+            data[offset] = 0
+        offset += 1
         data[offset] = settings["smart_chord_light_mode"]; offset += 1
 
         return data
@@ -3506,7 +3693,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "transpose_number3": 0,
             "random_velocity_modifier": 127,
             "oled_keyboard": 0,
-            "smart_chord_light": 0,
+            "stop_mode": 0,  # all Mute (firmware default)
             "smart_chord_light_mode": 0,
             "key_split_channel": 0,
             "key_split2_channel": 0,

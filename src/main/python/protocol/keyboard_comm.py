@@ -65,6 +65,7 @@ HID_CMD_RESET_KEYBOARD_CONFIG = 0xB8
 HID_CMD_SAVE_KEYBOARD_SLOT = 0xB9
 HID_CMD_LOAD_KEYBOARD_SLOT = 0xBA
 HID_CMD_SET_KEYBOARD_CONFIG_ADVANCED = 0xBB
+HID_CMD_LCD_THEME = 0xFE  # Get/set global LCD colour theme (sub 0=GET, 1=SET)
 HID_CMD_SET_KEYBOARD_PARAM_SINGLE = 0xE8  # Set individual parameter (changed from 0xBD collision)
 
 # Parameter IDs for HID_CMD_SET_KEYBOARD_PARAM_SINGLE
@@ -1414,6 +1415,34 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         
         return bytes(packet)
 
+    def get_lcd_theme(self):
+        """Get the keyboard's current global LCD colour theme index.
+
+        Returns the theme index (int) or None on failure. Firmware response
+        layout (raw_hid_receive_kb family): status@4, current index@5, count@6.
+        """
+        try:
+            # sub-cmd 0 = GET (carried in the macro_num/byte-4 field)
+            packet = self._create_hid_packet(HID_CMD_LCD_THEME, 0, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if not data or len(data) < 7 or data[3] != HID_CMD_LCD_THEME:
+                return None
+            if data[4] != 0:
+                return None
+            return data[5]
+        except Exception:
+            return None
+
+    def set_lcd_theme(self, theme_index):
+        """Set the keyboard's global LCD colour theme (applies + persists)."""
+        try:
+            # sub-cmd 1 = SET; payload byte 0 = theme index
+            packet = self._create_hid_packet(HID_CMD_LCD_THEME, 1, [theme_index & 0xFF])
+            data = self.usb_send(self.dev, packet, retries=3)
+            return bool(data) and len(data) > 4 and data[4] == 0
+        except Exception:
+            return False
+
     def set_thruloop_config(self, loop_config_data):
         """Set basic ThruLoop configuration (includes 8 restart CCs)"""
         try:
@@ -1883,7 +1912,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 octave_number3 = struct.unpack('<b', data[14:15])[0]
                 random_velocity_modifier = data[15]
                 oled_keyboard = struct.unpack('<I', data[16:20])[0]
-                smart_chord_light = data[20]
+                # Byte 20 (was reserved / overdub_advanced_mode): per-function
+                # Stop Mode bitmask. Bit 7 set = "firmware supports Stop Mode"
+                # (feature detect); low 5 bits = STOP_MODE_* mask (bit clear =
+                # Mute, bit set = Stop). Old firmware sends 0 here.
+                stop_mode_byte = data[20]
                 smart_chord_light_mode = data[21]
                 # Bytes 22-25: firmware now carries these here (packet 2 was full).
                 # Previously they had NO GET path, so the GUI defaulted them and a
@@ -1902,7 +1935,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                     "transpose_number3": transpose_number3,
                     "random_velocity_modifier": random_velocity_modifier,
                     "oled_keyboard": oled_keyboard,
-                    "smart_chord_light": smart_chord_light,
+                    "stop_mode_supported": bool(stop_mode_byte & 0x80),
+                    "stop_mode": stop_mode_byte & 0x1F,
                     "smart_chord_light_mode": smart_chord_light_mode,
                     "chord_display_mode": chord_display_mode,
                     "base_sustain": base_sustain,
