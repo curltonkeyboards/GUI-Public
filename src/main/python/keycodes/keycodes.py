@@ -7,6 +7,19 @@ import sys
 from keycodes.keycodes_v5 import keycodes_v5
 from keycodes.keycodes_v6 import keycodes_v6
 
+# Cached AnyKeycode instance used by Keycode.deserialize()/is_basic().
+# Constructing one walks every keycode to build its name tables, so creating
+# a fresh instance per deserialize() call is prohibitively slow. The name
+# tables depend on the current keyboard's keycodes and protocol, so the cache
+# is invalidated whenever the keycode tables are regenerated (see
+# recreate_keycodes / recreate_keyboard_keycodes).
+_any_keycode_cache = None
+
+
+def _invalidate_any_keycode_cache():
+    global _any_keycode_cache
+    _any_keycode_cache = None
+
 
 class Keycode:
 
@@ -127,13 +140,16 @@ class Keycode:
 
         from any_keycode import AnyKeycode
 
+        global _any_keycode_cache
+
         if isinstance(val, int):
             return val
         if val in cls.qmk_id_to_keycode:
             return cls.resolve(cls.qmk_id_to_keycode[val].qmk_id)
-        anykc = AnyKeycode()
+        if _any_keycode_cache is None:
+            _any_keycode_cache = AnyKeycode()
         try:
-            return anykc.decode(val)
+            return _any_keycode_cache.decode(val)
         except Exception:
             if reraise:
                 raise
@@ -3205,6 +3221,10 @@ K = None
 def recreate_keycodes():
     """ Regenerates global KEYCODES array """
 
+    # The keycode tables AnyKeycode builds its name maps from are changing —
+    # a stale cached instance would misclassify keycodes.
+    _invalidate_any_keycode_cache()
+
     KEYCODES.clear()
     KEYCODES.extend(KEYCODES_SPECIAL + KEYCODES_BASIC + KEYCODES_SHIFTED + KEYCODES_ISO + KEYCODES_LAYERS + KEYCODES_LAYERS_DF + KEYCODES_LAYERS_MO + KEYCODES_LAYERS_TG + KEYCODES_LAYERS_TT + KEYCODES_LAYERS_OSL + KEYCODES_LAYERS_TO + KEYCODES_LAYERS_LT +
                     KEYCODES_BOOT + KEYCODES_MODIFIERS + KEYCODES_QUANTUM + KEYCODES_BACKLIGHT + KEYCODES_MEDIA + KEYCODES_OLED + KEYCODES_CLEAR + KEYCODES_RGB_KC_COLOR + KEYCODES_MIDI_OCTAVE2 + KEYCODES_MIDI_OCTAVE3 + KEYCODES_MIDI_KEY2 + KEYCODES_MIDI_KEY3 + KEYCODES_MIDI_VELOCITY2 + KEYCODES_MIDI_VELOCITY3 +
@@ -3260,6 +3280,11 @@ def create_midi_keycodes(midiSettingLevel):
 
 def recreate_keyboard_keycodes(keyboard):
     """ Generates keycodes based on information the keyboard provides (e.g. layer keycodes, macros) """
+
+    # Invalidate up front too: the protocol change below already affects how
+    # AnyKeycode would resolve names (recreate_keycodes() at the end
+    # invalidates again once the tables are final).
+    _invalidate_any_keycode_cache()
 
     Keycode.protocol = keyboard.vial_protocol
 
