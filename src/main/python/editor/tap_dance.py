@@ -60,6 +60,17 @@ class TapDanceEntryUI(QObject):
 
         self.idx = idx
         self.key_widgets = []
+        # UI is built on the first widget() call — 128 of these are
+        # constructed at startup and most tabs are never opened. load()ed
+        # data is buffered in _pending_data until then; save() serves it back
+        # so the entry keeps acting as the data model while unbuilt.
+        self.w2 = None
+        self._pending_data = None
+
+    def _ensure_ui(self):
+        if self.w2 is not None:
+            return
+        idx = self.idx
 
         # Main layout
         main_layout = QVBoxLayout()
@@ -121,6 +132,9 @@ class TapDanceEntryUI(QObject):
         self.w2 = QWidget()
         self.w2.setLayout(main_layout)
 
+        if self._pending_data is not None:
+            self._apply_data(self._pending_data)
+
     def populate_container(self):
         labels = ["On tap", "On hold", "On double tap", "On tap + hold"]
 
@@ -154,9 +168,15 @@ class TapDanceEntryUI(QObject):
         self.key_selected.emit(widget)
 
     def widget(self):
+        self._ensure_ui()
         return self.w2
 
     def load(self, data):
+        self._pending_data = tuple(data)
+        if self.w2 is not None:
+            self._apply_data(data)
+
+    def _apply_data(self, data):
         objs = [self.kc_on_tap, self.kc_on_hold, self.kc_on_double_tap, self.kc_on_tap_hold, self.txt_tapping_term]
         for o in objs:
             o.blockSignals(True)
@@ -171,6 +191,12 @@ class TapDanceEntryUI(QObject):
             o.blockSignals(False)
 
     def save(self):
+        if self.w2 is None:
+            # Unbuilt entries can't have unsaved edits: hand back the loaded
+            # data (or the pristine defaults the widgets would have held).
+            if self._pending_data is not None:
+                return self._pending_data
+            return ("KC_NO", "KC_NO", "KC_NO", "KC_NO", 0)
         return (
             self.kc_on_tap.keycode,
             self.kc_on_hold.keycode,
