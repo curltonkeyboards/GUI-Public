@@ -85,6 +85,16 @@ def hid_send(dev, msg, retries=1):
 
     data = b""
     try:
+        # Drain any stale queued IN reports before sending. A response that
+        # arrived after a previous call's read timeout would otherwise be
+        # returned as THIS command's response, permanently offsetting every
+        # subsequent request/response pair by one (the desync H4 describes).
+        # Bounded so a chatty device can't spin us here.
+        for _ in range(8):
+            stale = dev.read(MSG_LEN, timeout_ms=1)
+            if not stale:
+                break
+
         # add 00 at start for hidapi report id
         if dev.write(b"\x00" + msg) != MSG_LEN + 1:
             raise RuntimeError("failed to communicate with the device")

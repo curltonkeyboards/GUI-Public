@@ -3467,12 +3467,16 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         set_combo_by_data(self.cc_loop_recording, config.get("cclooprecording"), 0)
         set_combo_by_data(self.true_sustain, config.get("truesustain"), False)
         # KeySplit/TripleSplit velocity settings (curve only - min/max now per velocity preset)
-        set_combo_by_data(self.velocity_curve2, config.get("velocity_curve2"), 2)
-        set_combo_by_data(self.velocity_curve3, config.get("velocity_curve3"), 2)
+        # NOTE: key names must match get_midi_config()'s parsed dict — the old
+        # lookups ("velocity_curve2", "global_velocity_curve", ...) never
+        # existed there, so these combos always showed the fallback instead of
+        # the device's real values.
+        set_combo_by_data(self.velocity_curve2, config.get("keysplit_he_velocity_curve"), 2)
+        set_combo_by_data(self.velocity_curve3, config.get("triplesplit_he_velocity_curve"), 2)
         # Global MIDI settings
-        set_combo_by_data(self.global_transpose, config.get("global_transpose"), 0)
-        set_combo_by_data(self.global_channel, config.get("global_channel"), 0)
-        set_combo_by_data(self.global_velocity_curve, config.get("global_velocity_curve"), 2)
+        set_combo_by_data(self.global_transpose, config.get("transpose_number"), 0)
+        set_combo_by_data(self.global_channel, config.get("channel_number"), 0)
+        set_combo_by_data(self.global_velocity_curve, config.get("he_velocity_curve"), 2)
         # Sustain settings
         set_combo_by_data(self.base_sustain, config.get("base_sustain"), 0)
         set_combo_by_data(self.keysplit_sustain, config.get("keysplit_sustain"), 0)

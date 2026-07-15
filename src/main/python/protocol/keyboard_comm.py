@@ -1175,11 +1175,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LAYER_RGB_GET_STATUS), retries=20)
             return data[2:]
         except:
-            return bytes([
-                0x01 if self.layer_rgb_enabled else 0x00,
-                self.layers if hasattr(self, 'layers') and self.layers > 0 else 4,
-                0, 0, 0, 0, 0, 0
-            ])
+            # Comm failure: report "unknown" instead of a fabricated status the
+            # caller would mistake for real device state.
+            return None
 
     def set_layer_rgb_enable(self, enabled):
         """Enable or disable per-layer RGB functionality"""
@@ -1190,8 +1188,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 self.layer_rgb_enabled = enabled
             return success
         except:
-            self.layer_rgb_enabled = enabled
-            return True
+            # The write never reached the device — do not report success.
+            return False
 
     def save_rgb_to_layer(self, layer):
         """Save current RGB settings to specified layer"""
@@ -1199,7 +1197,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             data = self.usb_send(self.dev, struct.pack("BBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LAYER_RGB_SAVE, layer), retries=20)
             return data[2] == 0x01
         except:
-            return True
+            # The write never reached the device — do not report success.
+            return False
 
     def load_rgb_from_layer(self, layer):
         """Load RGB settings from specified layer"""
@@ -1348,20 +1347,26 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             return False
 
     def get_custom_animation_status(self):
-        """Get custom animation status including active slot"""
+        """Get custom animation status including active slot.
+
+        Returns None on comm failure — callers must treat that as "unknown"
+        and skip, not act on it. The old fabricated fake-success buffer here
+        made the GUI believe slot 0 was active after a failed read, which
+        then drove real RGB writes to the device on connect.
+        """
         try:
             data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_CUSTOM_ANIM_GET_STATUS), retries=20)
             if data and len(data) >= 12:
                 return data[1:]
-            return bytes([50, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0])
+            return None
         except Exception as e:
-            return bytes([50, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0])
+            return None
 
     def get_current_custom_slot(self):
         """Get the currently active custom slot number"""
         try:
             status = self.get_custom_animation_status()
-            if len(status) > 1:
+            if status is not None and len(status) > 1:
                 return status[1]
                 
             current_mode = self.rgb_mode
@@ -1428,6 +1433,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             if not data or len(data) < 7 or data[3] != HID_CMD_LCD_THEME:
                 return None
             if data[4] != 0:
+                return None
+            # Firmware that predates the via.c 0xFE routing fix rejects this
+            # command with an error ECHO: it keeps data[4]=0 (our GET sub-cmd)
+            # and forces data[5]=1, which parsed as "theme 1". The real handler
+            # always reports the theme count (>=1) at data[6]; the echo carries
+            # our request's 0 there — use that to tell them apart.
+            if data[6] == 0:
                 return None
             return data[5]
         except Exception:
@@ -1673,12 +1685,23 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
             packet = self._create_hid_packet(HID_CMD_SET_KEYBOARD_PARAM_SINGLE, 0, data)
 
-            # Retry logic: 4 retries with 100ms delay
+            # Retry logic: 4 retries with 100ms delay. A retry re-SENDS only
+            # when no response arrived at all. If a response arrives but isn't
+            # the 0xE8 echo (a stale packet from an earlier timed-out command),
+            # keep READING for the real reply instead of re-sending — each
+            # duplicate send executes the SET again on the firmware and queues
+            # another orphan response, compounding the stream desync.
             for attempt in range(5):  # 1 initial + 4 retries = 5 total attempts
                 try:
                     response = self.usb_send(self.dev, packet, retries=1)
-                    if response and len(response) > 0 and response[5] == 1:
-                        return True
+                    for _ in range(3):
+                        if response and len(response) >= 6 and \
+                                response[3] == HID_CMD_SET_KEYBOARD_PARAM_SINGLE:
+                            break
+                        response = bytes(self.dev.read(MSG_LEN, timeout_ms=500))
+                    if response and len(response) >= 6 and \
+                            response[3] == HID_CMD_SET_KEYBOARD_PARAM_SINGLE:
+                        return response[5] == 1
 
                     # If not last attempt, wait before retry
                     if attempt < 4:
@@ -2028,6 +2051,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             response = self.usb_send(self.dev, packet, retries=3)
 
             if not response or len(response) < 16:  # 5 header + 11 data bytes
+                return None
+
+            # Validate the command echo and both status bytes — a stale packet
+            # from an earlier timed-out command would otherwise be parsed as
+            # aftertouch/vibrato settings and land in global_midi_settings.
+            if response[3] != HID_CMD_GET_LAYER_ACTUATION or \
+                    response[4] != 0x01 or response[5] != 0x01:
                 return None
 
             flags = response[10]

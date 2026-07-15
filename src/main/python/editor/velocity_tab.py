@@ -1443,9 +1443,12 @@ class VelocityTab(BasicEditor):
                 # Update UI from settings
                 self.load_advanced_ui_from_settings()
 
-            # Push velocity_as_at to keyboard (no read-back available, so sync GUI→firmware)
-            velocity_as_at = self.global_midi_settings.get('velocity_as_at', False)
-            self.keyboard.set_keyboard_param_single(PARAM_VELOCITY_AS_AT, 1 if velocity_as_at else 0)
+            # NOTE: velocity_as_at is deliberately NOT pushed to the keyboard
+            # here. This runs on every connect/rebuild, and pushing the GUI's
+            # local default silently overwrote the device's setting just for
+            # opening the app. The parameter is written only when the user
+            # explicitly toggles it (its change handler); the device's own
+            # value wins on connect.
         except Exception as e:
             print(f"Error loading advanced settings: {e}")
 
