@@ -668,8 +668,11 @@ class DelayTab(BasicEditor):
         self.delay_protocol = None
         self.keyboard = None
         self.loaded_slots = {}  # user_index (0-49) -> DelaySlot
-        self.slot_editors = []
-        self.slot_scroll_widgets = []
+        # Slot editors are created on demand — building all 50 up front cost
+        # ~1.4s of startup for slots most users never open. Scanned slot data
+        # (loaded_slots) is replayed into an editor when it is first built.
+        self._editors = {}   # idx -> DelaySlotEditor
+        self._scrolls = {}   # idx -> QScrollArea wrapping the editor
 
         # Dynamic tab tracking (for user slots only)
         self._visible_tab_count = 1
@@ -678,29 +681,40 @@ class DelayTab(BasicEditor):
         # Tab widget for user delay slots
         self.tabs = QTabWidget()
 
-        # Create editors for user slots only (50)
-        for i in range(DELAY_USER_SLOT_COUNT):
-            editor = DelaySlotEditor(slot_index=i)
-            self.slot_editors.append(editor)
-
-            scroll = QScrollArea()
-            scroll.setWidget(editor)
-            scroll.setWidgetResizable(True)
-            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            self.slot_scroll_widgets.append(scroll)
-
-        # Set tab widget references and connect buttons
-        for i, editor in enumerate(self.slot_editors):
-            editor.set_tab_widget(self.tabs)
-            editor.save_btn.clicked.connect(lambda _, idx=i: self._on_save_slot(idx))
-            editor.save_new_btn.clicked.connect(lambda _, idx=i: self._on_save_as_new_slot(idx))
-            editor.load_btn.clicked.connect(lambda _, idx=i: self._on_load_slot(idx))
-
         self.addWidget(self.tabs)
 
         # Connect tab changes for lazy loading and "+" tab handling
         self.tabs.currentChanged.connect(self._on_tab_changed)
+
+    def _editor(self, idx):
+        """Create (or return) the DelaySlotEditor for a user slot, replaying
+        scanned slot data that arrived while it did not exist yet."""
+        editor = self._editors.get(idx)
+        if editor is not None:
+            return editor
+        editor = DelaySlotEditor(slot_index=idx)
+        editor.set_tab_widget(self.tabs)
+        editor.save_btn.clicked.connect(lambda _, i=idx: self._on_save_slot(i))
+        editor.save_new_btn.clicked.connect(lambda _, i=idx: self._on_save_as_new_slot(i))
+        editor.load_btn.clicked.connect(lambda _, i=idx: self._on_load_slot(i))
+        if idx in self.loaded_slots:
+            editor.load_from_slot(self.loaded_slots[idx])
+        editor.refresh_title()
+        self._editors[idx] = editor
+        return editor
+
+    def _scroll(self, idx):
+        """Create (or return) the scroll area wrapping a slot's editor."""
+        scroll = self._scrolls.get(idx)
+        if scroll is not None:
+            return scroll
+        scroll = QScrollArea()
+        scroll.setWidget(self._editor(idx))
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self._scrolls[idx] = scroll
+        return scroll
 
     def _user_to_unified(self, user_index):
         """Convert user slot index (0-49) to unified index (48-97)"""
@@ -734,12 +748,15 @@ class DelayTab(BasicEditor):
             slot = self.delay_protocol.get_slot(unified)
             if slot:
                 self.loaded_slots[i] = slot
-                self.slot_editors[i].load_from_slot(slot)
+                editor = self._editors.get(i)
+                if editor is not None:
+                    editor.load_from_slot(slot)
                 if not slot.is_default():
                     last_used = i
 
-        # Refresh title labels from feature name manager (names loaded after construction)
-        for editor in self.slot_editors:
+        # Refresh title labels from feature name manager (names loaded after
+        # construction). Editors created later refresh in _editor().
+        for editor in self._editors.values():
             editor.refresh_title()
 
         self._update_visible_tabs_with_last_used(last_used)
@@ -757,7 +774,7 @@ class DelayTab(BasicEditor):
         from protocol.feature_names import get_feature_name_manager, FEATURE_DELAY
         mgr = get_feature_name_manager()
         for x in range(self._visible_tab_count):
-            self.tabs.addTab(self.slot_scroll_widgets[x], mgr.get_name(FEATURE_DELAY, x))
+            self.tabs.addTab(self._scroll(x), mgr.get_name(FEATURE_DELAY, x))
 
         # Add "+" tab if not all tabs are visible
         if self._visible_tab_count < DELAY_USER_SLOT_COUNT:
@@ -780,7 +797,7 @@ class DelayTab(BasicEditor):
                 slot = self.delay_protocol.get_slot(unified)
                 if slot:
                     self.loaded_slots[index] = slot
-                    self.slot_editors[index].load_from_slot(slot)
+                    self._editor(index).load_from_slot(slot)
 
     def _find_last_used_index(self):
         """Find the index of the last user slot that has non-default config"""
@@ -804,8 +821,8 @@ class DelayTab(BasicEditor):
             return
 
         unified = self._user_to_unified(index)
-        slot = self.slot_editors[index].save_to_slot()
-        btn = self.slot_editors[index].save_btn
+        slot = self._editor(index).save_to_slot()
+        btn = self._editor(index).save_btn
         btn.setEnabled(False)
         try:
             if self.delay_protocol.set_slot(unified, slot):
@@ -838,15 +855,15 @@ class DelayTab(BasicEditor):
             return
 
         # Copy settings from source editor to target slot
-        slot = self.slot_editors[source_index].save_to_slot()
+        slot = self._editor(source_index).save_to_slot()
         unified = self._user_to_unified(target)
 
-        btn = self.slot_editors[source_index].save_new_btn
+        btn = self._editor(source_index).save_new_btn
         btn.setEnabled(False)
         try:
             if self.delay_protocol.set_slot(unified, slot):
                 self.loaded_slots[target] = slot
-                self.slot_editors[target].load_from_slot(slot)
+                self._editor(target).load_from_slot(slot)
                 # Persist to EEPROM so the new slot survives a power cycle
                 if not self.delay_protocol.save_to_eeprom():
                     QMessageBox.warning(None, "Error",
@@ -875,13 +892,13 @@ class DelayTab(BasicEditor):
         if 0 <= index < DELAY_USER_SLOT_COUNT:
             self.loaded_slots.pop(index, None)
             if self.delay_protocol:
-                btn = self.slot_editors[index].load_btn
+                btn = self._editor(index).load_btn
                 btn.setEnabled(False)
                 try:
                     unified = self._user_to_unified(index)
                     slot = self.delay_protocol.get_slot(unified)
                     if slot:
                         self.loaded_slots[index] = slot
-                        self.slot_editors[index].load_from_slot(slot)
+                        self._editor(index).load_from_slot(slot)
                 finally:
                     btn.setEnabled(True)
