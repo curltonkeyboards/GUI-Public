@@ -170,6 +170,16 @@ class KeyOverrideEntryUI(QObject):
 
     def __init__(self, idx):
         super().__init__()
+        self.idx = idx
+        # UI is built on the first widget() call — 128 of these exist and
+        # most tabs are never opened. load()ed data is buffered until then;
+        # save() serves it back so the entry keeps acting as the data model.
+        self.w2 = None
+        self._pending_ko = None
+
+    def _ensure_ui(self):
+        if self.w2 is not None:
+            return
 
         self.enable_chk = QCheckBox()
         self.layers = LayersUI()
@@ -187,7 +197,6 @@ class KeyOverrideEntryUI(QObject):
             w.changed.connect(self.on_change)
             self.widgets.append(w)
 
-        self.idx = idx
         self.container = QGridLayout()
         self.populate_container()
 
@@ -198,6 +207,9 @@ class KeyOverrideEntryUI(QObject):
         l.addWidget(w)
         l.setAlignment(w, QtCore.Qt.AlignHCenter)
         self.w2 = make_scrollable(l)
+
+        if self._pending_ko is not None:
+            self._apply_data(self._pending_ko)
 
     def populate_container(self):
         # Title
@@ -240,9 +252,15 @@ class KeyOverrideEntryUI(QObject):
         self.container.addWidget(self.options, 9, 1)
 
     def widget(self):
+        self._ensure_ui()
         return self.w2
 
     def load(self, ko):
+        self._pending_ko = ko
+        if self.w2 is not None:
+            self._apply_data(ko)
+
+    def _apply_data(self, ko):
         for w in self.widgets:
             w.blockSignals(True)
 
@@ -259,6 +277,10 @@ class KeyOverrideEntryUI(QObject):
             w.blockSignals(False)
 
     def save(self):
+        if self.w2 is None:
+            # Unbuilt entries can't have unsaved edits: hand back the loaded
+            # data (or a pristine default entry).
+            return self._pending_ko if self._pending_ko is not None else KeyOverrideEntry()
         ko = KeyOverrideEntry()
         ko.options = self.options.save()
         ko.options.enabled = self.enable_chk.isChecked()
@@ -288,16 +310,39 @@ class KeyOverride(BasicEditor):
             entry.changed.connect(self.on_change)
             self.key_override_entries_available.append(entry)
 
+        # Tab pages are empty containers filled with the entry's widget on
+        # first view, so connecting doesn't build every override's UI.
+        self._tab_pages = {}
+        self.tabs.currentChanged.connect(self._fill_tab)
+
         self.addWidget(self.tabs)
+
+    def _fill_tab(self, index):
+        """Materialize the entry UI inside a tab page on first view."""
+        if index < 0 or index >= len(self.key_override_entries):
+            return
+        page = self._tab_pages.get(index)
+        if page is None or page.layout().count() > 0:
+            return
+        page.layout().addWidget(self.key_override_entries[index].widget())
 
     def rebuild_ui(self):
         while self.tabs.count() > 0:
             self.tabs.removeTab(0)
         self.key_override_entries = self.key_override_entries_available[:self.keyboard.key_override_count]
-        for x, e in enumerate(self.key_override_entries):
-            self.tabs.addTab(e.widget(), str(x + 1))
+        for x in range(len(self.key_override_entries)):
+            page = self._tab_pages.get(x)
+            if page is None:
+                page = QWidget()
+                lay = QVBoxLayout()
+                lay.setContentsMargins(0, 0, 0, 0)
+                page.setLayout(lay)
+                self._tab_pages[x] = page
+            self.tabs.addTab(page, str(x + 1))
         for x, e in enumerate(self.key_override_entries):
             e.load(self.keyboard.key_override_get(x))
+        # The initially-selected tab must show content immediately
+        self._fill_tab(self.tabs.currentIndex())
 
     def rebuild(self, device):
         super().rebuild(device)
