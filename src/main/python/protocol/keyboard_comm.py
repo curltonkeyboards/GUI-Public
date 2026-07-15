@@ -37,7 +37,7 @@ from protocol.key_override import ProtocolKeyOverride
 from protocol.macro import ProtocolMacro
 from protocol.tap_dance import ProtocolTapDance
 from unlocker import Unlocker
-from util import MSG_LEN, hid_send
+from util import MSG_LEN, hid_lock_for, hid_send
 
 SUPPORTED_VIA_PROTOCOL = [-1, 9]
 SUPPORTED_VIAL_PROTOCOL = [-1, 0, 1, 2, 3, 4, 5, 6]
@@ -65,6 +65,7 @@ HID_CMD_RESET_KEYBOARD_CONFIG = 0xB8
 HID_CMD_SAVE_KEYBOARD_SLOT = 0xB9
 HID_CMD_LOAD_KEYBOARD_SLOT = 0xBA
 HID_CMD_SET_KEYBOARD_CONFIG_ADVANCED = 0xBB
+HID_CMD_LCD_THEME = 0xFE  # Get/set global LCD colour theme (sub 0=GET, 1=SET)
 HID_CMD_SET_KEYBOARD_PARAM_SINGLE = 0xE8  # Set individual parameter (changed from 0xBD collision)
 
 # Parameter IDs for HID_CMD_SET_KEYBOARD_PARAM_SINGLE
@@ -180,6 +181,22 @@ DRUM_KEYBINDS_SUBMODE_EXTRAS = 2     # data[4] sub-mode for the extra voicings
 
 class ProtocolError(Exception):
     pass
+
+
+def _hid_transaction(fn):
+    """Hold the device's shared HID transaction lock for the whole method.
+
+    Multi-packet reads (request via usb_send, then a loop of raw dev.read
+    calls) must be atomic against other threads using the same handle (the
+    loop manager's listener thread) — an interleaved read steals packets from
+    the collector and corrupts both sides. The lock is an RLock shared with
+    hid_send and VialDevice.send/recv, so nested usb_send calls are fine."""
+    def wrapper(self, *args, **kwargs):
+        with hid_lock_for(self.dev):
+            return fn(self, *args, **kwargs)
+    wrapper.__name__ = fn.__name__
+    wrapper.__doc__ = fn.__doc__
+    return wrapper
 
 class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, ProtocolKeyOverride):
     """ Low-level communication with a vial-enabled keyboard """
@@ -1174,11 +1191,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LAYER_RGB_GET_STATUS), retries=20)
             return data[2:]
         except:
-            return bytes([
-                0x01 if self.layer_rgb_enabled else 0x00,
-                self.layers if hasattr(self, 'layers') and self.layers > 0 else 4,
-                0, 0, 0, 0, 0, 0
-            ])
+            # Comm failure: report "unknown" instead of a fabricated status the
+            # caller would mistake for real device state.
+            return None
 
     def set_layer_rgb_enable(self, enabled):
         """Enable or disable per-layer RGB functionality"""
@@ -1189,8 +1204,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 self.layer_rgb_enabled = enabled
             return success
         except:
-            self.layer_rgb_enabled = enabled
-            return True
+            # The write never reached the device — do not report success.
+            return False
 
     def save_rgb_to_layer(self, layer):
         """Save current RGB settings to specified layer"""
@@ -1198,7 +1213,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             data = self.usb_send(self.dev, struct.pack("BBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LAYER_RGB_SAVE, layer), retries=20)
             return data[2] == 0x01
         except:
-            return True
+            # The write never reached the device — do not report success.
+            return False
 
     def load_rgb_from_layer(self, layer):
         """Load RGB settings from specified layer"""
@@ -1347,20 +1363,26 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             return False
 
     def get_custom_animation_status(self):
-        """Get custom animation status including active slot"""
+        """Get custom animation status including active slot.
+
+        Returns None on comm failure — callers must treat that as "unknown"
+        and skip, not act on it. The old fabricated fake-success buffer here
+        made the GUI believe slot 0 was active after a failed read, which
+        then drove real RGB writes to the device on connect.
+        """
         try:
             data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_CUSTOM_ANIM_GET_STATUS), retries=20)
             if data and len(data) >= 12:
                 return data[1:]
-            return bytes([50, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0])
+            return None
         except Exception as e:
-            return bytes([50, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0])
+            return None
 
     def get_current_custom_slot(self):
         """Get the currently active custom slot number"""
         try:
             status = self.get_custom_animation_status()
-            if len(status) > 1:
+            if status is not None and len(status) > 1:
                 return status[1]
                 
             current_mode = self.rgb_mode
@@ -1414,6 +1436,41 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         
         return bytes(packet)
 
+    def get_lcd_theme(self):
+        """Get the keyboard's current global LCD colour theme index.
+
+        Returns the theme index (int) or None on failure. Firmware response
+        layout (raw_hid_receive_kb family): status@4, current index@5, count@6.
+        """
+        try:
+            # sub-cmd 0 = GET (carried in the macro_num/byte-4 field)
+            packet = self._create_hid_packet(HID_CMD_LCD_THEME, 0, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if not data or len(data) < 7 or data[3] != HID_CMD_LCD_THEME:
+                return None
+            if data[4] != 0:
+                return None
+            # Firmware that predates the via.c 0xFE routing fix rejects this
+            # command with an error ECHO: it keeps data[4]=0 (our GET sub-cmd)
+            # and forces data[5]=1, which parsed as "theme 1". The real handler
+            # always reports the theme count (>=1) at data[6]; the echo carries
+            # our request's 0 there — use that to tell them apart.
+            if data[6] == 0:
+                return None
+            return data[5]
+        except Exception:
+            return None
+
+    def set_lcd_theme(self, theme_index):
+        """Set the keyboard's global LCD colour theme (applies + persists)."""
+        try:
+            # sub-cmd 1 = SET; payload byte 0 = theme index
+            packet = self._create_hid_packet(HID_CMD_LCD_THEME, 1, [theme_index & 0xFF])
+            data = self.usb_send(self.dev, packet, retries=3)
+            return bool(data) and len(data) > 4 and data[4] == 0
+        except Exception:
+            return False
+
     def set_thruloop_config(self, loop_config_data):
         """Set basic ThruLoop configuration (includes 8 restart CCs)"""
         try:
@@ -1466,6 +1523,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception as e:
             return False
 
+    @_hid_transaction
     def get_thruloop_config(self):
         """Get all ThruLoop configuration using multi-packet collection"""
         try:
@@ -1616,6 +1674,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception as e:
             return False
 
+    @_hid_transaction
     def set_keyboard_param_single(self, param_id, value):
         """Set individual keyboard parameter (real-time update)
 
@@ -1644,12 +1703,23 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
             packet = self._create_hid_packet(HID_CMD_SET_KEYBOARD_PARAM_SINGLE, 0, data)
 
-            # Retry logic: 4 retries with 100ms delay
+            # Retry logic: 4 retries with 100ms delay. A retry re-SENDS only
+            # when no response arrived at all. If a response arrives but isn't
+            # the 0xE8 echo (a stale packet from an earlier timed-out command),
+            # keep READING for the real reply instead of re-sending — each
+            # duplicate send executes the SET again on the firmware and queues
+            # another orphan response, compounding the stream desync.
             for attempt in range(5):  # 1 initial + 4 retries = 5 total attempts
                 try:
                     response = self.usb_send(self.dev, packet, retries=1)
-                    if response and len(response) > 0 and response[5] == 1:
-                        return True
+                    for _ in range(3):
+                        if response and len(response) >= 6 and \
+                                response[3] == HID_CMD_SET_KEYBOARD_PARAM_SINGLE:
+                            break
+                        response = bytes(self.dev.read(MSG_LEN, timeout_ms=500))
+                    if response and len(response) >= 6 and \
+                            response[3] == HID_CMD_SET_KEYBOARD_PARAM_SINGLE:
+                        return response[5] == 1
 
                     # If not last attempt, wait before retry
                     if attempt < 4:
@@ -1813,6 +1883,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception as e:
             return False
 
+    @_hid_transaction
     def get_midi_config(self):
         """Get MIDIswitch configuration using multi-packet collection"""
         try:
@@ -1883,7 +1954,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 octave_number3 = struct.unpack('<b', data[14:15])[0]
                 random_velocity_modifier = data[15]
                 oled_keyboard = struct.unpack('<I', data[16:20])[0]
-                smart_chord_light = data[20]
+                # Byte 20 (was reserved / overdub_advanced_mode): per-function
+                # Stop Mode bitmask. Bit 7 set = "firmware supports Stop Mode"
+                # (feature detect); low 5 bits = STOP_MODE_* mask (bit clear =
+                # Mute, bit set = Stop). Old firmware sends 0 here.
+                stop_mode_byte = data[20]
                 smart_chord_light_mode = data[21]
                 # Bytes 22-25: firmware now carries these here (packet 2 was full).
                 # Previously they had NO GET path, so the GUI defaulted them and a
@@ -1902,7 +1977,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                     "transpose_number3": transpose_number3,
                     "random_velocity_modifier": random_velocity_modifier,
                     "oled_keyboard": oled_keyboard,
-                    "smart_chord_light": smart_chord_light,
+                    "stop_mode_supported": bool(stop_mode_byte & 0x80),
+                    "stop_mode": stop_mode_byte & 0x1F,
                     "smart_chord_light_mode": smart_chord_light_mode,
                     "chord_display_mode": chord_display_mode,
                     "base_sustain": base_sustain,
@@ -1996,6 +2072,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             if not response or len(response) < 16:  # 5 header + 11 data bytes
                 return None
 
+            # Validate the command echo and both status bytes — a stale packet
+            # from an earlier timed-out command would otherwise be parsed as
+            # aftertouch/vibrato settings and land in global_midi_settings.
+            if response[3] != HID_CMD_GET_LAYER_ACTUATION or \
+                    response[4] != 0x01 or response[5] != 0x01:
+                return None
+
             flags = response[10]
             vibrato_decay_time = response[14] | (response[15] << 8)
             return {
@@ -2013,6 +2096,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception as e:
             return None
 
+    @_hid_transaction
     def get_all_layer_actuations(self):
         """Get all layer actuations at once using bulk read
 
@@ -2449,6 +2533,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         """
         return self.get_velocity_preset(slot)
 
+    @_hid_transaction
     def get_all_user_curve_names(self):
         """
         Get all user curve names from the keyboard (50 presets via bulk read).

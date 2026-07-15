@@ -5,7 +5,7 @@ import threading
 from hidproxy import hid
 from protocol.keyboard_comm import Keyboard
 from protocol.dummy_keyboard import DummyKeyboard
-from util import MSG_LEN, pad_for_vibl
+from util import MSG_LEN, hid_lock_for, pad_for_vibl
 
 # Startup logging helper
 def _startup_log(msg):
@@ -29,6 +29,12 @@ class VialDevice:
     def open(self, override_json=None):
         _startup_log(f"Opening HID device: {self.desc.get('product_string', 'Unknown')}")
         self.dev = hid.device()
+        # Share the per-handle transaction lock with hid_send and the
+        # keyboard_comm collectors — the instance RLock from __init__ only
+        # covered VialDevice.send/recv against each other, which protected
+        # almost nothing (most traffic goes through hid_send on the raw
+        # handle).
+        self.hid_lock = hid_lock_for(self.dev)
         for x in range(10):
             try:
                 self.dev.open_path(self.desc["path"])

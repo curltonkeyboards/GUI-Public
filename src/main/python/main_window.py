@@ -184,6 +184,9 @@ class MainWindow(QMainWindow):
         Unlocker.global_main_window = self
 
         self.current_tab = None
+        # Each editor is wrapped in an EditorContainer exactly once and the
+        # wrapper is reused across refresh_tabs() calls (see refresh_tabs).
+        self.editor_containers = {}
         self.tabs = QTabWidget()
         self.tabs.currentChanged.connect(self.on_tab_changed)
         self.refresh_tabs()
@@ -420,10 +423,13 @@ class MainWindow(QMainWindow):
             if (keyboard_id in EXAMPLE_KEYBOARDS) or ((keyboard_id & 0xFFFFFFFFFFFFFF) == EXAMPLE_KEYBOARD_PREFIX):
                 QMessageBox.warning(self, "", "An example keyboard UID was detected.\n"
                                               "Please change your keyboard UID to be unique before you ship!")
-            # Initialize feature name manager for this keyboard and sync to firmware
+            # Initialize feature name manager for this keyboard. Individual
+            # renames are pushed to the firmware at edit time (set_name ->
+            # _hid_set_name); bulk-pushing the local JSON cache here would
+            # clobber names renamed on-device and burn EEPROM write cycles
+            # on every device select.
             mgr = get_feature_name_manager()
             mgr.set_keyboard(keyboard_id, self.autorefresh.current_device.keyboard)
-            mgr.sync_all_to_firmware()
 
             # Confirm this is our keyboard via its unique Vial UID (the product
             # string was already matched at enumeration). If it matches, run the
@@ -561,13 +567,21 @@ class MainWindow(QMainWindow):
         # Disable UI updates during tab refresh to speed up the process
         self.tabs.setUpdatesEnabled(False)
         try:
+            # QTabWidget.clear() reparents the pages to None without deleting
+            # them, so the cached EditorContainers survive and can be re-added.
             self.tabs.clear()
-            for container, lbl in self.editors:
-                is_valid = container.valid()
-                if not is_valid:
+            for editor, lbl in self.editors:
+                if not editor.valid():
                     continue
 
-                c = EditorContainer(container)
+                # Wrap each editor once and reuse the wrapper: constructing a
+                # new EditorContainer per refresh re-set the editor layout on a
+                # new widget and re-polished the entire widget tree every time,
+                # while leaking the previous containers.
+                c = self.editor_containers.get(editor)
+                if c is None:
+                    c = EditorContainer(editor)
+                    self.editor_containers[editor] = c
                 self.tabs.addTab(c, tr("MainWindow", lbl))
         finally:
             self.tabs.setUpdatesEnabled(True)

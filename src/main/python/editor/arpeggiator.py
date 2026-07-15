@@ -2466,6 +2466,32 @@ class StepWidget(QFrame):
 
 
 
+class _LazyPresetEntries:
+    """List-like container that creates preset entry widgets on first access.
+
+    Each entry is a full grid of step widgets (dozens of styled cells), so
+    building all 40 per editor up front cost seconds of startup. Only
+    indexing and len() are used by the callers; entries materialize the
+    first time a tab actually shows them."""
+
+    def __init__(self, count, factory):
+        self._count = count
+        self._factory = factory
+        self._items = {}
+
+    def __len__(self):
+        return self._count
+
+    def __getitem__(self, idx):
+        if not 0 <= idx < self._count:
+            raise IndexError(idx)
+        item = self._items.get(idx)
+        if item is None:
+            item = self._factory(idx)
+            self._items[idx] = item
+        return item
+
+
 class Arpeggiator(BasicEditor):
     """Arpeggiator tab for creating and managing arpeggiator presets"""
 
@@ -2532,11 +2558,9 @@ class Arpeggiator(BasicEditor):
         # Create all 40 user preset entry widgets (presets 119-158 for arpeggiator, pool-based)
         from protocol.feature_names import get_feature_name_manager, FEATURE_ARP
         mgr = get_feature_name_manager()
-        self.entry_widgets = []
-        for i in range(40):
-            preset_id = 119 + i  # User Arp presets start at 119 (after 119 factory patterns)
-            entry = self._create_preset_entry(i, preset_id)
-            self.entry_widgets.append(entry)
+        # User Arp presets start at 119 (after 119 factory patterns); entries
+        # are created lazily on first tab access.
+        self.entry_widgets = _LazyPresetEntries(40, lambda i: self._create_preset_entry(i, 119 + i))
 
         # Initially show only 1 tab + "+" button (will expand on rebuild with device info)
         self.preset_tabs.addTab(self.entry_widgets[0]['widget'], mgr.get_name(FEATURE_ARP, 0))
@@ -3963,11 +3987,9 @@ class StepSequencer(Arpeggiator):
         # Create all 40 user preset entry widgets (presets 116-155 for step sequencer, pool-based)
         from protocol.feature_names import get_feature_name_manager, FEATURE_SEQ
         mgr = get_feature_name_manager()
-        self.entry_widgets = []
-        for i in range(40):
-            preset_id = 116 + i  # User Seq presets start at 116
-            entry = self._create_preset_entry(i, preset_id)
-            self.entry_widgets.append(entry)
+        # User Seq presets start at 116; entries are created lazily on first
+        # tab access.
+        self.entry_widgets = _LazyPresetEntries(40, lambda i: self._create_preset_entry(i, 116 + i))
 
         # Initially show only 1 tab + "+" button (will expand on rebuild with device info)
         self.preset_tabs.addTab(self.entry_widgets[0]['widget'], mgr.get_name(FEATURE_SEQ, 0))

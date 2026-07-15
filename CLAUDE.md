@@ -865,3 +865,47 @@ Tracked efficiency improvements to the firmware scan loop. Each scan processes 7
 - Inserted `if (normalized == 0) return 0;` before `apply_eq_curve_adjustment()` call
 - `apply_eq_curve_adjustment()` contains loops, quadratic blending, cumulative boundaries — ~30+ arithmetic ops per call
 - Typical typing: ~50-60 of 70 keys idle at any moment
+
+---
+
+## Stop Mode (GUI, MIDI Settings tab) — per-function Mute/Stop
+
+The firmware's per-function **Stop Mode** (bitmask `loop_stop_mode`, one bit per
+transport family; **bit clear = Mute, DEFAULT** / bit set = Stop) is exposed in
+the MIDI Settings tab as its own **"Stop Mode" group** (mirroring the on-device
+Advanced Settings > Stop Mode menu):
+
+- **Instant Start** — the pre-existing combo, MOVED here from the Loop Settings
+  group (same `self.instant_loop_start` widget; still rides advanced packet 2
+  byte 8). It dictates whether the mute/stop toggles resolve on the key press
+  or defer to the loop trigger.
+- **Loop / ThruLoop / Step Sequencer / Drum Machine / Rhythm Engine** — one
+  `Mute`/`Stop` combo each (`self.stop_mode_combos`, keyed by the firmware
+  `STOP_MODE_*` bit; class constants `STOP_MODE_LOOP=0x01, THRULOOP=0x02,
+  SEQ=0x04, DRUM=0x08, CPROG=0x10` on `MIDIswitchSettingsConfigurator`).
+
+**HID:** the mask rides keyboard-config **packet 1 payload offset 20** (the old
+reserved/`overdub_advanced_mode` byte, formerly the hidden always-0
+`smart_chord_light` widget — that widget is now removed) as **`0x80 | mask`** in
+BOTH directions. Bit 7 is the validity/feature-detect marker:
+
+- **GET** (`get_midi_config`): byte 20 parses to `stop_mode_supported`
+  (bit 7) + `stop_mode` (low 5 bits). Old firmware sends 0 → the 5 combos are
+  shown all-Mute and **disabled** (`_apply_stop_mode`).
+- **SET/save** (`pack_basic_data`): packs `0x80 | mask` when supported, else 0
+  — the firmware ignores the byte without bit 7, so a legacy GUI (or this GUI
+  talking to a pre-detect state) can never reset the on-device setting.
+- Applied on the normal "Save Settings" flow (slot save `0xB9` routes through
+  the same firmware parser); the firmware persists on-device edits to slot 0
+  itself, so "Load Active Settings" round-trips it.
+
+## LCD Theme (GUI, MIDI Settings > Advanced grid)
+
+**LCD Theme** combo (Orange / Matrix Green / White / Light Blue — keep in sync
+with `lcd_themes[]` in the firmware) + the renamed **Virtual Instrument** combo
+(formerly "OLED Keyboard"; Keyboard 1/2/3 + Guitar Low/Med/High). The theme is
+a global setting with its own EEPROM region, carried over the dedicated HID
+command `HID_CMD_LCD_THEME = 0xFE` (`data[4]` 0=GET/1=SET, `data[6]`=index;
+response status@4, index@5, count@6) via `keyboard_comm.get_lcd_theme()` /
+`set_lcd_theme()` — it applies + persists instantly on change (not part of the
+per-slot settings packet). `apply_settings` fetches it on every config load.

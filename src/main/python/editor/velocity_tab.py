@@ -57,20 +57,30 @@ def is_midi_note_keycode(keycode):
                 return True
             return False
 
-        # Check for MI_ prefix (base MIDI notes like MI_C, MI_C_1, MI_Cs, etc.)
+        # Check for MI_ prefix (base MIDI notes like MI_C, MI_C_1, MI_Cs, MI_Cb, etc.)
         if keycode.startswith("MI_"):
             note_prefixes = ['MI_C', 'MI_D', 'MI_E', 'MI_F', 'MI_G', 'MI_A', 'MI_B']
             for prefix in note_prefixes:
                 if keycode.startswith(prefix):
-                    # Make sure it's not a control code like MI_CHANNEL
+                    # Make sure it's not a control code like MI_CHANNEL.
+                    # Accept sharp ('s'/'S'), flat ('b'), octave separator/digits.
+                    # (Flats matter: MI_Db/MI_Eb/... otherwise miss the count while
+                    # the firmware still treats them as MIDI note keys.)
                     remaining = keycode[len(prefix):]
-                    if not remaining or remaining[0] in 'sS_0123456789':
+                    if not remaining or remaining[0] in 'sSb_0123456789':
                         return True
             return False
         return False
 
-    # Handle numeric keycodes
-    return MIDI_NOTE_MIN <= keycode <= MIDI_NOTE_MAX
+    # Handle numeric keycodes. Cover all three MIDI note ranges the firmware
+    # treats as KEY_TYPE_MIDI, not just base notes — a keysplit/triplesplit note
+    # that arrives as a raw int (unresolved label) is still a MIDI key.
+    #   base        0x7103-0x714A
+    #   keysplit    0xC600-0xC647
+    #   triplesplit 0xC670-0xC6B7
+    return ((MIDI_NOTE_MIN <= keycode <= MIDI_NOTE_MAX) or
+            (0xC600 <= keycode <= 0xC647) or
+            (0xC670 <= keycode <= 0xC6B7))
 
 
 def get_midi_key_type(keycode):
@@ -1433,9 +1443,12 @@ class VelocityTab(BasicEditor):
                 # Update UI from settings
                 self.load_advanced_ui_from_settings()
 
-            # Push velocity_as_at to keyboard (no read-back available, so sync GUI→firmware)
-            velocity_as_at = self.global_midi_settings.get('velocity_as_at', False)
-            self.keyboard.set_keyboard_param_single(PARAM_VELOCITY_AS_AT, 1 if velocity_as_at else 0)
+            # NOTE: velocity_as_at is deliberately NOT pushed to the keyboard
+            # here. This runs on every connect/rebuild, and pushing the GUI's
+            # local default silently overwrote the device's setting just for
+            # opening the app. The parameter is written only when the user
+            # explicitly toggles it (its change handler); the device's own
+            # value wins on connect.
         except Exception as e:
             print(f"Error loading advanced settings: {e}")
 

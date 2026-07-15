@@ -2060,7 +2060,9 @@ class PerKeyRGBHandler(BasicHandler):
                                    preset, offset, count)
                 response = self.keyboard.usb_send(self.keyboard.dev, data, retries=20)
 
-                if response and len(response) >= count + 1:
+                # Firmware replies [success=0x01, data...] (vial.c 0xD5); an
+                # error/echo response must not be parsed as LED palette data.
+                if response and len(response) >= count + 1 and response[0] == 0x01:
                     for i in range(count):
                         val = response[1 + i]
                         self.preset_data[preset][offset + i] = val
@@ -2284,6 +2286,12 @@ class CustomLightsHandler(BasicHandler):
         # Track the currently active slot (for parameter changes)
         self.current_active_slot = None
         self.current_randomize_slot = None
+        # Slots whose widget values were actually populated from the device
+        # (update_slot_widgets). Widget init defaults (hue 0 / sat 255 = red)
+        # must never be pushed to the keyboard as if they were real data.
+        self.slots_loaded_from_device = set()
+        # Placeholder tab pages; real controls are built on first visit
+        self._slot_tab_placeholders = {}
         
         # Create grouped tabs
         self.slot_tabs = []
@@ -2332,11 +2340,28 @@ class CustomLightsHandler(BasicHandler):
             self.create_slot_tab(slot, sub_tab_widget)
         
     def create_slot_tab(self, slot, parent_tab_widget):
-        """Create a tab for a single slot within a group's sub-tab widget"""
-        # Create tab widget
+        """Register a placeholder tab for a slot. The actual controls (a
+        dozen dropdowns/sliders each, x50 slots) are built on the first visit
+        via _ensure_slot_tab() — building all of them up front cost ~0.5s and
+        tens of thousands of signal connects at startup."""
         tab_widget = QWidget()
+        # Register BEFORE addTab: adding the first tab fires currentChanged
+        # synchronously, which routes to _ensure_slot_tab for that slot — this
+        # builds each group's initially-visible slot so it is never blank.
+        self._slot_tab_placeholders[slot] = tab_widget
         parent_tab_widget.addTab(tab_widget, str(slot + 1))  # Tab names: "1", "2", "3", etc.
-        
+
+    def _ensure_slot_tab(self, slot):
+        """Build a slot tab's real content on first use."""
+        if slot in self.slot_widgets:
+            return
+        tab_widget = self._slot_tab_placeholders.get(slot)
+        if tab_widget is None:
+            return
+        self._build_slot_tab_content(slot, tab_widget)
+
+    def _build_slot_tab_content(self, slot, tab_widget):
+        """Create the full control set for one slot inside its placeholder."""
         # Create layout for this tab
         layout = QGridLayout(tab_widget)
         layout.setContentsMargins(10, 5, 10, 5)
@@ -2588,6 +2613,7 @@ class CustomLightsHandler(BasicHandler):
         lowest_slot = start_idx
 
         print(f"Main tab changed to {group_name}, loading EEPROM for lowest slot {lowest_slot}")
+        self._ensure_slot_tab(lowest_slot)
         self.block_signals()
         self.load_slot_from_eeprom(lowest_slot)
         self._apply_slot_rgb_to_keyboard(lowest_slot)
@@ -2598,6 +2624,7 @@ class CustomLightsHandler(BasicHandler):
         """Handle sub-tab switching within a group"""
         actual_slot = start_slot + index
         print(f"Sub-tab changed to {index}, actual slot {actual_slot}, loading EEPROM state")
+        self._ensure_slot_tab(actual_slot)
         self.block_signals()
         self.load_slot_from_eeprom(actual_slot)
         self._apply_slot_rgb_to_keyboard(actual_slot)
@@ -2642,6 +2669,10 @@ class CustomLightsHandler(BasicHandler):
     def _apply_slot_rgb_to_keyboard(self, slot):
         """Send a slot's stored hue/sat to the keyboard for live preview"""
         if slot not in self.slot_widgets:
+            return
+        if slot not in self.slots_loaded_from_device:
+            # The slot's EEPROM read failed (or never ran) — the widgets still
+            # hold init defaults (hue 0 / sat 255 = red). Don't push those.
             return
         widgets = self.slot_widgets[slot]
         h = widgets.get('effect_hue', 0)
@@ -2794,6 +2825,7 @@ class CustomLightsHandler(BasicHandler):
         widgets['macro_brightness'].setValue(config[13] if len(config) > 13 else 255)
         widgets['effect_hue'] = config[6] if len(config) > 6 else 0
         widgets['effect_sat'] = config[15] if len(config) > 15 else 255
+        self.slots_loaded_from_device.add(slot)
         # Update swatch from per-slot values (do NOT touch global RGB here)
         self._update_rgb_color_swatch(slot)
 
@@ -2824,6 +2856,11 @@ class CustomLightsHandler(BasicHandler):
         try:
             if hasattr(self.device.keyboard, 'get_custom_animation_status'):
                 status = self.device.keyboard.get_custom_animation_status()
+                if status is None:
+                    # Comm failure: state unknown — do nothing rather than act
+                    # on invented data.
+                    self.unblock_signals()
+                    return
                 # status = get_custom_animation_status() (already stripped of the leading byte).
                 # status[1] is the slot the device is currently RENDERING. There is no
                 # "active slot" at status[2] (that's the per-slot enabled bitmap) and no
@@ -2841,8 +2878,12 @@ class CustomLightsHandler(BasicHandler):
                     self.current_randomize_slot = None
                     self.current_active_slot = self.get_currently_active_slot()
 
-                # When the active slot changes, set global RGB from the new slot's color
-                if self.current_active_slot != prev_active and self.current_active_slot is not None:
+                # When the active slot CHANGES, set global RGB from the new slot's
+                # color. prev_active is None only on the first refresh after a
+                # connect — never write to the device just for connecting.
+                if (prev_active is not None and
+                        self.current_active_slot != prev_active and
+                        self.current_active_slot is not None):
                     self._sync_rgb_for_active_slot(self.current_active_slot)
             else:
                 self.current_randomize_slot = None
@@ -2858,16 +2899,14 @@ class CustomLightsHandler(BasicHandler):
         Fetches from EEPROM if the slot hasn't been loaded into slot_widgets yet."""
         h = 0
         s = 255
-        # Try slot_widgets first - but only if they've been loaded from EEPROM
-        # (defaults are hue=0,sat=255 which is just the init value, not real data)
-        loaded_from_eeprom = False
-        if slot in self.slot_widgets:
+        # Use widget values only when this slot was actually populated from the
+        # device — the widgets are created for all 50 slots up front with init
+        # defaults (hue 0 / sat 255 = red), which are NOT real data.
+        loaded_from_eeprom = slot in self.slots_loaded_from_device and slot in self.slot_widgets
+        if loaded_from_eeprom:
             widgets = self.slot_widgets[slot]
-            # Check if this slot was ever loaded from EEPROM by checking if
-            # the widget values differ from init defaults or if we loaded it via tab switch
             h = widgets.get('effect_hue', 0)
             s = widgets.get('effect_sat', 255)
-            loaded_from_eeprom = True
 
         if not loaded_from_eeprom:
             # Fetch directly from EEPROM for slots never visited in the GUI
@@ -2876,8 +2915,13 @@ class CustomLightsHandler(BasicHandler):
                 if config and len(config) > 15:
                     h = config[6]
                     s = config[15]
+                    loaded_from_eeprom = True
             except Exception as e:
                 print(f"Error fetching slot {slot} color from EEPROM: {e}")
+
+        if not loaded_from_eeprom:
+            # No real data for this slot — send nothing rather than defaults.
+            return
 
         if hasattr(self.device, 'keyboard') and hasattr(self.device.keyboard, 'rgb_hsv'):
             self.device.keyboard.set_vialrgb_color(h, s, self.device.keyboard.rgb_hsv[2])

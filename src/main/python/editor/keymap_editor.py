@@ -2767,7 +2767,11 @@ class KeymapEditor(BasicEditor):
             self.on_layout_changed()
 
             self.tabbed_keycodes.recreate_keycode_buttons()
-            TabbedKeycodes.tray.recreate_keycode_buttons()
+            # NOTE: the shared tray (TabbedKeycodes.tray) is deliberately NOT
+            # recreated here. Every KeymapEditor.rebuild() runs inside
+            # MainWindow.rebuild(), which recreates the tray exactly once at
+            # the end (after set_keyboard/set_editors), so doing it here too
+            # rebuilt tens of thousands of buttons a second time per connect.
 
             # Initialize encoder widget with keyboard data
             self.encoder_assign.set_layer(self.current_layer, self.keyboard)

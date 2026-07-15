@@ -3,6 +3,7 @@ import logging
 import os
 import pathlib
 import sys
+import threading
 import time
 from logging.handlers import RotatingFileHandler
 
@@ -26,6 +27,26 @@ tr = QCoreApplication.translate
 # the pollers run on the Qt main thread, so this plain flag is set/checked
 # without a race relative to the pollers.
 _hid_transfer_active = False
+
+# --- Cross-thread HID transaction lock ---------------------------------------
+# One RLock per raw hid device handle, shared by every consumer of that handle:
+# hid_send (whole drain+write+read transaction), VialDevice.send/recv (the loop
+# manager's listener thread), and keyboard_comm's multi-packet collectors. The
+# device has a single IN queue and no request/response correlation, so two
+# threads interleaving reads steal each other's packets. RLock (not Lock) so a
+# collector holding the lock can still call usb_send/hid_send underneath it.
+_hid_locks = {}
+_hid_locks_guard = threading.Lock()
+
+
+def hid_lock_for(dev):
+    """Return the shared transaction lock for a raw hid device handle."""
+    with _hid_locks_guard:
+        lock = _hid_locks.get(id(dev))
+        if lock is None:
+            lock = threading.RLock()
+            _hid_locks[id(dev)] = lock
+        return lock
 
 
 def set_hid_transfer_active(active):
@@ -85,6 +106,19 @@ def hid_send(dev, msg, retries=1):
 
     data = b""
     try:
+      # The whole drain+write+read sequence is one transaction: another
+      # thread's read between our write and our read would steal the response.
+      with hid_lock_for(dev):
+        # Drain any stale queued IN reports before sending. A response that
+        # arrived after a previous call's read timeout would otherwise be
+        # returned as THIS command's response, permanently offsetting every
+        # subsequent request/response pair by one (the desync H4 describes).
+        # Bounded so a chatty device can't spin us here.
+        for _ in range(8):
+            stale = dev.read(MSG_LEN, timeout_ms=1)
+            if not stale:
+                break
+
         # add 00 at start for hidapi report id
         if dev.write(b"\x00" + msg) != MSG_LEN + 1:
             raise RuntimeError("failed to communicate with the device")
