@@ -46,7 +46,8 @@ Every scan cycle, each key goes through this pipeline (matrix.c ~line 2180):
 
 ```
 1. Read raw ADC sample
-2. Filter (EMA currently BYPASSED - line 2192, using raw directly)
+2. Filter: 3-sample EMA, alpha = 1/2 (calibrated keys only; uncalibrated keys
+   pass raw so the late-seed stability check sees the true sensor)
 3. Update calibration (continuous auto-calibration)
 4. Calculate distance: adc_to_distance(filtered, rest, bottom) → 0-255
 5. Apply rest dead zone: distance <= 3 → 0  (prevents ADC noise residuals)
@@ -59,7 +60,7 @@ Every scan cycle, each key goes through this pipeline (matrix.c ~line 2180):
 ```c
 typedef struct {
     uint16_t adc_raw;               // Raw ADC (no filtering)
-    uint16_t adc_filtered;          // Filtered ADC (EMA bypassed, currently = raw)
+    uint16_t adc_filtered;          // Filtered ADC (3-sample EMA, alpha = 1/2)
     uint16_t adc_rest_value;        // Calibrated rest position
     uint16_t adc_bottom_out_value;  // Calibrated bottom-out position
     uint8_t  distance;              // 0-255 (0=rest, 255=full press)
@@ -229,6 +230,19 @@ Before RT logic, distance is remapped through per-key deadzones:
 - `distance <= dz_bottom` → 0
 - `distance >= 255 - dz_top` → 255
 - Otherwise: linearly rescaled `[dz_bottom, 255-dz_top]` → `[0, 255]`
+
+**Hidden 0.1mm bottom-deadzone floor (ship guard, 2026-07):** the effective
+deadzones are read through `get_effective_deadzones()` (`matrix.c`), the single
+place holding the (#9) >51 corruption clamp **and** a hidden minimum bottom
+deadzone `HIDDEN_MIN_DZ_BOTTOM = 6` (the value the GUI labels "0.1mm"; 0-51 =
+0-0.8mm). Any configured bottom deadzone below 0.1mm (e.g. 0.05mm = 3, or 0)
+is silently raised to 0.1mm at read time — the stored per-key setting and its
+GUI round-trip are untouched, so the floor is invisible to the user and the
+GUI needs NO change (it may keep offering values below 0.1mm; the device
+ignores them). The velocity deadzone-compensation ranges (`dz_effective_range`
+in `process_midi_key_analog`) read through the same helper so compensation
+always matches the remap actually applied. The top (bottom-out side) deadzone
+has no floor — it does not gate presses.
 
 ---
 
@@ -832,13 +846,19 @@ re-entered.)
 
 ## EMA Filter Status
 
-Currently **bypassed** for troubleshooting (line 2192):
+**ACTIVE** (2026-07): a light **3-sample EMA** (`MATRIX_EMA_ALPHA_EXPONENT 1`,
+alpha = 1/2 → effective window N = 2/alpha − 1 = 3):
 ```c
-// TROUBLESHOOTING: Bypass EMA filter, use raw ADC directly
-// Original: key->adc_filtered = EMA(raw_value, key->adc_filtered);
-key->adc_filtered = raw_value;
+key->adc_filtered = (uint16_t)EMA(raw_value, key->adc_filtered);  // (raw + prev) / 2
 ```
-EMA alpha = 1/16 (exponent 4). Re-enabling would smooth noise but add ~16 scan cycle latency.
+- Applied only to **calibrated** keys; uncalibrated keys pass raw so the (#24)
+  late-seed stability check sees the true sensor (`seed_key_calibration()`
+  re-seeds `adc_filtered` from the validated rest sample).
+- **Latency:** step response 50%/75%/87.5% after 1/2/3 scans; group delay ≈ 1
+  scan ≈ **0.5-1ms** added to threshold crossings — imperceptible for MIDI.
+- The previous alpha = 1/16 (exponent 4) filter was bypassed because it lagged
+  ~16 scans (≈8ms). The raw-ADC anti-jitter guards (reversal confirm, re-arm
+  hysteresis, threshold-mode retrigger band) are **kept** as defense in depth.
 
 ---
 
