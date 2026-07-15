@@ -5520,6 +5520,23 @@ class GamingConfigurator(BasicEditor):
         desc_label.setStyleSheet("color: gray; font-size: 9pt;")
         settings_column.addWidget(desc_label)
 
+        # Gaming Mode master enable. Without this the tab had no way to turn gaming
+        # mode ON — a user could assign controls and Save, but the mappings only
+        # take effect while gaming mode is active, so the gamepad stayed dead. This
+        # applies instantly (like the on-device GAMING_MODE keycode) rather than
+        # waiting for "Save Configuration".
+        enable_row = QHBoxLayout()
+        enable_row.setContentsMargins(0, 0, 0, 0)
+        self.gaming_mode_checkbox = QCheckBox(tr("GamingConfigurator", "Gaming Mode Enabled"))
+        self.gaming_mode_checkbox.setStyleSheet("font-weight: bold;")
+        self.gaming_mode_checkbox.setToolTip(
+            "Turn the keyboard's gamepad mode on or off. Applies immediately.\n"
+            "When on, assigned keys act as gamepad inputs; when off, they behave normally.")
+        self.gaming_mode_checkbox.toggled.connect(self.on_gaming_mode_toggled)
+        enable_row.addWidget(self.gaming_mode_checkbox)
+        enable_row.addStretch()
+        settings_column.addLayout(enable_row)
+
         # Horizontal layout for Response and Calibration side by side
         response_calibration_layout = QHBoxLayout()
         response_calibration_layout.setSpacing(8)
@@ -5884,6 +5901,65 @@ class GamingConfigurator(BasicEditor):
             # Return empty stylesheet to clear any previous styling (except base_style)
             return f"QPushButton {{ {base_style} }}"
 
+    def on_gaming_mode_toggled(self, checked):
+        """Enable/disable gaming mode on the device immediately."""
+        if not self.keyboard:
+            return
+        try:
+            if not self.keyboard.set_gaming_mode(checked):
+                QMessageBox.warning(None, "Error", "Failed to change Gaming Mode on the keyboard")
+        except Exception as e:
+            QMessageBox.critical(None, "Error", f"Error setting Gaming Mode: {str(e)}")
+
+    def _apply_key_map_to_control(self, control_id, mapping):
+        """Populate one gamepad control button from a firmware key mapping dict."""
+        data = self.gaming_controls.get(control_id)
+        if data is None:
+            return
+        button_type = data.get('button_type', 'regular')
+        if mapping and mapping.get('enabled'):
+            row, col = mapping['row'], mapping['col']
+            data['row'] = row
+            data['col'] = col
+            data['enabled'] = True
+            # Resolve the keycode at that position (prefer layer 0) purely for a
+            # readable button label; the mapping itself is by row/col.
+            label = None
+            kc = None
+            if self.keyboard:
+                for (layer, r, c), k in sorted(self.keyboard.layout.items()):
+                    if r == row and c == col:
+                        kc = k
+                        break
+            if kc is not None:
+                from keycodes.keycodes import Keycode
+                label = Keycode.label(kc)
+                data['keycode'] = kc
+            if not label:
+                label = f"r{row}c{col}"
+            if len(label) > 7:
+                label = label[:6] + ".."
+            data['button'].setText(label)
+        else:
+            data['keycode'] = None
+            data['row'] = None
+            data['col'] = None
+            data['enabled'] = False
+            data['button'].setText("Not Set")
+        data['button'].setStyleSheet(self.get_button_style(button_type, highlighted=False))
+
+    def _load_key_mappings(self):
+        """Read every gamepad control's mapping back from the device and show it.
+
+        Essential for a safe Save: on_save() sends enabled=0 for any control that
+        isn't shown as assigned, so without loading the existing mappings first a
+        Save would wipe the user's gamepad layout on the device."""
+        if not self.keyboard or not hasattr(self.keyboard, 'get_gaming_key_map'):
+            return
+        for control_id in self.gaming_controls.keys():
+            mapping = self.keyboard.get_gaming_key_map(control_id)
+            self._apply_key_map_to_control(control_id, mapping)
+
     def on_assign_key(self, control_id):
         """Handle key assignment for a gaming control"""
         self.active_control_id = control_id
@@ -6060,12 +6136,20 @@ class GamingConfigurator(BasicEditor):
                 self.suppress_keystrokes_checkbox.setChecked(settings.get('suppress_keystrokes', True))
                 self.suppress_keystrokes_checkbox.blockSignals(False)
 
+                # Reflect current gaming-mode enable state (signals blocked)
+                self.gaming_mode_checkbox.blockSignals(True)
+                self.gaming_mode_checkbox.setChecked(settings.get('enabled', False))
+                self.gaming_mode_checkbox.blockSignals(False)
+
+                # Load existing key mappings so Save can't wipe them
+                self._load_key_mappings()
+
                 # Load gamepad response settings
                 response = self.keyboard.get_gaming_response()
                 if response:
                     self.angle_adj_checkbox.setChecked(response.get('angle_adj_enabled', False))
                     self.diagonal_angle_slider.setValue(response.get('diagonal_angle', 0))
-                    self.diagonal_angle_label.setText(f"Diagonal Angle: {response.get('diagonal_angle', 0)}°")
+                    self.diagonal_angle_label.setText(f"Angle: {response.get('diagonal_angle', 0)}°")
                     self.square_output_checkbox.setChecked(response.get('square_output', False))
                     self.snappy_joystick_checkbox.setChecked(response.get('snappy_joystick', False))
 
@@ -6171,6 +6255,15 @@ class GamingConfigurator(BasicEditor):
                 self.suppress_keystrokes_checkbox.setChecked(settings.get('suppress_keystrokes', True))
                 self.suppress_keystrokes_checkbox.blockSignals(False)
 
+                # Reflect the current gaming-mode enable state (block signals so
+                # showing it doesn't fire an unwanted set_gaming_mode round-trip).
+                self.gaming_mode_checkbox.blockSignals(True)
+                self.gaming_mode_checkbox.setChecked(settings.get('enabled', False))
+                self.gaming_mode_checkbox.blockSignals(False)
+
+            # Load existing key mappings so Save can't wipe them
+            self._load_key_mappings()
+
             # Load gamepad response settings
             response = self.keyboard.get_gaming_response()
             if response:
@@ -6181,7 +6274,7 @@ class GamingConfigurator(BasicEditor):
 
                 self.angle_adj_checkbox.setChecked(response.get('angle_adj_enabled', False))
                 self.diagonal_angle_slider.setValue(response.get('diagonal_angle', 0))
-                self.diagonal_angle_label.setText(f"Diagonal Angle: {response.get('diagonal_angle', 0)}°")
+                self.diagonal_angle_label.setText(f"Angle: {response.get('diagonal_angle', 0)}°")
                 self.square_output_checkbox.setChecked(response.get('square_output', False))
                 self.snappy_joystick_checkbox.setChecked(response.get('snappy_joystick', False))
 
