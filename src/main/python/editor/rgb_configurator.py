@@ -2290,6 +2290,8 @@ class CustomLightsHandler(BasicHandler):
         # (update_slot_widgets). Widget init defaults (hue 0 / sat 255 = red)
         # must never be pushed to the keyboard as if they were real data.
         self.slots_loaded_from_device = set()
+        # Placeholder tab pages; real controls are built on first visit
+        self._slot_tab_placeholders = {}
         
         # Create grouped tabs
         self.slot_tabs = []
@@ -2338,11 +2340,28 @@ class CustomLightsHandler(BasicHandler):
             self.create_slot_tab(slot, sub_tab_widget)
         
     def create_slot_tab(self, slot, parent_tab_widget):
-        """Create a tab for a single slot within a group's sub-tab widget"""
-        # Create tab widget
+        """Register a placeholder tab for a slot. The actual controls (a
+        dozen dropdowns/sliders each, x50 slots) are built on the first visit
+        via _ensure_slot_tab() — building all of them up front cost ~0.5s and
+        tens of thousands of signal connects at startup."""
         tab_widget = QWidget()
+        # Register BEFORE addTab: adding the first tab fires currentChanged
+        # synchronously, which routes to _ensure_slot_tab for that slot — this
+        # builds each group's initially-visible slot so it is never blank.
+        self._slot_tab_placeholders[slot] = tab_widget
         parent_tab_widget.addTab(tab_widget, str(slot + 1))  # Tab names: "1", "2", "3", etc.
-        
+
+    def _ensure_slot_tab(self, slot):
+        """Build a slot tab's real content on first use."""
+        if slot in self.slot_widgets:
+            return
+        tab_widget = self._slot_tab_placeholders.get(slot)
+        if tab_widget is None:
+            return
+        self._build_slot_tab_content(slot, tab_widget)
+
+    def _build_slot_tab_content(self, slot, tab_widget):
+        """Create the full control set for one slot inside its placeholder."""
         # Create layout for this tab
         layout = QGridLayout(tab_widget)
         layout.setContentsMargins(10, 5, 10, 5)
@@ -2594,6 +2613,7 @@ class CustomLightsHandler(BasicHandler):
         lowest_slot = start_idx
 
         print(f"Main tab changed to {group_name}, loading EEPROM for lowest slot {lowest_slot}")
+        self._ensure_slot_tab(lowest_slot)
         self.block_signals()
         self.load_slot_from_eeprom(lowest_slot)
         self._apply_slot_rgb_to_keyboard(lowest_slot)
@@ -2604,6 +2624,7 @@ class CustomLightsHandler(BasicHandler):
         """Handle sub-tab switching within a group"""
         actual_slot = start_slot + index
         print(f"Sub-tab changed to {index}, actual slot {actual_slot}, loading EEPROM state")
+        self._ensure_slot_tab(actual_slot)
         self.block_signals()
         self.load_slot_from_eeprom(actual_slot)
         self._apply_slot_rgb_to_keyboard(actual_slot)

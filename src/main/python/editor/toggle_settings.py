@@ -123,45 +123,94 @@ class TabbedKeycodesNoLayers(QWidget):
 
         self.layout = QVBoxLayout()
 
-        # Use our custom FilteredTabbedKeycodes without layers
-        self.all_keycodes = FilteredTabbedKeycodesNoLayers()
-        self.basic_keycodes = FilteredTabbedKeycodesNoLayers(keycode_filter=keycode_filter_masked)
-        for opt in [self.all_keycodes, self.basic_keycodes]:
-            opt.keycode_changed.connect(self.keycode_changed)
-            opt.anykey.connect(self.anykey)
-            self.layout.addWidget(opt)
+        # Both palettes are expensive (thousands of buttons); build each on
+        # first use — the one the current filter needs is created on the
+        # first showEvent. State that arrives earlier is recorded/replayed.
+        self.all_keycodes = None
+        self.basic_keycodes = None
+        self._current_filter = keycode_filter_any
+        self._pal_kb = None
+        self._pal_kb_pending = False
+        self._pal_editors = None
+        self._all_dirty = False
+        self._basic_dirty = False
 
         self.setLayout(self.layout)
-        self.set_keycode_filter(keycode_filter_any)
+
+    def _make_palette(self, keycode_filter, dirty):
+        opt = FilteredTabbedKeycodesNoLayers(keycode_filter=keycode_filter)
+        opt.keycode_changed.connect(self.keycode_changed)
+        opt.anykey.connect(self.anykey)
+        self.layout.addWidget(opt)
+        opt.hide()
+        need_recreate = dirty
+        if self._pal_kb_pending:
+            opt.set_keyboard(self._pal_kb)
+            need_recreate = True
+        if self._pal_editors is not None:
+            opt.set_editors(**self._pal_editors)
+            need_recreate = True
+        if need_recreate:
+            opt.recreate_keycode_buttons()
+        return opt
+
+    def _apply_current_filter(self):
+        if self._current_filter == keycode_filter_masked:
+            if self.basic_keycodes is None:
+                self.basic_keycodes = self._make_palette(keycode_filter_masked, self._basic_dirty)
+                self._basic_dirty = False
+            if self.all_keycodes is not None:
+                self.all_keycodes.hide()
+            self.basic_keycodes.show()
+        else:
+            if self.all_keycodes is None:
+                self.all_keycodes = self._make_palette(keycode_filter_any, self._all_dirty)
+                self._all_dirty = False
+            if self.basic_keycodes is not None:
+                self.basic_keycodes.hide()
+            self.all_keycodes.show()
+
+    def showEvent(self, event):
+        self._apply_current_filter()
+        super().showEvent(event)
 
     def set_keycode_filter(self, keycode_filter):
         """Show/hide filtered keycode widgets"""
-        if keycode_filter == keycode_filter_masked:
-            self.all_keycodes.hide()
-            self.basic_keycodes.show()
-        else:
-            self.all_keycodes.show()
-            self.basic_keycodes.hide()
+        self._current_filter = keycode_filter
+        if self.isVisible():
+            self._apply_current_filter()
 
     def set_keyboard(self, keyboard):
         """Set keyboard reference for all tab widgets"""
+        self._pal_kb = keyboard
+        self._pal_kb_pending = True
         for opt in [self.all_keycodes, self.basic_keycodes]:
-            opt.set_keyboard(keyboard)
+            if opt is not None:
+                opt.set_keyboard(keyboard)
 
     def set_editors(self, macro_recorder=None, tap_dance_editor=None, dks_settings=None, toggle_settings=None, **kwargs):
         """Set editor references for all tab widgets"""
+        self._pal_editors = dict(macro_recorder=macro_recorder, tap_dance_editor=tap_dance_editor,
+                                 dks_settings=dks_settings, toggle_settings=toggle_settings)
         for opt in [self.all_keycodes, self.basic_keycodes]:
-            opt.set_editors(macro_recorder, tap_dance_editor, dks_settings, toggle_settings)
+            if opt is not None:
+                opt.set_editors(macro_recorder, tap_dance_editor, dks_settings, toggle_settings)
 
     def refresh_macro_buttons(self):
         """Force refresh the macro tab buttons in all keycodes widgets"""
+        self._all_dirty = self.all_keycodes is None or self._all_dirty
+        self._basic_dirty = self.basic_keycodes is None or self._basic_dirty
         for opt in [self.all_keycodes, self.basic_keycodes]:
-            opt.refresh_macro_buttons()
+            if opt is not None:
+                opt.refresh_macro_buttons()
 
     def recreate_keycode_buttons(self):
         """Recreate all keycode buttons to reflect updated labels"""
+        self._all_dirty = self.all_keycodes is None or self._all_dirty
+        self._basic_dirty = self.basic_keycodes is None or self._basic_dirty
         for opt in [self.all_keycodes, self.basic_keycodes]:
-            opt.recreate_keycode_buttons()
+            if opt is not None:
+                opt.recreate_keycode_buttons()
 
 
 class ToggleKeyWidget(KeyWidget):
@@ -625,8 +674,6 @@ class ToggleSettingsTab(BasicEditor):
         super().__init__()
         self.layout_editor = layout_editor
         self.toggle_protocol = None
-        self.toggle_entries = []
-        self.toggle_scroll_widgets = []  # Store scroll widgets for each entry
         self.loaded_slots = set()  # Track which slots have been loaded
 
         # Dynamic tab tracking
@@ -636,19 +683,15 @@ class ToggleSettingsTab(BasicEditor):
         # Create tab widget for toggle slots
         self.tabs = QTabWidget()
 
-        # Create all toggle entries and their scroll widgets
-        for i in range(TOGGLE_NUM_SLOTS):
-            entry = ToggleEntryUI(i)
-            entry.changed.connect(self.on_entry_changed)
-            entry.name_changed.connect(self.on_name_changed)
-            self.toggle_entries.append(entry)
-
-            scroll = QScrollArea()
-            scroll.setWidget(entry)
-            scroll.setWidgetResizable(True)
-            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            self.toggle_scroll_widgets.append(scroll)
+        # Toggle entries (each ~9 KeyWidgets + controls) are created on
+        # demand — building all 100 up front cost seconds of startup for
+        # slots most users never open. State that arrives before an entry
+        # exists (protocol, scanned slot data, multi-key colors) is recorded
+        # and replayed in _entry() when it is created.
+        self._entries = {}          # idx -> ToggleEntryUI
+        self._scrolls = {}          # idx -> QScrollArea wrapping the entry
+        self._scanned_slots = {}    # idx -> ToggleSlot from the rebuild scan
+        self._multi_key_colors = None
 
         self.addWidget(self.tabs)
 
@@ -679,11 +722,43 @@ class ToggleSettingsTab(BasicEditor):
         self.tabbed_keycodes.keycode_changed.connect(self.on_keycode_selected)
         self.addWidget(self.tabbed_keycodes)
 
+    def _entry(self, idx):
+        """Create (or return) the ToggleEntryUI for a slot, replaying any
+        state that arrived while it did not exist yet."""
+        entry = self._entries.get(idx)
+        if entry is not None:
+            return entry
+        entry = ToggleEntryUI(idx)
+        entry.changed.connect(self.on_entry_changed)
+        entry.name_changed.connect(self.on_name_changed)
+        if self.toggle_protocol is not None:
+            entry.set_protocol(self.toggle_protocol)
+        if idx in self._scanned_slots:
+            entry.slot = self._scanned_slots[idx]
+            entry._update_display()
+        if self._multi_key_colors is not None:
+            entry.update_multi_key_colors(self._multi_key_colors)
+        self._entries[idx] = entry
+        return entry
+
+    def _scroll(self, idx):
+        """Create (or return) the scroll area wrapping a slot's entry."""
+        scroll = self._scrolls.get(idx)
+        if scroll is not None:
+            return scroll
+        scroll = QScrollArea()
+        scroll.setWidget(self._entry(idx))
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self._scrolls[idx] = scroll
+        return scroll
+
     def on_entry_changed(self):
         """Handle entry change - update tab titles"""
         from protocol.feature_names import get_feature_name_manager, FEATURE_TOGGLE
         mgr = get_feature_name_manager()
-        for x in range(min(self._visible_tab_count, len(self.toggle_entries))):
+        for x in range(min(self._visible_tab_count, TOGGLE_NUM_SLOTS)):
             self.tabs.setTabText(x, mgr.get_name(FEATURE_TOGGLE, x))
 
     def on_name_changed(self):
@@ -694,8 +769,8 @@ class ToggleSettingsTab(BasicEditor):
     def on_keycode_selected(self, keycode):
         """Called when a keycode is selected from TabbedKeycodes"""
         current_idx = self.tabs.currentIndex()
-        if current_idx >= 0 and current_idx < len(self.toggle_entries):
-            self.toggle_entries[current_idx].on_keycode_selected(keycode)
+        if 0 <= current_idx < self._visible_tab_count:
+            self._entry(current_idx).on_keycode_selected(keycode)
 
     def _on_tab_changed(self, index):
         """Handle tab change - lazy load slot data and handle '+' tab"""
@@ -709,9 +784,9 @@ class ToggleSettingsTab(BasicEditor):
             return
 
         # Lazy load: Only load slot data when first viewing the tab
-        if index >= 0 and index < len(self.toggle_entries):
+        if 0 <= index < self._visible_tab_count:
             if self.toggle_protocol and index not in self.loaded_slots:
-                self.toggle_entries[index]._on_load(silent=True)
+                self._entry(index)._on_load(silent=True)
                 self.loaded_slots.add(index)
 
     def _on_reset_all(self):
@@ -730,7 +805,8 @@ class ToggleSettingsTab(BasicEditor):
                 QMessageBox.information(None, "Success", "All slots reset to defaults")
                 # Reload current tab (silent since reset already showed success)
                 current_idx = self.tabs.currentIndex()
-                self.toggle_entries[current_idx]._on_load(silent=True)
+                if 0 <= current_idx < self._visible_tab_count:
+                    self._entry(current_idx)._on_load(silent=True)
             else:
                 QMessageBox.warning(None, "Error", "Failed to reset slots")
 
@@ -743,7 +819,8 @@ class ToggleSettingsTab(BasicEditor):
             QMessageBox.information(None, "Success", "Toggle configurations loaded from EEPROM")
             # Reload current tab (silent since load already showed success)
             current_idx = self.tabs.currentIndex()
-            self.toggle_entries[current_idx]._on_load(silent=True)
+            if 0 <= current_idx < self._visible_tab_count:
+                self._entry(current_idx)._on_load(silent=True)
         else:
             QMessageBox.warning(None, "Error", "Failed to load from EEPROM")
 
@@ -756,15 +833,18 @@ class ToggleSettingsTab(BasicEditor):
             self.toggle_protocol = ProtocolToggle(self.keyboard)
             self.toggle_protocol.set_debug_console(self.debug_console)
 
-            # Set protocol on all entries
-            for entry in self.toggle_entries:
+            # Set protocol on already-created entries; entries created later
+            # pick it up in _entry().
+            for entry in self._entries.values():
                 entry.set_protocol(self.toggle_protocol)
 
             # Set keyboard on tabbed keycodes
             self.tabbed_keycodes.set_keyboard(self.keyboard)
 
-            # Clear loaded slots cache
+            # Clear loaded slots cache (and stale scan data from a previous
+            # device — _scan_and_update_visible_tabs refills it)
             self.loaded_slots.clear()
+            self._scanned_slots.clear()
 
             # Load multi-key step colors from functional LED config
             self._load_multi_key_colors()
@@ -802,8 +882,9 @@ class ToggleSettingsTab(BasicEditor):
             else:
                 return
 
-            # Update all toggle entries with the new colors
-            for entry in self.toggle_entries:
+            # Record for entries created later; update the existing ones now
+            self._multi_key_colors = colors
+            for entry in self._entries.values():
                 entry.update_multi_key_colors(colors)
         except Exception as e:
             print(f"Error loading multi-key colors: {e}")
@@ -826,8 +907,11 @@ class ToggleSettingsTab(BasicEditor):
         for i in range(TOGGLE_NUM_SLOTS):
             slot = self.toggle_protocol.get_slot(i)
             if slot:
-                self.toggle_entries[i].slot = slot
-                self.toggle_entries[i]._update_display()
+                self._scanned_slots[i] = slot
+                entry = self._entries.get(i)
+                if entry is not None:
+                    entry.slot = slot
+                    entry._update_display()
                 self.loaded_slots.add(i)
                 if slot.is_enabled():
                     last_used = i
@@ -837,7 +921,11 @@ class ToggleSettingsTab(BasicEditor):
     def _find_last_used_index(self):
         """Find the index of the last toggle slot that has content"""
         for idx in range(TOGGLE_NUM_SLOTS - 1, -1, -1):
-            if idx in self.loaded_slots and self.toggle_entries[idx].slot.target_keycode != 0:
+            entry = self._entries.get(idx)
+            if entry is not None and idx in self.loaded_slots and entry.slot.target_keycode != 0:
+                return idx
+            slot = self._scanned_slots.get(idx)
+            if slot is not None and idx in self.loaded_slots and slot.target_keycode != 0:
                 return idx
         return -1
 
@@ -857,7 +945,7 @@ class ToggleSettingsTab(BasicEditor):
         from protocol.feature_names import get_feature_name_manager, FEATURE_TOGGLE
         mgr = get_feature_name_manager()
         for x in range(self._visible_tab_count):
-            self.tabs.addTab(self.toggle_scroll_widgets[x], mgr.get_name(FEATURE_TOGGLE, x))
+            self.tabs.addTab(self._scroll(x), mgr.get_name(FEATURE_TOGGLE, x))
 
         # Add "+" tab if not all tabs are visible
         if self._visible_tab_count < max_tabs:

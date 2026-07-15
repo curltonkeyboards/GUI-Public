@@ -5599,28 +5599,54 @@ class TabbedKeycodes(QWidget):
 
         self.layout = QVBoxLayout()
 
-        self.all_keycodes = FilteredTabbedKeycodes(self)
-        # The masked/basic palette is just as expensive to construct as the
-        # full one (thousands of buttons) but only needed once a masked
-        # keycode is being edited, so it is created lazily on first use.
-        # State that arrives before it exists is recorded and replayed on
-        # creation.
+        # BOTH palettes (all + masked/basic) are expensive to construct
+        # (thousands of buttons each), and ~8 TabbedKeycodes stacks exist at
+        # startup, so neither is built until it is actually needed: the
+        # palette for the current filter is created on the first showEvent
+        # (i.e. the first time this widget's tab/tray becomes visible).
+        # Keyboard/editor references and button-recreation requests that
+        # arrive before a palette exists are recorded and replayed when it is
+        # created.
+        self.all_keycodes = None
         self.basic_keycodes = None
-        self._basic_kb = None
-        self._basic_kb_pending = False
-        self._basic_editors = None
+        self._current_filter = keycode_filter_any
+        self._pal_kb = None
+        self._pal_kb_pending = False
+        self._pal_editors = None
+        self._all_dirty = False
         self._basic_dirty = False
+
+        self.setLayout(self.layout)
+
+    def _replay_pending_state(self, palette, dirty):
+        """Apply recorded keyboard/editor refs to a freshly built palette."""
+        need_recreate = dirty
+        if self._pal_kb_pending:
+            palette.set_keyboard(self._pal_kb)
+            need_recreate = True
+        if self._pal_editors is not None:
+            palette.set_editors(**self._pal_editors)
+            need_recreate = True
+        if need_recreate:
+            palette.recreate_keycode_buttons()
+
+    def _ensure_all_keycodes(self):
+        """Create the full palette on first use."""
+        if self.all_keycodes is not None:
+            return self.all_keycodes
+
+        self.all_keycodes = FilteredTabbedKeycodes(self)
         self.all_keycodes.keycode_changed.connect(self.keycode_changed)
         self.all_keycodes.anykey.connect(self.anykey)
         self.layout.addWidget(self.all_keycodes)
+        self.all_keycodes.hide()
 
-        self.setLayout(self.layout)
-        self.set_keycode_filter(keycode_filter_any)
+        self._replay_pending_state(self.all_keycodes, self._all_dirty)
+        self._all_dirty = False
+        return self.all_keycodes
 
     def _ensure_basic_keycodes(self):
-        """Create the masked/basic palette on first use, replaying any
-        keyboard/editor references and pending button recreation that
-        happened while it did not exist yet."""
+        """Create the masked/basic palette on first use."""
         if self.basic_keycodes is not None:
             return self.basic_keycodes
 
@@ -5630,17 +5656,30 @@ class TabbedKeycodes(QWidget):
         self.layout.addWidget(self.basic_keycodes)
         self.basic_keycodes.hide()
 
-        need_recreate = self._basic_dirty
-        if self._basic_kb_pending:
-            self.basic_keycodes.set_keyboard(self._basic_kb)
-            need_recreate = True
-        if self._basic_editors is not None:
-            self.basic_keycodes.set_editors(**self._basic_editors)
-            need_recreate = True
-        if need_recreate:
-            self.basic_keycodes.recreate_keycode_buttons()
+        self._replay_pending_state(self.basic_keycodes, self._basic_dirty)
         self._basic_dirty = False
         return self.basic_keycodes
+
+    def _apply_current_filter(self):
+        """Build (if needed) and show the palette for the current filter,
+        hiding the other one."""
+        if self._current_filter == keycode_filter_masked:
+            self._ensure_basic_keycodes()
+            if self.all_keycodes is not None:
+                self.all_keycodes.hide()
+            self.basic_keycodes.show()
+        else:
+            self._ensure_all_keycodes()
+            if self.basic_keycodes is not None:
+                self.basic_keycodes.hide()
+            self.all_keycodes.show()
+
+    def showEvent(self, event):
+        # First time the widget becomes visible: build the palette the
+        # current filter needs. Subsequent shows are no-ops (ensure returns
+        # the cached instance).
+        self._apply_current_filter()
+        super().showEvent(event)
 
     @classmethod
     def set_tray(cls, tray):
@@ -5677,7 +5716,10 @@ class TabbedKeycodes(QWidget):
             self.target.on_anykey()
 
     def recreate_keycode_buttons(self):
-        self.all_keycodes.recreate_keycode_buttons()
+        if self.all_keycodes is not None:
+            self.all_keycodes.recreate_keycode_buttons()
+        else:
+            self._all_dirty = True
         if self.basic_keycodes is not None:
             self.basic_keycodes.recreate_keycode_buttons()
         else:
@@ -5685,35 +5727,37 @@ class TabbedKeycodes(QWidget):
             self._basic_dirty = True
 
     def set_keycode_filter(self, keycode_filter):
-        if keycode_filter == keycode_filter_masked:
-            self._ensure_basic_keycodes()
-            self.all_keycodes.hide()
-            self.basic_keycodes.show()
-        else:
-            self.all_keycodes.show()
-            if self.basic_keycodes is not None:
-                self.basic_keycodes.hide()
+        self._current_filter = keycode_filter
+        # Only materialize palettes while visible; a hidden widget defers to
+        # its showEvent so startup never pays for palettes nobody is viewing.
+        if self.isVisible():
+            self._apply_current_filter()
 
     def set_keyboard(self, keyboard):
         """Set keyboard reference for all tab widgets"""
-        self._basic_kb = keyboard
-        self._basic_kb_pending = True
-        self.all_keycodes.set_keyboard(keyboard)
+        self._pal_kb = keyboard
+        self._pal_kb_pending = True
+        if self.all_keycodes is not None:
+            self.all_keycodes.set_keyboard(keyboard)
         if self.basic_keycodes is not None:
             self.basic_keycodes.set_keyboard(keyboard)
 
     def set_editors(self, macro_recorder=None, tap_dance_editor=None, dks_settings=None, toggle_settings=None, delay_settings=None):
         """Set editor references for all tab widgets"""
-        self._basic_editors = dict(macro_recorder=macro_recorder, tap_dance_editor=tap_dance_editor,
-                                   dks_settings=dks_settings, toggle_settings=toggle_settings,
-                                   delay_settings=delay_settings)
-        self.all_keycodes.set_editors(macro_recorder, tap_dance_editor, dks_settings, toggle_settings, delay_settings=delay_settings)
+        self._pal_editors = dict(macro_recorder=macro_recorder, tap_dance_editor=tap_dance_editor,
+                                 dks_settings=dks_settings, toggle_settings=toggle_settings,
+                                 delay_settings=delay_settings)
+        if self.all_keycodes is not None:
+            self.all_keycodes.set_editors(macro_recorder, tap_dance_editor, dks_settings, toggle_settings, delay_settings=delay_settings)
         if self.basic_keycodes is not None:
             self.basic_keycodes.set_editors(macro_recorder, tap_dance_editor, dks_settings, toggle_settings, delay_settings=delay_settings)
 
     def refresh_macro_buttons(self):
         """Force refresh the macro tab buttons in all keycodes widgets"""
-        self.all_keycodes.refresh_macro_buttons()
+        if self.all_keycodes is not None:
+            self.all_keycodes.refresh_macro_buttons()
+        else:
+            self._all_dirty = True
         if self.basic_keycodes is not None:
             self.basic_keycodes.refresh_macro_buttons()
         else:

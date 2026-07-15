@@ -1502,8 +1502,6 @@ class DKSSettingsTab(BasicEditor):
         super().__init__()
         self.layout_editor = layout_editor
         self.dks_protocol = None
-        self.dks_entries = []
-        self.dks_scroll_widgets = []  # Store scroll widgets for each entry
         self.loaded_slots = set()  # Track which slots have been loaded
 
         # Dynamic tab tracking
@@ -1513,18 +1511,13 @@ class DKSSettingsTab(BasicEditor):
         # Create tab widget for DKS slots
         self.tabs = QTabWidget()
 
-        # Create all DKS entries and their scroll widgets
-        for i in range(DKS_NUM_SLOTS):
-            entry = DKSEntryUI(i)
-            entry.changed.connect(self.on_entry_changed)
-            self.dks_entries.append(entry)
-
-            scroll = QScrollArea()
-            scroll.setWidget(entry)
-            scroll.setWidgetResizable(True)
-            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            self.dks_scroll_widgets.append(scroll)
+        # DKS entries (8 action editors each) are created on demand — building
+        # all 50 up front (400 editors) cost ~1.5s of startup for slots most
+        # users never open. State that arrives before an entry exists
+        # (protocol, scanned slot data) is replayed in _entry().
+        self._entries = {}         # idx -> DKSEntryUI
+        self._scrolls = {}         # idx -> QScrollArea wrapping the entry
+        self._scanned_slots = {}   # idx -> slot data from the rebuild scan
 
         self.addWidget(self.tabs)
 
@@ -1540,6 +1533,36 @@ class DKSSettingsTab(BasicEditor):
         self.debug_console = DebugConsole("DKS Debug Console")
         self.addWidget(self.debug_console)
 
+    def _entry(self, idx):
+        """Create (or return) the DKSEntryUI for a slot, replaying any state
+        that arrived while it did not exist yet."""
+        entry = self._entries.get(idx)
+        if entry is not None:
+            return entry
+        entry = DKSEntryUI(idx)
+        entry.changed.connect(self.on_entry_changed)
+        if self.dks_protocol is not None:
+            entry.set_dks_protocol(self.dks_protocol)
+            entry.set_debug_log(self.debug_log)
+            entry.set_debug_console(self.debug_console)
+        if idx in self._scanned_slots:
+            entry.load_from_slot(self._scanned_slots[idx])
+        self._entries[idx] = entry
+        return entry
+
+    def _scroll(self, idx):
+        """Create (or return) the scroll area wrapping a slot's entry."""
+        scroll = self._scrolls.get(idx)
+        if scroll is not None:
+            return scroll
+        scroll = QScrollArea()
+        scroll.setWidget(self._entry(idx))
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self._scrolls[idx] = scroll
+        return scroll
+
     def on_entry_changed(self):
         """Handle entry change (can be used for modified indicators)"""
         # Future: Add modified state tracking like TapDance
@@ -1548,8 +1571,8 @@ class DKSSettingsTab(BasicEditor):
     def on_keycode_selected(self, keycode):
         """Called when a keycode is selected from TabbedKeycodes"""
         current_idx = self.tabs.currentIndex()
-        if current_idx >= 0 and current_idx < len(self.dks_entries):
-            self.dks_entries[current_idx].on_keycode_selected(keycode)
+        if 0 <= current_idx < self._visible_tab_count:
+            self._entry(current_idx).on_keycode_selected(keycode)
 
     def _on_tab_changed(self, index):
         """Handle tab change - lazy load slot data and handle '+' tab"""
@@ -1564,10 +1587,10 @@ class DKSSettingsTab(BasicEditor):
             return
 
         # Lazy load: Only load slot data when first viewing the tab
-        if index >= 0 and index < len(self.dks_entries):
+        if 0 <= index < self._visible_tab_count:
             if self.dks_protocol and index not in self.loaded_slots:
                 self.debug_log(f"Lazy loading slot {index} (first view)", "INFO")
-                self.dks_entries[index]._on_load()
+                self._entry(index)._on_load()
                 self.loaded_slots.add(index)
 
     def debug_log(self, message, level="DEBUG"):
@@ -1590,14 +1613,16 @@ class DKSSettingsTab(BasicEditor):
         # that has _create_hid_packet and usb_send methods
         self.dks_protocol = ProtocolDKS(device.keyboard, debug_log=self.debug_log)
 
-        # Set protocol for all entries
-        for entry in self.dks_entries:
+        # Set protocol on already-created entries; entries created later pick
+        # it up in _entry().
+        for entry in self._entries.values():
             entry.set_dks_protocol(self.dks_protocol)
             entry.set_debug_log(self.debug_log)
             entry.set_debug_console(self.debug_console)
 
-        # Clear loaded slots cache on device change
+        # Clear loaded slots cache on device change (and stale scan data)
         self.loaded_slots.clear()
+        self._scanned_slots.clear()
 
         # Reset manual expansion and scan for used slots
         self._manually_expanded_count = 0
@@ -1631,7 +1656,10 @@ class DKSSettingsTab(BasicEditor):
         for i in range(DKS_NUM_SLOTS):
             slot = self.dks_protocol.get_slot(i)
             if slot:
-                self.dks_entries[i].load_from_slot(slot)
+                self._scanned_slots[i] = slot
+                entry = self._entries.get(i)
+                if entry is not None:
+                    entry.load_from_slot(slot)
                 self.loaded_slots.add(i)
                 if self._dks_slot_has_content(slot):
                     last_used = i
@@ -1641,16 +1669,23 @@ class DKSSettingsTab(BasicEditor):
     def _find_last_used_index(self):
         """Find the index of the last DKS slot that has content"""
         for idx in range(DKS_NUM_SLOTS - 1, -1, -1):
-            if idx in self.loaded_slots:
-                # Check if this entry has any keycodes set
-                for editor in self.dks_entries[idx].press_editors:
+            if idx not in self.loaded_slots:
+                continue
+            entry = self._entries.get(idx)
+            if entry is not None:
+                # Check the live editors (they may hold unsaved edits)
+                for editor in entry.press_editors:
                     keycode, _, _ = editor.get_action()
                     if keycode != 0:
                         return idx
-                for editor in self.dks_entries[idx].release_editors:
+                for editor in entry.release_editors:
                     keycode, _, _ = editor.get_action()
                     if keycode != 0:
                         return idx
+            else:
+                slot = self._scanned_slots.get(idx)
+                if slot is not None and self._dks_slot_has_content(slot):
+                    return idx
         return -1
 
     def _update_visible_tabs_with_last_used(self, last_used):
@@ -1665,9 +1700,9 @@ class DKSSettingsTab(BasicEditor):
         while self.tabs.count() > 0:
             self.tabs.removeTab(0)
 
-        # Add visible DKS tabs
+        # Add visible DKS tabs (entries/scrolls created on demand)
         for x in range(self._visible_tab_count):
-            self.tabs.addTab(self.dks_scroll_widgets[x], f"DKS{x}")
+            self.tabs.addTab(self._scroll(x), f"DKS{x}")
 
         # Add "+" tab if not all tabs are visible
         if self._visible_tab_count < max_tabs:

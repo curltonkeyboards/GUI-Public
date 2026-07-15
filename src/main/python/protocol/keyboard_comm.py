@@ -37,7 +37,7 @@ from protocol.key_override import ProtocolKeyOverride
 from protocol.macro import ProtocolMacro
 from protocol.tap_dance import ProtocolTapDance
 from unlocker import Unlocker
-from util import MSG_LEN, hid_send
+from util import MSG_LEN, hid_lock_for, hid_send
 
 SUPPORTED_VIA_PROTOCOL = [-1, 9]
 SUPPORTED_VIAL_PROTOCOL = [-1, 0, 1, 2, 3, 4, 5, 6]
@@ -181,6 +181,22 @@ DRUM_KEYBINDS_SUBMODE_EXTRAS = 2     # data[4] sub-mode for the extra voicings
 
 class ProtocolError(Exception):
     pass
+
+
+def _hid_transaction(fn):
+    """Hold the device's shared HID transaction lock for the whole method.
+
+    Multi-packet reads (request via usb_send, then a loop of raw dev.read
+    calls) must be atomic against other threads using the same handle (the
+    loop manager's listener thread) — an interleaved read steals packets from
+    the collector and corrupts both sides. The lock is an RLock shared with
+    hid_send and VialDevice.send/recv, so nested usb_send calls are fine."""
+    def wrapper(self, *args, **kwargs):
+        with hid_lock_for(self.dev):
+            return fn(self, *args, **kwargs)
+    wrapper.__name__ = fn.__name__
+    wrapper.__doc__ = fn.__doc__
+    return wrapper
 
 class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, ProtocolKeyOverride):
     """ Low-level communication with a vial-enabled keyboard """
@@ -1507,6 +1523,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception as e:
             return False
 
+    @_hid_transaction
     def get_thruloop_config(self):
         """Get all ThruLoop configuration using multi-packet collection"""
         try:
@@ -1657,6 +1674,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception as e:
             return False
 
+    @_hid_transaction
     def set_keyboard_param_single(self, param_id, value):
         """Set individual keyboard parameter (real-time update)
 
@@ -1865,6 +1883,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception as e:
             return False
 
+    @_hid_transaction
     def get_midi_config(self):
         """Get MIDIswitch configuration using multi-packet collection"""
         try:
@@ -2077,6 +2096,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception as e:
             return None
 
+    @_hid_transaction
     def get_all_layer_actuations(self):
         """Get all layer actuations at once using bulk read
 
@@ -2513,6 +2533,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         """
         return self.get_velocity_preset(slot)
 
+    @_hid_transaction
     def get_all_user_curve_names(self):
         """
         Get all user curve names from the keyboard (50 presets via bulk read).
