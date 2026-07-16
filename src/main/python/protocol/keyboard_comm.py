@@ -2261,6 +2261,34 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception as e:
             return False
 
+    def get_gaming_key_map(self, control_id):
+        """Read back a single gamepad control's key mapping from the keyboard.
+
+        Needed so the configurator can restore existing gamepad assignments on
+        connect. Without it the GUI cannot see current mappings, and its Save
+        would overwrite every control with "unassigned" — silently wiping the
+        user's gamepad layout.
+
+        Args:
+            control_id: 0-9 = axes/triggers, 10-25 = buttons
+
+        Returns:
+            dict {'row', 'col', 'enabled'} or None on error/unmapped
+        """
+        try:
+            # HID_CMD_GAMING_GET_KEY_MAP (0xBD). Firmware success = status byte 0x00.
+            packet = self._create_hid_packet(0xBD, 0, [int(control_id) & 0xFF])
+            response = self.usb_send(self.dev, packet, retries=3)
+            if not response or len(response) < 10 or response[5] != 0x00:
+                return None
+            return {
+                'row': response[7],
+                'col': response[8],
+                'enabled': response[9] != 0,
+            }
+        except Exception:
+            return None
+
     def get_gaming_settings(self):
         """Get current gaming settings from keyboard
 
@@ -2271,7 +2299,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             packet = self._create_hid_packet(HID_CMD_GAMING_GET_SETTINGS, 0, None)
             response = self.usb_send(self.dev, packet, retries=3)
 
-            if not response or len(response) < 13:
+            # Firmware GET_SETTINGS reports success with status byte (index 5) == 0.
+            # Check it so a joystick-disabled build (which returns an error packet of
+            # zeros) is not misread as "all sliders at 0.0mm".
+            if not response or len(response) < 14 or response[5] != 0x00:
                 return None
 
             # Parse gaming settings from response

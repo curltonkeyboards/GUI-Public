@@ -2520,7 +2520,7 @@ KEYCODES_DRUMLIVE = _build_drumlive_keycodes()
 # Gaming Controller Keycodes
 KEYCODES_GAMING = [
     # Toggle gaming mode
-    K("GAMING_MODE", "Gaming\nMode", "Toggle gaming mode (auto-maps WASD to left stick + arrows to D-pad)"),
+    K("GAMING_MODE", "Gaming\nMode", "Toggle gaming mode on/off. When on, keys assigned in the Gaming Settings tab act as gamepad inputs."),
 
     # Digital Buttons (Face buttons)
     K("XBOX_A", "Button\n1", "Button 1 (Button 0)"),
