@@ -371,7 +371,11 @@ class DelaySlotEditor(QWidget):
         row = QHBoxLayout()
         row.addWidget(QLabel("Semitones:"))
         self.transpose_slider = QSlider(Qt.Horizontal)
-        self.transpose_slider.setRange(-24, 24)
+        # Full firmware range is ±48 semitones (DELAY_TRANSPOSE_MIN/MAX). The
+        # slider previously stopped at ±24, so half the range was unreachable in
+        # the GUI and loading a slot built on-device with a wider transpose
+        # clamped the widget and silently truncated the value back on Save.
+        self.transpose_slider.setRange(-48, 48)
         self.transpose_slider.setTickInterval(12)
         self.transpose_slider.setTickPosition(QSlider.TicksBelow)
         row.addWidget(self.transpose_slider)
@@ -381,10 +385,10 @@ class DelaySlotEditor(QWidget):
         self.transpose_slider.valueChanged.connect(self._on_transpose_changed)
         pitch_controls_layout.addLayout(row)
 
-        # Tick labels for -24, -12, 0, +12, +24
+        # Tick labels for -48, -24, 0, +24, +48
         tick_row = QHBoxLayout()
         tick_row.addSpacing(72)
-        for lbl in ["-24", "-12", "0", "+12", "+24"]:
+        for lbl in ["-48", "-24", "0", "+24", "+48"]:
             t = QLabel(lbl)
             t.setStyleSheet("font-size: 9px; color: gray;")
             tick_row.addWidget(t)
@@ -742,10 +746,27 @@ class DelayTab(BasicEditor):
         if not self.delay_protocol:
             return
 
+        # Fetch all user slots in ONE bulk request (chunked responses) instead
+        # of 50 separate request/response round-trips on the UI thread — the old
+        # per-slot scan stalled the window on every connect (worse on a slow or
+        # flaky USB link, where each of the 50 reads burned its own retries).
+        # Any slot the bulk pass doesn't return falls back to a per-slot read,
+        # so a dropped chunk can't leave a used slot unscanned.
+        start_unified = self._user_to_unified(0)
+        bulk = {}
+        try:
+            for slot_idx, slot in self.delay_protocol.get_bulk(start_unified, DELAY_USER_SLOT_COUNT):
+                if slot_idx >= start_unified:
+                    bulk[slot_idx - DELAY_FACTORY_COUNT] = slot
+        except Exception as e:
+            print(f"Delay: bulk scan failed, falling back to per-slot ({e})")
+            bulk = {}
+
         last_used = -1
         for i in range(DELAY_USER_SLOT_COUNT):
-            unified = self._user_to_unified(i)
-            slot = self.delay_protocol.get_slot(unified)
+            slot = bulk.get(i)
+            if slot is None:
+                slot = self.delay_protocol.get_slot(self._user_to_unified(i))
             if slot:
                 self.loaded_slots[i] = slot
                 editor = self._editors.get(i)
