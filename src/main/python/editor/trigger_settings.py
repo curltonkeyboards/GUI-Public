@@ -764,6 +764,8 @@ class TriggerSettingsTab(BasicEditor):
 
         # Keyboard display
         self.container = KeyboardWidget2(layout_editor)
+        # Shade the whole selected key (not just the outline) on this tab.
+        self.container.highlight_selected_fill = True
         self.container.clicked.connect(self.on_key_clicked)
         self.container.deselected.connect(self.on_key_deselected)
         self.container.installEventFilter(self)
@@ -2027,10 +2029,13 @@ class TriggerSettingsTab(BasicEditor):
         self.pending_per_key_keys.clear()
         self.save_btn.setEnabled(False)
 
+        # After saving edits, unselect all keys so the next edit starts fresh.
+        self.container.unselect_all()
+
     def on_empty_space_clicked(self):
-        """Deselect key when clicking empty space"""
-        self.container.deselect()
-        self.container.update()
+        """Clicking off the keyboard (empty page area, not the mini-tab controls)
+        unselects ALL keys, not just the active one."""
+        self.container.unselect_all()
 
     def on_key_clicked(self):
         """Handle key click - load all per-key settings"""

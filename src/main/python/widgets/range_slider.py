@@ -442,6 +442,13 @@ class MultiHandleSlider(QWidget):
         return new_value
 
 
+# Minimum actuation point the user is allowed to set, on the 0-255 = 0-4.0mm
+# scale. 7 = round(0.11/4 * 255) = 0.11mm. Kept in sync with the firmware's
+# MIN_ACTUATION_DISTANCE floor in matrix.c so the GUI never offers an actuation
+# the device would silently raise anyway (values below 0.1mm are disallowed).
+MIN_ACTUATION_VALUE = 7
+
+
 class TriggerSlider(MultiHandleSlider):
     """
     Specialized slider for trigger settings with 3 handles:
@@ -485,7 +492,9 @@ class TriggerSlider(MultiHandleSlider):
         self.set_value(0, value)
 
     def set_actuation(self, value):
-        """Set actuation point value (0-255)"""
+        """Set actuation point value (0-255), floored at the 0.11mm minimum"""
+        if value < MIN_ACTUATION_VALUE:
+            value = MIN_ACTUATION_VALUE
         self.set_value(1, value)
 
     def set_deadzone_top(self, value):
@@ -540,8 +549,8 @@ class TriggerSlider(MultiHandleSlider):
             max_val = min(self.values[1] - 1, DEADZONE_MAX)
             return max(self.minimum, min(new_value, max_val))
         elif handle_index == 1:  # Actuation
-            # Must be between deadzones with gaps
-            min_val = self.values[0] + 1  # At least 1 above deadzone bottom
+            # Must be between deadzones with gaps, and never below the 0.11mm floor
+            min_val = max(self.values[0] + 1, MIN_ACTUATION_VALUE)  # >= deadzone bottom + 1 and >= 0.11mm
             max_val = self.values[2] - 1  # At least 1 below deadzone top
             return max(min_val, min(new_value, max_val))
         elif handle_index == 2:  # Deadzone top (inverted)

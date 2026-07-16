@@ -905,7 +905,11 @@ class DKSActionEditor(QWidget):
         slider_container.setSpacing(4)
 
         self.actuation_slider = QSlider(Qt.Horizontal)
-        self.actuation_slider.setMinimum(0)
+        # Minimum actuation is floored so the user can't go below 0.1mm. This
+        # slider is 0-100 = 0-4.0mm (0.04mm/step); 3 = 0.12mm is the smallest
+        # step >= 0.1mm. Qt clamps setValue() to this minimum, so the marker-drag
+        # path (_on_*_actuation_dragged -> setValue) is covered too.
+        self.actuation_slider.setMinimum(3)
         self.actuation_slider.setMaximum(100)
         self.actuation_slider.setValue(50)
         self.actuation_slider.setFixedWidth(70)
