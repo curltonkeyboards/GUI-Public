@@ -2919,7 +2919,7 @@ class TriggerSettingsTab(BasicEditor):
             tr("TriggerSettings", "Reset All"),
             tr("TriggerSettings",
                "Reset actuation (2.0mm), deadzones and rapid trigger for all keys "
-               "to default?\n\nPer-key velocity curves are kept."),
+               "to default?\n\nPer-key articulation is kept."),
             QMessageBox.Yes | QMessageBox.No
         )
 

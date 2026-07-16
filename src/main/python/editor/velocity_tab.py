@@ -334,7 +334,7 @@ class VelocityTab(BasicEditor):
             'max_press_time': 20,       # 5-100ms (fast press threshold)
             'actuation_override': False, # Override per-key actuation for MIDI keys
             'actuation_point': 20,      # 0-40 = 0.0-4.0mm in 0.1mm steps
-            'speed_peak_ratio': 50,     # 0-100 = ratio of speed to peak (0=all peak, 100=all speed)
+            'speed_peak_ratio': 1,      # Repurposed: Trigger Minimum in 0.1mm steps (1-35 = 0.1-3.5mm)
             'retrigger_distance': 0,    # 0=off, 5-20 = 0.5-2.0mm retrigger distance
         }
 
@@ -803,28 +803,29 @@ class VelocityTab(BasicEditor):
         line4.setFrameShadow(QFrame.Sunken)
         layout.addWidget(line4)
 
-        # Speed/Peak Ratio slider
+        # Trigger Minimum slider (stored in 0.1mm steps, 1-35 = 0.1-3.5mm)
+        # Reuses the former speed/peak byte; the speed/peak blend is now locked at 75%.
         ratio_layout = QHBoxLayout()
         ratio_layout.setContentsMargins(0, 0, 0, 0)
         ratio_layout.setSpacing(4)
         ratio_layout.addWidget(self.create_help_label(
-            "Velocity calculation blend:\n"
-            "0% = All peak (position-based)\n"
-            "50% = Equal blend (default)\n"
-            "100% = All speed (timing-based)"
+            "Trigger Minimum:\n"
+            "How deep the key must be pressed before releasing it\n"
+            "triggers the note. 0.1mm = most sensitive (default);\n"
+            "higher values ignore slight presses."
         ))
-        ratio_label = QLabel(tr("VelocityTab", "Speed/Peak:"))
-        ratio_label.setMinimumWidth(85)
+        ratio_label = QLabel(tr("VelocityTab", "Trigger Minimum:"))
+        ratio_label.setMinimumWidth(95)
         ratio_layout.addWidget(ratio_label)
 
         controls['speed_peak_slider'] = QSlider(Qt.Horizontal)
-        controls['speed_peak_slider'].setMinimum(0)
-        controls['speed_peak_slider'].setMaximum(100)
-        controls['speed_peak_slider'].setValue(50)  # Default 50%
+        controls['speed_peak_slider'].setMinimum(1)   # 0.1mm
+        controls['speed_peak_slider'].setMaximum(35)  # 3.5mm
+        controls['speed_peak_slider'].setValue(1)     # Default 0.1mm
         controls['speed_peak_slider'].setProperty('zone', zone_name)
         ratio_layout.addWidget(controls['speed_peak_slider'], 1)
 
-        controls['speed_peak_value'] = QLabel("50%")
+        controls['speed_peak_value'] = QLabel("0.1mm")
         controls['speed_peak_value'].setMinimumWidth(45)
         controls['speed_peak_value'].setStyleSheet("QLabel { font-weight: bold; }")
         ratio_layout.addWidget(controls['speed_peak_value'])
@@ -1018,9 +1019,9 @@ class VelocityTab(BasicEditor):
 
         controls['actuation_point_slider'].valueChanged.connect(on_actuation_point_changed)
 
-        # Speed/Peak ratio
+        # Trigger Minimum (stored as 0.1mm steps in the former speed/peak byte)
         def on_speed_peak_changed(value):
-            controls['speed_peak_value'].setText(f"{value}%")
+            controls['speed_peak_value'].setText(f"{value // 10}.{value % 10}mm")
             set_setting('speed_peak_ratio', value)
             # Send to firmware in real-time (base zone only - zones share the same param)
             if zone_name == 'base' and self.keyboard:
@@ -1080,7 +1081,7 @@ class VelocityTab(BasicEditor):
         # Description
         desc_label = QLabel(tr("VelocityTab",
             "Monitor real-time MIDI velocity values for keys.\n"
-            "Configure velocity curves, aftertouch, and press timing."))
+            "Configure articulation, aftertouch, and press timing."))
         desc_label.setWordWrap(True)
         desc_label.setStyleSheet("color: gray; font-size: 9pt;")
         desc_label.setAlignment(QtCore.Qt.AlignCenter)
@@ -1632,7 +1633,7 @@ class VelocityTab(BasicEditor):
 
     def on_speed_peak_changed(self, value):
         """Handle speed/peak ratio slider change"""
-        self.speed_peak_value.setText(f"{value}%")
+        self.speed_peak_value.setText(f"{value // 10}.{value % 10}mm")
         self.global_midi_settings['speed_peak_ratio'] = value
         # Send to firmware in real-time
         if self.keyboard:
@@ -1750,9 +1751,12 @@ class VelocityTab(BasicEditor):
         controls['actuation_point_widget'].setVisible(actuation_override)
 
         # Update speed/peak ratio
-        speed_peak_ratio = zone_data.get('speed_peak_ratio', 50)
-        controls['speed_peak_slider'].setValue(speed_peak_ratio)
-        controls['speed_peak_value'].setText(f"{speed_peak_ratio}%")
+        # Trigger Minimum (0.1mm steps). Legacy presets stored a 0-100 speed/peak
+        # percent here; the slider (max 35) clamps those to 3.5mm.
+        trigger_min = zone_data.get('speed_peak_ratio', 1)
+        controls['speed_peak_slider'].setValue(trigger_min)
+        v = controls['speed_peak_slider'].value()  # clamped to 1-35
+        controls['speed_peak_value'].setText(f"{v // 10}.{v % 10}mm")
 
         # Update retrigger settings
         retrigger_distance = zone_data.get('retrigger_distance', 0)
@@ -1858,13 +1862,13 @@ class VelocityTab(BasicEditor):
             kc = Keycode.find("HE_CURVE_USER_{}".format(slot_num))
             if kc:
                 kc.label = display_name
-                kc.tooltip = "Playing Style {} ({})".format(display_name, 7 + i)
+                kc.tooltip = "Articulation {} ({})".format(display_name, 7 + i)
 
             # Update HE_MACRO_CURVE_* keycodes (macro-aware direct selection)
             kc_macro = Keycode.find("HE_MACRO_CURVE_{}".format(7 + i))
             if kc_macro:
-                kc_macro.label = "Loop Curve\n{}".format(display_name)
-                kc_macro.tooltip = "Loop Velocity Curve {} ({})".format(display_name, 7 + i)
+                kc_macro.label = "Loop Articulation\n{}".format(display_name)
+                kc_macro.tooltip = "Loop Articulation {} ({})".format(display_name, 7 + i)
 
     def on_preset_context_menu(self, pos):
         """Show context menu for right-clicking user presets"""
@@ -1946,7 +1950,7 @@ class VelocityTab(BasicEditor):
                         vibrato_decay=base_zone.get('vibrato_decay', 10),
                         actuation_override=base_zone.get('actuation_override', False),
                         actuation_point=base_zone.get('actuation_point', 20),
-                        speed_peak_ratio=base_zone.get('speed_peak_ratio', 50),
+                        speed_peak_ratio=base_zone.get('speed_peak_ratio', 1),
                         retrigger_distance=base_zone.get('retrigger_distance', 0),
                     )
             except Exception as e:
@@ -2060,7 +2064,7 @@ class VelocityTab(BasicEditor):
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 50, 'retrigger_distance': 0,
+            'speed_peak_ratio': 1, 'retrigger_distance': 0,
         },
         1: {  # Soft
             'velocity_min': 1, 'velocity_max': 90,
@@ -2068,7 +2072,7 @@ class VelocityTab(BasicEditor):
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 50, 'retrigger_distance': 0,
+            'speed_peak_ratio': 1, 'retrigger_distance': 0,
         },
         2: {  # Linear
             'velocity_min': 1, 'velocity_max': 127,
@@ -2076,7 +2080,7 @@ class VelocityTab(BasicEditor):
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 50, 'retrigger_distance': 0,
+            'speed_peak_ratio': 1, 'retrigger_distance': 0,
         },
         3: {  # Hard
             'velocity_min': 30, 'velocity_max': 127,
@@ -2084,7 +2088,7 @@ class VelocityTab(BasicEditor):
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 50, 'retrigger_distance': 0,
+            'speed_peak_ratio': 1, 'retrigger_distance': 0,
         },
         4: {  # Hardest
             'velocity_min': 60, 'velocity_max': 127,
@@ -2092,7 +2096,7 @@ class VelocityTab(BasicEditor):
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 50, 'retrigger_distance': 0,
+            'speed_peak_ratio': 1, 'retrigger_distance': 0,
         },
         5: {  # Aggro
             'velocity_min': 80, 'velocity_max': 127,
@@ -2100,7 +2104,7 @@ class VelocityTab(BasicEditor):
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 50, 'retrigger_distance': 0,
+            'speed_peak_ratio': 1, 'retrigger_distance': 0,
         },
         6: {  # Digital
             'velocity_min': 127, 'velocity_max': 127,
@@ -2108,7 +2112,7 @@ class VelocityTab(BasicEditor):
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 50, 'retrigger_distance': 0,
+            'speed_peak_ratio': 1, 'retrigger_distance': 0,
         },
     }
 
@@ -2164,7 +2168,7 @@ class VelocityTab(BasicEditor):
                 aftertouch_mode=0, aftertouch_smoothness=0, aftertouch_cc=255,
                 vibrato_sensitivity=50, vibrato_decay=10,
                 actuation_override=False, actuation_point=20,
-                speed_peak_ratio=50, retrigger_distance=0,
+                speed_peak_ratio=1, retrigger_distance=0,
             )
             # Update local state
             self.user_preset_configured[slot_index] = False
@@ -2232,7 +2236,7 @@ class VelocityTab(BasicEditor):
             vibrato_decay=base.get('vibrato_decay', 10),
             actuation_override=base.get('actuation_override', False),
             actuation_point=base.get('actuation_point', 20),
-            speed_peak_ratio=base.get('speed_peak_ratio', 50),
+            speed_peak_ratio=base.get('speed_peak_ratio', 1),
             retrigger_distance=base.get('retrigger_distance', 0),
         )
 
@@ -2370,7 +2374,7 @@ class VelocityTab(BasicEditor):
                 self.global_midi_settings['vibrato_decay_time'] = base_zone.get('vibrato_decay', 10)
                 self.global_midi_settings['actuation_override'] = base_zone.get('actuation_override', False)
                 self.global_midi_settings['actuation_point'] = base_zone.get('actuation_point', 20)
-                self.global_midi_settings['speed_peak_ratio'] = base_zone.get('speed_peak_ratio', 50)
+                self.global_midi_settings['speed_peak_ratio'] = base_zone.get('speed_peak_ratio', 1)
                 self.global_midi_settings['retrigger_distance'] = base_zone.get('retrigger_distance', 0)
 
         except Exception as e:
@@ -2446,7 +2450,7 @@ class VelocityTab(BasicEditor):
                 vibrato_decay=settings.get('vibrato_decay_time', 10),
                 actuation_override=settings.get('actuation_override', False),
                 actuation_point=settings.get('actuation_point', 20),
-                speed_peak_ratio=settings.get('speed_peak_ratio', 50),
+                speed_peak_ratio=settings.get('speed_peak_ratio', 1),
                 retrigger_distance=settings.get('retrigger_distance', 0),
             )
 
@@ -2455,7 +2459,8 @@ class VelocityTab(BasicEditor):
                 if settings.get('actuation_override', False):
                     mm_value = settings.get('actuation_point', 20) / 10.0
                     extra_info += f", actuation override {mm_value:.1f}mm"
-                extra_info += f", speed/peak {settings.get('speed_peak_ratio', 50)}%"
+                _tm = settings.get('speed_peak_ratio', 1)
+                extra_info += f", trigger min {_tm // 10}.{_tm % 10}mm"
                 retrig = settings.get('retrigger_distance', 0)
                 if retrig > 0:
                     extra_info += f", retrigger {retrig/10.0:.1f}mm"
@@ -2467,9 +2472,9 @@ class VelocityTab(BasicEditor):
 
                 QMessageBox.information(
                     None,
-                    tr("VelocityTab", "Velocity Preset Saved"),
+                    tr("VelocityTab", "Articulation Preset Saved"),
                     tr("VelocityTab", f"Preset saved to User slot {slot_index + 1} as '{curve_name}'.\n\n"
-                       f"Includes: curve, velocity {settings.get('velocity_min', 1)}-{settings.get('velocity_max', 127)}, "
+                       f"Includes: articulation, velocity {settings.get('velocity_min', 1)}-{settings.get('velocity_max', 127)}, "
                        f"press times, aftertouch, vibrato{extra_info}.")
                 )
                 # Update the user curve name in the preset list and keycode labels
@@ -2482,13 +2487,13 @@ class VelocityTab(BasicEditor):
                 QMessageBox.warning(
                     None,
                     tr("VelocityTab", "Save Failed"),
-                    tr("VelocityTab", "Failed to save velocity preset to keyboard.")
+                    tr("VelocityTab", "Failed to save articulation preset to keyboard.")
                 )
         except Exception as e:
             QMessageBox.warning(
                 None,
                 tr("VelocityTab", "Save Failed"),
-                tr("VelocityTab", f"Error saving velocity preset: {e}")
+                tr("VelocityTab", f"Error saving articulation preset: {e}")
             )
         finally:
             self._save_busy = False
@@ -2512,13 +2517,13 @@ class VelocityTab(BasicEditor):
                 QMessageBox.warning(
                     None,
                     tr("VelocityTab", "Apply Failed"),
-                    tr("VelocityTab", "Failed to apply velocity curve.")
+                    tr("VelocityTab", "Failed to apply articulation.")
                 )
         except Exception as e:
             QMessageBox.warning(
                 None,
                 tr("VelocityTab", "Apply Failed"),
-                tr("VelocityTab", f"Error applying curve: {e}")
+                tr("VelocityTab", f"Error applying articulation: {e}")
             )
 
 

@@ -1446,7 +1446,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         midi_title_layout.addWidget(title_label)
 
         desc_label = QLabel(tr("MIDIswitchSettingsConfigurator",
-            "Configure global MIDI settings including channel, transpose, velocity curves, "
+            "Configure global MIDI settings including channel, transpose, articulation, "
             "sustain behavior, and aftertouch options for your keyboard."))
         desc_label.setWordWrap(True)
         desc_label.setStyleSheet("color: gray; font-size: 9pt;")
@@ -1584,7 +1584,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "Turbo: Enhanced high velocity response\n"
             "User 1-10: Custom user-defined curves"
         ))
-        velocity_curve_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Velocity Curve:")))
+        velocity_curve_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Articulation:")))
         velocity_curve_label_layout.addStretch()
         velocity_curve_label_container.setLayout(velocity_curve_label_layout)
         base_layout.addWidget(velocity_curve_label_container, row, 0)
@@ -1769,7 +1769,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "Instant: Maximum velocity always\n"
             "Turbo: Enhanced high velocity response"
         ))
-        vc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Velocity Curve:")))
+        vc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Articulation:")))
         vc_label_layout.addStretch()
         vc_label.setLayout(vc_label_layout)
         keysplit_layout.addWidget(vc_label, ks_row, 0)
@@ -1967,7 +1967,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "Instant: Maximum velocity always\n"
             "Turbo: Enhanced high velocity response"
         ))
-        ts_vc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Velocity Curve:")))
+        ts_vc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Articulation:")))
         ts_vc_label_layout.addStretch()
         ts_vc_label.setLayout(ts_vc_label_layout)
         triplesplit_layout.addWidget(ts_vc_label, ts_row, 0)
@@ -4219,7 +4219,7 @@ class LayerActuationConfigurator(BasicEditor):
         vel_speed_combo.lineEdit().setReadOnly(True)
         vel_speed_combo.lineEdit().setAlignment(Qt.AlignCenter)
         vel_speed_combo.setEnabled(False)  # Deprecated: speed scale handled by speed_peak_ratio
-        vel_speed_combo.setToolTip("Deprecated: use Speed/Peak Ratio in Velocity tab instead")
+        vel_speed_combo.setToolTip("Deprecated: handled automatically by the Articulation tab")
         combo_layout.addWidget(vel_speed_combo)
         combo_layout.addStretch()
 
@@ -4299,7 +4299,7 @@ class LayerActuationConfigurator(BasicEditor):
 
         # HE Velocity Curve (dropdown)
         curve_layout = QHBoxLayout()
-        curve_label = QLabel(tr("LayerActuationConfigurator", "HE Velocity Curve:"))
+        curve_label = QLabel(tr("LayerActuationConfigurator", "Articulation:"))
         curve_label.setMinimumWidth(200)
         curve_layout.addWidget(curve_label)
 
@@ -4777,7 +4777,7 @@ class LayerActuationConfigurator(BasicEditor):
 
         # HE Velocity Curve (dropdown)
         curve_layout = QHBoxLayout()
-        curve_label = QLabel(tr("LayerActuationConfigurator", "HE Velocity Curve:"))
+        curve_label = QLabel(tr("LayerActuationConfigurator", "Articulation:"))
         curve_label.setMinimumWidth(180)
         curve_layout.addWidget(curve_label)
 

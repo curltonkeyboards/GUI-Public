@@ -2371,7 +2371,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         flags = 0x01 if zone.get('actuation_override', False) else 0x00
         data.append(flags)
         data.append(int(zone.get('actuation_point', 20)) & 0xFF)
-        data.append(int(zone.get('speed_peak_ratio', 50)) & 0xFF)
+        # Repurposed byte: Trigger Minimum in 0.1mm steps (1-35 = 0.1-3.5mm)
+        _tmin = int(zone.get('speed_peak_ratio', 1))
+        if _tmin < 1:
+            _tmin = 1
+        elif _tmin > 35:
+            _tmin = 35
+        data.append(_tmin & 0xFF)
         # Dual-use byte: smoothness (0-100) when aftertouch active, retrigger (0-20) when off
         if at_mode > 0:
             data.append(int(zone.get('aftertouch_smoothness', 0)) & 0xFF)
@@ -2384,7 +2390,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                             aftertouch_smoothness=0, aftertouch_cc=255,
                             vibrato_sensitivity=100, vibrato_decay=200,
                             actuation_override=False, actuation_point=20,
-                            speed_peak_ratio=50, retrigger_distance=0,
+                            speed_peak_ratio=1, retrigger_distance=0,
                             **kwargs):
         """
         Set a velocity preset slot with curve points and all associated settings.
@@ -2405,7 +2411,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             vibrato_decay: ms per unit of aftertouch decay (0-50)
             actuation_override: Enable per-key actuation override
             actuation_point: Actuation point (0-40 = 0.0-4.0mm)
-            speed_peak_ratio: Ratio of speed to peak for velocity (0-100)
+            speed_peak_ratio: Trigger Minimum in 0.1mm steps (1-35 = 0.1-3.5mm)
             retrigger_distance: Retrigger distance (0=off, 5-20)
 
         Returns:

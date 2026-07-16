@@ -501,7 +501,7 @@ class SaveToUserDialog(QDialog):
         self.user_curve_names = user_curve_names
         self.configured = configured or [True] * 50
         self._save_as_new = False
-        self.setWindowTitle(tr("SaveToUserDialog", "Save to User Curve"))
+        self.setWindowTitle(tr("SaveToUserDialog", "Save to User Articulation"))
         self.setup_ui()
 
     def setup_ui(self):
@@ -541,13 +541,13 @@ class SaveToUserDialog(QDialog):
         name_layout = QFormLayout()
         self.name_input = QLineEdit()
         self.name_input.setMaxLength(16)
-        self.name_input.setPlaceholderText(tr("SaveToUserDialog", "Enter curve name (max 16 chars)"))
+        self.name_input.setPlaceholderText(tr("SaveToUserDialog", "Enter articulation name (max 16 chars)"))
         # Default to the first configured slot's name
         if self._slot_map:
             self.name_input.setText(self.user_curve_names[self._slot_map[0]])
         else:
             self.name_input.setText("User 1")
-        name_layout.addRow(tr("SaveToUserDialog", "Curve Name:"), self.name_input)
+        name_layout.addRow(tr("SaveToUserDialog", "Articulation Name:"), self.name_input)
         layout.addLayout(name_layout)
 
         # Buttons

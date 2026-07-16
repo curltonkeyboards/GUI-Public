@@ -1669,12 +1669,12 @@ KEYCODES_MIDI_UPDOWN = [
     K("MI_TRNSU", "Transpose\n▲", "Midi increase transposition"),
     K("MI_OCTU", "Octave\n▲", "Midi move up an octave"),
     K("MI_CHU", "Channel\n▲", "Midi increase channel"),
-    K("HE_VEL_CURVE_UP", "Playing\nStyle ▲", "Playing Style Up (hold loop modifier for loop-specific)"),
+    K("HE_VEL_CURVE_UP", "Articulation\n▲", "Articulation Up (hold loop modifier for loop-specific)"),
     K("SMARTCHORD_UP", "Smart\nChord\n▲", "QuickChord Up"),
     K("MI_TRNSD", "Transpose\n▼", "Midi decrease transposition"),
     K("MI_OCTD", "Octave\n▼", "Midi move down an octave"),
     K("MI_CHD", "Channel\n▼", "Midi decrease channel"),
-    K("HE_VEL_CURVE_DOWN", "Playing\nStyle ▼", "Playing Style Down (hold loop modifier for loop-specific)"),
+    K("HE_VEL_CURVE_DOWN", "Articulation\n▼", "Articulation Down (hold loop modifier for loop-specific)"),
     K("SMARTCHORD_DOWN", "Smart\nChord\n▼", "QuickChord Down"),
 
 ]    
@@ -2298,7 +2298,7 @@ KEYCODES_RGBSAVE = [
 
 KEYCODES_EXWHEEL = [
     K("EXWHEEL_TRA", "Touch\nDial\nTranspose", "Touch dial: transpose"),
-    K("EXWHEEL_VEL", "Touch\nDial\nDynamics", "Touch dial: dynamics (playing style)"),
+    K("EXWHEEL_VEL", "Touch\nDial\nDynamics", "Touch dial: dynamics (articulation)"),
     K("EXWHEEL_CHA", "Touch\nDial\nChannel", "Touch dial: channel"),
     K("EXWHEEL_SC", "Touch\nDial\nSmartChord", "Touch dial: SmartChord (encoder = chord up/down, press = play)"),
     K("EXWHEEL_BPM", "Touch\nDial\nBPM", "Touch dial: BPM (encoder = BPM up/down, press = Tap BPM)"),
@@ -3105,56 +3105,56 @@ for x in range (128):
 # Playing Style keycodes - all 17 presets (7 factory + 10 user)
 KEYCODES_HE_VELOCITY_CURVE = [
     # Factory presets (0-6)
-    K("HE_CURVE_SOFTEST", "Softest", "Playing Style Softest"),
-    K("HE_CURVE_SOFT", "Soft", "Playing Style Soft"),
-    K("HE_CURVE_MEDIUM", "Linear", "Playing Style Linear"),
-    K("HE_CURVE_HARD", "Hard", "Playing Style Hard"),
-    K("HE_CURVE_HARDEST", "Hardest", "Playing Style Hardest"),
-    K("HE_CURVE_AGGRO", "Aggro", "Playing Style Aggro"),
-    K("HE_CURVE_DIGITAL", "Digital", "Playing Style Digital"),
+    K("HE_CURVE_SOFTEST", "Softest", "Articulation Softest"),
+    K("HE_CURVE_SOFT", "Soft", "Articulation Soft"),
+    K("HE_CURVE_MEDIUM", "Linear", "Articulation Linear"),
+    K("HE_CURVE_HARD", "Hard", "Articulation Hard"),
+    K("HE_CURVE_HARDEST", "Hardest", "Articulation Hardest"),
+    K("HE_CURVE_AGGRO", "Aggro", "Articulation Aggro"),
+    K("HE_CURVE_DIGITAL", "Digital", "Articulation Digital"),
     # User presets (7-16)
-    K("HE_CURVE_USER_1", "User 1", "Playing Style User Preset 1"),
-    K("HE_CURVE_USER_2", "User 2", "Playing Style User Preset 2"),
-    K("HE_CURVE_USER_3", "User 3", "Playing Style User Preset 3"),
-    K("HE_CURVE_USER_4", "User 4", "Playing Style User Preset 4"),
-    K("HE_CURVE_USER_5", "User 5", "Playing Style User Preset 5"),
-    K("HE_CURVE_USER_6", "User 6", "Playing Style User Preset 6"),
-    K("HE_CURVE_USER_7", "User 7", "Playing Style User Preset 7"),
-    K("HE_CURVE_USER_8", "User 8", "Playing Style User Preset 8"),
-    K("HE_CURVE_USER_9", "User 9", "Playing Style User Preset 9"),
-    K("HE_CURVE_USER_10", "User 10", "Playing Style User Preset 10"),
+    K("HE_CURVE_USER_1", "User 1", "Articulation User Preset 1"),
+    K("HE_CURVE_USER_2", "User 2", "Articulation User Preset 2"),
+    K("HE_CURVE_USER_3", "User 3", "Articulation User Preset 3"),
+    K("HE_CURVE_USER_4", "User 4", "Articulation User Preset 4"),
+    K("HE_CURVE_USER_5", "User 5", "Articulation User Preset 5"),
+    K("HE_CURVE_USER_6", "User 6", "Articulation User Preset 6"),
+    K("HE_CURVE_USER_7", "User 7", "Articulation User Preset 7"),
+    K("HE_CURVE_USER_8", "User 8", "Articulation User Preset 8"),
+    K("HE_CURVE_USER_9", "User 9", "Articulation User Preset 9"),
+    K("HE_CURVE_USER_10", "User 10", "Articulation User Preset 10"),
 ]
 
 # Macro-aware HE Velocity Curve keycodes - these target loops when modifiers are held
 KEYCODES_HE_MACRO_CURVE = [
     # Cycling keycodes
-    K("HE_MACRO_CURVE_UP", "Loop\nCurve ▲", "Loop Velocity Curve Up (cycles 0-16)"),
-    K("HE_MACRO_CURVE_DOWN", "Loop\nCurve ▼", "Loop Velocity Curve Down (cycles 0-16)"),
+    K("HE_MACRO_CURVE_UP", "Loop\nArticulation ▲", "Loop Articulation Up (cycles 0-16)"),
+    K("HE_MACRO_CURVE_DOWN", "Loop\nArticulation ▼", "Loop Articulation Down (cycles 0-16)"),
     K("HE_MACRO_MIN_UP", "Loop\nMin ▲", "Loop Velocity Min Up"),
     K("HE_MACRO_MIN_DOWN", "Loop\nMin ▼", "Loop Velocity Min Down"),
     K("HE_MACRO_MAX_UP", "Loop\nMax ▲", "Loop Velocity Max Up"),
     K("HE_MACRO_MAX_DOWN", "Loop\nMax ▼", "Loop Velocity Max Down"),
     # Playing Style cycling (global, or loop-specific when loop modifier held)
-    K("HE_VEL_CURVE_UP", "Playing\nStyle ▲", "Playing Style Up (hold loop modifier for loop-specific)"),
-    K("HE_VEL_CURVE_DOWN", "Playing\nStyle ▼", "Playing Style Down (hold loop modifier for loop-specific)"),
+    K("HE_VEL_CURVE_UP", "Articulation\n▲", "Articulation Up (hold loop modifier for loop-specific)"),
+    K("HE_VEL_CURVE_DOWN", "Articulation\n▼", "Articulation Down (hold loop modifier for loop-specific)"),
     # Direct macro curve selection (0-16)
-    K("HE_MACRO_CURVE_0", "Loop Curve\nSoftest", "Loop Velocity Curve Softest (0)"),
-    K("HE_MACRO_CURVE_1", "Loop Curve\nSoft", "Loop Velocity Curve Soft (1)"),
-    K("HE_MACRO_CURVE_2", "Loop Curve\nMedium", "Loop Velocity Curve Medium (2)"),
-    K("HE_MACRO_CURVE_3", "Loop Curve\nHard", "Loop Velocity Curve Hard (3)"),
-    K("HE_MACRO_CURVE_4", "Loop Curve\nHardest", "Loop Velocity Curve Hardest (4)"),
-    K("HE_MACRO_CURVE_5", "Loop Curve\nAggro", "Loop Velocity Curve Aggro (5)"),
-    K("HE_MACRO_CURVE_6", "Loop Curve\nDigital", "Loop Velocity Curve Digital (6)"),
-    K("HE_MACRO_CURVE_7", "Loop Curve\nUser 1", "Loop Velocity Curve User 1 (7)"),
-    K("HE_MACRO_CURVE_8", "Loop Curve\nUser 2", "Loop Velocity Curve User 2 (8)"),
-    K("HE_MACRO_CURVE_9", "Loop Curve\nUser 3", "Loop Velocity Curve User 3 (9)"),
-    K("HE_MACRO_CURVE_10", "Loop Curve\nUser 4", "Loop Velocity Curve User 4 (10)"),
-    K("HE_MACRO_CURVE_11", "Loop Curve\nUser 5", "Loop Velocity Curve User 5 (11)"),
-    K("HE_MACRO_CURVE_12", "Loop Curve\nUser 6", "Loop Velocity Curve User 6 (12)"),
-    K("HE_MACRO_CURVE_13", "Loop Curve\nUser 7", "Loop Velocity Curve User 7 (13)"),
-    K("HE_MACRO_CURVE_14", "Loop Curve\nUser 8", "Loop Velocity Curve User 8 (14)"),
-    K("HE_MACRO_CURVE_15", "Loop Curve\nUser 9", "Loop Velocity Curve User 9 (15)"),
-    K("HE_MACRO_CURVE_16", "Loop Curve\nUser 10", "Loop Velocity Curve User 10 (16)"),
+    K("HE_MACRO_CURVE_0", "Loop Articulation\nSoftest", "Loop Articulation Softest (0)"),
+    K("HE_MACRO_CURVE_1", "Loop Articulation\nSoft", "Loop Articulation Soft (1)"),
+    K("HE_MACRO_CURVE_2", "Loop Articulation\nMedium", "Loop Articulation Medium (2)"),
+    K("HE_MACRO_CURVE_3", "Loop Articulation\nHard", "Loop Articulation Hard (3)"),
+    K("HE_MACRO_CURVE_4", "Loop Articulation\nHardest", "Loop Articulation Hardest (4)"),
+    K("HE_MACRO_CURVE_5", "Loop Articulation\nAggro", "Loop Articulation Aggro (5)"),
+    K("HE_MACRO_CURVE_6", "Loop Articulation\nDigital", "Loop Articulation Digital (6)"),
+    K("HE_MACRO_CURVE_7", "Loop Articulation\nUser 1", "Loop Articulation User 1 (7)"),
+    K("HE_MACRO_CURVE_8", "Loop Articulation\nUser 2", "Loop Articulation User 2 (8)"),
+    K("HE_MACRO_CURVE_9", "Loop Articulation\nUser 3", "Loop Articulation User 3 (9)"),
+    K("HE_MACRO_CURVE_10", "Loop Articulation\nUser 4", "Loop Articulation User 4 (10)"),
+    K("HE_MACRO_CURVE_11", "Loop Articulation\nUser 5", "Loop Articulation User 5 (11)"),
+    K("HE_MACRO_CURVE_12", "Loop Articulation\nUser 6", "Loop Articulation User 6 (12)"),
+    K("HE_MACRO_CURVE_13", "Loop Articulation\nUser 7", "Loop Articulation User 7 (13)"),
+    K("HE_MACRO_CURVE_14", "Loop Articulation\nUser 8", "Loop Articulation User 8 (14)"),
+    K("HE_MACRO_CURVE_15", "Loop Articulation\nUser 9", "Loop Articulation User 9 (15)"),
+    K("HE_MACRO_CURVE_16", "Loop Articulation\nUser 10", "Loop Articulation User 10 (16)"),
 ]
 
 # HE Velocity Range keycodes (min/max pairs where min ≤ max)
@@ -3165,7 +3165,7 @@ for min_val in range(1, 128):  # 1 to 127
     for max_val in range(min_val, 128):  # min to 127 (includes min == max for fixed velocity)
         KEYCODES_HE_VELOCITY_RANGE.append(K("HE_VEL_RANGE_{}_{}".format(min_val, max_val),
                                   "VEL\n{}\n{}".format(min_val, max_val),
-                                  "HE Velocity Range {}-{}".format(min_val, max_val)))
+                                  "Velocity Range {}-{}".format(min_val, max_val)))
 
 KEYCODES_MIDI_BANK = []
 KEYCODES_MIDI_BANK_MSB = []

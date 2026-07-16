@@ -510,7 +510,7 @@ class QuickActuationWidget(QWidget):
         preset_row.setContentsMargins(0, 0, 0, 0)
         preset_row.setSpacing(6)
 
-        preset_label = QLabel(tr("QuickActuationWidget", "Playing Style:"))
+        preset_label = QLabel(tr("QuickActuationWidget", "Articulation:"))
         preset_label.setStyleSheet("QLabel { font-size: 14px; }")
         preset_label.setMinimumWidth(90)
         preset_label.setMaximumWidth(90)
@@ -619,7 +619,7 @@ class QuickActuationWidget(QWidget):
         curve_row.setContentsMargins(0, 0, 0, 0)
         curve_row.setSpacing(6)
 
-        curve_label = QLabel(tr("QuickActuationWidget", "Playing Style:"))
+        curve_label = QLabel(tr("QuickActuationWidget", "Articulation:"))
         curve_label.setStyleSheet("QLabel { font-size: 14px; }")
         curve_label.setMinimumWidth(100)
         curve_label.setMaximumWidth(100)
@@ -759,7 +759,7 @@ class QuickActuationWidget(QWidget):
         ks_curve_row.setContentsMargins(0, 0, 0, 0)
         ks_curve_row.setSpacing(6)
 
-        ks_curve_label = QLabel(tr("QuickActuationWidget", "Playing Style:"))
+        ks_curve_label = QLabel(tr("QuickActuationWidget", "Articulation:"))
         ks_curve_label.setStyleSheet("QLabel { font-size: 14px; }")
         ks_curve_label.setMinimumWidth(100)
         ks_curve_label.setMaximumWidth(100)
@@ -892,7 +892,7 @@ class QuickActuationWidget(QWidget):
         ts_curve_row.setContentsMargins(0, 0, 0, 0)
         ts_curve_row.setSpacing(6)
 
-        ts_curve_label = QLabel(tr("QuickActuationWidget", "Playing Style:"))
+        ts_curve_label = QLabel(tr("QuickActuationWidget", "Articulation:"))
         ts_curve_label.setStyleSheet("QLabel { font-size: 14px; }")
         ts_curve_label.setMinimumWidth(100)
         ts_curve_label.setMaximumWidth(100)

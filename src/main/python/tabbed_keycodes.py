@@ -111,7 +111,7 @@ class AsyncHERangeDialog(QDialog):
         layout = QVBoxLayout(self)
 
         # Instructions
-        instructions = QLabel("Set the HE velocity range (1-127):")
+        instructions = QLabel("Set the velocity range (1-127):")
         layout.addWidget(instructions)
 
         # Min value input
@@ -164,7 +164,7 @@ class HERangeDialog(QDialog):
         layout = QVBoxLayout(self)
 
         # Instructions
-        instructions = QLabel("Set the HE velocity range (1-127):")
+        instructions = QLabel("Set the velocity range (1-127):")
         layout.addWidget(instructions)
 
         # Min value input
@@ -1163,7 +1163,7 @@ class midiadvancedTab(QScrollArea):
         for kc in KEYCODES_HE_VELOCITY_CURVE:
             vel_ids.add(kc.qmk_id)
         # Note: KEYCODES_HE_VELOCITY_RANGE (8128 items) excluded - use range dialog instead
-        for term in ["velocity", "vel", "playing style", "velocity curve"]:
+        for term in ["velocity", "vel", "playing style", "velocity curve", "articulation"]:
             m[term] = vel_ids
 
         # In/Out tab
@@ -1726,7 +1726,7 @@ class midiadvancedTab(QScrollArea):
 
         # Playing Style dropdown (all 17: 7 factory + 10 user)
         # Hold loop modifier + select to target a specific loop, or overdub modifier for overdub
-        self.add_header_dropdown("Playing Style", KEYCODES_HE_VELOCITY_CURVE, he_row_layout, 200)
+        self.add_header_dropdown("Articulation", KEYCODES_HE_VELOCITY_CURVE, he_row_layout, 200)
 
         he_row_layout.addStretch(1)  # Right spacer
         layout.addLayout(he_row_layout)
