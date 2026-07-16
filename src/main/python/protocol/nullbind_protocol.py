@@ -30,6 +30,8 @@ HID_CMD_NULLBIND_RESET_ALL = 0xF4      # Reset all groups to defaults
 NULLBIND_NUM_GROUPS = 20               # Number of null bind groups
 NULLBIND_MAX_KEYS_PER_GROUP = 8        # Maximum keys per group
 NULLBIND_GROUP_SIZE = 18               # Bytes per group in firmware
+NULLBIND_LAYER_ALL = 0xFF             # layer value = "all layers" (global group)
+NULLBIND_GLOBAL_SELECTOR = 0xFF       # group_num that selects the global-settings sub-command
 
 # Behavior Types
 # Base behaviors (0-2)
@@ -110,13 +112,25 @@ class NullBindGroup:
             True if removed, False if not found
         """
         if key_index in self.keys:
-            self.keys.remove(key_index)
-            # Adjust behavior if it was priority for a removed key
+            # Resolve the key that currently holds priority (by key index, not
+            # array position) BEFORE mutating the list, so removing a
+            # lower-indexed key can't silently reassign priority to a different
+            # surviving key.
+            priority_key = None
             if self.behavior >= NULLBIND_BEHAVIOR_PRIORITY_BASE:
                 priority_idx = self.behavior - NULLBIND_BEHAVIOR_PRIORITY_BASE
-                if priority_idx >= len(self.keys):
-                    # Priority key was removed, reset to neutral
+                if priority_idx < len(self.keys):
+                    priority_key = self.keys[priority_idx]
+
+            self.keys.remove(key_index)
+
+            # Re-derive the priority behavior from the priority key's new position
+            if self.behavior >= NULLBIND_BEHAVIOR_PRIORITY_BASE:
+                if priority_key is None or priority_key == key_index or priority_key not in self.keys:
+                    # The priority key itself was removed -> reset to neutral
                     self.behavior = NULLBIND_BEHAVIOR_NEUTRAL
+                else:
+                    self.behavior = NULLBIND_BEHAVIOR_PRIORITY_BASE + self.keys.index(priority_key)
             return True
         return False
 
@@ -178,8 +192,12 @@ class NullBindGroup:
             else:
                 data[2 + i] = 0xFF
 
-        # Layer field (byte 10)
-        data[10] = self.layer if self.layer < 12 else 0
+        # Layer field (byte 10). 0-11 = a specific layer, 0xFF = all layers
+        # (global group). Anything else is coerced to layer 0.
+        if self.layer == NULLBIND_LAYER_ALL or self.layer < 12:
+            data[10] = self.layer
+        else:
+            data[10] = 0
 
         # Reserved bytes (11-17) already 0
         return bytes(data)
@@ -201,8 +219,9 @@ class NullBindGroup:
             if key != 0xFF:
                 group.keys.append(key)
 
-        # Layer field (byte 10)
-        group.layer = data[10] if data[10] < 12 else 0
+        # Layer field (byte 10). 0xFF = all layers (global group); 0-11 = a
+        # specific layer; anything else is treated as layer 0.
+        group.layer = data[10] if (data[10] == NULLBIND_LAYER_ALL or data[10] < 12) else 0
 
         return group
 
@@ -362,6 +381,45 @@ class ProtocolNullBind:
             return success
         except Exception as e:
             print(f"NullBind: Error resetting groups: {e}")
+            return False
+
+    def get_enabled(self) -> Optional[bool]:
+        """Read the global SOCD / null-bind enable flag from the keyboard.
+
+        Uses the GET_GROUP command with the special group selector 0xFF (the
+        firmware returns the enable flag in place of group data). Returns None
+        on error (e.g. firmware too old to answer) so the caller can default.
+        """
+        try:
+            packet = self.keyboard._create_hid_packet(
+                HID_CMD_NULLBIND_GET_GROUP, 0, [NULLBIND_GLOBAL_SELECTOR])
+            response = self.keyboard.usb_send(self.keyboard.dev, packet, retries=3)
+
+            if not response or len(response) < 6:
+                return None
+            if response[3] != HID_CMD_NULLBIND_GET_GROUP:
+                return None
+            if response[4] != 0:  # status byte
+                return None
+            return response[5] != 0
+        except Exception as e:
+            print(f"NullBind: Error getting enable flag: {e}")
+            return None
+
+    def set_enabled(self, enabled: bool) -> bool:
+        """Set the global SOCD / null-bind enable flag (RAM only).
+
+        Uses SET_GROUP with the special selector 0xFF. Not persisted until
+        save_to_eeprom() runs (the normal Save flow calls it).
+        """
+        try:
+            data = bytearray([NULLBIND_GLOBAL_SELECTOR, 1 if enabled else 0])
+            packet = self.keyboard._create_hid_packet(
+                HID_CMD_NULLBIND_SET_GROUP, 0, data)
+            response = self.keyboard.usb_send(self.keyboard.dev, packet, retries=3)
+            return bool(response) and len(response) > 4 and response[4] == 0
+        except Exception as e:
+            print(f"NullBind: Error setting enable flag: {e}")
             return False
 
     def clear_cache(self):
