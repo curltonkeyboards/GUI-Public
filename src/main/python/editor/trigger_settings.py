@@ -23,6 +23,7 @@ from protocol.nullbind_protocol import (ProtocolNullBind, NullBindGroup,
                                          NULLBIND_NUM_GROUPS, NULLBIND_MAX_KEYS_PER_GROUP,
                                          NULLBIND_BEHAVIOR_NEUTRAL, NULLBIND_BEHAVIOR_LAST_INPUT,
                                          NULLBIND_BEHAVIOR_DISTANCE, NULLBIND_BEHAVIOR_PRIORITY_BASE,
+                                         NULLBIND_LAYER_ALL,
                                          get_behavior_name, get_behavior_choices)
 
 
@@ -1166,10 +1167,22 @@ class TriggerSettingsTab(BasicEditor):
         layout.setSpacing(8)
         layout.setContentsMargins(8, 8, 8, 8)
 
-        # Header only (description is in the left container)
+        # Header row with global enable toggle
+        header_row = QHBoxLayout()
         header_label = QLabel(tr("TriggerSettings", "Null Bind (SOCD Handling)"))
         header_label.setStyleSheet("QLabel { font-weight: bold; font-size: 11pt; }")
-        layout.addWidget(header_label)
+        header_row.addWidget(header_label)
+        header_row.addStretch()
+
+        # Global enable/disable for all SOCD handling (persisted on the device).
+        self.nullbind_enable_checkbox = QCheckBox(tr("TriggerSettings", "Enable SOCD"))
+        self.nullbind_enable_checkbox.setChecked(True)
+        self.nullbind_enable_checkbox.setToolTip(
+            tr("TriggerSettings", "Master switch for all Null Bind / SOCD groups. "
+               "When off, every group is inactive without having to clear it."))
+        self.nullbind_enable_checkbox.stateChanged.connect(self.on_nullbind_enable_toggled)
+        header_row.addWidget(self.nullbind_enable_checkbox)
+        layout.addLayout(header_row)
 
         # Group selection row
         group_row = QHBoxLayout()
@@ -1214,6 +1227,7 @@ class TriggerSettingsTab(BasicEditor):
         layer_row.addWidget(layer_label)
 
         self.nullbind_layer_combo = QComboBox()
+        self.nullbind_layer_combo.addItem("All Layers", NULLBIND_LAYER_ALL)
         for i in range(12):
             self.nullbind_layer_combo.addItem(f"Layer {i + 1}", i)
         self.nullbind_layer_combo.currentIndexChanged.connect(self.on_nullbind_layer_changed)
@@ -1709,7 +1723,7 @@ class TriggerSettingsTab(BasicEditor):
             aw = self.actuation_widget_ref
             aw.syncing = True
             aw.normal_slider.setValue(value)
-            aw.normal_value_label.setText(f"{value * 0.025:.2f}mm")
+            aw.normal_value_label.setText(f"{value / 255.0 * 4.0:.2f}mm")
             # Also sync the layer_data
             if self.per_layer_enabled:
                 aw.layer_data[self.current_layer]['normal'] = value
@@ -1758,7 +1772,7 @@ class TriggerSettingsTab(BasicEditor):
             aw = self.actuation_widget_ref
             aw.syncing = True
             aw.midi_slider.setValue(value)
-            aw.midi_value_label.setText(f"{value * 0.025:.2f}mm")
+            aw.midi_value_label.setText(f"{value / 255.0 * 4.0:.2f}mm")
             # Also sync the layer_data
             if self.per_layer_enabled:
                 aw.layer_data[self.current_layer]['midi'] = value
@@ -3416,9 +3430,12 @@ class TriggerSettingsTab(BasicEditor):
                 key_labels.append(label)
             self.nullbind_keys_display.setText("  ".join(key_labels))
 
-        # Update layer combo to match group's layer setting
+        # Update layer combo to match group's layer setting. Select by data
+        # (not index) since the combo now leads with an "All Layers" (0xFF) row,
+        # so item index no longer equals the layer number.
         self.nullbind_layer_combo.blockSignals(True)
-        self.nullbind_layer_combo.setCurrentIndex(group.layer)
+        layer_combo_idx = self.nullbind_layer_combo.findData(group.layer)
+        self.nullbind_layer_combo.setCurrentIndex(layer_combo_idx if layer_combo_idx >= 0 else 0)
         self.nullbind_layer_combo.blockSignals(False)
 
         # Update behavior combo choices (in case keys changed)
@@ -3447,6 +3464,23 @@ class TriggerSettingsTab(BasicEditor):
             self.save_btn.setEnabled(True)  # main Save also covers SOCD changes
             self.update_nullbind_behavior_description()
             self.update_nullbind_display()
+
+    @staticmethod
+    def _nullbind_layers_conflict(layer_a, layer_b):
+        """Two SOCD groups conflict over a shared key only if their layers
+        overlap: the same specific layer, or either group being 'All Layers'."""
+        if layer_a == NULLBIND_LAYER_ALL or layer_b == NULLBIND_LAYER_ALL:
+            return True
+        return layer_a == layer_b
+
+    def on_nullbind_enable_toggled(self, state):
+        """Handle the global SOCD enable checkbox."""
+        if self.syncing:
+            return
+        # Persisted with the rest of the SOCD config on Save (main or SOCD button).
+        self.nullbind_pending_changes = True
+        self.nullbind_save_btn.setEnabled(True)
+        self.save_btn.setEnabled(True)
 
     def on_nullbind_layer_changed(self, index):
         """Handle null bind layer selection change
@@ -3493,10 +3527,16 @@ class TriggerSettingsTab(BasicEditor):
                 key_index = row * 14 + col
 
                 if key_index < 70:
-                    # Check if key is already in another group
+                    # Check if key is already in another group *whose layer
+                    # overlaps this group's layer*. SOCD groups are layer-
+                    # specific, so the same physical key can legitimately belong
+                    # to different groups on different layers (e.g. WASD SOCD on
+                    # both the base and a function layer). Only a same-layer (or
+                    # an "All Layers") collision is a real conflict.
                     already_in_group = None
                     for g_idx, g in enumerate(self.nullbind_groups):
-                        if g_idx != self.current_nullbind_group and g.has_key(key_index):
+                        if g_idx != self.current_nullbind_group and g.has_key(key_index) \
+                                and self._nullbind_layers_conflict(g.layer, group.layer):
                             already_in_group = g_idx
                             break
 
@@ -3589,6 +3629,10 @@ class TriggerSettingsTab(BasicEditor):
         """
         if not self.nullbind_protocol:
             return 'send'
+        # Push the global enable flag first (RAM only; committed by the EEPROM
+        # save below). On firmware without the flag this is a harmless no-op.
+        if hasattr(self, 'nullbind_enable_checkbox'):
+            self.nullbind_protocol.set_enabled(self.nullbind_enable_checkbox.isChecked())
         for i, group in enumerate(self.nullbind_groups):
             if not self.nullbind_protocol.set_group(i, group):
                 return 'send'
@@ -3643,6 +3687,14 @@ class TriggerSettingsTab(BasicEditor):
                 self.nullbind_groups[i] = group
             else:
                 self.nullbind_groups[i] = NullBindGroup()
+
+        # Load the global enable flag (default to enabled if the firmware is too
+        # old to answer, matching the firmware's own default).
+        if hasattr(self, 'nullbind_enable_checkbox'):
+            enabled = self.nullbind_protocol.get_enabled()
+            self.nullbind_enable_checkbox.blockSignals(True)
+            self.nullbind_enable_checkbox.setChecked(True if enabled is None else enabled)
+            self.nullbind_enable_checkbox.blockSignals(False)
 
         self.nullbind_pending_changes = False
         self.nullbind_save_btn.setEnabled(False)
