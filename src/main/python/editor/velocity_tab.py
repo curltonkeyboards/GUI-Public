@@ -1867,7 +1867,7 @@ class VelocityTab(BasicEditor):
             # Update HE_MACRO_CURVE_* keycodes (macro-aware direct selection)
             kc_macro = Keycode.find("HE_MACRO_CURVE_{}".format(7 + i))
             if kc_macro:
-                kc_macro.label = "Loop Articulation\n{}".format(display_name)
+                kc_macro.label = "Loop Articul\n{}".format(display_name)
                 kc_macro.tooltip = "Loop Articulation {} ({})".format(display_name, 7 + i)
 
     def on_preset_context_menu(self, pos):
