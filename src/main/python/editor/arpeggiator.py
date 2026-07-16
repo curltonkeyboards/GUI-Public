@@ -194,24 +194,28 @@ class DebugConsole(QWidget):
 
 def flat_semitones_to_interval_octave(flat_semitones):
     """
-    Convert flat semitones to (interval, octave) pair for firmware.
+    Convert flat semitones to (interval, octave) for the firmware arp note format.
+    `interval` is a SIGNED within-octave offset (-11..+11) and `octave` is a signed
+    octave count, such that interval + octave*12 == flat_semitones. pack_note_data
+    stores interval as sign-bit + 4-bit magnitude, so interval must carry the input
+    sign and |interval| must be <= 11.
     Examples:
         +29 → (interval=+5, octave=+2)
-        -1 → (interval=-1, octave=0)
+        -1  → (interval=-1, octave=0)
         -13 → (interval=-1, octave=-1)
-        +12 → (interval=0, octave=+1)
+        +12 → (interval=0,  octave=+1)
+
+    (#audit) The previous implementation used Python's floor // and % (which force a
+    non-negative remainder) plus an extra adjustment, producing wrong values for
+    negatives — e.g. -1 → (23, -2), and pack_note_data's `23 & 0x0F == 7` then saved
+    a completely wrong pitch. Splitting the sign and decomposing the magnitude keeps
+    interval signed and bounded, and is an exact inverse of
+    interval_octave_to_flat_semitones (interval + octave*12).
     """
-    # Calculate octave (how many complete 12-semitone octaves)
-    octave = flat_semitones // 12
-    # Calculate interval within octave (-11 to +11)
-    interval = flat_semitones % 12
-
-    # Handle negative intervals properly
-    # If we have a negative remainder, adjust
-    if flat_semitones < 0 and interval != 0:
-        octave -= 1
-        interval = 12 + interval
-
+    sign = -1 if flat_semitones < 0 else 1
+    magnitude = abs(flat_semitones)
+    octave = sign * (magnitude // 12)
+    interval = sign * (magnitude % 12)
     return interval, octave
 
 
@@ -3807,6 +3811,31 @@ class Arpeggiator(BasicEditor):
             self.debug_log(f"SAVE: note[{i}] = {note}", "DATA")
         if firmware_note_count > 5:
             self.debug_log(f"SAVE: ... and {firmware_note_count - 5} more notes", "DATA")
+
+        # (#audit) Protocol bounds check BEFORE building/sending the packet.
+        # pattern_length rides two bytes but the firmware validator rejects anything
+        # outside [1,127] (and requires every note timing < pattern_length), so a
+        # longer pattern silently wraps its 7-bit note timing and is then rejected
+        # by the device. note_count rides a single byte (params[2]) AND the chunk
+        # start index, so a count > 255 wraps and silently corrupts / partially
+        # sends the preset. Abort with a clear message instead of shipping garbage.
+        pattern_len = self.preset_data.get('pattern_length_16ths', 0)
+        if pattern_len < 1 or pattern_len > 127:
+            self.debug_log(f"SAVE: BLOCKED - pattern_length {pattern_len} out of [1,127]", "ERROR")
+            self.update_status(
+                f"Pattern is {pattern_len} sixteenth-notes long; the device limit is 127. "
+                f"Reduce the number of steps or use a finer note rate.", error=True)
+            if hasattr(self, 'debug_console'):
+                self.debug_console.mark_operation_end(success=False)
+            return
+        if firmware_note_count > 255:
+            self.debug_log(f"SAVE: BLOCKED - note_count {firmware_note_count} exceeds 255", "ERROR")
+            self.update_status(
+                f"Preset has {firmware_note_count} notes; the device limit is 255. "
+                f"Remove some notes before saving.", error=True)
+            if hasattr(self, 'debug_console'):
+                self.debug_console.mark_operation_end(success=False)
+            return
 
         # Build parameter list (new protocol without name field)
         # params[0] = preset_id

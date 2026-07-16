@@ -2328,31 +2328,14 @@ KEYCODES_RGB_KC_COLOR = [
 # BASIC - MINOR PROGRESSIONS
 # Chord Progression Slot Keycodes (20 slots, interval-based system)
 # Tap = play/stop, Hold 2s = open OLED config menu
+# (#audit) Each slot's type (Chords / Arp / Bass / Lead) is now stored per-slot in
+# the firmware and set on-device, so the old fixed "Chord/Bass/Lead Machine N"
+# labels misdescribed slots the user had reconfigured. Label generically by slot;
+# the keycode identity (CPROG_SLOT_N) and default per-slot type are unchanged.
 KEYCODES_CPROG_SLOTS = [
-    # Chord Machine 1-6 (slots 0-5: Full layer, ch1, oct 0)
-    K("CPROG_SLOT_1", "Chord\nMachine\n1", "Chord Machine 1 (hold=config)"),
-    K("CPROG_SLOT_2", "Chord\nMachine\n2", "Chord Machine 2 (hold=config)"),
-    K("CPROG_SLOT_3", "Chord\nMachine\n3", "Chord Machine 3 (hold=config)"),
-    K("CPROG_SLOT_4", "Chord\nMachine\n4", "Chord Machine 4 (hold=config)"),
-    K("CPROG_SLOT_5", "Chord\nMachine\n5", "Chord Machine 5 (hold=config)"),
-    K("CPROG_SLOT_6", "Chord\nMachine\n6", "Chord Machine 6 (hold=config)"),
-    # Bass Machine 1-6 (slots 6-11: Bass layer, ch2, oct 0)
-    K("CPROG_SLOT_7", "Bass\nMachine\n1", "Bass Machine 1 (hold=config)"),
-    K("CPROG_SLOT_8", "Bass\nMachine\n2", "Bass Machine 2 (hold=config)"),
-    K("CPROG_SLOT_9", "Bass\nMachine\n3", "Bass Machine 3 (hold=config)"),
-    K("CPROG_SLOT_10", "Bass\nMachine\n4", "Bass Machine 4 (hold=config)"),
-    K("CPROG_SLOT_11", "Bass\nMachine\n5", "Bass Machine 5 (hold=config)"),
-    K("CPROG_SLOT_12", "Bass\nMachine\n6", "Bass Machine 6 (hold=config)"),
-    # Lead Machine 1-6 (slots 12-17: Chord layer, ch3, oct +1)
-    K("CPROG_SLOT_13", "Lead\nMachine\n1", "Lead Machine 1 (hold=config)"),
-    K("CPROG_SLOT_14", "Lead\nMachine\n2", "Lead Machine 2 (hold=config)"),
-    K("CPROG_SLOT_15", "Lead\nMachine\n3", "Lead Machine 3 (hold=config)"),
-    K("CPROG_SLOT_16", "Lead\nMachine\n4", "Lead Machine 4 (hold=config)"),
-    K("CPROG_SLOT_17", "Lead\nMachine\n5", "Lead Machine 5 (hold=config)"),
-    K("CPROG_SLOT_18", "Lead\nMachine\n6", "Lead Machine 6 (hold=config)"),
-    # Extra slots 19-20
-    K("CPROG_SLOT_19", "Chord\nProg\n19", "Chord Progression Slot 19 (hold=config)"),
-    K("CPROG_SLOT_20", "Chord\nProg\n20", "Chord Progression Slot 20 (hold=config)"),
+    K("CPROG_SLOT_%d" % n, "Rhythm\nEngine\n%d" % n,
+      "Rhythm Engine slot %d (type set on-device; hold=config)" % n)
+    for n in range(1, 21)
 ]
 
 # VOICINGS AND OCTAVE CONTROLS
