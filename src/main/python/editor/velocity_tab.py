@@ -341,6 +341,7 @@ class VelocityTab(BasicEditor):
             'actuation_point': 20,      # 0-40 = 0.0-4.0mm in 0.1mm steps
             'speed_peak_ratio': 1,      # Repurposed: Trigger Minimum in 0.1mm steps (1-35 = 0.1-3.5mm)
             'retrigger_distance': 0,    # 0=off, 5-20 = 0.5-2.0mm retrigger distance
+            'at_uses_curve': False,     # Map AT/CC value through this zone's velocity curve before sending
         }
 
         # Polling timer
@@ -674,6 +675,25 @@ class VelocityTab(BasicEditor):
         layout.addWidget(controls['velocity_as_at_widget'])
         controls['velocity_as_at_widget'].setVisible(False)  # Hidden when aftertouch is Off
 
+        # AT/CC Uses Velocity Curve checkbox (hidden when aftertouch is Off).
+        # When on, the aftertouch/CC value is mapped through this zone's velocity
+        # curve before being sent. Persisted in the preset's zone flags (bit 1).
+        controls['at_uses_curve_widget'] = QWidget()
+        atc_layout = QHBoxLayout()
+        atc_layout.setContentsMargins(0, 0, 0, 0)
+        controls['at_uses_curve_widget'].setLayout(atc_layout)
+
+        atc_layout.addWidget(self.create_help_label(
+            "Shape the aftertouch/CC output with this preset's velocity curve.\n"
+            "The AT/CC value is mapped through the curve before it is sent,\n"
+            "so the curve editor bends the aftertouch response too."))
+        controls['at_uses_curve_check'] = QCheckBox(tr("VelocityTab", "AT/CC Uses Velocity Curve"))
+        controls['at_uses_curve_check'].setProperty('zone', zone_name)
+        atc_layout.addWidget(controls['at_uses_curve_check'])
+
+        layout.addWidget(controls['at_uses_curve_widget'])
+        controls['at_uses_curve_widget'].setVisible(False)  # Hidden when aftertouch is Off
+
         # Aftertouch Smoothness slider (shares retrigger byte, visible when aftertouch is on)
         controls['smoothness_widget'] = QWidget()
         smooth_layout = QHBoxLayout()
@@ -964,6 +984,7 @@ class VelocityTab(BasicEditor):
             controls['vibrato_decay_widget'].setVisible(is_vibrato)
             controls['aftertouch_cc_widget'].setVisible(not is_off)
             controls['velocity_as_at_widget'].setVisible(not is_off)
+            controls['at_uses_curve_widget'].setVisible(not is_off)
             # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON: the note
             # velocity IS the CC ceiling, so it's intrinsic and can't be toggled off.
             is_post = (pair == 3)
@@ -1011,6 +1032,12 @@ class VelocityTab(BasicEditor):
                 self.keyboard.set_keyboard_param_single(PARAM_VELOCITY_AS_AT, 1 if enabled else 0)
 
         controls['velocity_as_at_checkbox'].stateChanged.connect(on_velocity_as_at_changed)
+
+        # AT/CC Uses Velocity Curve checkbox (persisted in preset zone flags bit 1)
+        def on_at_uses_curve_changed(state):
+            set_setting('at_uses_curve', state == Qt.Checked)
+
+        controls['at_uses_curve_check'].stateChanged.connect(on_at_uses_curve_changed)
 
         # Aftertouch smoothness (0-100%, shares retrigger byte in protocol)
         def on_smoothness_changed(value):
@@ -1258,6 +1285,8 @@ class VelocityTab(BasicEditor):
         self.aftertouch_cc_widget = base_controls['aftertouch_cc_widget']
         self.velocity_as_at_widget = base_controls['velocity_as_at_widget']
         self.velocity_as_at_checkbox = base_controls['velocity_as_at_checkbox']
+        self.at_uses_curve_widget = base_controls['at_uses_curve_widget']
+        self.at_uses_curve_check = base_controls['at_uses_curve_check']
         self.vibrato_sens_widget = base_controls['vibrato_sens_widget']
         self.vibrato_sens_slider = base_controls['vibrato_sens_slider']
         self.vibrato_sens_value = base_controls['vibrato_sens_value']
@@ -1509,6 +1538,7 @@ class VelocityTab(BasicEditor):
         self.vibrato_sens_slider.blockSignals(True)
         self.vibrato_decay_slider.blockSignals(True)
         self.velocity_as_at_checkbox.blockSignals(True)
+        self.at_uses_curve_check.blockSignals(True)
 
         # Set velocity range
         vel_min = settings.get('velocity_min', 1)
@@ -1539,6 +1569,7 @@ class VelocityTab(BasicEditor):
         self.vibrato_decay_widget.setVisible(is_vibrato)
         self.aftertouch_cc_widget.setVisible(not is_off)
         self.velocity_as_at_widget.setVisible(not is_off)
+        self.at_uses_curve_widget.setVisible(not is_off)
         # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON (intrinsic cap).
         is_post = (pair == 3)
         self.velocity_as_at_checkbox.blockSignals(True)
@@ -1556,6 +1587,9 @@ class VelocityTab(BasicEditor):
         if not is_off:
             self.retrigger_checkbox.setChecked(False)
             self.retrigger_widget.setVisible(False)
+
+        # Set AT/CC uses velocity curve checkbox
+        self.at_uses_curve_check.setChecked(bool(settings.get('at_uses_curve', False)))
 
         # Set aftertouch CC
         cc = settings.get('aftertouch_cc', 255)
@@ -1595,6 +1629,7 @@ class VelocityTab(BasicEditor):
         self.vibrato_sens_slider.blockSignals(False)
         self.vibrato_decay_slider.blockSignals(False)
         self.velocity_as_at_checkbox.blockSignals(False)
+        self.at_uses_curve_check.blockSignals(False)
 
     def on_aftertouch_mode_changed(self, index):
         """Handle aftertouch mode change - show/hide vibrato, smoothness, and CC controls"""
@@ -1608,6 +1643,7 @@ class VelocityTab(BasicEditor):
         self.vibrato_decay_widget.setVisible(is_vibrato)
         self.aftertouch_cc_widget.setVisible(not is_off)
         self.velocity_as_at_widget.setVisible(not is_off)
+        self.at_uses_curve_widget.setVisible(not is_off)
         # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON (intrinsic cap).
         is_post = (pair == 3)
         self.velocity_as_at_checkbox.blockSignals(True)
@@ -1737,6 +1773,7 @@ class VelocityTab(BasicEditor):
         controls['vibrato_decay_widget'].setVisible(is_vibrato)
         controls['aftertouch_cc_widget'].setVisible(not is_off)
         controls['velocity_as_at_widget'].setVisible(not is_off)
+        controls['at_uses_curve_widget'].setVisible(not is_off)
         # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON (intrinsic cap).
         is_post = (pair == 3)
         controls['velocity_as_at_checkbox'].blockSignals(True)
@@ -1765,6 +1802,9 @@ class VelocityTab(BasicEditor):
         # Update velocity as aftertouch checkbox
         velocity_as_at = zone_data.get('velocity_as_at', False)
         controls['velocity_as_at_checkbox'].setChecked(velocity_as_at)
+
+        # Update AT/CC uses velocity curve checkbox
+        controls['at_uses_curve_check'].setChecked(bool(zone_data.get('at_uses_curve', False)))
 
         # Update smoothness
         smoothness = zone_data.get('aftertouch_smoothness', 0)
@@ -1993,6 +2033,7 @@ class VelocityTab(BasicEditor):
                         actuation_point=base_zone.get('actuation_point', 20),
                         speed_peak_ratio=base_zone.get('speed_peak_ratio', 1),
                         retrigger_distance=base_zone.get('retrigger_distance', 0),
+                        at_uses_curve=base_zone.get('at_uses_curve', False),
                     )
             except Exception as e:
                 print(f"Error saving preset name: {e}")
@@ -2275,6 +2316,7 @@ class VelocityTab(BasicEditor):
         self.global_midi_settings['actuation_point'] = zone_data['actuation_point']
         self.global_midi_settings['speed_peak_ratio'] = zone_data['speed_peak_ratio']
         self.global_midi_settings['retrigger_distance'] = zone_data['retrigger_distance']
+        self.global_midi_settings['at_uses_curve'] = zone_data.get('at_uses_curve', False)
 
     def delete_user_preset(self, slot_index):
         """Delete a user preset (clear it on firmware and hide in list). Slot 0 cannot be deleted."""
@@ -2375,6 +2417,7 @@ class VelocityTab(BasicEditor):
             actuation_point=base.get('actuation_point', 20),
             speed_peak_ratio=base.get('speed_peak_ratio', 1),
             retrigger_distance=base.get('retrigger_distance', 0),
+            at_uses_curve=base.get('at_uses_curve', False),
         )
 
     def on_save_preset_overwrite(self):
@@ -2513,6 +2556,7 @@ class VelocityTab(BasicEditor):
                 self.global_midi_settings['actuation_point'] = base_zone.get('actuation_point', 20)
                 self.global_midi_settings['speed_peak_ratio'] = base_zone.get('speed_peak_ratio', 1)
                 self.global_midi_settings['retrigger_distance'] = base_zone.get('retrigger_distance', 0)
+                self.global_midi_settings['at_uses_curve'] = base_zone.get('at_uses_curve', False)
 
         except Exception as e:
             print(f"Error loading user curve {slot_index}: {e}")
@@ -2539,7 +2583,8 @@ class VelocityTab(BasicEditor):
             'actuation_override': controls['actuation_override_checkbox'].isChecked(),
             'actuation_point': controls['actuation_point_slider'].value(),
             'speed_peak_ratio': controls['speed_peak_slider'].value(),
-            'retrigger_distance': controls['retrigger_slider'].value() if controls['retrigger_checkbox'].isChecked() else 0
+            'retrigger_distance': controls['retrigger_slider'].value() if controls['retrigger_checkbox'].isChecked() else 0,
+            'at_uses_curve': controls['at_uses_curve_check'].isChecked()
         }
 
         # Get curve points from the zone's curve editor (or the main one for base)
@@ -2589,6 +2634,7 @@ class VelocityTab(BasicEditor):
                 actuation_point=settings.get('actuation_point', 20),
                 speed_peak_ratio=settings.get('speed_peak_ratio', 1),
                 retrigger_distance=settings.get('retrigger_distance', 0),
+                at_uses_curve=settings.get('at_uses_curve', False),
             )
 
             if success:
@@ -2673,6 +2719,7 @@ class VelocityTab(BasicEditor):
             "actuation_point: {}".format(s.get('actuation_point', 20)),
             "trigger_minimum: {}".format(s.get('speed_peak_ratio', 1)),
             "retrigger_distance: {}".format(s.get('retrigger_distance', 0)),
+            "at_uses_curve: {}".format(1 if s.get('at_uses_curve', False) else 0),
         ]
         return "\n".join(lines)
 
