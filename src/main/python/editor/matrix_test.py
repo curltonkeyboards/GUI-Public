@@ -2370,6 +2370,40 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             stopmode_layout.addWidget(_sm_combo, _sm_row, _sm_col + 1)
             self.stop_mode_combos[_sm_bit] = _sm_combo
 
+        # AT/CC Mode enable flags — two global On/Off toggles that gate the
+        # second factory velocity-preset band (curve indices 69-78). They ride
+        # the SAME keyboard-config byte as the Stop Mode mask (packet 1 byte 20):
+        # bit5 = Aftertouch Modes, bit6 = CC Modes (bit7 = validity marker).
+        _atcc_help = (
+            "Unlock the AT/CC Mode velocity presets (a second factory band).\n"
+            "Aftertouch Modes: Vibrato Slow/Fast, Rising, Slow Rise, Wind Chords.\n"
+            "CC Modes: the same five as CC-flavored variants.\n"
+            "While a group is Off, its presets stay locked in the Velocity tab."
+        )
+        for _atcc_name, _atcc_attr, _atcc_col in (
+            ("Enable Aftertouch Modes", "enable_at_modes", 1),
+            ("Enable CC Modes",         "enable_cc_modes", 3),
+        ):
+            _atcc_label = QWidget()
+            _atcc_label_layout = QHBoxLayout()
+            _atcc_label_layout.setContentsMargins(0, 0, 0, 0)
+            _atcc_label_layout.setSpacing(5)
+            _atcc_label_layout.addWidget(self.create_help_label(_atcc_help))
+            _atcc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", _atcc_name + ":")))
+            _atcc_label.setLayout(_atcc_label_layout)
+            stopmode_layout.addWidget(_atcc_label, 2, _atcc_col)
+            _atcc_combo = ArrowComboBox()
+            _atcc_combo.setMinimumWidth(120)
+            _atcc_combo.setMinimumHeight(25)
+            _atcc_combo.setMaximumHeight(25)
+            _atcc_combo.setEditable(True)
+            _atcc_combo.lineEdit().setReadOnly(True)
+            _atcc_combo.lineEdit().setAlignment(Qt.AlignCenter)
+            _atcc_combo.addItem("Off", False)
+            _atcc_combo.addItem("On", True)
+            stopmode_layout.addWidget(_atcc_combo, 2, _atcc_col + 1)
+            setattr(self, _atcc_attr, _atcc_combo)
+
         main_layout.addWidget(stopmode_row_container)
 
         # Advanced Settings Group with title on left, container centered
@@ -3308,6 +3342,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             # Per-function Stop Mode bitmask (rides basic packet byte 20 as
             # 0x80 | mask; replaces the old reserved/overdub byte)
             "stop_mode": self.get_stop_mode_mask(),
+            # AT/CC Mode enable flags (same packet byte 20, bit5/bit6)
+            "enable_at_modes": self.enable_at_modes.currentData(),
+            "enable_cc_modes": self.enable_cc_modes.currentData(),
             "smart_chord_light_mode": self.smart_chord_light_mode.currentData(),
             "key_split_channel": self.key_split_channel.currentData(),
             "key_split2_channel": self.key_split2_channel.currentData(),
@@ -3406,6 +3443,13 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         elif "stop_mode" in config:
             self._apply_stop_mode(config.get("stop_mode", 0),
                                   self.stop_mode_supported)
+
+        # AT/CC Mode enable flags — same packet byte 20 as Stop Mode, so gate
+        # their editability on the same feature-detect marker.
+        set_combo_by_data(self.enable_at_modes, config.get("enable_at_modes"), False)
+        set_combo_by_data(self.enable_cc_modes, config.get("enable_cc_modes"), False)
+        self.enable_at_modes.setEnabled(self.stop_mode_supported)
+        self.enable_cc_modes.setEnabled(self.stop_mode_supported)
 
         # LCD colour theme is a global setting carried over a dedicated HID
         # command (not the per-slot config packet), so fetch it directly and
@@ -3538,7 +3582,14 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         struct.pack_into('<I', data, offset, settings["oled_keyboard"]); offset += 4
 
         if self.stop_mode_supported:
-            data[offset] = 0x80 | (settings.get("stop_mode", 0) & self.STOP_MODE_MASK_ALL)
+            # byte 20: 0x80 validity | Stop Mode mask (bits0-4) | AT/CC enable
+            # flags (bit5 = Aftertouch Modes, bit6 = CC Modes).
+            _byte20 = 0x80 | (settings.get("stop_mode", 0) & self.STOP_MODE_MASK_ALL)
+            if settings.get("enable_at_modes"):
+                _byte20 |= 0x20
+            if settings.get("enable_cc_modes"):
+                _byte20 |= 0x40
+            data[offset] = _byte20
         else:
             data[offset] = 0
         offset += 1
@@ -3698,6 +3749,8 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "random_velocity_modifier": 127,
             "oled_keyboard": 0,
             "stop_mode": 0,  # all Mute (firmware default)
+            "enable_at_modes": False,  # AT/CC Mode bands locked by default
+            "enable_cc_modes": False,
             "smart_chord_light_mode": 0,
             "key_split_channel": 0,
             "key_split2_channel": 0,

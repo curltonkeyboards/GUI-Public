@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (QVBoxLayout, QPushButton, QWidget, QHBoxLayout, QLa
                            QFrame, QScrollArea, QSlider, QSpinBox, QButtonGroup,
                            QRadioButton, QMessageBox, QTabWidget, QListWidget, QListWidgetItem,
                            QInputDialog, QMenu, QAction, QDialog, QDialogButtonBox,
-                           QLineEdit, QApplication, QTextEdit)
+                           QLineEdit, QApplication, QTextEdit, QStackedWidget)
 from PyQt5.QtCore import Qt, QTimer, QRect
 from PyQt5 import QtCore
 from PyQt5.QtGui import QPainter, QColor, QBrush, QPen, QFont, QLinearGradient
@@ -38,6 +38,18 @@ from keycodes.keycodes import Keycode
 # Number of factory articulation presets (single source of truth: the curve
 # editor's factory name list). User preset slots start at this index.
 FACTORY_COUNT = len(CurveEditorWidget.FACTORY_CURVES)
+
+
+# AT/CC Mode presets — a second factory band at curve indices 69-78, added
+# after the 19 factory curves (0-18) and the 50 user slots (19-68).
+# 69-73 are aftertouch-flavor (gated by the "Enable Aftertouch Modes" flag);
+# 74-78 are CC-flavor (gated by the "Enable CC Modes" flag). An AT/CC index
+# i is CC-flavor iff i >= ATCC_START + 5.
+ATCC_START = FACTORY_COUNT + 50          # 69
+ATCC_COUNT = 10
+ATCC_END = ATCC_START + ATCC_COUNT - 1   # 78
+ATCC_NAMES = ["Vibrato Slow", "Vibrato Fast", "Rising", "Slow Rise", "Wind Chords",
+              "Vibrato Slow CC", "Vibrato Fast CC", "Rising CC", "Slow Rise CC", "Wind Chords CC"]
 
 
 # MIDI note keycode range (from keycodes_v6.py)
@@ -1228,6 +1240,24 @@ class VelocityTab(BasicEditor):
             self.preset_list_widget.addItem(item)
             item.setHidden(True)  # Hidden until we know it's configured
 
+        # AT/CC Mode presets (indices 69-78) — a second factory band gated by
+        # two global enable flags. Default disabled → rows shown greyed/locked.
+        # Clicking a locked row shows an "Enable … Modes" placeholder instead
+        # of the settings panel (see on_preset_list_clicked).
+        self.atcc_at_enabled = False
+        self.atcc_cc_enabled = False
+        self.atcc_separator = QListWidgetItem("─── AT/CC Modes ───")
+        self.atcc_separator.setData(Qt.UserRole, -3)  # Special value for AT/CC separator
+        self.atcc_separator.setFlags(Qt.NoItemFlags)  # Non-selectable
+        self.preset_list_widget.addItem(self.atcc_separator)
+        self.atcc_row_items = []
+        for i, name in enumerate(ATCC_NAMES):
+            item = QListWidgetItem(name)
+            item.setData(Qt.UserRole, ATCC_START + i)  # curve index 69-78
+            self.preset_list_widget.addItem(item)
+            self.atcc_row_items.append(item)
+        self.update_atcc_rows_enabled()
+
         # Select Linear by default
         self.preset_list_widget.setCurrentRow(2)
         self.preset_list_widget.itemClicked.connect(self.on_preset_list_clicked)
@@ -1259,7 +1289,18 @@ class VelocityTab(BasicEditor):
         base_widget, base_controls = self.create_zone_controls('base', include_curve_editor=True)
         self.zone_controls['base'] = base_controls
         self.connect_zone_controls(base_controls, 'base')
-        preset_main_layout.addWidget(base_widget, 1)
+        # Wrap the settings panel in a stack so a locked AT/CC preset can swap
+        # in an "Enable … Modes" placeholder (page 1) in place of the panel
+        # (page 0). Switched in on_preset_list_clicked / load_velocity_curve.
+        self.preset_settings_stack = QStackedWidget()
+        self.preset_settings_stack.addWidget(base_widget)  # page 0 = settings panel
+        self.atcc_placeholder_label = QLabel("")
+        self.atcc_placeholder_label.setAlignment(Qt.AlignCenter)
+        self.atcc_placeholder_label.setWordWrap(True)
+        self.atcc_placeholder_label.setStyleSheet(
+            "QLabel { font-size: 16px; font-weight: bold; color: #888; }")
+        self.preset_settings_stack.addWidget(self.atcc_placeholder_label)  # page 1
+        preset_main_layout.addWidget(self.preset_settings_stack, 1)
 
         # Store reference to the base curve editor
         self.curve_editor = base_controls['curve_editor']
@@ -1883,17 +1924,39 @@ class VelocityTab(BasicEditor):
             # Get keyboard config which includes velocity curve index
             config = self.keyboard.get_midi_config()
             if config:
+                # AT/CC Mode enable flags (global). Read here so the velocity
+                # tab is self-contained — it does not depend on the MIDI-settings
+                # tab pushing them. They live in the same keyboard-config byte
+                # (packet 1 offset 20) as Stop Mode; get_midi_config() exposes
+                # them as enable_at_modes / enable_cc_modes.
+                self.atcc_at_enabled = bool(config.get('enable_at_modes', False))
+                self.atcc_cc_enabled = bool(config.get('enable_cc_modes', False))
+                self.update_atcc_rows_enabled()
+
                 curve_index = config.get('he_velocity_curve', 2)  # Default to Linear (2)
                 # Select the curve in the preset list
                 self.select_preset_by_index(curve_index)
                 if 0 <= curve_index < FACTORY_COUNT:
                     # Factory curve - load points and settings
+                    self.preset_settings_stack.setCurrentIndex(0)
                     self._apply_factory_preset_settings(curve_index)
                     points = CurveEditorWidget.FACTORY_CURVE_POINTS[curve_index]
                     self.curve_editor.set_points(points)
                 elif FACTORY_COUNT <= curve_index <= FACTORY_COUNT + 49:
                     # User curve - load from keyboard
+                    self.preset_settings_stack.setCurrentIndex(0)
                     self.on_user_curve_selected(curve_index - FACTORY_COUNT)
+                elif ATCC_START <= curve_index <= ATCC_END:
+                    # Device is already on an AT/CC preset - reflect it.
+                    is_cc = curve_index >= ATCC_START + 5
+                    enabled = self.atcc_cc_enabled if is_cc else self.atcc_at_enabled
+                    if enabled:
+                        self.preset_settings_stack.setCurrentIndex(0)
+                        self.curve_editor.set_points(CurveEditorWidget.FACTORY_CURVE_POINTS[2])
+                    else:
+                        self.atcc_placeholder_label.setText(
+                            "Enable CC Modes" if is_cc else "Enable Aftertouch Modes")
+                        self.preset_settings_stack.setCurrentIndex(1)
                 self._update_preset_name_header(curve_index)
         except Exception as e:
             print(f"Error loading velocity curve: {e}")
@@ -1924,6 +1987,24 @@ class VelocityTab(BasicEditor):
                 item.setHidden(not is_visible)
         # Separator is always shown since User 1 is always visible
         self.user_presets_separator.setHidden(False)
+
+    def update_atcc_rows_enabled(self):
+        """Recolor the 10 AT/CC Mode rows (69-78): greyed (locked) unless the
+        governing global enable flag is on. Rows 69-73 follow atcc_at_enabled;
+        74-78 follow atcc_cc_enabled. Called on setup and whenever the flags
+        change (see load_velocity_curve)."""
+        items = getattr(self, 'atcc_row_items', None)
+        if not items:
+            return
+        for i, item in enumerate(items):
+            curve_index = ATCC_START + i
+            is_cc = curve_index >= ATCC_START + 5
+            enabled = self.atcc_cc_enabled if is_cc else self.atcc_at_enabled
+            if enabled:
+                # Restore the theme's normal text color (theme-safe).
+                item.setForeground(self.preset_list_widget.palette().text().color())
+            else:
+                item.setForeground(Qt.gray)
 
     def get_configured_preset_count(self):
         """Return how many user presets are currently configured"""
@@ -2049,6 +2130,10 @@ class VelocityTab(BasicEditor):
         elif FACTORY_COUNT <= curve_index <= FACTORY_COUNT + 49:
             # User curve - account for separator at row FACTORY_COUNT
             self.preset_list_widget.setCurrentRow((FACTORY_COUNT + 1) + (curve_index - FACTORY_COUNT))
+        elif ATCC_START <= curve_index <= ATCC_END:
+            # AT/CC row - after 19 factory + 1 user-sep + 50 user + 1 atcc-sep
+            self.preset_list_widget.setCurrentRow(
+                (FACTORY_COUNT + 1 + 50 + 1) + (curve_index - ATCC_START))
         self.preset_list_widget.blockSignals(False)
 
     def get_selected_preset_index(self):
@@ -2062,9 +2147,33 @@ class VelocityTab(BasicEditor):
         """Handle clicking on a preset in the list - loads settings and applies to keyboard"""
         curve_index = item.data(Qt.UserRole)
 
-        if curve_index == -2:
-            # Separator - do nothing
+        if curve_index == -2 or curve_index == -3:
+            # Separator (user presets / AT/CC modes) - do nothing
             return
+
+        # AT/CC Mode presets (69-78). If the governing enable flag is OFF, show
+        # an "Enable … Modes" placeholder instead of the settings panel and do
+        # NOT apply anything to the keyboard.
+        if ATCC_START <= curve_index <= ATCC_END:
+            is_cc = curve_index >= ATCC_START + 5
+            enabled = self.atcc_cc_enabled if is_cc else self.atcc_at_enabled
+            if not enabled:
+                self.atcc_placeholder_label.setText(
+                    "Enable CC Modes" if is_cc else "Enable Aftertouch Modes")
+                self.preset_settings_stack.setCurrentIndex(1)
+                self._update_preset_name_header(curve_index)
+                return
+            # Enabled AT/CC preset: the GUI has no local mirror of this band's
+            # curve/settings data, so we just select it on the device and leave
+            # the curve editor showing Linear (read-only-ish). See report notes.
+            self.preset_settings_stack.setCurrentIndex(0)
+            self.curve_editor.set_points(CurveEditorWidget.FACTORY_CURVE_POINTS[2])
+            self._update_preset_name_header(curve_index)
+            self._apply_preset_to_keyboard(curve_index)
+            return
+
+        # Normal factory / user preset → make sure the settings panel is shown.
+        self.preset_settings_stack.setCurrentIndex(0)
 
         if curve_index < FACTORY_COUNT:
             # Factory curve - apply per-preset settings, then set curve points last
@@ -2084,6 +2193,11 @@ class VelocityTab(BasicEditor):
 
     def _update_preset_name_header(self, curve_index):
         """Update the preset name label and rename button based on selected preset"""
+        if ATCC_START <= curve_index <= ATCC_END:
+            # AT/CC Mode preset - read-only factory band, no rename.
+            self.preset_name_label.setText(ATCC_NAMES[curve_index - ATCC_START])
+            self.preset_rename_btn.setVisible(False)
+            return
         if curve_index < FACTORY_COUNT:
             factory_names = ["Softest", "Soft", "Linear", "Hard", "Hardest", "Sensitive Soft", "Sensitive", "Sensitive Hard", "Fixed Vol", "Drums Easy", "Drums Soft", "Drums Linear", "Drums Hard", "Drums Sensitive", "Ultra Sensitive", "Fixed Sensitive", "Two Toned", "Reverse", "Random Highlights"]
             self.preset_name_label.setText(factory_names[curve_index])
