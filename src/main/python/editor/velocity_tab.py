@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (QVBoxLayout, QPushButton, QWidget, QHBoxLayout, QLa
                            QFrame, QScrollArea, QSlider, QSpinBox, QButtonGroup,
                            QRadioButton, QMessageBox, QTabWidget, QListWidget, QListWidgetItem,
                            QInputDialog, QMenu, QAction, QDialog, QDialogButtonBox,
-                           QLineEdit)
+                           QLineEdit, QApplication, QTextEdit)
 from PyQt5.QtCore import Qt, QTimer, QRect
 from PyQt5 import QtCore
 from PyQt5.QtGui import QPainter, QColor, QBrush, QPen, QFont, QLinearGradient
@@ -1267,6 +1267,13 @@ class VelocityTab(BasicEditor):
         self.save_as_btn.clicked.connect(self.on_save_as_dialog)
         buttons_layout.addWidget(self.save_as_btn)
 
+        self.export_btn = QPushButton(tr("VelocityTab", "Export..."))
+        self.export_btn.setMinimumHeight(35)
+        self.export_btn.setToolTip("Copy this articulation's exact settings as text "
+                                   "(shareable / for defining factory presets)")
+        self.export_btn.clicked.connect(self.on_export_articulation)
+        buttons_layout.addWidget(self.export_btn)
+
         preset_main_layout.addLayout(buttons_layout)
 
         bottom_layout.addWidget(preset_group)
@@ -2497,6 +2504,95 @@ class VelocityTab(BasicEditor):
             )
         finally:
             self._save_busy = False
+
+    def _build_articulation_export_text(self):
+        """Serialize the currently-edited articulation (curve points + all bundled
+        zone settings) into a stable, human-readable text block. The field set and
+        order mirror the firmware `zone_settings_t` so an export can be turned
+        directly into a factory preset definition."""
+        points = self.curve_editor.get_points()
+        s = self.global_midi_settings
+
+        # Resolve a display name from the current preset list selection.
+        name = "Custom"
+        try:
+            item = self.preset_list_widget.currentItem()
+            if item is not None:
+                txt = item.text()
+                if txt and not txt.startswith("─"):
+                    name = txt
+        except Exception:
+            pass
+
+        pts_str = " ".join("[{},{}]".format(int(p[0]), int(p[1])) for p in points)
+        at_mode = s.get('aftertouch_mode', 0)
+        lines = [
+            "=== Articulation Export ===",
+            "name: {}".format(name),
+            "points: {}".format(pts_str),
+            "velocity_min: {}".format(s.get('velocity_min', 1)),
+            "velocity_max: {}".format(s.get('velocity_max', 127)),
+            "slow_press_time: {}".format(s.get('min_press_time', 200)),
+            "fast_press_time: {}".format(s.get('max_press_time', 20)),
+            "aftertouch_mode: {}".format(at_mode),
+            "aftertouch_cc: {}".format(s.get('aftertouch_cc', 255)),
+            "aftertouch_smoothness: {}".format(s.get('aftertouch_smoothness', 0)),
+            "vibrato_sensitivity: {}".format(s.get('vibrato_sensitivity', 50)),
+            "vibrato_decay: {}".format(s.get('vibrato_decay_time', 10)),
+            "actuation_override: {}".format(1 if s.get('actuation_override', False) else 0),
+            "actuation_point: {}".format(s.get('actuation_point', 20)),
+            "trigger_minimum: {}".format(s.get('speed_peak_ratio', 1)),
+            "retrigger_distance: {}".format(s.get('retrigger_distance', 0)),
+        ]
+        return "\n".join(lines)
+
+    def on_export_articulation(self):
+        """Copy the current articulation's full settings to the clipboard as text
+        and show them in a selectable dialog so they can be shared / pasted."""
+        try:
+            text = self._build_articulation_export_text()
+        except Exception as e:
+            QMessageBox.warning(
+                None,
+                tr("VelocityTab", "Export Failed"),
+                tr("VelocityTab", f"Could not read the current articulation: {e}")
+            )
+            return
+
+        # Put it on the clipboard immediately.
+        try:
+            QApplication.clipboard().setText(text)
+        except Exception:
+            pass
+
+        dlg = QDialog()
+        dlg.setWindowTitle(tr("VelocityTab", "Export Articulation"))
+        dlg.setMinimumWidth(360)
+        layout = QVBoxLayout(dlg)
+
+        info = QLabel(tr("VelocityTab",
+                         "Copied to clipboard. Select and copy the text below to share "
+                         "these exact articulation settings."))
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        text_box = QTextEdit()
+        text_box.setPlainText(text)
+        text_box.setReadOnly(True)
+        text_box.setLineWrapMode(QTextEdit.NoWrap)
+        text_box.setMinimumHeight(320)
+        layout.addWidget(text_box)
+
+        btn_row = QHBoxLayout()
+        copy_btn = QPushButton(tr("VelocityTab", "Copy to Clipboard"))
+        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(text))
+        btn_row.addWidget(copy_btn)
+        close_btn = QPushButton(tr("VelocityTab", "Close"))
+        close_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
+
+        dlg.exec_()
 
     def on_save_curve(self):
         """Save velocity curve selection to keyboard (sets the active curve index)"""
