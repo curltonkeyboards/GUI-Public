@@ -1724,7 +1724,7 @@ class midiadvancedTab(QScrollArea):
         # HE Velocity Range button (replaces fixed velocity)
         self.add_he_velocity_range_button(he_row_layout, 200)
 
-        # Playing Style dropdown (all 17: 7 factory + 10 user)
+        # Playing Style dropdown (all 29: 5 classic + 14 new factory + 10 user)
         # Hold loop modifier + select to target a specific loop, or overdub modifier for overdub
         self.add_header_dropdown("Articulation", KEYCODES_HE_VELOCITY_CURVE, he_row_layout, 200)
 

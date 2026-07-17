@@ -35,6 +35,11 @@ from protocol.keyboard_comm import (
 from keycodes.keycodes import Keycode
 
 
+# Number of factory articulation presets (single source of truth: the curve
+# editor's factory name list). User preset slots start at this index.
+FACTORY_COUNT = len(CurveEditorWidget.FACTORY_CURVES)
+
+
 # MIDI note keycode range (from keycodes_v6.py)
 MIDI_NOTE_MIN = 0x7103  # MI_C
 MIDI_NOTE_MAX = 0x714A  # MI_B_5
@@ -1145,7 +1150,7 @@ class VelocityTab(BasicEditor):
         self.preset_list_widget.setMinimumHeight(300)
 
         # Factory presets
-        factory_curves = ["Softest", "Soft", "Linear", "Hard", "Hardest", "Aggro", "Digital"]
+        factory_curves = ["Softest", "Soft", "Linear", "Hard", "Hardest", "Sensitive Soft", "Sensitive", "Sensitive Hard", "Fixed Vol", "Drums Easy", "Drums Soft", "Drums Linear", "Drums Hard", "Drums Sensitive", "Ultra Sensitive", "Fixed Sensitive", "Two Toned", "Reverse", "Random Highlights"]
         for i, name in enumerate(factory_curves):
             item = QListWidgetItem(name)
             item.setData(Qt.UserRole, i)  # Store curve index
@@ -1158,12 +1163,12 @@ class VelocityTab(BasicEditor):
         self.user_presets_separator.setHidden(True)
         self.preset_list_widget.addItem(self.user_presets_separator)
 
-        # User presets (indices 7-56) - initially all hidden, shown when configured
+        # User presets (indices FACTORY_COUNT..FACTORY_COUNT+49) - initially all hidden, shown when configured
         self.user_curve_names = ["User {}".format(i + 1) for i in range(50)]
         self.user_preset_configured = [False] * 50
         for i, name in enumerate(self.user_curve_names):
             item = QListWidgetItem(name)
-            item.setData(Qt.UserRole, 7 + i)  # Store curve index
+            item.setData(Qt.UserRole, FACTORY_COUNT + i)  # Store curve index
             self.preset_list_widget.addItem(item)
             item.setHidden(True)  # Hidden until we know it's configured
 
@@ -1812,14 +1817,14 @@ class VelocityTab(BasicEditor):
                 curve_index = config.get('he_velocity_curve', 2)  # Default to Linear (2)
                 # Select the curve in the preset list
                 self.select_preset_by_index(curve_index)
-                if 0 <= curve_index < 7:
+                if 0 <= curve_index < FACTORY_COUNT:
                     # Factory curve - load points and settings
                     self._apply_factory_preset_settings(curve_index)
                     points = CurveEditorWidget.FACTORY_CURVE_POINTS[curve_index]
                     self.curve_editor.set_points(points)
-                elif 7 <= curve_index <= 56:
+                elif FACTORY_COUNT <= curve_index <= FACTORY_COUNT + 49:
                     # User curve - load from keyboard
-                    self.on_user_curve_selected(curve_index - 7)
+                    self.on_user_curve_selected(curve_index - FACTORY_COUNT)
                 self._update_preset_name_header(curve_index)
         except Exception as e:
             print(f"Error loading velocity curve: {e}")
@@ -1829,9 +1834,9 @@ class VelocityTab(BasicEditor):
         if len(user_curve_names) != 50:
             return
         self.user_curve_names = list(user_curve_names)
-        # User presets start at row 8 (after 7 factory curves + 1 separator)
+        # User presets start after the factory curves + 1 separator (row FACTORY_COUNT + 1)
         for i, name in enumerate(user_curve_names):
-            item = self.preset_list_widget.item(8 + i)
+            item = self.preset_list_widget.item((FACTORY_COUNT + 1) + i)
             if item:
                 item.setText(name)
         # Update keycode labels so the keymap editor dropdown shows current names
@@ -1845,7 +1850,7 @@ class VelocityTab(BasicEditor):
         self.user_preset_configured[0] = True
         for i in range(len(self.user_preset_configured)):
             is_visible = self.user_preset_configured[i]
-            item = self.preset_list_widget.item(8 + i)  # User presets start at row 8
+            item = self.preset_list_widget.item((FACTORY_COUNT + 1) + i)  # User presets start at row FACTORY_COUNT + 1
             if item:
                 item.setHidden(not is_visible)
         # Separator is always shown since User 1 is always visible
@@ -1857,7 +1862,7 @@ class VelocityTab(BasicEditor):
 
     def get_configured_preset_indices(self):
         """Return list of curve indices (7-56) that are configured, for cycling"""
-        return [7 + i for i, c in enumerate(self.user_preset_configured) if c]
+        return [FACTORY_COUNT + i for i, c in enumerate(self.user_preset_configured) if c]
 
     def update_velocity_keycode_labels(self, user_curve_names):
         """Update HE_CURVE_USER_* and HE_MACRO_CURVE_* keycode labels with actual user curve names"""
@@ -1869,7 +1874,7 @@ class VelocityTab(BasicEditor):
             kc = Keycode.find("HE_CURVE_USER_{}".format(slot_num))
             if kc:
                 kc.label = display_name
-                kc.tooltip = "Articulation {} ({})".format(display_name, 7 + i)
+                kc.tooltip = "Articulation {} ({})".format(display_name, FACTORY_COUNT + i)
 
             # Update HE_MACRO_CURVE_* keycodes (macro-aware direct selection)
             kc_macro = Keycode.find("HE_MACRO_CURVE_{}".format(7 + i))
@@ -1883,10 +1888,10 @@ class VelocityTab(BasicEditor):
         if not item:
             return
         curve_index = item.data(Qt.UserRole)
-        # Only allow actions on user presets (indices 7-56)
-        if curve_index is None or curve_index < 7 or curve_index > 56:
+        # Only allow actions on user presets (indices FACTORY_COUNT..FACTORY_COUNT+49)
+        if curve_index is None or curve_index < FACTORY_COUNT or curve_index > FACTORY_COUNT + 49:
             return
-        slot_index = curve_index - 7
+        slot_index = curve_index - FACTORY_COUNT
         menu = QMenu(self.preset_list_widget)
         rename_action = menu.addAction("Rename")
         move_up_action = menu.addAction("Move Up")
@@ -1932,7 +1937,7 @@ class VelocityTab(BasicEditor):
         new_name = new_name.strip()[:16]
         self.user_curve_names[slot_index] = new_name
         # Update the list widget display
-        item = self.preset_list_widget.item(8 + slot_index)
+        item = self.preset_list_widget.item((FACTORY_COUNT + 1) + slot_index)
         if item:
             item.setText(new_name)
         # Read current preset from keyboard, then re-save with new name
@@ -1968,12 +1973,12 @@ class VelocityTab(BasicEditor):
     def select_preset_by_index(self, curve_index):
         """Select a preset in the list by its curve index"""
         self.preset_list_widget.blockSignals(True)
-        if 0 <= curve_index < 7:
+        if 0 <= curve_index < FACTORY_COUNT:
             # Factory curve
             self.preset_list_widget.setCurrentRow(curve_index)
-        elif 7 <= curve_index <= 56:
-            # User curve - account for separator at row 7
-            self.preset_list_widget.setCurrentRow(8 + (curve_index - 7))
+        elif FACTORY_COUNT <= curve_index <= FACTORY_COUNT + 49:
+            # User curve - account for separator at row FACTORY_COUNT
+            self.preset_list_widget.setCurrentRow((FACTORY_COUNT + 1) + (curve_index - FACTORY_COUNT))
         self.preset_list_widget.blockSignals(False)
 
     def get_selected_preset_index(self):
@@ -1991,14 +1996,14 @@ class VelocityTab(BasicEditor):
             # Separator - do nothing
             return
 
-        if curve_index < 7:
+        if curve_index < FACTORY_COUNT:
             # Factory curve - apply per-preset settings, then set curve points last
             self._apply_factory_preset_settings(curve_index)
             points = CurveEditorWidget.FACTORY_CURVE_POINTS[curve_index]
             self.curve_editor.set_points(points)
         else:
-            # User curve (7-56) - load full preset from keyboard
-            slot_index = curve_index - 7
+            # User curve - load full preset from keyboard
+            slot_index = curve_index - FACTORY_COUNT
             self.on_user_curve_selected(slot_index)
 
         # Update the preset name header and rename button visibility
@@ -2009,12 +2014,12 @@ class VelocityTab(BasicEditor):
 
     def _update_preset_name_header(self, curve_index):
         """Update the preset name label and rename button based on selected preset"""
-        if curve_index < 7:
-            factory_names = ["Softest", "Soft", "Linear", "Hard", "Hardest", "Aggro", "Digital"]
+        if curve_index < FACTORY_COUNT:
+            factory_names = ["Softest", "Soft", "Linear", "Hard", "Hardest", "Sensitive Soft", "Sensitive", "Sensitive Hard", "Fixed Vol", "Drums Easy", "Drums Soft", "Drums Linear", "Drums Hard", "Drums Sensitive", "Ultra Sensitive", "Fixed Sensitive", "Two Toned", "Reverse", "Random Highlights"]
             self.preset_name_label.setText(factory_names[curve_index])
             self.preset_rename_btn.setVisible(False)
         else:
-            slot_index = curve_index - 7
+            slot_index = curve_index - FACTORY_COUNT
             name = self.user_curve_names[slot_index] if slot_index < len(self.user_curve_names) else "User {}".format(slot_index + 1)
             self.preset_name_label.setText(name)
             self.preset_rename_btn.setVisible(True)
@@ -2031,9 +2036,9 @@ class VelocityTab(BasicEditor):
     def on_preset_rename_clicked(self):
         """Handle clicking the pencil/rename button in the preset name header"""
         curve_index = self.get_selected_preset_index()
-        if curve_index is None or curve_index < 7:
+        if curve_index is None or curve_index < FACTORY_COUNT:
             return
-        slot_index = curve_index - 7
+        slot_index = curve_index - FACTORY_COUNT
         self.rename_user_preset(slot_index)
         # Update the header label after rename
         self._update_preset_name_header(curve_index)
@@ -2050,16 +2055,16 @@ class VelocityTab(BasicEditor):
             # Mark as configured and show in list
             self.user_curve_names[slot_index] = name
             self.user_preset_configured[slot_index] = True
-            item = self.preset_list_widget.item(8 + slot_index)
+            item = self.preset_list_widget.item((FACTORY_COUNT + 1) + slot_index)
             if item:
                 item.setText(name)
                 item.setHidden(False)
             self.user_presets_separator.setHidden(False)
             self.update_velocity_keycode_labels(self.user_curve_names)
             # Select and apply the newly saved preset
-            self.select_preset_by_index(7 + slot_index)
-            self._update_preset_name_header(7 + slot_index)
-            self._apply_preset_to_keyboard(7 + slot_index)
+            self.select_preset_by_index(FACTORY_COUNT + slot_index)
+            self._update_preset_name_header(FACTORY_COUNT + slot_index)
+            self._apply_preset_to_keyboard(FACTORY_COUNT + slot_index)
 
     # Factory preset settings table - must match firmware factory_preset_zones[] in orthomidi5x14.c
     # Each factory curve has its own velocity range, press times, and other zone settings.
@@ -2105,21 +2110,117 @@ class VelocityTab(BasicEditor):
             'actuation_override': False, 'actuation_point': 20,
             'speed_peak_ratio': 1, 'retrigger_distance': 0,
         },
-        5: {  # Aggro
-            'velocity_min': 80, 'velocity_max': 127,
+        5: {  # Sensitive Soft
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 67, 'fast_press_time': 1,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 25,
+            'speed_peak_ratio': 1, 'retrigger_distance': 5,
+        },
+        6: {  # Sensitive
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 67, 'fast_press_time': 4,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 25,
+            'speed_peak_ratio': 1, 'retrigger_distance': 5,
+        },
+        7: {  # Sensitive Hard
+            'velocity_min': 30, 'velocity_max': 127,
+            'slow_press_time': 67, 'fast_press_time': 1,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 25,
+            'speed_peak_ratio': 1, 'retrigger_distance': 5,
+        },
+        8: {  # Fixed Vol
+            'velocity_min': 126, 'velocity_max': 127,
+            'slow_press_time': 2, 'fast_press_time': 1,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': True, 'actuation_point': 37,
+            'speed_peak_ratio': 1, 'retrigger_distance': 0,
+        },
+        9: {  # Drums Easy
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 24, 'fast_press_time': 4,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 20,
+            'speed_peak_ratio': 1, 'retrigger_distance': 5,
+        },
+        10: {  # Drums Soft
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 40, 'fast_press_time': 1,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 20,
+            'speed_peak_ratio': 1, 'retrigger_distance': 0,
+        },
+        11: {  # Drums Linear
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 40, 'fast_press_time': 1,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 20,
+            'speed_peak_ratio': 1, 'retrigger_distance': 0,
+        },
+        12: {  # Drums Hard
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 40, 'fast_press_time': 1,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 20,
+            'speed_peak_ratio': 1, 'retrigger_distance': 0,
+        },
+        13: {  # Drums Sensitive
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 46, 'fast_press_time': 1,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 20,
+            'speed_peak_ratio': 1, 'retrigger_distance': 5,
+        },
+        14: {  # Ultra Sensitive
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 29, 'fast_press_time': 5,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': True, 'actuation_point': 3,
+            'speed_peak_ratio': 1, 'retrigger_distance': 5,
+        },
+        15: {  # Fixed Sensitive
+            'velocity_min': 126, 'velocity_max': 127,
+            'slow_press_time': 2, 'fast_press_time': 1,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': True, 'actuation_point': 5,
+            'speed_peak_ratio': 1, 'retrigger_distance': 5,
+        },
+        16: {  # Two Toned
+            'velocity_min': 70, 'velocity_max': 127,
+            'slow_press_time': 147, 'fast_press_time': 8,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 0,
+            'speed_peak_ratio': 1, 'retrigger_distance': 0,
+        },
+        17: {  # Reverse
+            'velocity_min': 1, 'velocity_max': 127,
             'slow_press_time': 100, 'fast_press_time': 1,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 20,
             'speed_peak_ratio': 1, 'retrigger_distance': 0,
         },
-        6: {  # Digital
-            'velocity_min': 127, 'velocity_max': 127,
-            'slow_press_time': 100, 'fast_press_time': 1,
+        18: {  # Random Highlights
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 62, 'fast_press_time': 1,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 1, 'retrigger_distance': 0,
+            'speed_peak_ratio': 5, 'retrigger_distance': 5,
         },
     }
 
@@ -2180,7 +2281,7 @@ class VelocityTab(BasicEditor):
             # Update local state
             self.user_preset_configured[slot_index] = False
             self.user_curve_names[slot_index] = "User {}".format(slot_index + 1)
-            item = self.preset_list_widget.item(8 + slot_index)
+            item = self.preset_list_widget.item((FACTORY_COUNT + 1) + slot_index)
             if item:
                 item.setText(self.user_curve_names[slot_index])
                 item.setHidden(True)
@@ -2215,7 +2316,7 @@ class VelocityTab(BasicEditor):
 
             # Update list widget text and visibility
             for slot in (slot_a, slot_b):
-                item = self.preset_list_widget.item(8 + slot)
+                item = self.preset_list_widget.item((FACTORY_COUNT + 1) + slot)
                 if item:
                     item.setText(self.user_curve_names[slot])
                     item.setHidden(not self.user_preset_configured[slot])
@@ -2251,16 +2352,16 @@ class VelocityTab(BasicEditor):
         """Overwrite the currently selected user preset with current settings.
         If a factory preset is selected, redirect to Save As dialog."""
         curve_index = self.get_selected_preset_index()
-        if curve_index is None or curve_index < 7 or curve_index > 56:
+        if curve_index is None or curve_index < FACTORY_COUNT or curve_index > FACTORY_COUNT + 49:
             # Factory preset selected - redirect to Save As
             self.on_save_as_dialog()
             return
-        slot_index = curve_index - 7
+        slot_index = curve_index - FACTORY_COUNT
         name = self.user_curve_names[slot_index]
         self.on_save_to_user_curve(slot_index, name)
         # Ensure it's marked configured and visible
         self.user_preset_configured[slot_index] = True
-        item = self.preset_list_widget.item(8 + slot_index)
+        item = self.preset_list_widget.item((FACTORY_COUNT + 1) + slot_index)
         if item:
             item.setHidden(False)
         self.user_presets_separator.setHidden(False)
@@ -2300,16 +2401,16 @@ class VelocityTab(BasicEditor):
         # Mark as configured and show in list
         self.user_curve_names[empty_slot] = name
         self.user_preset_configured[empty_slot] = True
-        item = self.preset_list_widget.item(8 + empty_slot)
+        item = self.preset_list_widget.item((FACTORY_COUNT + 1) + empty_slot)
         if item:
             item.setText(name)
             item.setHidden(False)
         self.user_presets_separator.setHidden(False)
         self.update_velocity_keycode_labels(self.user_curve_names)
         # Select, label, and apply the newly created preset
-        self.select_preset_by_index(7 + empty_slot)
-        self._update_preset_name_header(7 + empty_slot)
-        self._apply_preset_to_keyboard(7 + empty_slot)
+        self.select_preset_by_index(FACTORY_COUNT + empty_slot)
+        self._update_preset_name_header(FACTORY_COUNT + empty_slot)
+        self._apply_preset_to_keyboard(FACTORY_COUNT + empty_slot)
 
     def on_save_as_new_preset(self):
         """Save current settings as a new user preset. Prompts for name, finds first empty slot."""
@@ -2337,14 +2438,14 @@ class VelocityTab(BasicEditor):
         # Mark as configured and show in list
         self.user_curve_names[empty_slot] = name
         self.user_preset_configured[empty_slot] = True
-        item = self.preset_list_widget.item(8 + empty_slot)
+        item = self.preset_list_widget.item((FACTORY_COUNT + 1) + empty_slot)
         if item:
             item.setText(name)
             item.setHidden(False)
         self.user_presets_separator.setHidden(False)
         self.update_velocity_keycode_labels(self.user_curve_names)
         # Select the newly created preset
-        self.select_preset_by_index(7 + empty_slot)
+        self.select_preset_by_index(FACTORY_COUNT + empty_slot)
 
     def on_user_curve_selected(self, slot_index):
         """Load user curve (velocity preset) from keyboard when selected in dropdown.
@@ -2486,7 +2587,7 @@ class VelocityTab(BasicEditor):
                 )
                 # Update the user curve name in the preset list and keycode labels
                 self.user_curve_names[slot_index] = curve_name
-                item = self.preset_list_widget.item(8 + slot_index)
+                item = self.preset_list_widget.item((FACTORY_COUNT + 1) + slot_index)
                 if item:
                     item.setText(curve_name)
                 self.update_velocity_keycode_labels(self.user_curve_names)

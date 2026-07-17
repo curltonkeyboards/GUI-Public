@@ -37,34 +37,70 @@ class CurveEditorWidget(QWidget):
     save_to_user_requested = pyqtSignal(int, str)  # (slot_index, curve_name)
     user_curve_selected = pyqtSignal(int)  # slot_index (0-9) when user curve is selected
 
-    # Factory curve names (indices 0-6)
+    # Factory curve names (indices 0-18)
     FACTORY_CURVES = [
         "Softest",
         "Soft",
         "Linear",
         "Hard",
         "Hardest",
-        "Aggro",
-        "Digital"
+        "Sensitive Soft",
+        "Sensitive",
+        "Sensitive Hard",
+        "Fixed Vol",
+        "Drums Easy",
+        "Drums Soft",
+        "Drums Linear",
+        "Drums Hard",
+        "Drums Sensitive",
+        "Ultra Sensitive",
+        "Fixed Sensitive",
+        "Two Toned",
+        "Reverse",
+        "Random Highlights"
     ]
 
     # Factory curve presets (same as firmware)
     # All 4 points are on the curve, connected by straight line segments (piecewise linear)
     FACTORY_CURVE_POINTS = [
-        # Softest - Very gentle, output much lower than input
+        # 0 Softest - Very gentle, output much lower than input
         [[0, 0], [85, 28], [170, 85], [255, 255]],
-        # Soft - Gentle curve, gradual response
+        # 1 Soft - Gentle curve, gradual response
         [[0, 0], [85, 42], [170, 128], [255, 255]],
-        # Linear - 1:1 response
+        # 2 Linear - 1:1 response
         [[0, 0], [85, 85], [170, 170], [255, 255]],
-        # Hard - Steeper curve, faster response
+        # 3 Hard - Steeper curve, faster response
         [[0, 0], [85, 128], [170, 213], [255, 255]],
-        # Hardest - Very steep, aggressive response
+        # 4 Hardest - Very steep, aggressive response
         [[0, 0], [64, 160], [128, 230], [255, 255]],
-        # Aggro - Rapid acceleration
-        [[0, 0], [42, 170], [85, 220], [255, 255]],
-        # Digital - Binary-like instant response
-        [[0, 0], [10, 255], [20, 255], [255, 255]]
+        # 5 Sensitive Soft
+        [[0, 58], [92, 98], [194, 159], [255, 222]],
+        # 6 Sensitive
+        [[0, 81], [95, 125], [170, 170], [255, 255]],
+        # 7 Sensitive Hard
+        [[0, 152], [96, 175], [190, 215], [255, 255]],
+        # 8 Fixed Vol
+        [[0, 0], [1, 255], [20, 255], [255, 255]],
+        # 9 Drums Easy
+        [[0, 0], [85, 85], [170, 170], [255, 255]],
+        # 10 Drums Soft
+        [[0, 0], [121, 36], [212, 123], [255, 255]],
+        # 11 Drums Linear
+        [[0, 0], [85, 85], [170, 170], [255, 255]],
+        # 12 Drums Hard
+        [[0, 40], [85, 128], [170, 213], [255, 255]],
+        # 13 Drums Sensitive
+        [[0, 26], [75, 65], [179, 116], [255, 193]],
+        # 14 Ultra Sensitive
+        [[0, 0], [82, 128], [170, 188], [255, 255]],
+        # 15 Fixed Sensitive
+        [[0, 0], [1, 255], [20, 255], [255, 255]],
+        # 16 Two Toned
+        [[0, 0], [81, 0], [243, 0], [255, 255]],
+        # 17 Reverse
+        [[0, 255], [82, 173], [169, 86], [255, 0]],
+        # 18 Random Highlights
+        [[0, 161], [88, 49], [173, 251], [255, 137]]
     ]
 
     def __init__(self, parent=None, show_save_button=True, canvas_size=300):
@@ -107,9 +143,9 @@ class CurveEditorWidget(QWidget):
         # Add separator
         self.preset_combo.insertSeparator(len(self.FACTORY_CURVES))
 
-        # Add user curves (indices 7-16)
+        # Add user curves (indices len(FACTORY_CURVES)..len(FACTORY_CURVES)+49)
         for i, name in enumerate(self.user_curve_names):
-            self.preset_combo.addItem(name, 7 + i)
+            self.preset_combo.addItem(name, len(self.FACTORY_CURVES) + i)
 
         # Add custom option
         self.preset_combo.insertSeparator(self.preset_combo.count())
@@ -141,13 +177,13 @@ class CurveEditorWidget(QWidget):
         if curve_index == -1:
             # Custom - don't change anything
             return
-        elif curve_index < 7:
+        elif curve_index < len(self.FACTORY_CURVES):
             # Factory curve - load points directly
             self.set_points(self.FACTORY_CURVE_POINTS[curve_index])
         else:
-            # User curve (7-16) - always emit signal to load full preset from keyboard
+            # User curve - always emit signal to load full preset from keyboard
             # This ensures all settings (velocity, aftertouch, etc.) are reloaded, not just curve points
-            slot_index = curve_index - 7  # Convert to 0-9 slot index
+            slot_index = curve_index - len(self.FACTORY_CURVES)  # Convert to 0-based slot index
             self.user_curve_selected.emit(slot_index)
 
     def on_point_moved(self, point_index, x, y):

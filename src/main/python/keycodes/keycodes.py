@@ -3102,17 +3102,30 @@ for x in range (128):
                               "TS\nVelocity\n{}".format(x),
                               "TS\nVelocity {}".format(x)))
 
-# Playing Style keycodes - all 17 presets (7 factory + 10 user)
+# Playing Style keycodes - all 29 presets (5 classic + 14 new factory + 10 user)
 KEYCODES_HE_VELOCITY_CURVE = [
-    # Factory presets (0-6)
+    # Factory presets (0-4) - classic
     K("HE_CURVE_SOFTEST", "Softest", "Articulation Softest"),
     K("HE_CURVE_SOFT", "Soft", "Articulation Soft"),
     K("HE_CURVE_MEDIUM", "Linear", "Articulation Linear"),
     K("HE_CURVE_HARD", "Hard", "Articulation Hard"),
     K("HE_CURVE_HARDEST", "Hardest", "Articulation Hardest"),
-    K("HE_CURVE_AGGRO", "Aggro", "Articulation Aggro"),
-    K("HE_CURVE_DIGITAL", "Digital", "Articulation Digital"),
-    # User presets (7-16)
+    # Factory presets (5-18) - new
+    K("HE_CURVE_AGGRO", "Sensitive Soft", "Articulation Sensitive Soft"),
+    K("HE_CURVE_DIGITAL", "Sensitive", "Articulation Sensitive"),
+    K("HE_CURVE_FAC_7", "Sensitive Hard", "Articulation Sensitive Hard"),
+    K("HE_CURVE_FAC_8", "Fixed Vol", "Articulation Fixed Vol"),
+    K("HE_CURVE_FAC_9", "Drums Easy", "Articulation Drums Easy"),
+    K("HE_CURVE_FAC_10", "Drums Soft", "Articulation Drums Soft"),
+    K("HE_CURVE_FAC_11", "Drums Linear", "Articulation Drums Linear"),
+    K("HE_CURVE_FAC_12", "Drums Hard", "Articulation Drums Hard"),
+    K("HE_CURVE_FAC_13", "Drums Sensitive", "Articulation Drums Sensitive"),
+    K("HE_CURVE_FAC_14", "Ultra Sensitive", "Articulation Ultra Sensitive"),
+    K("HE_CURVE_FAC_15", "Fixed Sensitive", "Articulation Fixed Sensitive"),
+    K("HE_CURVE_FAC_16", "Two Toned", "Articulation Two Toned"),
+    K("HE_CURVE_FAC_17", "Reverse", "Articulation Reverse"),
+    K("HE_CURVE_FAC_18", "Random Highlights", "Articulation Random Highlights"),
+    # User presets (19-68)
     K("HE_CURVE_USER_1", "User 1", "Articulation User Preset 1"),
     K("HE_CURVE_USER_2", "User 2", "Articulation User Preset 2"),
     K("HE_CURVE_USER_3", "User 3", "Articulation User Preset 3"),
