@@ -1943,21 +1943,21 @@ class keycodes_v6:
         "HE_CURVE_USER_9": 0xCC9A,
         "HE_CURVE_USER_10": 0xCC9B,
 
-        # HE Velocity Curve - new factory presets 7-18 (0xECB7-0xECC2)
+        # HE Velocity Curve - new factory presets 7-18 (0xECE8-0xECF3)
         # NOTE: these values overlap the legacy QB_MASTER_2..13 range
         # (0xECB6+ ); kept per firmware-provided assignment.
-        "HE_CURVE_FAC_7": 0xECB7,
-        "HE_CURVE_FAC_8": 0xECB8,
-        "HE_CURVE_FAC_9": 0xECB9,
-        "HE_CURVE_FAC_10": 0xECBA,
-        "HE_CURVE_FAC_11": 0xECBB,
-        "HE_CURVE_FAC_12": 0xECBC,
-        "HE_CURVE_FAC_13": 0xECBD,
-        "HE_CURVE_FAC_14": 0xECBE,
-        "HE_CURVE_FAC_15": 0xECBF,
-        "HE_CURVE_FAC_16": 0xECC0,
-        "HE_CURVE_FAC_17": 0xECC1,
-        "HE_CURVE_FAC_18": 0xECC2,
+        "HE_CURVE_FAC_7": 0xECE8,
+        "HE_CURVE_FAC_8": 0xECE9,
+        "HE_CURVE_FAC_9": 0xECEA,
+        "HE_CURVE_FAC_10": 0xECEB,
+        "HE_CURVE_FAC_11": 0xECEC,
+        "HE_CURVE_FAC_12": 0xECED,
+        "HE_CURVE_FAC_13": 0xECEE,
+        "HE_CURVE_FAC_14": 0xECEF,
+        "HE_CURVE_FAC_15": 0xECF0,
+        "HE_CURVE_FAC_16": 0xECF1,
+        "HE_CURVE_FAC_17": 0xECF2,
+        "HE_CURVE_FAC_18": 0xECF3,
 
         # Macro-aware HE Velocity Controls (0xEC90-0xEC95)
         "HE_MACRO_CURVE_UP": 0xEC90,
