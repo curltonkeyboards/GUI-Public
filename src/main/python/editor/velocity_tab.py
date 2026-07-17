@@ -534,6 +534,22 @@ class VelocityTab(BasicEditor):
         controls['aftertouch_mode_combo'].addItem("Bottom Out", 1)
         controls['aftertouch_mode_combo'].addItem("Reverse", 2)
         controls['aftertouch_mode_combo'].addItem("Vibrato", 4)
+        # Per-item hover tooltips (plain-language explanations of each mode)
+        _at_mode_tips = {
+            0: "Off: pressing a held key harder does nothing.",
+            3: "Post Actuation: aftertouch is set by how hard you struck the "
+               "note, then eases off only as you let the key back up.",
+            1: "Bottom Out: push a held key deeper to send more aftertouch; "
+               "ease up to send less.",
+            2: "Reverse: opposite of Bottom Out - a held key sends the most "
+               "aftertouch near the top and less as you press deeper.",
+            4: "Vibrato: wiggling a held key up and down swells the aftertouch, "
+               "which fades when you hold still - like adding vibrato by hand.",
+        }
+        for _i in range(controls['aftertouch_mode_combo'].count()):
+            _d = controls['aftertouch_mode_combo'].itemData(_i)
+            if _d in _at_mode_tips:
+                controls['aftertouch_mode_combo'].setItemData(_i, _at_mode_tips[_d], Qt.ToolTipRole)
         controls['aftertouch_mode_combo'].setCurrentIndex(0)
         controls['aftertouch_mode_combo'].setProperty('zone', zone_name)
         mode_layout.addWidget(controls['aftertouch_mode_combo'], 1)
@@ -563,6 +579,13 @@ class VelocityTab(BasicEditor):
         controls['aftertouch_style_combo'].lineEdit().setAlignment(Qt.AlignCenter)
         controls['aftertouch_style_combo'].addItem("Chord", 0)   # legato False
         controls['aftertouch_style_combo'].addItem("Legato", 1)  # legato True
+        controls['aftertouch_style_combo'].setItemData(0,
+            "Chord: all held keys share one aftertouch value - the average of "
+            "how hard each key is pressed.", Qt.ToolTipRole)
+        controls['aftertouch_style_combo'].setItemData(1,
+            "Legato: only the most-recently-pressed key controls the aftertouch "
+            "(earlier keys stop affecting it), and only one note sounds at a time.",
+            Qt.ToolTipRole)
         controls['aftertouch_style_combo'].setCurrentIndex(0)
         controls['aftertouch_style_combo'].setProperty('zone', zone_name)
         style_layout.addWidget(controls['aftertouch_style_combo'], 1)
@@ -593,6 +616,12 @@ class VelocityTab(BasicEditor):
         controls['aftertouch_sustain_combo'].lineEdit().setAlignment(Qt.AlignCenter)
         controls['aftertouch_sustain_combo'].addItem("On", 1)   # sustain on
         controls['aftertouch_sustain_combo'].addItem("Off", 0)  # sustain off (NS)
+        controls['aftertouch_sustain_combo'].setItemData(0,
+            "On: while the sustain pedal is holding a note, aftertouch stops "
+            "responding.", Qt.ToolTipRole)
+        controls['aftertouch_sustain_combo'].setItemData(1,
+            "Off (NS): aftertouch keeps responding even while the sustain pedal "
+            "holds the note.", Qt.ToolTipRole)
         controls['aftertouch_sustain_combo'].setCurrentIndex(0)
         controls['aftertouch_sustain_combo'].setProperty('zone', zone_name)
         sustain_layout.addWidget(controls['aftertouch_sustain_combo'], 1)
