@@ -857,9 +857,20 @@ class DualRangeSlider(QWidget):
             dist_low = ((x - low_x) ** 2 + (y - cy) ** 2) ** 0.5
             dist_high = ((x - high_x) ** 2 + (y - cy) ** 2) ** 0.5
 
-            if dist_low <= self.handle_radius + 5:
+            low_grab = dist_low <= self.handle_radius + 5
+            high_grab = dist_high <= self.handle_radius + 5
+            if low_grab and high_grab:
+                # Overlapping handles (e.g. both pushed to the bottom): grab the
+                # one that still has room to move so they never get stuck stacked.
+                # 'high' is drawn on top, so prefer it unless it is pinned at the
+                # maximum while 'low' can still move.
+                if self._high_value >= self._maximum and self._low_value > self._minimum:
+                    self._active_handle = 'low'
+                else:
+                    self._active_handle = 'high'
+            elif low_grab:
                 self._active_handle = 'low'
-            elif dist_high <= self.handle_radius + 5:
+            elif high_grab:
                 self._active_handle = 'high'
             else:
                 # Click on track - move nearest handle
