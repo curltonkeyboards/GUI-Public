@@ -354,6 +354,7 @@ class VelocityTab(BasicEditor):
             'speed_peak_ratio': 1,      # Repurposed: Trigger Minimum in 0.1mm steps (1-35 = 0.1-3.5mm)
             'retrigger_distance': 0,    # 0=off, 5-20 = 0.5-2.0mm retrigger distance
             'at_uses_curve': False,     # Map AT/CC value through this zone's velocity curve before sending
+            'legato': False,            # Monophonic last-note priority, overrides sustain (zone flag bit 2)
         }
 
         # Polling timer
@@ -706,6 +707,26 @@ class VelocityTab(BasicEditor):
         layout.addWidget(controls['at_uses_curve_widget'])
         controls['at_uses_curve_widget'].setVisible(False)  # Hidden when aftertouch is Off
 
+        # Legato checkbox (ALWAYS visible - applies to every preset, not just AT/CC).
+        # Monophonic last-note priority: only the most-recently-pressed key sounds;
+        # releasing it falls back to the most-recent still-held key at its original
+        # velocity. Overrides the sustain pedal. On AT/CC presets it also makes the
+        # aftertouch/CC "last-note wins" (owner-latched). Persisted in zone flags (bit 2).
+        controls['legato_widget'] = QWidget()
+        leg_layout = QHBoxLayout()
+        leg_layout.setContentsMargins(0, 0, 0, 0)
+        controls['legato_widget'].setLayout(leg_layout)
+        leg_layout.addWidget(self.create_help_label(
+            "Legato: play one note at a time (monophonic).\n"
+            "Only the most-recently-pressed key sounds. Press a new key and the\n"
+            "old note stops; release it while an older key is still held and that\n"
+            "note returns at its original velocity. Ignores the sustain pedal.\n"
+            "On aftertouch/CC presets the newest key also owns the aftertouch."))
+        controls['legato_check'] = QCheckBox(tr("VelocityTab", "Legato"))
+        controls['legato_check'].setProperty('zone', zone_name)
+        leg_layout.addWidget(controls['legato_check'])
+        layout.addWidget(controls['legato_widget'])
+
         # Aftertouch Smoothness slider (shares retrigger byte, visible when aftertouch is on)
         controls['smoothness_widget'] = QWidget()
         smooth_layout = QHBoxLayout()
@@ -981,12 +1002,13 @@ class VelocityTab(BasicEditor):
 
         controls['press_time_range_slider'].range_changed.connect(on_press_time_range_changed)
 
-        # Aftertouch mode / style / sustain -> packed byte (0-16)
+        # Aftertouch mode / sustain -> packed byte (0-8). Legato is no longer part
+        # of this byte; it moved to its own per-preset checkbox (zone flag bit 2),
+        # so the aftertouch byte is always the non-legato base value now.
         def compute_aftertouch_byte():
             pair = controls['aftertouch_mode_combo'].currentData() or 0
             sustain_on = (controls['aftertouch_sustain_combo'].currentData() == 1)
-            legato = (controls['aftertouch_style_combo'].currentData() == 1)
-            return encode_aftertouch_byte(pair, sustain_on, legato)
+            return encode_aftertouch_byte(pair, sustain_on, False)
 
         def on_aftertouch_mode_changed(index):
             pair = controls['aftertouch_mode_combo'].currentData() or 0
@@ -1010,7 +1032,7 @@ class VelocityTab(BasicEditor):
                 vat.setEnabled(True)
             vat.blockSignals(False)
             # Style/Sustain only apply when aftertouch is enabled
-            controls['aftertouch_style_widget'].setVisible(not is_off)
+            controls['aftertouch_style_widget'].setVisible(False)  # retired: legato is now its own checkbox
             controls['aftertouch_sustain_widget'].setVisible(not is_off)
             # Smoothness replaces retrigger when aftertouch is active
             controls['smoothness_widget'].setVisible(not is_off)
@@ -1050,6 +1072,12 @@ class VelocityTab(BasicEditor):
             set_setting('at_uses_curve', state == Qt.Checked)
 
         controls['at_uses_curve_check'].stateChanged.connect(on_at_uses_curve_changed)
+
+        # Legato checkbox (persisted in preset zone flags bit 2)
+        def on_legato_changed(state):
+            set_setting('legato', state == Qt.Checked)
+
+        controls['legato_check'].stateChanged.connect(on_legato_changed)
 
         # Aftertouch smoothness (0-100%, shares retrigger byte in protocol)
         def on_smoothness_changed(value):
@@ -1359,6 +1387,8 @@ class VelocityTab(BasicEditor):
         self.velocity_as_at_checkbox = base_controls['velocity_as_at_checkbox']
         self.at_uses_curve_widget = base_controls['at_uses_curve_widget']
         self.at_uses_curve_check = base_controls['at_uses_curve_check']
+        self.legato_widget = base_controls['legato_widget']
+        self.legato_check = base_controls['legato_check']
         self.vibrato_sens_widget = base_controls['vibrato_sens_widget']
         self.vibrato_sens_slider = base_controls['vibrato_sens_slider']
         self.vibrato_sens_value = base_controls['vibrato_sens_value']
@@ -1617,6 +1647,7 @@ class VelocityTab(BasicEditor):
         self.vibrato_decay_slider.blockSignals(True)
         self.velocity_as_at_checkbox.blockSignals(True)
         self.at_uses_curve_check.blockSignals(True)
+        self.legato_check.blockSignals(True)
 
         # Set velocity range
         vel_min = settings.get('velocity_min', 1)
@@ -1655,7 +1686,7 @@ class VelocityTab(BasicEditor):
         if is_post:
             self.velocity_as_at_checkbox.setChecked(True)
         self.velocity_as_at_checkbox.blockSignals(False)
-        self.aftertouch_style_widget.setVisible(not is_off)
+        self.aftertouch_style_widget.setVisible(False)  # retired: legato is now its own checkbox
         self.aftertouch_sustain_widget.setVisible(not is_off)
         self.smoothness_widget.setVisible(not is_off)
 
@@ -1668,6 +1699,9 @@ class VelocityTab(BasicEditor):
 
         # Set AT/CC uses velocity curve checkbox
         self.at_uses_curve_check.setChecked(bool(settings.get('at_uses_curve', False)))
+
+        # Set Legato checkbox (per-preset, always visible)
+        self.legato_check.setChecked(bool(settings.get('legato', False)))
 
         # Set aftertouch CC
         cc = settings.get('aftertouch_cc', 255)
@@ -1708,13 +1742,14 @@ class VelocityTab(BasicEditor):
         self.vibrato_decay_slider.blockSignals(False)
         self.velocity_as_at_checkbox.blockSignals(False)
         self.at_uses_curve_check.blockSignals(False)
+        self.legato_check.blockSignals(False)
 
     def on_aftertouch_mode_changed(self, index):
         """Handle aftertouch mode change - show/hide vibrato, smoothness, and CC controls"""
         pair = self.aftertouch_mode_combo.currentData() or 0
         sustain_on = (self.aftertouch_sustain_combo.currentData() == 1)
-        legato = (self.aftertouch_style_combo.currentData() == 1)
-        mode = encode_aftertouch_byte(pair, sustain_on, legato)
+        # Legato is no longer part of the aftertouch byte (its own zone-flag checkbox).
+        mode = encode_aftertouch_byte(pair, sustain_on, False)
         is_vibrato = (pair == 4)
         is_off = (pair == 0)
         self.vibrato_sens_widget.setVisible(is_vibrato)
@@ -1729,7 +1764,7 @@ class VelocityTab(BasicEditor):
         if is_post:
             self.velocity_as_at_checkbox.setChecked(True)
         self.velocity_as_at_checkbox.blockSignals(False)
-        self.aftertouch_style_widget.setVisible(not is_off)
+        self.aftertouch_style_widget.setVisible(False)  # retired: legato is now its own checkbox
         self.aftertouch_sustain_widget.setVisible(not is_off)
         # Smoothness replaces retrigger when aftertouch is active
         self.smoothness_widget.setVisible(not is_off)
@@ -1859,7 +1894,7 @@ class VelocityTab(BasicEditor):
         if is_post:
             controls['velocity_as_at_checkbox'].setChecked(True)
         controls['velocity_as_at_checkbox'].blockSignals(False)
-        controls['aftertouch_style_widget'].setVisible(not is_off)
+        controls['aftertouch_style_widget'].setVisible(False)  # retired: legato is now its own checkbox
         controls['aftertouch_sustain_widget'].setVisible(not is_off)
         controls['smoothness_widget'].setVisible(not is_off)
 
@@ -1883,6 +1918,9 @@ class VelocityTab(BasicEditor):
 
         # Update AT/CC uses velocity curve checkbox
         controls['at_uses_curve_check'].setChecked(bool(zone_data.get('at_uses_curve', False)))
+
+        # Update Legato checkbox (per-preset, always visible)
+        controls['legato_check'].setChecked(bool(zone_data.get('legato', False)))
 
         # Update smoothness
         smoothness = zone_data.get('aftertouch_smoothness', 0)
@@ -2150,6 +2188,7 @@ class VelocityTab(BasicEditor):
                         speed_peak_ratio=base_zone.get('speed_peak_ratio', 1),
                         retrigger_distance=base_zone.get('retrigger_distance', 0),
                         at_uses_curve=base_zone.get('at_uses_curve', False),
+                        legato=base_zone.get('legato', False),
                     )
             except Exception as e:
                 print(f"Error saving preset name: {e}")
@@ -2467,6 +2506,7 @@ class VelocityTab(BasicEditor):
         self.global_midi_settings['speed_peak_ratio'] = zone_data['speed_peak_ratio']
         self.global_midi_settings['retrigger_distance'] = zone_data['retrigger_distance']
         self.global_midi_settings['at_uses_curve'] = zone_data.get('at_uses_curve', False)
+        self.global_midi_settings['legato'] = zone_data.get('legato', False)
 
     def delete_user_preset(self, slot_index):
         """Delete a user preset (clear it on firmware and hide in list). Slot 0 cannot be deleted."""
@@ -2568,6 +2608,7 @@ class VelocityTab(BasicEditor):
             speed_peak_ratio=base.get('speed_peak_ratio', 1),
             retrigger_distance=base.get('retrigger_distance', 0),
             at_uses_curve=base.get('at_uses_curve', False),
+                legato=base.get('legato', False),
         )
 
     def on_save_preset_overwrite(self):
@@ -2707,6 +2748,7 @@ class VelocityTab(BasicEditor):
                 self.global_midi_settings['speed_peak_ratio'] = base_zone.get('speed_peak_ratio', 1)
                 self.global_midi_settings['retrigger_distance'] = base_zone.get('retrigger_distance', 0)
                 self.global_midi_settings['at_uses_curve'] = base_zone.get('at_uses_curve', False)
+                self.global_midi_settings['legato'] = base_zone.get('legato', False)
 
         except Exception as e:
             print(f"Error loading user curve {slot_index}: {e}")
@@ -2725,7 +2767,7 @@ class VelocityTab(BasicEditor):
             'aftertouch_mode': encode_aftertouch_byte(
                 controls['aftertouch_mode_combo'].currentData() or 0,
                 controls['aftertouch_sustain_combo'].currentData() == 1,
-                controls['aftertouch_style_combo'].currentData() == 1),
+                False),  # legato moved out of the aftertouch byte to its own zone flag
             'aftertouch_smoothness': controls['smoothness_slider'].value(),
             'aftertouch_cc': controls['aftertouch_cc_combo'].currentData(),
             'vibrato_sensitivity': controls['vibrato_sens_slider'].value(),
@@ -2734,7 +2776,8 @@ class VelocityTab(BasicEditor):
             'actuation_point': controls['actuation_point_slider'].value(),
             'speed_peak_ratio': controls['speed_peak_slider'].value(),
             'retrigger_distance': controls['retrigger_slider'].value() if controls['retrigger_checkbox'].isChecked() else 0,
-            'at_uses_curve': controls['at_uses_curve_check'].isChecked()
+            'at_uses_curve': controls['at_uses_curve_check'].isChecked(),
+            'legato': controls['legato_check'].isChecked()
         }
 
         # Get curve points from the zone's curve editor (or the main one for base)
@@ -2785,6 +2828,7 @@ class VelocityTab(BasicEditor):
                 speed_peak_ratio=settings.get('speed_peak_ratio', 1),
                 retrigger_distance=settings.get('retrigger_distance', 0),
                 at_uses_curve=settings.get('at_uses_curve', False),
+                legato=settings.get('legato', False),
             )
 
             if success:
@@ -2870,6 +2914,7 @@ class VelocityTab(BasicEditor):
             "trigger_minimum: {}".format(s.get('speed_peak_ratio', 1)),
             "retrigger_distance: {}".format(s.get('retrigger_distance', 0)),
             "at_uses_curve: {}".format(1 if s.get('at_uses_curve', False) else 0),
+            "legato: {}".format(1 if s.get('legato', False) else 0),
         ]
         return "\n".join(lines)
 
