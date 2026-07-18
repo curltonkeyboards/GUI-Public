@@ -1359,7 +1359,20 @@ class VelocityTab(BasicEditor):
         self.atcc_enable_check.stateChanged.connect(self._on_atcc_enable_toggled)
         atcc_page_layout.addWidget(self.atcc_enable_check, alignment=Qt.AlignCenter)
         self.preset_settings_stack.addWidget(atcc_page)  # page 1
-        preset_main_layout.addWidget(self.preset_settings_stack, 1)
+
+        # The "Preset Settings" box is a two-tab widget (like MIDI Settings /
+        # Drum Settings): "Preset Settings" (the stack above) and "Channel
+        # Articulations" (a shared 16-channel -> articulation map).
+        self.preset_settings_tabs = QTabWidget()
+        _preset_tab = QWidget()
+        _preset_tab_layout = QVBoxLayout()
+        _preset_tab_layout.setContentsMargins(0, 0, 0, 0)
+        _preset_tab.setLayout(_preset_tab_layout)
+        _preset_tab_layout.addWidget(self.preset_settings_stack, 1)
+        self.preset_settings_tabs.addTab(_preset_tab, tr("VelocityTab", "Preset Settings"))
+        self.preset_settings_tabs.addTab(self._build_channel_articulations_tab(),
+                                         tr("VelocityTab", "Channel Articulations"))
+        preset_main_layout.addWidget(self.preset_settings_tabs, 1)
 
         # Store reference to the base curve editor
         self.curve_editor = base_controls['curve_editor']
@@ -1467,6 +1480,9 @@ class VelocityTab(BasicEditor):
             self.load_velocity_curve()
             # Load advanced settings from keyboard
             self.load_advanced_settings()
+            # Load the Channel Articulations map (after user presets so the
+            # dropdowns show their names)
+            self.load_channel_articulations()
             # Scan for MIDI keys on current layer
             self.scan_midi_keys()
         except Exception as e:
@@ -2874,6 +2890,157 @@ class VelocityTab(BasicEditor):
             )
         finally:
             self._save_busy = False
+
+    # =====================================================================
+    # Channel Articulations tab (shared 16-channel -> articulation map)
+    # =====================================================================
+    def _channel_artic_preset_options(self):
+        """Build the (label, preset_index) list for the channel dropdowns:
+        None + factory + configured user + AT/CC modes."""
+        opts = [(tr("VelocityTab", "None"), 255)]
+        factory_curves = ["Softest", "Soft", "Linear", "Hard", "Hardest",
+                          "Sensitive Soft", "Sensitive", "Sensitive Hard", "Fixed Vol",
+                          "Drums Easy", "Drums Soft", "Drums Linear", "Drums Hard",
+                          "Drums Sensitive", "Ultra Sensitive", "Fixed Sensitive",
+                          "Two Toned", "Reverse", "Random Highlights"]
+        for i, name in enumerate(factory_curves):
+            opts.append((name, i))
+        # Configured user presets only (indices FACTORY_COUNT..FACTORY_COUNT+49)
+        names = getattr(self, 'user_curve_names', ["User {}".format(i + 1) for i in range(50)])
+        configured = getattr(self, 'user_preset_configured', [False] * 50)
+        for i, name in enumerate(names):
+            if i < len(configured) and configured[i]:
+                opts.append((name, FACTORY_COUNT + i))
+        # AT/CC mode presets (indices 69-78) - always listed (device ignores them
+        # if their global enable is off)
+        for i in range(ATCC_COUNT):
+            opts.append((ATCC_NAMES[i], ATCC_START + i))
+        return opts
+
+    def _build_channel_articulations_tab(self):
+        """Second tab of the Preset Settings box: 16 channel->articulation rows +
+        an 'Enable Channel Articulations' checkbox. Greyed until enabled."""
+        self.channel_artic_map = [255] * 16
+        self.channel_artic_enabled = False
+        self.channel_artic_combos = []
+        self._loading_channel_artic = False
+
+        w = QWidget()
+        v = QVBoxLayout()
+        w.setLayout(v)
+
+        self.channel_artic_enable_check = QCheckBox(
+            tr("VelocityTab", "Enable Channel Articulations"))
+        self.channel_artic_enable_check.stateChanged.connect(
+            self._on_channel_artic_enable_toggled)
+        v.addWidget(self.channel_artic_enable_check)
+
+        desc = QLabel(tr("VelocityTab",
+            "When enabled, changing a zone's MIDI channel (base / keysplit / "
+            "triplesplit) switches that zone to the articulation mapped to the "
+            "new channel below. 'None' leaves the zone unchanged."))
+        desc.setWordWrap(True)
+        desc.setStyleSheet("QLabel { color: #888; }")
+        v.addWidget(desc)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(4)
+        opts = self._channel_artic_preset_options()
+        for ch in range(16):
+            grid.addWidget(QLabel(tr("VelocityTab", "Channel {}").format(ch + 1)), ch, 0)
+            combo = QComboBox()
+            combo.setMinimumWidth(180)
+            for label, idx in opts:
+                combo.addItem(label, idx)
+            combo.currentIndexChanged.connect(self._on_channel_artic_combo_changed)
+            self.channel_artic_combos.append(combo)
+            grid.addWidget(combo, ch, 1)
+        grid.setColumnStretch(1, 1)
+
+        container = QWidget()
+        container.setLayout(grid)
+        scroll = QScrollArea()
+        scroll.setWidget(container)
+        scroll.setWidgetResizable(True)
+        v.addWidget(scroll, 1)
+
+        self._update_channel_artic_enabled_state()
+        return w
+
+    def _update_channel_artic_enabled_state(self):
+        """Grey out the 16 dropdowns while Channel Articulations is disabled."""
+        on = getattr(self, 'channel_artic_enabled', False)
+        for combo in getattr(self, 'channel_artic_combos', []):
+            combo.setEnabled(on)
+
+    def _on_channel_artic_enable_toggled(self, state):
+        if getattr(self, '_loading_channel_artic', False):
+            return
+        self.channel_artic_enabled = (state == Qt.Checked)
+        self._update_channel_artic_enabled_state()
+        self._push_channel_articulations()
+
+    def _on_channel_artic_combo_changed(self, *args):
+        if getattr(self, '_loading_channel_artic', False):
+            return
+        for ch, combo in enumerate(self.channel_artic_combos):
+            data = combo.currentData()
+            self.channel_artic_map[ch] = 255 if data is None else data
+        self._push_channel_articulations()
+
+    def _push_channel_articulations(self):
+        """Write the current enable + map to the device (applies + persists)."""
+        if not self.keyboard:
+            return
+        try:
+            self.keyboard.set_channel_articulations(
+                self.channel_artic_enabled, self.channel_artic_map)
+        except Exception:
+            pass
+
+    def _refresh_channel_artic_combos(self):
+        """Rebuild dropdown items (e.g. after user preset names load), preserving
+        each row's selected preset index."""
+        opts = self._channel_artic_preset_options()
+        for combo in getattr(self, 'channel_artic_combos', []):
+            cur = combo.currentData()
+            combo.blockSignals(True)
+            combo.clear()
+            for label, idx in opts:
+                combo.addItem(label, idx)
+            pos = combo.findData(cur if cur is not None else 255)
+            combo.setCurrentIndex(pos if pos >= 0 else 0)
+            combo.blockSignals(False)
+
+    def load_channel_articulations(self):
+        """Fetch the device's Channel Articulations map + enable and populate the
+        tab. Call AFTER user preset names are loaded so the dropdowns show them."""
+        if not self.keyboard or not hasattr(self, 'channel_artic_combos'):
+            return
+        try:
+            data = self.keyboard.get_channel_articulations()
+        except Exception:
+            data = None
+        if not data:
+            return
+        self._loading_channel_artic = True
+        try:
+            self.channel_artic_enabled = bool(data.get('enabled', False))
+            self.channel_artic_map = list(data.get('map', [255] * 16))[:16]
+            self.channel_artic_map += [255] * (16 - len(self.channel_artic_map))
+            self.channel_artic_enable_check.blockSignals(True)
+            self.channel_artic_enable_check.setChecked(self.channel_artic_enabled)
+            self.channel_artic_enable_check.blockSignals(False)
+            self._refresh_channel_artic_combos()
+            for ch, combo in enumerate(self.channel_artic_combos):
+                combo.blockSignals(True)
+                pos = combo.findData(self.channel_artic_map[ch])
+                combo.setCurrentIndex(pos if pos >= 0 else 0)
+                combo.blockSignals(False)
+            self._update_channel_artic_enabled_state()
+        finally:
+            self._loading_channel_artic = False
 
     def _build_articulation_export_text(self):
         """Serialize the currently-edited articulation (curve points + all bundled

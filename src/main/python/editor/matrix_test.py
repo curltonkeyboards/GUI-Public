@@ -1363,6 +1363,23 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             if theme_idx is not None:
                 self.device.keyboard.set_lcd_theme(theme_idx)
 
+    def _on_channel_artic_enable_changed(self, index):
+        """Enable Channel Articulations changed - write immediately to the device.
+
+        Global setting (own EEPROM region + dedicated HID command). Reads the
+        current channel->articulation map first so only the enable flag changes,
+        then writes both back (the firmware persists it on-device).
+        """
+        if not (self.device and isinstance(self.device, VialKeyboard)):
+            return
+        enabled = bool(self.enable_channel_artic.currentData())
+        try:
+            cur = self.device.keyboard.get_channel_articulations()
+            artic_map = cur['map'] if cur else [0xFF] * 16
+            self.device.keyboard.set_channel_articulations(enabled, artic_map)
+        except Exception:
+            pass
+
     def create_help_label(self, tooltip_text):
         """Create a small question mark button with tooltip for help"""
         help_btn = QPushButton("?")
@@ -2725,6 +2742,37 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             advanced_layout.addWidget(_atcc_combo, 6, _atcc_col + 1)
             setattr(self, _atcc_attr, _atcc_combo)
 
+        # Enable Channel Articulations (own dedicated HID region, not the stop-mode
+        # byte). Toggling writes to the device immediately (reads the current map
+        # first so only the enable flag changes) and the setting persists on-device.
+        _ca_help = (
+            "Channel Articulations: map each MIDI channel (1-16) to a velocity\n"
+            "articulation in the Velocity tab's 'Channel Articulations' sub-tab.\n"
+            "When On, changing a zone's MIDI channel switches that zone to the\n"
+            "articulation mapped to the new channel."
+        )
+        _ca_label = QWidget()
+        _ca_label_layout = QHBoxLayout()
+        _ca_label_layout.setContentsMargins(0, 0, 0, 0)
+        _ca_label_layout.setSpacing(5)
+        _ca_label_layout.addWidget(self.create_help_label(_ca_help))
+        _ca_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator",
+                                             "Enable Channel Articulations:")))
+        _ca_label.setLayout(_ca_label_layout)
+        advanced_layout.addWidget(_ca_label, 7, 1)
+        self.enable_channel_artic = ArrowComboBox()
+        self.enable_channel_artic.setMinimumWidth(120)
+        self.enable_channel_artic.setMinimumHeight(25)
+        self.enable_channel_artic.setMaximumHeight(25)
+        self.enable_channel_artic.setEditable(True)
+        self.enable_channel_artic.lineEdit().setReadOnly(True)
+        self.enable_channel_artic.lineEdit().setAlignment(Qt.AlignCenter)
+        self.enable_channel_artic.addItem("Off", False)
+        self.enable_channel_artic.addItem("On", True)
+        self.enable_channel_artic.currentIndexChanged.connect(
+            self._on_channel_artic_enable_changed)
+        advanced_layout.addWidget(self.enable_channel_artic, 7, 2)
+
         # MIDI Routing Settings Group with title on left, container centered
         routing_row_container = QWidget()
         routing_row_layout = QHBoxLayout()
@@ -3468,6 +3516,14 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                 self.lcd_theme.blockSignals(True)
                 set_combo_by_data(self.lcd_theme, theme_idx, 0)
                 self.lcd_theme.blockSignals(False)
+
+            # Channel Articulations enable is a global carried over its own HID
+            # command (not the per-slot packet); fetch + populate without echoing.
+            ca = self.device.keyboard.get_channel_articulations()
+            if ca is not None and hasattr(self, 'enable_channel_artic'):
+                self.enable_channel_artic.blockSignals(True)
+                set_combo_by_data(self.enable_channel_artic, bool(ca.get('enabled', False)), False)
+                self.enable_channel_artic.blockSignals(False)
 
         set_combo_by_data(self.smart_chord_light_mode, config.get("smart_chord_light_mode"), 0)
         set_combo_by_data(self.key_split_channel, config.get("key_split_channel"), 0)

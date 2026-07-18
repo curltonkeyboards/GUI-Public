@@ -66,6 +66,7 @@ HID_CMD_SAVE_KEYBOARD_SLOT = 0xB9
 HID_CMD_LOAD_KEYBOARD_SLOT = 0xBA
 HID_CMD_SET_KEYBOARD_CONFIG_ADVANCED = 0xBB
 HID_CMD_LCD_THEME = 0xFE  # Get/set global LCD colour theme (sub 0=GET, 1=SET)
+HID_CMD_CHANNEL_ARTIC = 0xFF  # Get/set channel->articulation map + enable (sub 0=GET, 1=SET)
 HID_CMD_SET_KEYBOARD_PARAM_SINGLE = 0xE8  # Set individual parameter (changed from 0xBD collision)
 
 # Parameter IDs for HID_CMD_SET_KEYBOARD_PARAM_SINGLE
@@ -1466,6 +1467,43 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         try:
             # sub-cmd 1 = SET; payload byte 0 = theme index
             packet = self._create_hid_packet(HID_CMD_LCD_THEME, 1, [theme_index & 0xFF])
+            data = self.usb_send(self.dev, packet, retries=3)
+            return bool(data) and len(data) > 4 and data[4] == 0
+        except Exception:
+            return False
+
+    def get_channel_articulations(self):
+        """Get the global Channel Articulations map + enable flag.
+
+        Returns dict {'enabled': bool, 'map': [16 ints]} where each map entry is a
+        velocity-preset index (0-78) or 255 (=None). None on failure / unsupported
+        firmware. Response: status@4, enable@5, map@6..21.
+        """
+        try:
+            packet = self._create_hid_packet(HID_CMD_CHANNEL_ARTIC, 0, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if not data or len(data) < 22 or data[3] != HID_CMD_CHANNEL_ARTIC:
+                return None
+            if data[4] != 0:
+                return None
+            return {
+                'enabled': data[5] != 0,
+                'map': [data[6 + i] for i in range(16)]
+            }
+        except Exception:
+            return None
+
+    def set_channel_articulations(self, enabled, artic_map):
+        """Set the global Channel Articulations map + enable (applies + persists).
+
+        artic_map: list of 16 velocity-preset indices (0-78) or 255 (=None).
+        Payload: [enable, map0..map15]. Missing entries default to 255 (None).
+        """
+        try:
+            m = list(artic_map)[:16]
+            m += [0xFF] * (16 - len(m))
+            payload = [1 if enabled else 0] + [(x & 0xFF) for x in m]
+            packet = self._create_hid_packet(HID_CMD_CHANNEL_ARTIC, 1, payload)
             data = self.usb_send(self.dev, packet, retries=3)
             return bool(data) and len(data) > 4 and data[4] == 0
         except Exception:
