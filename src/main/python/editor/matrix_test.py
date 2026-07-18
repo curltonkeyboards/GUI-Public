@@ -1608,15 +1608,11 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         velocity_curve_label_layout.setContentsMargins(0, 0, 0, 0)
         velocity_curve_label_layout.setSpacing(5)
         velocity_curve_label_layout.addWidget(self.create_help_label(
-            "How key press force maps to MIDI velocity:\n"
-            "Linear: Direct 1:1 mapping\n"
-            "Aggro: More sensitive at low velocities\n"
-            "Slow: Less sensitive at low velocities\n"
-            "Smooth: Gradual S-curve response\n"
-            "Steep: Sharp response curve\n"
-            "Instant: Maximum velocity always\n"
-            "Turbo: Enhanced high velocity response\n"
-            "User 1-10: Custom user-defined curves"
+            "How key press force maps to MIDI velocity.\n"
+            "Factory articulations: Softest-Hardest response\n"
+            "curves plus Sensitive, Fixed, Drums, Two Toned,\n"
+            "Reverse and Random Highlights presets.\n"
+            "User 1-50: Custom user-defined curves"
         ))
         velocity_curve_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Articulation:")))
         velocity_curve_label_layout.addStretch()
@@ -1633,10 +1629,23 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.global_velocity_curve.addItem("Linear", 2)
         self.global_velocity_curve.addItem("Hard", 3)
         self.global_velocity_curve.addItem("Hardest", 4)
-        self.global_velocity_curve.addItem("Aggro", 5)
-        self.global_velocity_curve.addItem("Digital", 6)
+        self.global_velocity_curve.addItem("Sensitive Soft", 5)
+        self.global_velocity_curve.addItem("Sensitive", 6)
+        self.global_velocity_curve.addItem("Sensitive Hard", 7)
+        self.global_velocity_curve.addItem("Fixed Vol", 8)
+        self.global_velocity_curve.addItem("Drums Easy", 9)
+        self.global_velocity_curve.addItem("Drums Soft", 10)
+        self.global_velocity_curve.addItem("Drums Linear", 11)
+        self.global_velocity_curve.addItem("Drums Hard", 12)
+        self.global_velocity_curve.addItem("Drums Sensitive", 13)
+        self.global_velocity_curve.addItem("Ultra Sensitive", 14)
+        self.global_velocity_curve.addItem("Fixed Sensitive", 15)
+        self.global_velocity_curve.addItem("Two Toned", 16)
+        self.global_velocity_curve.addItem("Reverse", 17)
+        self.global_velocity_curve.addItem("Random Highlights", 18)
+        # User curves (19-68)
         for i in range(50):
-            self.global_velocity_curve.addItem("User {}".format(i + 1), 7 + i)
+            self.global_velocity_curve.addItem("User {}".format(i + 1), 19 + i)
         self.global_velocity_curve.setCurrentIndex(0)
         self.global_velocity_curve.setEditable(True)
         self.global_velocity_curve.lineEdit().setReadOnly(True)
@@ -1794,14 +1803,10 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         vc_label_layout.setContentsMargins(0, 0, 0, 0)
         vc_label_layout.setSpacing(3)
         vc_label_layout.addWidget(self.create_help_label(
-            "Velocity response curve for KeySplit keys:\n"
-            "Linear: Direct 1:1 mapping\n"
-            "Aggro: More sensitive at low velocities\n"
-            "Slow: Less sensitive at low velocities\n"
-            "Smooth: Gradual S-curve response\n"
-            "Steep: Sharp response curve\n"
-            "Instant: Maximum velocity always\n"
-            "Turbo: Enhanced high velocity response"
+            "Velocity response curve for KeySplit keys.\n"
+            "Factory articulations: Softest-Hardest response\n"
+            "curves plus Sensitive, Fixed, Drums, Two Toned,\n"
+            "Reverse and Random Highlights presets."
         ))
         vc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Articulation:")))
         vc_label_layout.addStretch()
@@ -1818,10 +1823,23 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.velocity_curve2.addItem("Linear", 2)
         self.velocity_curve2.addItem("Hard", 3)
         self.velocity_curve2.addItem("Hardest", 4)
-        self.velocity_curve2.addItem("Aggro", 5)
-        self.velocity_curve2.addItem("Digital", 6)
+        self.velocity_curve2.addItem("Sensitive Soft", 5)
+        self.velocity_curve2.addItem("Sensitive", 6)
+        self.velocity_curve2.addItem("Sensitive Hard", 7)
+        self.velocity_curve2.addItem("Fixed Vol", 8)
+        self.velocity_curve2.addItem("Drums Easy", 9)
+        self.velocity_curve2.addItem("Drums Soft", 10)
+        self.velocity_curve2.addItem("Drums Linear", 11)
+        self.velocity_curve2.addItem("Drums Hard", 12)
+        self.velocity_curve2.addItem("Drums Sensitive", 13)
+        self.velocity_curve2.addItem("Ultra Sensitive", 14)
+        self.velocity_curve2.addItem("Fixed Sensitive", 15)
+        self.velocity_curve2.addItem("Two Toned", 16)
+        self.velocity_curve2.addItem("Reverse", 17)
+        self.velocity_curve2.addItem("Random Highlights", 18)
+        # User curves (19-68)
         for i in range(50):
-            self.velocity_curve2.addItem("User {}".format(i + 1), 7 + i)
+            self.velocity_curve2.addItem("User {}".format(i + 1), 19 + i)
         self.velocity_curve2.setCurrentIndex(0)
         self.velocity_curve2.setEditable(True)
         self.velocity_curve2.lineEdit().setReadOnly(True)
@@ -1992,14 +2010,10 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ts_vc_label_layout.setContentsMargins(0, 0, 0, 0)
         ts_vc_label_layout.setSpacing(3)
         ts_vc_label_layout.addWidget(self.create_help_label(
-            "Velocity response curve for TripleSplit keys:\n"
-            "Linear: Direct 1:1 mapping\n"
-            "Aggro: More sensitive at low velocities\n"
-            "Slow: Less sensitive at low velocities\n"
-            "Smooth: Gradual S-curve response\n"
-            "Steep: Sharp response curve\n"
-            "Instant: Maximum velocity always\n"
-            "Turbo: Enhanced high velocity response"
+            "Velocity response curve for TripleSplit keys.\n"
+            "Factory articulations: Softest-Hardest response\n"
+            "curves plus Sensitive, Fixed, Drums, Two Toned,\n"
+            "Reverse and Random Highlights presets."
         ))
         ts_vc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Articulation:")))
         ts_vc_label_layout.addStretch()
@@ -2016,10 +2030,23 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.velocity_curve3.addItem("Linear", 2)
         self.velocity_curve3.addItem("Hard", 3)
         self.velocity_curve3.addItem("Hardest", 4)
-        self.velocity_curve3.addItem("Aggro", 5)
-        self.velocity_curve3.addItem("Digital", 6)
-        for i in range(10):
-            self.velocity_curve3.addItem(f"User {i+1}", 7 + i)
+        self.velocity_curve3.addItem("Sensitive Soft", 5)
+        self.velocity_curve3.addItem("Sensitive", 6)
+        self.velocity_curve3.addItem("Sensitive Hard", 7)
+        self.velocity_curve3.addItem("Fixed Vol", 8)
+        self.velocity_curve3.addItem("Drums Easy", 9)
+        self.velocity_curve3.addItem("Drums Soft", 10)
+        self.velocity_curve3.addItem("Drums Linear", 11)
+        self.velocity_curve3.addItem("Drums Hard", 12)
+        self.velocity_curve3.addItem("Drums Sensitive", 13)
+        self.velocity_curve3.addItem("Ultra Sensitive", 14)
+        self.velocity_curve3.addItem("Fixed Sensitive", 15)
+        self.velocity_curve3.addItem("Two Toned", 16)
+        self.velocity_curve3.addItem("Reverse", 17)
+        self.velocity_curve3.addItem("Random Highlights", 18)
+        # User curves (19-68)
+        for i in range(50):
+            self.velocity_curve3.addItem(f"User {i+1}", 19 + i)
         self.velocity_curve3.setCurrentIndex(0)
         self.velocity_curve3.setEditable(True)
         self.velocity_curve3.lineEdit().setReadOnly(True)
@@ -2723,7 +2750,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         advanced_layout.addWidget(aftertouch_note, 5, 1, 1, 2)  # Moved to row 5
 
         # AT/CC Mode enable flags — two global On/Off toggles that gate the
-        # second factory velocity-preset band (curve indices 69-78). Placed in
+        # second factory velocity-preset band (curve indices 69-94). Placed in
         # the Advanced grid (row 6). They ride the SAME keyboard-config byte as
         # the Stop Mode mask (packet 1 byte 20): bit5 = Aftertouch Modes,
         # bit6 = CC Modes (bit7 = validity marker). All save/load wiring lives in
@@ -3571,6 +3598,10 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                 if hasattr(self, 'articulation_cc_combo'):
                     self.articulation_cc_combo.blockSignals(True)
                     set_combo_by_data(self.articulation_cc_combo, ca.get('articulation_cc', 1), 1)
+                    # Firmware without the Articulation CC byte (bit-7 marker
+                    # absent) can't store it - grey the combo out.
+                    self.articulation_cc_combo.setEnabled(
+                        bool(ca.get('articulation_cc_supported', False)))
                     self.articulation_cc_combo.blockSignals(False)
 
         set_combo_by_data(self.smart_chord_light_mode, config.get("smart_chord_light_mode"), 0)
@@ -4471,17 +4502,29 @@ class LayerActuationConfigurator(BasicEditor):
         he_curve_combo = ArrowComboBox()
         he_curve_combo.setMinimumHeight(30)
         he_curve_combo.setStyleSheet("QComboBox { padding: 0px; text-align: center; font-size: 12px; } QComboBox QAbstractItemView { min-height: 125px; }")
-        # Factory curves (0-6)
-        he_curve_combo.addItem("Linear", 0)
-        he_curve_combo.addItem("Aggro", 1)
-        he_curve_combo.addItem("Slow", 2)
-        he_curve_combo.addItem("Smooth", 3)
-        he_curve_combo.addItem("Steep", 4)
-        he_curve_combo.addItem("Instant", 5)
-        he_curve_combo.addItem("Turbo", 6)
-        # User curves (7-56)
+        # Factory articulations (0-18)
+        he_curve_combo.addItem("Softest", 0)
+        he_curve_combo.addItem("Soft", 1)
+        he_curve_combo.addItem("Linear", 2)
+        he_curve_combo.addItem("Hard", 3)
+        he_curve_combo.addItem("Hardest", 4)
+        he_curve_combo.addItem("Sensitive Soft", 5)
+        he_curve_combo.addItem("Sensitive", 6)
+        he_curve_combo.addItem("Sensitive Hard", 7)
+        he_curve_combo.addItem("Fixed Vol", 8)
+        he_curve_combo.addItem("Drums Easy", 9)
+        he_curve_combo.addItem("Drums Soft", 10)
+        he_curve_combo.addItem("Drums Linear", 11)
+        he_curve_combo.addItem("Drums Hard", 12)
+        he_curve_combo.addItem("Drums Sensitive", 13)
+        he_curve_combo.addItem("Ultra Sensitive", 14)
+        he_curve_combo.addItem("Fixed Sensitive", 15)
+        he_curve_combo.addItem("Two Toned", 16)
+        he_curve_combo.addItem("Reverse", 17)
+        he_curve_combo.addItem("Random Highlights", 18)
+        # User curves (19-68)
         for i in range(50):
-            he_curve_combo.addItem("User {}".format(i + 1), 7 + i)
+            he_curve_combo.addItem("User {}".format(i + 1), 19 + i)
         he_curve_combo.setCurrentIndex(0)  # Default: Linear
         he_curve_combo.setEditable(True)
         he_curve_combo.lineEdit().setReadOnly(True)
@@ -4949,17 +4992,29 @@ class LayerActuationConfigurator(BasicEditor):
         he_curve_combo = ArrowComboBox()
         he_curve_combo.setMinimumHeight(30)
         he_curve_combo.setStyleSheet("QComboBox { padding: 0px; text-align: center; font-size: 12px; } QComboBox QAbstractItemView { min-height: 125px; }")
-        # Factory curves (0-6)
-        he_curve_combo.addItem("Linear", 0)
-        he_curve_combo.addItem("Aggro", 1)
-        he_curve_combo.addItem("Slow", 2)
-        he_curve_combo.addItem("Smooth", 3)
-        he_curve_combo.addItem("Steep", 4)
-        he_curve_combo.addItem("Instant", 5)
-        he_curve_combo.addItem("Turbo", 6)
-        # User curves (7-56)
+        # Factory articulations (0-18)
+        he_curve_combo.addItem("Softest", 0)
+        he_curve_combo.addItem("Soft", 1)
+        he_curve_combo.addItem("Linear", 2)
+        he_curve_combo.addItem("Hard", 3)
+        he_curve_combo.addItem("Hardest", 4)
+        he_curve_combo.addItem("Sensitive Soft", 5)
+        he_curve_combo.addItem("Sensitive", 6)
+        he_curve_combo.addItem("Sensitive Hard", 7)
+        he_curve_combo.addItem("Fixed Vol", 8)
+        he_curve_combo.addItem("Drums Easy", 9)
+        he_curve_combo.addItem("Drums Soft", 10)
+        he_curve_combo.addItem("Drums Linear", 11)
+        he_curve_combo.addItem("Drums Hard", 12)
+        he_curve_combo.addItem("Drums Sensitive", 13)
+        he_curve_combo.addItem("Ultra Sensitive", 14)
+        he_curve_combo.addItem("Fixed Sensitive", 15)
+        he_curve_combo.addItem("Two Toned", 16)
+        he_curve_combo.addItem("Reverse", 17)
+        he_curve_combo.addItem("Random Highlights", 18)
+        # User curves (19-68)
         for i in range(50):
-            he_curve_combo.addItem("User {}".format(i + 1), 7 + i)
+            he_curve_combo.addItem("User {}".format(i + 1), 19 + i)
         he_curve_combo.setCurrentIndex(0)  # Default: Linear
         he_curve_combo.setEditable(True)
         he_curve_combo.lineEdit().setReadOnly(True)

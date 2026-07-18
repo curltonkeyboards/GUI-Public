@@ -54,8 +54,12 @@ _ATCC_BASE_NAMES = ["Leg Vib Slow", "Leg Vib Fast", "Leg Vib Smooth",
                     "Chord Vib Slow", "Chord Vib Fast", "Chord Vib Smooth",
                     "Fast Swell", "Slow Swell", "Reverse Swell",
                     "Fast Fall", "Slow Fall", "Shimmer Me", "Shimmer Leg"]
-# CC-flavor set first (69-81), then the poly-AT duplicates (82-94).
-ATCC_NAMES = list(_ATCC_BASE_NAMES) + list(_ATCC_BASE_NAMES)
+# CC-flavor set first (69-81), then the poly-AT duplicates (82-94). The two
+# flavors share base names, so suffix them — flat lists (channel-articulation
+# dropdowns, preset-name header) would otherwise show 13 indistinguishable
+# duplicate pairs.
+ATCC_NAMES = (["{} (CC)".format(n) for n in _ATCC_BASE_NAMES]
+              + ["{} (Poly)".format(n) for n in _ATCC_BASE_NAMES])
 
 
 # MIDI note keycode range (from keycodes_v6.py)
@@ -1277,7 +1281,7 @@ class VelocityTab(BasicEditor):
             self.preset_list_widget.addItem(item)
             item.setHidden(True)  # Hidden until we know it's configured
 
-        # AT/CC Mode presets (indices 69-78) — a second factory band gated by
+        # AT/CC Mode presets (indices 69-94) — a second factory band gated by
         # two global enable flags. Default disabled → rows shown greyed/locked.
         # Clicking a locked row shows an "Enable … Modes" placeholder instead
         # of the settings panel (see on_preset_list_clicked).
@@ -2087,7 +2091,7 @@ class VelocityTab(BasicEditor):
         self.user_presets_separator.setHidden(False)
 
     def update_atcc_rows_enabled(self):
-        """Recolor the 10 AT/CC Mode rows (69-78): greyed (locked) unless the
+        """Recolor the 26 AT/CC Mode rows (69-94): greyed (locked) unless the
         governing global enable flag is on. Rows 69-73 follow atcc_at_enabled;
         74-78 follow atcc_cc_enabled. Called on setup and whenever the flags
         change (see load_velocity_curve)."""
@@ -2253,7 +2257,7 @@ class VelocityTab(BasicEditor):
             # Separator (user presets / AT Modes / CC Modes) - do nothing
             return
 
-        # AT/CC Mode presets (69-78). If the governing enable flag is OFF, show
+        # AT/CC Mode presets (69-94). If the governing enable flag is OFF, show
         # an "Enable … Modes" placeholder instead of the settings panel and do
         # NOT apply anything to the keyboard.
         if ATCC_START <= curve_index <= ATCC_END:
@@ -2920,7 +2924,7 @@ class VelocityTab(BasicEditor):
         for i, name in enumerate(names):
             if i < len(configured) and configured[i]:
                 opts.append((name, FACTORY_COUNT + i))
-        # AT/CC mode presets (indices 69-78) - always listed (device ignores them
+        # AT/CC mode presets (indices 69-94) - always listed (device ignores them
         # if their global enable is off)
         for i in range(ATCC_COUNT):
             opts.append((ATCC_NAMES[i], ATCC_START + i))
@@ -3004,6 +3008,16 @@ class VelocityTab(BasicEditor):
         if not self.keyboard:
             return
         try:
+            # Re-read the device's current Articulation CC instead of trusting
+            # the value cached at rebuild(): the user may have changed it in
+            # MIDI Settings > Advanced since, and sending the stale cache here
+            # would silently revert that edit.
+            try:
+                cur = self.keyboard.get_channel_articulations()
+                if cur:
+                    self.channel_artic_cc = cur.get('articulation_cc', 1)
+            except Exception:
+                pass
             self.keyboard.set_channel_articulations(
                 self.channel_artic_enabled, self.channel_artic_map,
                 getattr(self, 'channel_artic_cc', 1))

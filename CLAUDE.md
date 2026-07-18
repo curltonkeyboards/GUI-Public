@@ -814,7 +814,11 @@ Audited + de-overlapped 2026-06 (see "EEPROM de-overlap" below).
 | 65024-65247 | 224 bytes | Chord progression slots (`CPROG_EEPROM_ADDR`, moved from 60800) |
 | 65248-65263 | 16 bytes | Voice leading config (`VL_EEPROM_BASE`, moved from 60900) |
 | 65264-65405 | 142 bytes | Custom smartchord QB (magic 0x5C14 + 20 × 7: count + 6 intervals, `SMARTCHORD_EEPROM_BASE`) |
-| 65406-65535 | ~130 bytes | Available for future use |
+| 65406-65407 | 2 bytes | LCD theme (magic 0x7C + index, `LCD_THEME_EEPROM_BASE`) |
+| 65408-65426 | 19 bytes | Channel Articulations (`CHANNEL_ARTIC_EEPROM_BASE`: magic 0xCB + enable + 16-ch map + Articulation CC) |
+| 65428-65429 | 2 bytes | Curve-index migration marker (`CURVE_MIGRATION_MAGIC_ADDR`, word 0xCA11; moved from 65410 — it overlapped the channel-artic map there) |
+| 65430-65527 | 98 bytes | Free |
+| 65528-65535 | 8 bytes | Boot-magic shadow (`EECONFIG_MAGIC_SHADOW_ADDR`) |
 
 ### EEPROM de-overlap (2026-06)
 

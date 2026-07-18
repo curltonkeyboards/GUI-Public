@@ -1475,9 +1475,12 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def get_channel_articulations(self):
         """Get the global Channel Articulations map + enable flag.
 
-        Returns dict {'enabled': bool, 'map': [16 ints]} where each map entry is a
-        velocity-preset index (0-78) or 255 (=None). None on failure / unsupported
-        firmware. Response: status@4, enable@5, map@6..21.
+        Returns dict {'enabled': bool, 'map': [16 ints], 'articulation_cc': int,
+        'articulation_cc_supported': bool} where each map entry is a
+        velocity-preset index (0-94) or 255 (=None). None on failure / unsupported
+        firmware. Response: status@4, enable@5, map@6..21, 0x80|cc@22 (bit 7 =
+        firmware supports the Articulation CC byte; clear on older firmware,
+        whose unhandled echo leaves the byte 0).
         """
         try:
             packet = self._create_hid_packet(HID_CMD_CHANNEL_ARTIC, 0, None)
@@ -1486,10 +1489,12 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 return None
             if data[4] != 0:
                 return None
+            cc_raw = data[22] if len(data) > 22 else 0
             return {
                 'enabled': data[5] != 0,
                 'map': [data[6 + i] for i in range(16)],
-                'articulation_cc': data[22] if len(data) > 22 else 1
+                'articulation_cc': (cc_raw & 0x7F) if (cc_raw & 0x80) else 1,
+                'articulation_cc_supported': bool(cc_raw & 0x80)
             }
         except Exception:
             return None
@@ -1499,12 +1504,15 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
         artic_map: list of 16 velocity-preset indices (0-94) or 255 (=None).
         articulation_cc: global CC# (0-127) used by "CC Default" articulations.
-        Payload: [enable, map0..map15, articulation_cc].
+        Payload: [enable, map0..map15, 0x80|articulation_cc] — bit 7 is the
+        validity marker the firmware requires before it will store the CC
+        (protects it from legacy zero-padded packets).
         """
         try:
             m = list(artic_map)[:16]
             m += [0xFF] * (16 - len(m))
-            payload = [1 if enabled else 0] + [(x & 0xFF) for x in m] + [int(articulation_cc) & 0x7F]
+            payload = ([1 if enabled else 0] + [(x & 0xFF) for x in m]
+                       + [0x80 | (int(articulation_cc) & 0x7F)])
             packet = self._create_hid_packet(HID_CMD_CHANNEL_ARTIC, 1, payload)
             data = self.usb_send(self.dev, packet, retries=3)
             return bool(data) and len(data) > 4 and data[4] == 0

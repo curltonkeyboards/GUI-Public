@@ -543,7 +543,7 @@ class QuickActuationWidget(QWidget):
         self.simple_velocity_preset_combo.addItem("Two Toned", 16)
         self.simple_velocity_preset_combo.addItem("Reverse", 17)
         self.simple_velocity_preset_combo.addItem("Random Highlights", 18)
-        # User curves (7-56) - will be populated when keyboard connects
+        # User curves (19-68) - will be populated when keyboard connects
         for i in range(50):
             self.simple_velocity_preset_combo.addItem("User {}".format(i + 1), 19 + i)
         self.simple_velocity_preset_combo.setCurrentIndex(0)
@@ -664,7 +664,7 @@ class QuickActuationWidget(QWidget):
         self.midi_velocity_curve.addItem("Two Toned", 16)
         self.midi_velocity_curve.addItem("Reverse", 17)
         self.midi_velocity_curve.addItem("Random Highlights", 18)
-        # User curves (7-56)
+        # User curves (19-68)
         for i in range(50):
             self.midi_velocity_curve.addItem("User {}".format(i + 1), 19 + i)
         self.midi_velocity_curve.setCurrentIndex(0)
@@ -816,7 +816,7 @@ class QuickActuationWidget(QWidget):
         self.keysplit_velocity_curve.addItem("Two Toned", 16)
         self.keysplit_velocity_curve.addItem("Reverse", 17)
         self.keysplit_velocity_curve.addItem("Random Highlights", 18)
-        # User curves (7-56)
+        # User curves (19-68)
         for i in range(50):
             self.keysplit_velocity_curve.addItem("User {}".format(i + 1), 19 + i)
         self.keysplit_velocity_curve.setCurrentIndex(2)  # Default: Linear
@@ -961,7 +961,7 @@ class QuickActuationWidget(QWidget):
         self.triplesplit_velocity_curve.addItem("Two Toned", 16)
         self.triplesplit_velocity_curve.addItem("Reverse", 17)
         self.triplesplit_velocity_curve.addItem("Random Highlights", 18)
-        # User curves (7-56)
+        # User curves (19-68)
         for i in range(50):
             self.triplesplit_velocity_curve.addItem("User {}".format(i + 1), 19 + i)
         self.triplesplit_velocity_curve.setCurrentIndex(2)  # Default: Linear
@@ -1297,8 +1297,8 @@ class QuickActuationWidget(QWidget):
 
         if curve_index in self.FACTORY_PRESET_VEL:
             vel_min, vel_max = self.FACTORY_PRESET_VEL[curve_index]
-        elif 7 <= curve_index <= 56:
-            slot = curve_index - 7
+        elif 19 <= curve_index <= 68:
+            slot = curve_index - 19
             try:
                 if self.device and isinstance(self.device, VialKeyboard):
                     result = self.device.keyboard.get_velocity_preset(slot)
@@ -1370,15 +1370,15 @@ class QuickActuationWidget(QWidget):
 
     def _apply_curve_vel_range(self, curve_index):
         """Look up vel_min/vel_max for a curve and apply to UI + keyboard.
-        Factory curves (0-6) use hardcoded table. User curves (7-56) load from device."""
+        Factory curves (0-18) use hardcoded table. User curves (19-68) load from device."""
         vel_min = None
         vel_max = None
 
         if curve_index in self.FACTORY_PRESET_VEL:
             vel_min, vel_max = self.FACTORY_PRESET_VEL[curve_index]
-        elif curve_index >= 7 and curve_index <= 56:
+        elif curve_index >= 19 and curve_index <= 68:
             # User curve - load from device
-            slot = curve_index - 7
+            slot = curve_index - 19
             try:
                 if self.device and isinstance(self.device, VialKeyboard):
                     result = self.device.keyboard.get_velocity_preset(slot)

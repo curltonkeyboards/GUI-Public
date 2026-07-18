@@ -1929,7 +1929,7 @@ class keycodes_v6:
         "HE_CURVE_HARD": 0xCCB3,
         "HE_CURVE_HARDEST": 0xCCB4,
 
-        # HE Velocity Curve keycodes - Aggro, Digital, and User presets (0xCC90-0xCC9B)
+        # HE Velocity Curve keycodes - factory articulations 5-16 (loop-articulation set)
         "HE_CURVE_AGGRO": 0xCC90,
         "HE_CURVE_DIGITAL": 0xCC91,
         "HE_CURVE_USER_1": 0xCC92,
@@ -1974,19 +1974,18 @@ class keycodes_v6:
         "HE_MACRO_CURVE_2": 0xEC98,   # Medium
         "HE_MACRO_CURVE_3": 0xEC99,   # Hard
         "HE_MACRO_CURVE_4": 0xEC9A,   # Hardest
-        "HE_MACRO_CURVE_5": 0xEC9B,   # Aggro
-        "HE_MACRO_CURVE_6": 0xEC9C,   # Digital
-        # User presets (curves 7-16)
-        "HE_MACRO_CURVE_7": 0xEC9D,   # User 1
-        "HE_MACRO_CURVE_8": 0xEC9E,   # User 2
-        "HE_MACRO_CURVE_9": 0xEC9F,   # User 3
-        "HE_MACRO_CURVE_10": 0xECA0,  # User 4
-        "HE_MACRO_CURVE_11": 0xECA1,  # User 5
-        "HE_MACRO_CURVE_12": 0xECA2,  # User 6
-        "HE_MACRO_CURVE_13": 0xECA3,  # User 7
-        "HE_MACRO_CURVE_14": 0xECA4,  # User 8
-        "HE_MACRO_CURVE_15": 0xECA5,  # User 9
-        "HE_MACRO_CURVE_16": 0xECA6,  # User 10
+        "HE_MACRO_CURVE_5": 0xEC9B,   # Sensitive Soft
+        "HE_MACRO_CURVE_6": 0xEC9C,   # Sensitive
+        "HE_MACRO_CURVE_7": 0xEC9D,   # Sensitive Hard
+        "HE_MACRO_CURVE_8": 0xEC9E,   # Fixed Vol
+        "HE_MACRO_CURVE_9": 0xEC9F,   # Drums Easy
+        "HE_MACRO_CURVE_10": 0xECA0,  # Drums Soft
+        "HE_MACRO_CURVE_11": 0xECA1,  # Drums Linear
+        "HE_MACRO_CURVE_12": 0xECA2,  # Drums Hard
+        "HE_MACRO_CURVE_13": 0xECA3,  # Drums Sensitive
+        "HE_MACRO_CURVE_14": 0xECA4,  # Ultra Sensitive
+        "HE_MACRO_CURVE_15": 0xECA5,  # Fixed Sensitive
+        "HE_MACRO_CURVE_16": 0xECA6,  # Two Toned
 
         # HE Velocity Range base (for dynamic generation, starts at 0xCCB5)
         "HE_VEL_RANGE_1_1": 0xCCB5,  # Base for range keycodes (allows min == max)
