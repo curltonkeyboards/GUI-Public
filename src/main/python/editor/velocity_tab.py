@@ -781,8 +781,9 @@ class VelocityTab(BasicEditor):
             "Legato: play one note at a time (monophonic).\n"
             "Only the most-recently-pressed key sounds. Press a new key and the\n"
             "old note stops; release it while an older key is still held and that\n"
-            "note returns at its original velocity. With the sustain pedal down,\n"
-            "a released note keeps ringing until ANOTHER key is pressed.\n"
+            "note returns at the most recent press's velocity (the whole phrase\n"
+            "inherits it). With the sustain pedal down, a released note keeps\n"
+            "ringing until ANOTHER key is pressed.\n"
             "On aftertouch/CC presets the newest key also owns the aftertouch."))
         controls['legato_check'] = QCheckBox(tr("VelocityTab", "Legato"))
         controls['legato_check'].setProperty('zone', zone_name)
