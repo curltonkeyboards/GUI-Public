@@ -39,6 +39,33 @@ from vial_device import VialKeyboard
 from unlocker import Unlocker
 
 
+# The 13 AT/CC articulation base names (indices 69-81 = CC flavor, 82-94 =
+# poly-AT flavor). Kept in sync with the firmware ATCC_MODE_NAMES /
+# velocity_tab ATCC_NAMES.
+_ATCC_ZONE_BASE_NAMES = ["Leg Vib Slow", "Leg Vib Fast", "Leg Vib Smooth",
+                         "Chord Vib Slow", "Chord Vib Fast", "Chord Vib Smooth",
+                         "Fast Swell", "Slow Swell", "Reverse Swell",
+                         "Fast Fall", "Slow Fall", "Shimmer Me", "Shimmer Leg"]
+
+
+def _append_atcc_zone_items(combo):
+    """Append the AT/CC articulation band (indices 69-94) to a zone
+    Articulation combo, with greyed non-selectable section dividers. Without
+    these entries a device sitting on an AT/CC articulation had no matching
+    item, so loads fell back to Linear (and used to write that back)."""
+    def _divider(label):
+        combo.addItem(label)
+        item = combo.model().item(combo.count() - 1)
+        if item is not None:
+            item.setEnabled(False)
+    _divider("\u2500\u2500\u2500 CC Articulations \u2500\u2500\u2500")
+    for i, name in enumerate(_ATCC_ZONE_BASE_NAMES):
+        combo.addItem("{} (CC)".format(name), 69 + i)
+    _divider("\u2500\u2500\u2500 AT Articulations \u2500\u2500\u2500")
+    for i, name in enumerate(_ATCC_ZONE_BASE_NAMES):
+        combo.addItem("{} (Poly)".format(name), 82 + i)
+
+
 class ActuationVisualizer(QWidget):
     """Vertical bar widget that shows key travel distance in real-time"""
 
@@ -1646,6 +1673,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         # User curves (19-68)
         for i in range(50):
             self.global_velocity_curve.addItem("User {}".format(i + 1), 19 + i)
+        _append_atcc_zone_items(self.global_velocity_curve)
         self.global_velocity_curve.setCurrentIndex(0)
         self.global_velocity_curve.setEditable(True)
         self.global_velocity_curve.lineEdit().setReadOnly(True)
@@ -1840,6 +1868,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         # User curves (19-68)
         for i in range(50):
             self.velocity_curve2.addItem("User {}".format(i + 1), 19 + i)
+        _append_atcc_zone_items(self.velocity_curve2)
         self.velocity_curve2.setCurrentIndex(0)
         self.velocity_curve2.setEditable(True)
         self.velocity_curve2.lineEdit().setReadOnly(True)
@@ -2047,6 +2076,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         # User curves (19-68)
         for i in range(50):
             self.velocity_curve3.addItem(f"User {i+1}", 19 + i)
+        _append_atcc_zone_items(self.velocity_curve3)
         self.velocity_curve3.setCurrentIndex(0)
         self.velocity_curve3.setEditable(True)
         self.velocity_curve3.lineEdit().setReadOnly(True)
@@ -3394,6 +3424,13 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
 
     def send_param_update(self, param_id, value):
         """Send real-time HID parameter update to keyboard"""
+        # While apply_settings is populating the widgets from the device, the
+        # combos' currentIndexChanged handlers fire — those must never echo the
+        # (possibly defaulted) values back to the device. Without this guard a
+        # connect/load could silently overwrite device state (e.g. reset the
+        # active articulation to Linear).
+        if getattr(self, '_loading_settings', False):
+            return
         try:
             if self.device and isinstance(self.device, VialKeyboard):
                 self.device.keyboard.set_keyboard_param_single(param_id, value)
@@ -3403,6 +3440,8 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
 
     def _on_split_enable_changed(self):
         """Handle split enable changes - compute and send split status based on on/off combinations"""
+        if getattr(self, '_loading_settings', False):
+            return  # populating from device — don't echo back
         # Compute channel split status: 0=disabled, 1=keysplit, 2=triplesplit, 3=both
         channel_status = self._compute_split_status(
             self.keysplit_channel_enable.currentData(),
@@ -3523,6 +3562,16 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         }
 
     def apply_settings(self, config):
+        """Populate the tab's widgets from a device config dict. Wrapped in the
+        _loading_settings guard so the widgets' live-send handlers can't echo
+        values back to the device mid-population (see send_param_update)."""
+        self._loading_settings = True
+        try:
+            self._apply_settings_inner(config)
+        finally:
+            self._loading_settings = False
+
+    def _apply_settings_inner(self, config):
         """Apply settings dictionary to UI"""
         def set_combo_by_data(combo, value, default_value=None):
             # CRITICAL: block signals while populating from a loaded config.
@@ -3577,6 +3626,13 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         set_combo_by_data(self.enable_cc_modes, config.get("enable_cc_modes"), False)
         self.enable_at_modes.setEnabled(self.stop_mode_supported)
         self.enable_cc_modes.setEnabled(self.stop_mode_supported)
+        # Snapshot the byte-20 widget state as loaded, so the save flow can
+        # detect "untouched since load" and prefer the device's live values
+        # (the Velocity tab and the on-device menu also write these — a stale
+        # Save must not silently revert them). See on_save_slot.
+        self._byte20_loaded = (self.get_stop_mode_mask(),
+                               bool(self.enable_at_modes.currentData()),
+                               bool(self.enable_cc_modes.currentData()))
 
         # LCD colour theme is a global setting carried over a dedicated HID
         # command (not the per-slot config packet), so fetch it directly and
@@ -3658,12 +3714,17 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         # lookups ("velocity_curve2", "global_velocity_curve", ...) never
         # existed there, so these combos always showed the fallback instead of
         # the device's real values.
-        set_combo_by_data(self.velocity_curve2, config.get("keysplit_he_velocity_curve"), 2)
-        set_combo_by_data(self.velocity_curve3, config.get("triplesplit_he_velocity_curve"), 2)
+        set_combo_by_data(self.velocity_curve2,
+                          config.get("keysplit_he_velocity_curve", config.get("velocity_curve2")), 2)
+        set_combo_by_data(self.velocity_curve3,
+                          config.get("triplesplit_he_velocity_curve", config.get("velocity_curve3")), 2)
         # Global MIDI settings
-        set_combo_by_data(self.global_transpose, config.get("transpose_number"), 0)
-        set_combo_by_data(self.global_channel, config.get("channel_number"), 0)
-        set_combo_by_data(self.global_velocity_curve, config.get("he_velocity_curve"), 2)
+        set_combo_by_data(self.global_transpose,
+                          config.get("transpose_number", config.get("global_transpose")), 0)
+        set_combo_by_data(self.global_channel,
+                          config.get("channel_number", config.get("global_channel")), 0)
+        set_combo_by_data(self.global_velocity_curve,
+                          config.get("he_velocity_curve", config.get("global_velocity_curve")), 2)
         # Sustain settings
         set_combo_by_data(self.base_sustain, config.get("base_sustain"), 0)
         set_combo_by_data(self.keysplit_sustain, config.get("keysplit_sustain"), 0)
@@ -3787,6 +3848,25 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                 raise RuntimeError("Device not connected")
 
             settings = self.get_current_settings()
+
+            # Byte-20 fields (Stop Mode mask + AT/CC enable flags) are ALSO
+            # written by the Velocity tab and the on-device settings menu. If
+            # our widgets are untouched since the last device load, prefer the
+            # device's live values so a stale Save can't silently revert an
+            # edit made elsewhere (e.g. enabling CC Modes from the Velocity
+            # tab's locked-preset page). The widgets/snapshot are deliberately
+            # left alone: still-untouched widgets keep matching the snapshot,
+            # so every subsequent Save re-merges the live values too.
+            loaded = getattr(self, '_byte20_loaded', None)
+            current = (settings.get("stop_mode", 0),
+                       bool(settings.get("enable_at_modes")),
+                       bool(settings.get("enable_cc_modes")))
+            if loaded is not None and current == loaded:
+                cfg = self.device.keyboard.get_midi_config()
+                if cfg and cfg.get("stop_mode_supported"):
+                    settings["stop_mode"] = cfg.get("stop_mode", settings.get("stop_mode", 0))
+                    settings["enable_at_modes"] = bool(cfg.get("enable_at_modes"))
+                    settings["enable_cc_modes"] = bool(cfg.get("enable_cc_modes"))
 
             basic_data = self.pack_basic_data(settings)
             print(f"[MIDI Settings] Saving slot {slot}: basic_data={len(basic_data)} bytes: {basic_data.hex()}")
@@ -4525,6 +4605,7 @@ class LayerActuationConfigurator(BasicEditor):
         # User curves (19-68)
         for i in range(50):
             he_curve_combo.addItem("User {}".format(i + 1), 19 + i)
+        _append_atcc_zone_items(he_curve_combo)
         he_curve_combo.setCurrentIndex(0)  # Default: Linear
         he_curve_combo.setEditable(True)
         he_curve_combo.lineEdit().setReadOnly(True)
@@ -5015,6 +5096,7 @@ class LayerActuationConfigurator(BasicEditor):
         # User curves (19-68)
         for i in range(50):
             he_curve_combo.addItem("User {}".format(i + 1), 19 + i)
+        _append_atcc_zone_items(he_curve_combo)
         he_curve_combo.setCurrentIndex(0)  # Default: Linear
         he_curve_combo.setEditable(True)
         he_curve_combo.lineEdit().setReadOnly(True)

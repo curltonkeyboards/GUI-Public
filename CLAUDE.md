@@ -959,3 +959,25 @@ per-slot settings packet). `apply_settings` fetches it on every config load.
 - **Legato semantics (matches firmware):** with the sustain pedal down a
   released legato note keeps ringing until ANOTHER key is pressed; tooltip
   updated.
+
+## Articulation pre-ship audit round (2026-07, round 3) — GUI side
+
+- **(C1) MIDI-Settings load no longer clobbers the device:** the combos'
+  unguarded `currentIndexChanged` live-sends could echo populated (or
+  fallen-back) values to the device during `apply_settings`. Added a
+  `_loading_settings` guard in `send_param_update` / `_on_split_enable_changed`
+  and wrapped `apply_settings`; the zone-curve/transpose/channel reads carry
+  defaults-dict fallbacks.
+- **(M1) AT/CC entries in zone/per-key articulation combos:** the MIDI-Settings
+  zone combos (`global_velocity_curve`/`velocity_curve2`/`velocity_curve3`) and
+  the per-key/layer combos now list indices 69-94 via `_append_atcc_zone_items`
+  (greyed "CC/AT Articulations" dividers), so a device on a band index
+  round-trips instead of falling back to Linear.
+- **(M2) Stale byte-20 Save clobber:** `on_save_slot` prefers the device's live
+  Stop Mode + AT/CC enable flags when the widgets are untouched since load
+  (`_byte20_loaded` snapshot), so a Save can't revert an edit made from the
+  Velocity tab or the on-device settings menu.
+- Firmware-side round-3 fixes (see vial-gui-custom): VIA 0xFF whitelist (the
+  Channel Articulations HID command was being rejected — root cause of the
+  feature not working), on-device AT/CC + Channel Artic enable rows, legato
+  AT/CC re-press resume, `atcc_sanitize_zone_curves()`.
