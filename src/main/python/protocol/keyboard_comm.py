@@ -1865,6 +1865,62 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception as e:
             return False
 
+    def set_atcc_enable(self, at=None, cc=None):
+        """Enable/disable the AT/CC Mode velocity presets on the device.
+
+        Reads the CURRENT device config (get_midi_config), flips bit5
+        (Aftertouch Modes) and/or bit6 (CC Modes) in the Stop Mode byte
+        (packet-1 byte 20) while PRESERVING the Stop Mode mask (bits 0-4) and
+        the 0x80 validity marker, rebuilds the 22-byte basic-config packet from
+        the current device state, and writes it back to slot 0 ("Save as
+        Default") so the firmware persists it. This never clobbers the user's
+        other unsaved GUI edits — it round-trips the live device state, not the
+        GUI widgets.
+
+        at / cc: True to enable, False to disable, None to leave unchanged.
+        Returns True on success, False if there is no device, the read failed,
+        or the firmware predates the Stop Mode / AT-CC byte (no bit-7 marker).
+        """
+        config = self.get_midi_config()
+        if not config:
+            return False
+        # Firmware that doesn't advertise the Stop Mode byte can't store these
+        # flags; refuse rather than write a byte it will ignore.
+        if not config.get("stop_mode_supported", False):
+            return False
+
+        at_on = config.get("enable_at_modes", False) if at is None else bool(at)
+        cc_on = config.get("enable_cc_modes", False) if cc is None else bool(cc)
+
+        # byte 20: 0x80 validity | Stop Mode mask (bits 0-4) | AT (bit5) | CC (bit6)
+        byte20 = 0x80 | (config.get("stop_mode", 0) & 0x1F)
+        if at_on:
+            byte20 |= 0x20
+        if cc_on:
+            byte20 |= 0x40
+
+        # Rebuild the basic-config packet (same layout as
+        # matrix_test.pack_basic_data) from the live device state.
+        data = bytearray(22)
+        struct.pack_into('<I', data, 0, config.get("velocity_sensitivity", 0))
+        struct.pack_into('<I', data, 4, config.get("cc_sensitivity", 0))
+        data[8]  = config.get("channel_number", 0) & 0xFF        # global_channel
+        data[9]  = config.get("transpose_number", 0) & 0xFF      # global_transpose
+        data[10] = 0                                             # octave_number
+        data[11] = config.get("transpose_number2", 0) & 0xFF
+        data[12] = 0                                             # octave_number2
+        data[13] = config.get("transpose_number3", 0) & 0xFF
+        data[14] = 0                                             # octave_number3
+        data[15] = config.get("random_velocity_modifier", 0) & 0xFF
+        struct.pack_into('<I', data, 16, config.get("oled_keyboard", 0))
+        data[20] = byte20
+        data[21] = config.get("smart_chord_light_mode", 0) & 0xFF
+
+        # Persist to slot 0 (the "Save as Default" / active-settings slot), the
+        # same path the MIDI Settings "Save Settings" flow uses for the basic
+        # packet — so "Load Active Settings" round-trips it.
+        return self.save_midi_slot(0, data)
+
     def load_midi_slot(self, slot):
         """Load MIDIswitch configuration from slot"""
         try:

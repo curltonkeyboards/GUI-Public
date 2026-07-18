@@ -2370,39 +2370,10 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             stopmode_layout.addWidget(_sm_combo, _sm_row, _sm_col + 1)
             self.stop_mode_combos[_sm_bit] = _sm_combo
 
-        # AT/CC Mode enable flags — two global On/Off toggles that gate the
-        # second factory velocity-preset band (curve indices 69-78). They ride
-        # the SAME keyboard-config byte as the Stop Mode mask (packet 1 byte 20):
-        # bit5 = Aftertouch Modes, bit6 = CC Modes (bit7 = validity marker).
-        _atcc_help = (
-            "Unlock the AT/CC Mode velocity presets (a second factory band).\n"
-            "Aftertouch Modes: Vibrato Slow/Fast, Rising, Slow Rise, Wind Chords.\n"
-            "CC Modes: the same five as CC-flavored variants.\n"
-            "While a group is Off, its presets stay locked in the Velocity tab."
-        )
-        for _atcc_name, _atcc_attr, _atcc_col in (
-            ("Enable Aftertouch Modes", "enable_at_modes", 1),
-            ("Enable CC Modes",         "enable_cc_modes", 3),
-        ):
-            _atcc_label = QWidget()
-            _atcc_label_layout = QHBoxLayout()
-            _atcc_label_layout.setContentsMargins(0, 0, 0, 0)
-            _atcc_label_layout.setSpacing(5)
-            _atcc_label_layout.addWidget(self.create_help_label(_atcc_help))
-            _atcc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", _atcc_name + ":")))
-            _atcc_label.setLayout(_atcc_label_layout)
-            stopmode_layout.addWidget(_atcc_label, 2, _atcc_col)
-            _atcc_combo = ArrowComboBox()
-            _atcc_combo.setMinimumWidth(120)
-            _atcc_combo.setMinimumHeight(25)
-            _atcc_combo.setMaximumHeight(25)
-            _atcc_combo.setEditable(True)
-            _atcc_combo.lineEdit().setReadOnly(True)
-            _atcc_combo.lineEdit().setAlignment(Qt.AlignCenter)
-            _atcc_combo.addItem("Off", False)
-            _atcc_combo.addItem("On", True)
-            stopmode_layout.addWidget(_atcc_combo, 2, _atcc_col + 1)
-            setattr(self, _atcc_attr, _atcc_combo)
+        # (The "Enable Aftertouch Modes" / "Enable CC Modes" toggles were moved
+        # out of this Stop Mode grid into the Advanced Settings grid below — see
+        # the AT/CC enable block after the Advanced grid is built. Their wiring
+        # is unchanged.)
 
         main_layout.addWidget(stopmode_row_container)
 
@@ -2716,6 +2687,43 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "aftertouch mode and CC number for each layer."
         )
         advanced_layout.addWidget(aftertouch_note, 5, 1, 1, 2)  # Moved to row 5
+
+        # AT/CC Mode enable flags — two global On/Off toggles that gate the
+        # second factory velocity-preset band (curve indices 69-78). Placed in
+        # the Advanced grid (row 6). They ride the SAME keyboard-config byte as
+        # the Stop Mode mask (packet 1 byte 20): bit5 = Aftertouch Modes,
+        # bit6 = CC Modes (bit7 = validity marker). All save/load wiring lives in
+        # get_current_settings / apply_settings / pack_basic_data (byte 20) and
+        # is unchanged by the move.
+        _atcc_help = (
+            "Unlock the AT/CC Mode velocity presets (a second factory band).\n"
+            "Aftertouch Modes: Vibrato Slow/Fast, Rising, Slow Rise, Wind Chords.\n"
+            "CC Modes: the same five as CC-flavored variants.\n"
+            "While a group is Off, its presets stay locked in the Velocity tab."
+        )
+        for _atcc_name, _atcc_attr, _atcc_col in (
+            ("Enable Aftertouch Modes", "enable_at_modes", 1),
+            ("Enable CC Modes",         "enable_cc_modes", 3),
+        ):
+            _atcc_label = QWidget()
+            _atcc_label_layout = QHBoxLayout()
+            _atcc_label_layout.setContentsMargins(0, 0, 0, 0)
+            _atcc_label_layout.setSpacing(5)
+            _atcc_label_layout.addWidget(self.create_help_label(_atcc_help))
+            _atcc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", _atcc_name + ":")))
+            _atcc_label.setLayout(_atcc_label_layout)
+            advanced_layout.addWidget(_atcc_label, 6, _atcc_col)
+            _atcc_combo = ArrowComboBox()
+            _atcc_combo.setMinimumWidth(120)
+            _atcc_combo.setMinimumHeight(25)
+            _atcc_combo.setMaximumHeight(25)
+            _atcc_combo.setEditable(True)
+            _atcc_combo.lineEdit().setReadOnly(True)
+            _atcc_combo.lineEdit().setAlignment(Qt.AlignCenter)
+            _atcc_combo.addItem("Off", False)
+            _atcc_combo.addItem("On", True)
+            advanced_layout.addWidget(_atcc_combo, 6, _atcc_col + 1)
+            setattr(self, _atcc_attr, _atcc_combo)
 
         # MIDI Routing Settings Group with title on left, container centered
         routing_row_container = QWidget()

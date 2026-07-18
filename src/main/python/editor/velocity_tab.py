@@ -1246,14 +1246,27 @@ class VelocityTab(BasicEditor):
         # of the settings panel (see on_preset_list_clicked).
         self.atcc_at_enabled = False
         self.atcc_cc_enabled = False
-        self.atcc_separator = QListWidgetItem("─── AT/CC Modes ───")
-        self.atcc_separator.setData(Qt.UserRole, -3)  # Special value for AT/CC separator
-        self.atcc_separator.setFlags(Qt.NoItemFlags)  # Non-selectable
-        self.preset_list_widget.addItem(self.atcc_separator)
+        # atcc_row_items stays ordered by curve index (69..78) across BOTH
+        # sections so the positional lookups in update_atcc_rows_enabled line up.
         self.atcc_row_items = []
-        for i, name in enumerate(ATCC_NAMES):
-            item = QListWidgetItem(name)
-            item.setData(Qt.UserRole, ATCC_START + i)  # curve index 69-78
+        # --- AT Modes section (curve indices 69-73, ATCC_NAMES[0..4]) ---
+        self.atcc_at_separator = QListWidgetItem("─── AT Modes ───")
+        self.atcc_at_separator.setData(Qt.UserRole, -3)  # AT separator (non-selectable)
+        self.atcc_at_separator.setFlags(Qt.NoItemFlags)
+        self.preset_list_widget.addItem(self.atcc_at_separator)
+        for i in range(5):
+            item = QListWidgetItem(ATCC_NAMES[i])
+            item.setData(Qt.UserRole, ATCC_START + i)  # curve index 69-73
+            self.preset_list_widget.addItem(item)
+            self.atcc_row_items.append(item)
+        # --- CC Modes section (curve indices 74-78, ATCC_NAMES[5..9]) ---
+        self.atcc_cc_separator = QListWidgetItem("─── CC Modes ───")
+        self.atcc_cc_separator.setData(Qt.UserRole, -4)  # CC separator (non-selectable)
+        self.atcc_cc_separator.setFlags(Qt.NoItemFlags)
+        self.preset_list_widget.addItem(self.atcc_cc_separator)
+        for i in range(5, ATCC_COUNT):
+            item = QListWidgetItem(ATCC_NAMES[i])
+            item.setData(Qt.UserRole, ATCC_START + i)  # curve index 74-78
             self.preset_list_widget.addItem(item)
             self.atcc_row_items.append(item)
         self.update_atcc_rows_enabled()
@@ -1294,12 +1307,30 @@ class VelocityTab(BasicEditor):
         # (page 0). Switched in on_preset_list_clicked / load_velocity_curve.
         self.preset_settings_stack = QStackedWidget()
         self.preset_settings_stack.addWidget(base_widget)  # page 0 = settings panel
+        # Page 1: locked-band placeholder + an actionable "Enable … Modes"
+        # checkbox. Ticking it writes the corresponding global enable flag
+        # (bit5 = AT, bit6 = CC) to the device (persisted to slot 0), unlocks the
+        # band locally, and returns to the settings panel. The label/checkbox
+        # text + governed band are set whenever page 1 is shown (see
+        # _show_atcc_locked_page); the tick is handled by _on_atcc_enable_toggled.
+        atcc_page = QWidget()
+        atcc_page_layout = QVBoxLayout()
+        atcc_page_layout.setAlignment(Qt.AlignCenter)
+        atcc_page.setLayout(atcc_page_layout)
         self.atcc_placeholder_label = QLabel("")
         self.atcc_placeholder_label.setAlignment(Qt.AlignCenter)
         self.atcc_placeholder_label.setWordWrap(True)
         self.atcc_placeholder_label.setStyleSheet(
             "QLabel { font-size: 16px; font-weight: bold; color: #888; }")
-        self.preset_settings_stack.addWidget(self.atcc_placeholder_label)  # page 1
+        atcc_page_layout.addWidget(self.atcc_placeholder_label)
+        # True when the checkbox currently governs the CC band (bit6); False for
+        # the AT band (bit5). Set by _show_atcc_locked_page.
+        self._atcc_check_is_cc = False
+        self.atcc_enable_check = QCheckBox("Enable Aftertouch Modes")
+        self.atcc_enable_check.setStyleSheet("QCheckBox { font-size: 13px; }")
+        self.atcc_enable_check.stateChanged.connect(self._on_atcc_enable_toggled)
+        atcc_page_layout.addWidget(self.atcc_enable_check, alignment=Qt.AlignCenter)
+        self.preset_settings_stack.addWidget(atcc_page)  # page 1
         preset_main_layout.addWidget(self.preset_settings_stack, 1)
 
         # Store reference to the base curve editor
@@ -1954,9 +1985,7 @@ class VelocityTab(BasicEditor):
                         self.preset_settings_stack.setCurrentIndex(0)
                         self.curve_editor.set_points(CurveEditorWidget.FACTORY_CURVE_POINTS[2])
                     else:
-                        self.atcc_placeholder_label.setText(
-                            "Enable CC Modes" if is_cc else "Enable Aftertouch Modes")
-                        self.preset_settings_stack.setCurrentIndex(1)
+                        self._show_atcc_locked_page(is_cc)
                 self._update_preset_name_header(curve_index)
         except Exception as e:
             print(f"Error loading velocity curve: {e}")
@@ -2131,9 +2160,12 @@ class VelocityTab(BasicEditor):
             # User curve - account for separator at row FACTORY_COUNT
             self.preset_list_widget.setCurrentRow((FACTORY_COUNT + 1) + (curve_index - FACTORY_COUNT))
         elif ATCC_START <= curve_index <= ATCC_END:
-            # AT/CC row - after 19 factory + 1 user-sep + 50 user + 1 atcc-sep
-            self.preset_list_widget.setCurrentRow(
-                (FACTORY_COUNT + 1 + 50 + 1) + (curve_index - ATCC_START))
+            # AT/CC row - after FACTORY_COUNT + 1 user-sep + 50 user + 1 AT-sep,
+            # plus one extra for the CC-sep once we're past the 5 AT rows.
+            row = (FACTORY_COUNT + 1 + 50 + 1) + (curve_index - ATCC_START)
+            if curve_index >= ATCC_START + 5:
+                row += 1  # CC separator sits above the CC rows
+            self.preset_list_widget.setCurrentRow(row)
         self.preset_list_widget.blockSignals(False)
 
     def get_selected_preset_index(self):
@@ -2147,8 +2179,8 @@ class VelocityTab(BasicEditor):
         """Handle clicking on a preset in the list - loads settings and applies to keyboard"""
         curve_index = item.data(Qt.UserRole)
 
-        if curve_index == -2 or curve_index == -3:
-            # Separator (user presets / AT/CC modes) - do nothing
+        if curve_index in (-2, -3, -4):
+            # Separator (user presets / AT Modes / CC Modes) - do nothing
             return
 
         # AT/CC Mode presets (69-78). If the governing enable flag is OFF, show
@@ -2158,9 +2190,7 @@ class VelocityTab(BasicEditor):
             is_cc = curve_index >= ATCC_START + 5
             enabled = self.atcc_cc_enabled if is_cc else self.atcc_at_enabled
             if not enabled:
-                self.atcc_placeholder_label.setText(
-                    "Enable CC Modes" if is_cc else "Enable Aftertouch Modes")
-                self.preset_settings_stack.setCurrentIndex(1)
+                self._show_atcc_locked_page(is_cc)
                 self._update_preset_name_header(curve_index)
                 return
             # Enabled AT/CC preset: the GUI has no local mirror of this band's
