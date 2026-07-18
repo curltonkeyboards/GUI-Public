@@ -1488,21 +1488,23 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 return None
             return {
                 'enabled': data[5] != 0,
-                'map': [data[6 + i] for i in range(16)]
+                'map': [data[6 + i] for i in range(16)],
+                'articulation_cc': data[22] if len(data) > 22 else 1
             }
         except Exception:
             return None
 
-    def set_channel_articulations(self, enabled, artic_map):
-        """Set the global Channel Articulations map + enable (applies + persists).
+    def set_channel_articulations(self, enabled, artic_map, articulation_cc=1):
+        """Set the global Channel Articulations map + enable + Articulation CC.
 
-        artic_map: list of 16 velocity-preset indices (0-78) or 255 (=None).
-        Payload: [enable, map0..map15]. Missing entries default to 255 (None).
+        artic_map: list of 16 velocity-preset indices (0-94) or 255 (=None).
+        articulation_cc: global CC# (0-127) used by "CC Default" articulations.
+        Payload: [enable, map0..map15, articulation_cc].
         """
         try:
             m = list(artic_map)[:16]
             m += [0xFF] * (16 - len(m))
-            payload = [1 if enabled else 0] + [(x & 0xFF) for x in m]
+            payload = [1 if enabled else 0] + [(x & 0xFF) for x in m] + [int(articulation_cc) & 0x7F]
             packet = self._create_hid_packet(HID_CMD_CHANNEL_ARTIC, 1, payload)
             data = self.usb_send(self.dev, packet, retries=3)
             return bool(data) and len(data) > 4 and data[4] == 0

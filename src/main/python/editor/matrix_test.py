@@ -1376,7 +1376,24 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         try:
             cur = self.device.keyboard.get_channel_articulations()
             artic_map = cur['map'] if cur else [0xFF] * 16
-            self.device.keyboard.set_channel_articulations(enabled, artic_map)
+            cc = cur['articulation_cc'] if cur else 1
+            self.device.keyboard.set_channel_articulations(enabled, artic_map, cc)
+        except Exception:
+            pass
+
+    def _on_articulation_cc_changed(self, index):
+        """Global Articulation CC changed - write immediately (preserving the map
+        + enable flag)."""
+        if not (self.device and isinstance(self.device, VialKeyboard)):
+            return
+        cc = self.articulation_cc_combo.currentData()
+        if cc is None:
+            return
+        try:
+            cur = self.device.keyboard.get_channel_articulations()
+            enabled = cur['enabled'] if cur else False
+            artic_map = cur['map'] if cur else [0xFF] * 16
+            self.device.keyboard.set_channel_articulations(enabled, artic_map, cc)
         except Exception:
             pass
 
@@ -2773,6 +2790,33 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             self._on_channel_artic_enable_changed)
         advanced_layout.addWidget(self.enable_channel_artic, 7, 2)
 
+        # Articulation CC: the CC# that AT/CC articulations set to "CC Default"
+        # send on. Global (rides the same dedicated HID region); writes immediately.
+        _artcc_label = QWidget()
+        _artcc_label_layout = QHBoxLayout()
+        _artcc_label_layout.setContentsMargins(0, 0, 0, 0)
+        _artcc_label_layout.setSpacing(5)
+        _artcc_label_layout.addWidget(self.create_help_label(
+            "The CC number that AT/CC articulations set to 'CC Default'\n"
+            "actually send on. Change it to re-point every 'CC Default'\n"
+            "articulation at once."))
+        _artcc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator",
+                                                "Articulation CC:")))
+        _artcc_label.setLayout(_artcc_label_layout)
+        advanced_layout.addWidget(_artcc_label, 7, 3)
+        self.articulation_cc_combo = ArrowComboBox()
+        self.articulation_cc_combo.setMinimumWidth(120)
+        self.articulation_cc_combo.setMinimumHeight(25)
+        self.articulation_cc_combo.setMaximumHeight(25)
+        self.articulation_cc_combo.setEditable(True)
+        self.articulation_cc_combo.lineEdit().setReadOnly(True)
+        self.articulation_cc_combo.lineEdit().setAlignment(Qt.AlignCenter)
+        for _cc in range(128):
+            self.articulation_cc_combo.addItem("CC#{}".format(_cc), _cc)
+        self.articulation_cc_combo.currentIndexChanged.connect(
+            self._on_articulation_cc_changed)
+        advanced_layout.addWidget(self.articulation_cc_combo, 7, 4)
+
         # MIDI Routing Settings Group with title on left, container centered
         routing_row_container = QWidget()
         routing_row_layout = QHBoxLayout()
@@ -3524,6 +3568,10 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                 self.enable_channel_artic.blockSignals(True)
                 set_combo_by_data(self.enable_channel_artic, bool(ca.get('enabled', False)), False)
                 self.enable_channel_artic.blockSignals(False)
+                if hasattr(self, 'articulation_cc_combo'):
+                    self.articulation_cc_combo.blockSignals(True)
+                    set_combo_by_data(self.articulation_cc_combo, ca.get('articulation_cc', 1), 1)
+                    self.articulation_cc_combo.blockSignals(False)
 
         set_combo_by_data(self.smart_chord_light_mode, config.get("smart_chord_light_mode"), 0)
         set_combo_by_data(self.key_split_channel, config.get("key_split_channel"), 0)

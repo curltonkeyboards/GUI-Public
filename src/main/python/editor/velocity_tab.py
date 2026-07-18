@@ -40,16 +40,22 @@ from keycodes.keycodes import Keycode
 FACTORY_COUNT = len(CurveEditorWidget.FACTORY_CURVES)
 
 
-# AT/CC Mode presets — a second factory band at curve indices 69-78, added
-# after the 19 factory curves (0-18) and the 50 user slots (19-68).
-# 69-73 are aftertouch-flavor (gated by the "Enable Aftertouch Modes" flag);
-# 74-78 are CC-flavor (gated by the "Enable CC Modes" flag). An AT/CC index
-# i is CC-flavor iff i >= ATCC_START + 5.
+# AT/CC Mode presets — a second factory band at curve indices 69-94, added
+# after the 19 factory curves (0-18) and the 50 user slots (19-68). It holds 13
+# articulations in two flavors: the FIRST 13 (idx 69-81) are CC-flavor
+# (aftertouch_cc = "CC Default", gated by "Enable CC Modes"); the NEXT 13
+# (idx 82-94) are the Polyphonic (poly-AT) duplicates (gated by "Enable
+# Aftertouch Modes"). An AT/CC index i is CC-flavor iff i < ATCC_START + 13.
 ATCC_START = FACTORY_COUNT + 50          # 69
-ATCC_COUNT = 10
-ATCC_END = ATCC_START + ATCC_COUNT - 1   # 78
-ATCC_NAMES = ["Vibrato Slow", "Vibrato Fast", "Rising", "Slow Rise", "Wind Chords",
-              "Vibrato Slow CC", "Vibrato Fast CC", "Rising CC", "Slow Rise CC", "Wind Chords CC"]
+ATCC_PER_FLAVOR = 13
+ATCC_COUNT = ATCC_PER_FLAVOR * 2         # 26
+ATCC_END = ATCC_START + ATCC_COUNT - 1   # 94
+_ATCC_BASE_NAMES = ["Leg Vib Slow", "Leg Vib Fast", "Leg Vib Smooth",
+                    "Chord Vib Slow", "Chord Vib Fast", "Chord Vib Smooth",
+                    "Fast Swell", "Slow Swell", "Reverse Swell",
+                    "Fast Fall", "Slow Fall", "Shimmer Me", "Shimmer Leg"]
+# CC-flavor set first (69-81), then the poly-AT duplicates (82-94).
+ATCC_NAMES = list(_ATCC_BASE_NAMES) + list(_ATCC_BASE_NAMES)
 
 
 # MIDI note keycode range (from keycodes_v6.py)
@@ -662,6 +668,9 @@ class VelocityTab(BasicEditor):
         controls['aftertouch_cc_combo'].lineEdit().setReadOnly(True)
         controls['aftertouch_cc_combo'].lineEdit().setAlignment(Qt.AlignCenter)
         controls['aftertouch_cc_combo'].addItem("Polyphonic", 255)
+        # "CC Default" sends on whatever the global "Articulation CC" is set to
+        # (MIDI Settings > Advanced). Stored as the sentinel 254.
+        controls['aftertouch_cc_combo'].addItem("CC Default", 254)
         for cc in range(128):
             controls['aftertouch_cc_combo'].addItem(f"CC#{cc}", cc)
         controls['aftertouch_cc_combo'].setCurrentIndex(0)
@@ -1274,27 +1283,27 @@ class VelocityTab(BasicEditor):
         # of the settings panel (see on_preset_list_clicked).
         self.atcc_at_enabled = False
         self.atcc_cc_enabled = False
-        # atcc_row_items stays ordered by curve index (69..78) across BOTH
-        # sections so the positional lookups in update_atcc_rows_enabled line up.
+        # atcc_row_items stays ordered by sub-index (0..25 = curve 69..94) across
+        # BOTH sections so the positional lookups in update_atcc_rows_enabled align.
         self.atcc_row_items = []
-        # --- AT Modes section (curve indices 69-73, ATCC_NAMES[0..4]) ---
-        self.atcc_at_separator = QListWidgetItem("─── AT Modes ───")
-        self.atcc_at_separator.setData(Qt.UserRole, -3)  # AT separator (non-selectable)
-        self.atcc_at_separator.setFlags(Qt.NoItemFlags)
-        self.preset_list_widget.addItem(self.atcc_at_separator)
-        for i in range(5):
-            item = QListWidgetItem(ATCC_NAMES[i])
-            item.setData(Qt.UserRole, ATCC_START + i)  # curve index 69-73
-            self.preset_list_widget.addItem(item)
-            self.atcc_row_items.append(item)
-        # --- CC Modes section (curve indices 74-78, ATCC_NAMES[5..9]) ---
+        # --- CC Modes section (curve indices 69-81, ATCC_NAMES[0..12]) ---
         self.atcc_cc_separator = QListWidgetItem("─── CC Modes ───")
         self.atcc_cc_separator.setData(Qt.UserRole, -4)  # CC separator (non-selectable)
         self.atcc_cc_separator.setFlags(Qt.NoItemFlags)
         self.preset_list_widget.addItem(self.atcc_cc_separator)
-        for i in range(5, ATCC_COUNT):
+        for i in range(ATCC_PER_FLAVOR):
             item = QListWidgetItem(ATCC_NAMES[i])
-            item.setData(Qt.UserRole, ATCC_START + i)  # curve index 74-78
+            item.setData(Qt.UserRole, ATCC_START + i)  # curve index 69-81
+            self.preset_list_widget.addItem(item)
+            self.atcc_row_items.append(item)
+        # --- AT Modes section (curve indices 82-94, ATCC_NAMES[13..25]) ---
+        self.atcc_at_separator = QListWidgetItem("─── AT Modes ───")
+        self.atcc_at_separator.setData(Qt.UserRole, -3)  # AT separator (non-selectable)
+        self.atcc_at_separator.setFlags(Qt.NoItemFlags)
+        self.preset_list_widget.addItem(self.atcc_at_separator)
+        for i in range(ATCC_PER_FLAVOR, ATCC_COUNT):
+            item = QListWidgetItem(ATCC_NAMES[i])
+            item.setData(Qt.UserRole, ATCC_START + i)  # curve index 82-94
             self.preset_list_widget.addItem(item)
             self.atcc_row_items.append(item)
         self.update_atcc_rows_enabled()
@@ -2039,7 +2048,7 @@ class VelocityTab(BasicEditor):
                     self.on_user_curve_selected(curve_index - FACTORY_COUNT)
                 elif ATCC_START <= curve_index <= ATCC_END:
                     # Device is already on an AT/CC preset - reflect it.
-                    is_cc = curve_index >= ATCC_START + 5
+                    is_cc = curve_index < ATCC_START + ATCC_PER_FLAVOR
                     enabled = self.atcc_cc_enabled if is_cc else self.atcc_at_enabled
                     if enabled:
                         self.preset_settings_stack.setCurrentIndex(0)
@@ -2087,7 +2096,7 @@ class VelocityTab(BasicEditor):
             return
         for i, item in enumerate(items):
             curve_index = ATCC_START + i
-            is_cc = curve_index >= ATCC_START + 5
+            is_cc = curve_index < ATCC_START + ATCC_PER_FLAVOR
             enabled = self.atcc_cc_enabled if is_cc else self.atcc_at_enabled
             if enabled:
                 # Restore the theme's normal text color (theme-safe).
@@ -2224,8 +2233,8 @@ class VelocityTab(BasicEditor):
             # AT/CC row - after FACTORY_COUNT + 1 user-sep + 50 user + 1 AT-sep,
             # plus one extra for the CC-sep once we're past the 5 AT rows.
             row = (FACTORY_COUNT + 1 + 50 + 1) + (curve_index - ATCC_START)
-            if curve_index >= ATCC_START + 5:
-                row += 1  # CC separator sits above the CC rows
+            if curve_index >= ATCC_START + ATCC_PER_FLAVOR:
+                row += 1  # AT separator sits above the AT rows (CC section is first)
             self.preset_list_widget.setCurrentRow(row)
         self.preset_list_widget.blockSignals(False)
 
@@ -2248,7 +2257,7 @@ class VelocityTab(BasicEditor):
         # an "Enable … Modes" placeholder instead of the settings panel and do
         # NOT apply anything to the keyboard.
         if ATCC_START <= curve_index <= ATCC_END:
-            is_cc = curve_index >= ATCC_START + 5
+            is_cc = curve_index < ATCC_START + ATCC_PER_FLAVOR
             enabled = self.atcc_cc_enabled if is_cc else self.atcc_at_enabled
             if not enabled:
                 self._show_atcc_locked_page(is_cc)
@@ -2922,6 +2931,7 @@ class VelocityTab(BasicEditor):
         an 'Enable Channel Articulations' checkbox. Greyed until enabled."""
         self.channel_artic_map = [255] * 16
         self.channel_artic_enabled = False
+        self.channel_artic_cc = 1
         self.channel_artic_combos = []
         self._loading_channel_artic = False
 
@@ -2995,7 +3005,8 @@ class VelocityTab(BasicEditor):
             return
         try:
             self.keyboard.set_channel_articulations(
-                self.channel_artic_enabled, self.channel_artic_map)
+                self.channel_artic_enabled, self.channel_artic_map,
+                getattr(self, 'channel_artic_cc', 1))
         except Exception:
             pass
 
@@ -3027,6 +3038,7 @@ class VelocityTab(BasicEditor):
         self._loading_channel_artic = True
         try:
             self.channel_artic_enabled = bool(data.get('enabled', False))
+            self.channel_artic_cc = data.get('articulation_cc', 1)
             self.channel_artic_map = list(data.get('map', [255] * 16))[:16]
             self.channel_artic_map += [255] * (16 - len(self.channel_artic_map))
             self.channel_artic_enable_check.blockSignals(True)
