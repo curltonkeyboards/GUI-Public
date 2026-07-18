@@ -2108,6 +2108,59 @@ class VelocityTab(BasicEditor):
             else:
                 item.setForeground(Qt.gray)
 
+
+    def _show_atcc_locked_page(self, is_cc):
+        """Swap the settings panel for the locked-band placeholder (stack page
+        1), retargeting the label + checkbox to the band that governs the
+        clicked preset (True = CC Modes / bit6, False = Aftertouch Modes /
+        bit5). The checkbox is shown unchecked (the band IS locked); ticking
+        it is handled by _on_atcc_enable_toggled."""
+        band = "CC" if is_cc else "Aftertouch"
+        self._atcc_check_is_cc = bool(is_cc)
+        self.atcc_placeholder_label.setText(
+            "{} Modes are disabled.\n\n"
+            "Enable them to use this articulation.".format(band))
+        self.atcc_enable_check.blockSignals(True)
+        self.atcc_enable_check.setText("Enable {} Modes".format(band))
+        self.atcc_enable_check.setChecked(False)
+        self.atcc_enable_check.blockSignals(False)
+        self.preset_settings_stack.setCurrentIndex(1)
+
+    def _on_atcc_enable_toggled(self, state):
+        """Tick on the locked-band placeholder: write the governing enable
+        flag (bit5 AT / bit6 CC) to the device via set_atcc_enable (persisted
+        to slot 0), unlock the band locally, and return to the settings panel.
+        On old firmware (no Stop-Mode byte) or a failed write, the tick is
+        reverted and the band stays locked."""
+        if state != Qt.Checked:
+            return
+        is_cc = getattr(self, '_atcc_check_is_cc', False)
+        ok = False
+        if self.keyboard:
+            try:
+                ok = (self.keyboard.set_atcc_enable(cc=True) if is_cc
+                      else self.keyboard.set_atcc_enable(at=True))
+            except Exception:
+                ok = False
+        if not ok:
+            self.atcc_enable_check.blockSignals(True)
+            self.atcc_enable_check.setChecked(False)
+            self.atcc_enable_check.blockSignals(False)
+            return
+        if is_cc:
+            self.atcc_cc_enabled = True
+        else:
+            self.atcc_at_enabled = True
+        self.update_atcc_rows_enabled()
+        # Back to the settings panel; if an AT/CC row is selected, re-run the
+        # click so the preset actually applies (the locked click skipped it).
+        self.preset_settings_stack.setCurrentIndex(0)
+        item = self.preset_list_widget.currentItem()
+        if item is not None:
+            idx = item.data(Qt.UserRole)
+            if isinstance(idx, int) and ATCC_START <= idx <= ATCC_END:
+                self.on_preset_list_clicked(item)
+
     def get_configured_preset_count(self):
         """Return how many user presets are currently configured"""
         return sum(1 for c in self.user_preset_configured if c)

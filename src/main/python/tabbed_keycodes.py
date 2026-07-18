@@ -3607,12 +3607,6 @@ class KeySplitTab(QScrollArea):
                 if isinstance(widget, QPushButton) and hasattr(widget, 'midi_id'):
                     widget.setText(Keycode.label(widget.midi_id))
 
-    def create_piano_keys(self, midi_mappings, key_prefix='MI'):
-        """Modified create_piano_keys method to store midi_id"""
-        # ... (previous piano key creation code) ...
-        # Add this line when creating each key:
-        key.midi_id = midi_id  # Store the midi_id for relabeling
-
     def create_control_buttons(self, layout, prefix):
         controls = [
             (f"{prefix}\nChannel\n-", f"{'KS2' if prefix == 'TS' else prefix}_CHAN_DOWN"),
