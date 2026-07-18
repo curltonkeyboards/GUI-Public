@@ -933,3 +933,29 @@ command `HID_CMD_LCD_THEME = 0xFE` (`data[4]` 0=GET/1=SET, `data[6]`=index;
 response status@4, index@5, count@6) via `keyboard_comm.get_lcd_theme()` /
 `set_lcd_theme()` — it applies + persists instantly on change (not part of the
 per-slot settings packet). `apply_settings` fetches it on every config load.
+
+---
+
+## Articulation / AT-CC bugfix round (2026-07) — GUI side
+
+- **GUI shows AT/CC preset settings (velocity_tab.py):** new `_ATCC_ART_PARAMS`
+  + `atcc_zone_settings()` mirror the firmware `atcc_mode_zones[]` table
+  (display-only; keep in sync with the firmware `ART_*` macros). Selecting or
+  loading an enabled AT/CC preset now populates the settings panel (aftertouch
+  mode/CC, vibrato, smoothness, legato, curve points) instead of leaving stale
+  "Off" values.
+- **Channel Articulations tab:** edits (enable + 16 dropdowns) are now local
+  until the tab's own single **Save** button pushes them to the device; the
+  preset New/Save/Save As/Export row moved INTO the Preset Settings tab so it no
+  longer shows under Channel Articulations. Firmware side now applies the
+  current channel's mapping immediately on a HID SET (previously only on a
+  channel transition). Enable defaults to OFF.
+- **Articulation dropdowns:** channel-articulation combos are ArrowComboBox
+  (editable/read-only lineEdit, centered, `setMaxVisibleItems(15)` scrollable
+  popup) at 220px; keymap Articulation combos widened (70→140 / 120→180). The
+  preset list separators and the channel dropdowns carry greyed non-selectable
+  dividers "User Articulations" / "CC Articulations" / "AT Articulations"
+  (`_fill_artic_combo` disables divider rows).
+- **Legato semantics (matches firmware):** with the sustain pedal down a
+  released legato note keeps ringing until ANOTHER key is pressed; tooltip
+  updated.

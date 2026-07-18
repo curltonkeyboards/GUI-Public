@@ -61,6 +61,54 @@ _ATCC_BASE_NAMES = ["Leg Vib Slow", "Leg Vib Fast", "Leg Vib Smooth",
 ATCC_NAMES = (["{} (CC)".format(n) for n in _ATCC_BASE_NAMES]
               + ["{} (Poly)".format(n) for n in _ATCC_BASE_NAMES])
 
+# GUI mirror of the firmware's atcc_mode_zones[] table (orthomidi5x14.c) so the
+# Preset Settings panel can SHOW an AT/CC articulation's real settings when it
+# is selected (the device applies these itself from its own copy — this table
+# is display-only and must be kept in sync with the firmware ART_* macros).
+# Per articulation: (p1, p2, vmin, vmax, slow_ms, fast_ms, at_mode,
+#                    vib_sens, vib_decay, flags, act_pt, trig_min, smoothness)
+# flags: bit0 = actuation_override, bit1 = at_uses_curve, bit2 = legato.
+_ATCC_ART_PARAMS = [
+    ((85, 85),  (170, 170), 1, 127, 200, 20, 7,  50, 10, 7, 30, 18,  0),  # Leg Vib Slow
+    ((88, 61),  (180, 161), 1, 127, 200, 20, 7,  66,  5, 7, 30, 18,  6),  # Leg Vib Fast
+    ((88, 61),  (180, 161), 1, 127, 200, 20, 7, 100, 10, 7, 30, 18, 41),  # Leg Vib Smooth
+    ((85, 85),  (170, 170), 1, 127, 200, 20, 7,  50, 10, 3, 30, 18,  0),  # Chord Vib Slow
+    ((88, 61),  (180, 161), 1, 127, 200, 20, 7,  66,  5, 3, 30, 18,  6),  # Chord Vib Fast
+    ((88, 61),  (180, 161), 1, 127, 200, 20, 7, 100, 10, 3, 30, 18, 41),  # Chord Vib Smooth
+    ((102, 52), (222, 141), 1, 127, 105,  1, 1, 100, 10, 3,  2, 35,  0),  # Fast Swell
+    ((91, 77),  (176, 164), 1, 127, 105,  1, 1, 100, 10, 3,  2, 35, 22),  # Slow Swell
+    ((55, 130), (164, 201), 1,   5,  90,  1, 3, 100, 10, 3, 35, 35,  0),  # Reverse Swell
+    ((131, 64), (216, 150), 1, 127, 105,  1, 5, 100, 10, 2,  2, 35,  0),  # Fast Fall
+    ((91, 77),  (176, 164), 1, 127, 105,  1, 5, 100, 10, 2,  2, 35, 22),  # Slow Fall
+    ((73, 83),  (159, 166), 1, 115,  90,  1, 1, 100, 10, 3, 35, 35,  0),  # Shimmer Me
+    ((73, 83),  (159, 166), 1, 115,  90,  1, 1, 100, 10, 7, 35, 35,  0),  # Shimmer Leg
+]
+
+
+def atcc_zone_settings(curve_index):
+    """zone_data dict (update_zone_controls_from_settings format) for an AT/CC
+    preset index 69-94, mirroring the firmware's atcc_mode_zones[] entry.
+    CC-flavor (69-81) presets carry aftertouch_cc 254 ("CC Default" — the
+    global Articulation CC); poly-AT (82-94) carry 255 (real aftertouch)."""
+    sub = curve_index - ATCC_START
+    (p1, p2, vmin, vmax, slow, fast, at_mode, vib_sens, vib_decay,
+     flags, act_pt, trig_min, smooth) = _ATCC_ART_PARAMS[sub % ATCC_PER_FLAVOR]
+    return {
+        'points': [[0, 0], list(p1), list(p2), [255, 255]],
+        'velocity_min': vmin, 'velocity_max': vmax,
+        'slow_press_time': slow, 'fast_press_time': fast,
+        'aftertouch_mode': at_mode,
+        'aftertouch_smoothness': smooth,
+        'aftertouch_cc': 254 if sub < ATCC_PER_FLAVOR else 255,
+        'vibrato_sensitivity': vib_sens, 'vibrato_decay': vib_decay,
+        'actuation_override': bool(flags & 1),
+        'actuation_point': act_pt,
+        'speed_peak_ratio': trig_min,
+        'retrigger_distance': 0,
+        'at_uses_curve': bool(flags & 2),
+        'legato': bool(flags & 4),
+    }
+
 
 # MIDI note keycode range (from keycodes_v6.py)
 MIDI_NOTE_MIN = 0x7103  # MI_C
@@ -733,7 +781,8 @@ class VelocityTab(BasicEditor):
             "Legato: play one note at a time (monophonic).\n"
             "Only the most-recently-pressed key sounds. Press a new key and the\n"
             "old note stops; release it while an older key is still held and that\n"
-            "note returns at its original velocity. Ignores the sustain pedal.\n"
+            "note returns at its original velocity. With the sustain pedal down,\n"
+            "a released note keeps ringing until ANOTHER key is pressed.\n"
             "On aftertouch/CC presets the newest key also owns the aftertouch."))
         controls['legato_check'] = QCheckBox(tr("VelocityTab", "Legato"))
         controls['legato_check'].setProperty('zone', zone_name)
@@ -1266,7 +1315,7 @@ class VelocityTab(BasicEditor):
             self.preset_list_widget.addItem(item)
 
         # Separator (hidden until user presets are configured)
-        self.user_presets_separator = QListWidgetItem("─── User Presets ───")
+        self.user_presets_separator = QListWidgetItem("─── User Articulations ───")
         self.user_presets_separator.setData(Qt.UserRole, -2)  # Special value for separator
         self.user_presets_separator.setFlags(Qt.NoItemFlags)  # Non-selectable
         self.user_presets_separator.setHidden(True)
@@ -1291,7 +1340,7 @@ class VelocityTab(BasicEditor):
         # BOTH sections so the positional lookups in update_atcc_rows_enabled align.
         self.atcc_row_items = []
         # --- CC Modes section (curve indices 69-81, ATCC_NAMES[0..12]) ---
-        self.atcc_cc_separator = QListWidgetItem("─── CC Modes ───")
+        self.atcc_cc_separator = QListWidgetItem("─── CC Articulations ───")
         self.atcc_cc_separator.setData(Qt.UserRole, -4)  # CC separator (non-selectable)
         self.atcc_cc_separator.setFlags(Qt.NoItemFlags)
         self.preset_list_widget.addItem(self.atcc_cc_separator)
@@ -1301,7 +1350,7 @@ class VelocityTab(BasicEditor):
             self.preset_list_widget.addItem(item)
             self.atcc_row_items.append(item)
         # --- AT Modes section (curve indices 82-94, ATCC_NAMES[13..25]) ---
-        self.atcc_at_separator = QListWidgetItem("─── AT Modes ───")
+        self.atcc_at_separator = QListWidgetItem("─── AT Articulations ───")
         self.atcc_at_separator.setData(Qt.UserRole, -3)  # AT separator (non-selectable)
         self.atcc_at_separator.setFlags(Qt.NoItemFlags)
         self.preset_list_widget.addItem(self.atcc_at_separator)
@@ -1465,7 +1514,10 @@ class VelocityTab(BasicEditor):
         self.export_btn.clicked.connect(self.on_export_articulation)
         buttons_layout.addWidget(self.export_btn)
 
-        preset_main_layout.addLayout(buttons_layout)
+        # Inside the Preset Settings tab (NOT the group layout) so the Channel
+        # Articulations tab doesn't inherit the preset New/Save/Save As/Export
+        # row — that tab has its own single Save button.
+        _preset_tab_layout.addLayout(buttons_layout)
 
         bottom_layout.addWidget(preset_group)
         bottom_layout.addStretch()  # Right stretch to center the group
@@ -2051,12 +2103,14 @@ class VelocityTab(BasicEditor):
                     self.preset_settings_stack.setCurrentIndex(0)
                     self.on_user_curve_selected(curve_index - FACTORY_COUNT)
                 elif ATCC_START <= curve_index <= ATCC_END:
-                    # Device is already on an AT/CC preset - reflect it.
+                    # Device is already on an AT/CC preset - reflect it,
+                    # including its real settings (aftertouch mode/CC, vibrato,
+                    # legato, curve points) from the GUI mirror table.
                     is_cc = curve_index < ATCC_START + ATCC_PER_FLAVOR
                     enabled = self.atcc_cc_enabled if is_cc else self.atcc_at_enabled
                     if enabled:
                         self.preset_settings_stack.setCurrentIndex(0)
-                        self.curve_editor.set_points(CurveEditorWidget.FACTORY_CURVE_POINTS[2])
+                        self._apply_atcc_preset_settings(curve_index)
                     else:
                         self._show_atcc_locked_page(is_cc)
                 self._update_preset_name_header(curve_index)
@@ -2092,9 +2146,10 @@ class VelocityTab(BasicEditor):
 
     def update_atcc_rows_enabled(self):
         """Recolor the 26 AT/CC Mode rows (69-94): greyed (locked) unless the
-        governing global enable flag is on. Rows 69-73 follow atcc_at_enabled;
-        74-78 follow atcc_cc_enabled. Called on setup and whenever the flags
-        change (see load_velocity_curve)."""
+        governing global enable flag is on. Rows 69-81 (CC flavor) follow
+        atcc_cc_enabled; 82-94 (poly-AT flavor) follow atcc_at_enabled.
+        Called on setup and whenever the flags change (see
+        load_velocity_curve)."""
         items = getattr(self, 'atcc_row_items', None)
         if not items:
             return
@@ -2320,11 +2375,11 @@ class VelocityTab(BasicEditor):
                 self._show_atcc_locked_page(is_cc)
                 self._update_preset_name_header(curve_index)
                 return
-            # Enabled AT/CC preset: the GUI has no local mirror of this band's
-            # curve/settings data, so we just select it on the device and leave
-            # the curve editor showing Linear (read-only-ish). See report notes.
+            # Enabled AT/CC preset: mirror the firmware's atcc_mode_zones[]
+            # settings into the panel (aftertouch mode/CC, vibrato, legato,
+            # curve points...) so the GUI shows what the device activates.
             self.preset_settings_stack.setCurrentIndex(0)
-            self.curve_editor.set_points(CurveEditorWidget.FACTORY_CURVE_POINTS[2])
+            self._apply_atcc_preset_settings(curve_index)
             self._update_preset_name_header(curve_index)
             self._apply_preset_to_keyboard(curve_index)
             return
@@ -2564,6 +2619,29 @@ class VelocityTab(BasicEditor):
             'speed_peak_ratio': 5, 'retrigger_distance': 5,
         },
     }
+
+    def _apply_atcc_preset_settings(self, curve_index):
+        """Show an AT/CC articulation's settings (aftertouch mode/CC, vibrato,
+        legato, curve points...) in the panel from the GUI mirror of the
+        firmware's atcc_mode_zones[] table. Display-only: the device applies
+        the real settings itself when the preset index is selected."""
+        zone_data = atcc_zone_settings(curve_index)
+        self.update_zone_controls_from_settings('base', zone_data)
+        self.global_midi_settings['velocity_min'] = zone_data['velocity_min']
+        self.global_midi_settings['velocity_max'] = zone_data['velocity_max']
+        self.global_midi_settings['min_press_time'] = zone_data['slow_press_time']
+        self.global_midi_settings['max_press_time'] = zone_data['fast_press_time']
+        self.global_midi_settings['aftertouch_mode'] = zone_data['aftertouch_mode']
+        self.global_midi_settings['aftertouch_smoothness'] = zone_data['aftertouch_smoothness']
+        self.global_midi_settings['aftertouch_cc'] = zone_data['aftertouch_cc']
+        self.global_midi_settings['vibrato_sensitivity'] = zone_data['vibrato_sensitivity']
+        self.global_midi_settings['vibrato_decay_time'] = zone_data['vibrato_decay']
+        self.global_midi_settings['actuation_override'] = zone_data['actuation_override']
+        self.global_midi_settings['actuation_point'] = zone_data['actuation_point']
+        self.global_midi_settings['speed_peak_ratio'] = zone_data['speed_peak_ratio']
+        self.global_midi_settings['retrigger_distance'] = zone_data['retrigger_distance']
+        self.global_midi_settings['at_uses_curve'] = zone_data['at_uses_curve']
+        self.global_midi_settings['legato'] = zone_data['legato']
 
     def _apply_factory_preset_settings(self, curve_index):
         """Apply per-factory-preset zone settings when selecting a factory curve.
@@ -2974,14 +3052,34 @@ class VelocityTab(BasicEditor):
         # Configured user presets only (indices FACTORY_COUNT..FACTORY_COUNT+49)
         names = getattr(self, 'user_curve_names', ["User {}".format(i + 1) for i in range(50)])
         configured = getattr(self, 'user_preset_configured', [False] * 50)
-        for i, name in enumerate(names):
-            if i < len(configured) and configured[i]:
-                opts.append((name, FACTORY_COUNT + i))
+        user_opts = [(name, FACTORY_COUNT + i) for i, name in enumerate(names)
+                     if i < len(configured) and configured[i]]
+        if user_opts:
+            opts.append(("─── User Articulations ───", None))
+            opts.extend(user_opts)
         # AT/CC mode presets (indices 69-94) - always listed (device ignores them
-        # if their global enable is off)
-        for i in range(ATCC_COUNT):
+        # if their global enable is off). Entries with index None are greyed-out
+        # section dividers (non-selectable).
+        opts.append(("─── CC Articulations ───", None))
+        for i in range(ATCC_PER_FLAVOR):
+            opts.append((ATCC_NAMES[i], ATCC_START + i))
+        opts.append(("─── AT Articulations ───", None))
+        for i in range(ATCC_PER_FLAVOR, ATCC_COUNT):
             opts.append((ATCC_NAMES[i], ATCC_START + i))
         return opts
+
+    @staticmethod
+    def _fill_artic_combo(combo, opts):
+        """Populate an articulation combo from (label, index) pairs; index None
+        rows become greyed, non-selectable dividers."""
+        for label, idx in opts:
+            if idx is None:
+                combo.addItem(label)
+                item = combo.model().item(combo.count() - 1)
+                if item is not None:
+                    item.setEnabled(False)
+            else:
+                combo.addItem(label, idx)
 
     def _build_channel_articulations_tab(self):
         """Second tab of the Preset Settings box: 16 channel->articulation rows +
@@ -3005,7 +3103,8 @@ class VelocityTab(BasicEditor):
         desc = QLabel(tr("VelocityTab",
             "When enabled, changing a zone's MIDI channel (base / keysplit / "
             "triplesplit) switches that zone to the articulation mapped to the "
-            "new channel below. 'None' leaves the zone unchanged."))
+            "new channel below. 'None' leaves the zone unchanged. Press Save "
+            "to send your settings to the keyboard."))
         desc.setWordWrap(True)
         desc.setStyleSheet("QLabel { color: #888; }")
         v.addWidget(desc)
@@ -3016,10 +3115,18 @@ class VelocityTab(BasicEditor):
         opts = self._channel_artic_preset_options()
         for ch in range(16):
             grid.addWidget(QLabel(tr("VelocityTab", "Channel {}").format(ch + 1)), ch, 0)
-            combo = QComboBox()
-            combo.setMinimumWidth(180)
-            for label, idx in opts:
-                combo.addItem(label, idx)
+            # Same format as the keymap "Articulation:" dropdowns (limited
+            # popup height with a scroll bar), but wider.
+            combo = ArrowComboBox()
+            combo.setFixedWidth(220)
+            combo.setMaximumHeight(30)
+            combo.setStyleSheet("QComboBox { padding: 0px; font-size: 14px; text-align: center; } "
+                                "QComboBox QAbstractItemView { min-width: 220px; }")
+            combo.setEditable(True)
+            combo.lineEdit().setReadOnly(True)
+            combo.lineEdit().setAlignment(Qt.AlignCenter)
+            combo.setMaxVisibleItems(15)
+            self._fill_artic_combo(combo, opts)
             combo.currentIndexChanged.connect(self._on_channel_artic_combo_changed)
             self.channel_artic_combos.append(combo)
             grid.addWidget(combo, ch, 1)
@@ -3032,6 +3139,18 @@ class VelocityTab(BasicEditor):
         scroll.setWidgetResizable(True)
         v.addWidget(scroll, 1)
 
+        # Single Save button — channel-articulation edits are local until saved
+        # (this tab deliberately does NOT show the preset New/Save/Save As/
+        # Export row, which belongs to the Preset Settings tab only).
+        save_row = QHBoxLayout()
+        self.channel_artic_save_btn = QPushButton(tr("VelocityTab", "Save"))
+        self.channel_artic_save_btn.setMinimumHeight(35)
+        self.channel_artic_save_btn.setToolTip(
+            "Save the enable flag and channel articulation map to the keyboard")
+        self.channel_artic_save_btn.clicked.connect(self._on_channel_artic_save_clicked)
+        save_row.addWidget(self.channel_artic_save_btn)
+        v.addLayout(save_row)
+
         self._update_channel_artic_enabled_state()
         return w
 
@@ -3042,24 +3161,34 @@ class VelocityTab(BasicEditor):
             combo.setEnabled(on)
 
     def _on_channel_artic_enable_toggled(self, state):
+        # Local edit only — pushed to the device by the tab's Save button.
         if getattr(self, '_loading_channel_artic', False):
             return
         self.channel_artic_enabled = (state == Qt.Checked)
         self._update_channel_artic_enabled_state()
-        self._push_channel_articulations()
 
     def _on_channel_artic_combo_changed(self, *args):
+        # Local edit only — pushed to the device by the tab's Save button.
         if getattr(self, '_loading_channel_artic', False):
             return
         for ch, combo in enumerate(self.channel_artic_combos):
             data = combo.currentData()
             self.channel_artic_map[ch] = 255 if data is None else data
-        self._push_channel_articulations()
+
+    def _on_channel_artic_save_clicked(self):
+        """Save button: push the enable flag + 16-channel map to the device."""
+        if not self.keyboard:
+            return
+        ok = self._push_channel_articulations()
+        if not ok:
+            QMessageBox.warning(None, tr("VelocityTab", "Save Failed"),
+                                tr("VelocityTab",
+                                   "Could not save Channel Articulations to the keyboard."))
 
     def _push_channel_articulations(self):
         """Write the current enable + map to the device (applies + persists)."""
         if not self.keyboard:
-            return
+            return False
         try:
             # Re-read the device's current Articulation CC instead of trusting
             # the value cached at rebuild(): the user may have changed it in
@@ -3071,11 +3200,11 @@ class VelocityTab(BasicEditor):
                     self.channel_artic_cc = cur.get('articulation_cc', 1)
             except Exception:
                 pass
-            self.keyboard.set_channel_articulations(
+            return bool(self.keyboard.set_channel_articulations(
                 self.channel_artic_enabled, self.channel_artic_map,
-                getattr(self, 'channel_artic_cc', 1))
+                getattr(self, 'channel_artic_cc', 1)))
         except Exception:
-            pass
+            return False
 
     def _refresh_channel_artic_combos(self):
         """Rebuild dropdown items (e.g. after user preset names load), preserving
@@ -3085,8 +3214,7 @@ class VelocityTab(BasicEditor):
             cur = combo.currentData()
             combo.blockSignals(True)
             combo.clear()
-            for label, idx in opts:
-                combo.addItem(label, idx)
+            self._fill_artic_combo(combo, opts)
             pos = combo.findData(cur if cur is not None else 255)
             combo.setCurrentIndex(pos if pos >= 0 else 0)
             combo.blockSignals(False)

@@ -517,7 +517,7 @@ class QuickActuationWidget(QWidget):
         preset_row.addWidget(preset_label)
 
         self.simple_velocity_preset_combo = ArrowComboBox()
-        self.simple_velocity_preset_combo.setFixedWidth(70)
+        self.simple_velocity_preset_combo.setFixedWidth(140)
         self.simple_velocity_preset_combo.setMaximumHeight(35)
         self.simple_velocity_preset_combo.setStyleSheet("QComboBox { padding: 0px; font-size: 14px; text-align: center; }")
         self.simple_velocity_preset_combo.setEditable(True)
@@ -638,7 +638,7 @@ class QuickActuationWidget(QWidget):
         curve_row.addWidget(curve_label)
 
         self.midi_velocity_curve = ArrowComboBox()
-        self.midi_velocity_curve.setMaximumWidth(120)
+        self.midi_velocity_curve.setMaximumWidth(180)
         self.midi_velocity_curve.setMaximumHeight(30)
         self.midi_velocity_curve.setStyleSheet("QComboBox { padding: 0px; font-size: 14px; text-align: center; }")
         self.midi_velocity_curve.setEditable(True)
@@ -790,7 +790,7 @@ class QuickActuationWidget(QWidget):
         ks_curve_row.addWidget(ks_curve_label)
 
         self.keysplit_velocity_curve = ArrowComboBox()
-        self.keysplit_velocity_curve.setMaximumWidth(120)
+        self.keysplit_velocity_curve.setMaximumWidth(180)
         self.keysplit_velocity_curve.setMaximumHeight(30)
         self.keysplit_velocity_curve.setStyleSheet("QComboBox { padding: 0px; font-size: 14px; text-align: center; }")
         self.keysplit_velocity_curve.setEditable(True)
@@ -935,7 +935,7 @@ class QuickActuationWidget(QWidget):
         ts_curve_row.addWidget(ts_curve_label)
 
         self.triplesplit_velocity_curve = ArrowComboBox()
-        self.triplesplit_velocity_curve.setMaximumWidth(120)
+        self.triplesplit_velocity_curve.setMaximumWidth(180)
         self.triplesplit_velocity_curve.setMaximumHeight(30)
         self.triplesplit_velocity_curve.setStyleSheet("QComboBox { padding: 0px; font-size: 14px; text-align: center; }")
         self.triplesplit_velocity_curve.setEditable(True)
