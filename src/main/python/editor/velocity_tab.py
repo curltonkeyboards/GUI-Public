@@ -681,7 +681,7 @@ class VelocityTab(BasicEditor):
             "Pre-load aftertouch from note-on velocity.\n"
             "Aftertouch starts at the velocity value\n"
             "instead of 0 when a note triggers."))
-        controls['velocity_as_at_checkbox'] = QCheckBox(tr("VelocityTab", "Velocity as Aftertouch"))
+        controls['velocity_as_at_checkbox'] = QCheckBox(tr("VelocityTab", "Velocity as AT/CC"))
         controls['velocity_as_at_checkbox'].setProperty('zone', zone_name)
         vat_layout.addWidget(controls['velocity_as_at_checkbox'])
 
