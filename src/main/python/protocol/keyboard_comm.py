@@ -2140,6 +2140,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
             flags = response[10]
             vibrato_decay_time = response[14] | (response[15] << 8)
+            # velocity_as_at is a global device setting reported as byte 11
+            # (packet index 16). Older firmware doesn't send it; default False.
+            velocity_as_at = (len(response) > 16 and response[16] != 0)
             return {
                 'normal': response[6],
                 'midi': response[7],
@@ -2150,7 +2153,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 'aftertouch_mode': response[11],
                 'aftertouch_cc': response[12],
                 'vibrato_sensitivity': response[13],
-                'vibrato_decay_time': vibrato_decay_time
+                'vibrato_decay_time': vibrato_decay_time,
+                'velocity_as_at': velocity_as_at
             }
         except Exception as e:
             return None

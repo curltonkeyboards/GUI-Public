@@ -1582,6 +1582,12 @@ class VelocityTab(BasicEditor):
                 self.global_midi_settings['vibrato_sensitivity'] = vibrato_sens
                 vibrato_decay = result.get('vibrato_decay_time', 10)
                 self.global_midi_settings['vibrato_decay_time'] = vibrato_decay
+                # velocity_as_at is a global device setting; the firmware now
+                # reports it in the layer-actuation response. Read it back so the
+                # "Velocity as Aftertouch" checkbox reflects the saved device state
+                # (older firmware omits it -> keep whatever we had).
+                if 'velocity_as_at' in result:
+                    self.global_midi_settings['velocity_as_at'] = result['velocity_as_at']
 
                 # Update UI from settings
                 self.load_advanced_ui_from_settings()
