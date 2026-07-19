@@ -2970,12 +2970,16 @@ class TriggerSettingsTab(BasicEditor):
             btn.deleteLater()
         self.layer_buttons = []
 
-        # Create layer buttons
+        # Create layer buttons — 1-based labels + layer-name tooltips, matching
+        # the keymap editor (and the rest of the GUI's 1-based layer numbering).
+        from protocol.feature_names import get_feature_name_manager, FEATURE_LAYER
+        mgr = get_feature_name_manager()
         for x in range(self.keyboard.layers):
-            btn = SquareButton(str(x))
+            btn = SquareButton(str(x + 1))
             btn.setFocusPolicy(Qt.NoFocus)
             btn.setRelSize(2.0)  # Increased from 1.667 to 2.0 for bigger buttons
             btn.setCheckable(True)
+            btn.setToolTip(mgr.get_name(FEATURE_LAYER, x))
             btn.clicked.connect(lambda state, idx=x: self.switch_layer(idx))
             self.layout_layers.addWidget(btn)
             self.layer_buttons.append(btn)
@@ -3248,9 +3252,12 @@ class TriggerSettingsTab(BasicEditor):
         if not self.valid():
             return
 
-        # Update layer button highlighting
+        # Update layer button highlighting + keep tooltips in sync with names
+        from protocol.feature_names import get_feature_name_manager, FEATURE_LAYER
+        mgr = get_feature_name_manager()
         for idx, btn in enumerate(self.layer_buttons[:self.keyboard.layers]):
             btn.setChecked(idx == self.current_layer)
+            btn.setToolTip(mgr.get_name(FEATURE_LAYER, idx))
 
         # Update keyboard key displays - always show current layer's per-key values
         # Even when per-layer is disabled, each layer has its own values based on keymap
