@@ -431,6 +431,14 @@ class MainWindow(QMainWindow):
             mgr = get_feature_name_manager()
             mgr.set_keyboard(keyboard_id, self.autorefresh.current_device.keyboard)
 
+            # Load the per-keyboard "configured layer count" (3..max). Keymap /
+            # trigger / the layer keycode dropdowns only show/use this many
+            # layers. Default 3 for a keyboard that hasn't set it yet.
+            _kb = self.autorefresh.current_device.keyboard
+            _max_layers = getattr(_kb, 'layers', 12) or 12
+            _cfg = mgr.get_configured_layers(default=3)
+            _kb.configured_layers = max(3, min(int(_cfg), _max_layers))
+
             # Confirm this is our keyboard via its unique Vial UID (the product
             # string was already matched at enumeration). If it matches, run the
             # startup firmware-version check.

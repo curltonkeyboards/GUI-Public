@@ -3303,6 +3303,20 @@ class MacroTab(QScrollArea):
         self.main_layout.addWidget(group)
         return group
 
+    def _configured_layer_count(self):
+        """Configured layer count for the connected keyboard (default: all layer
+        keycodes, i.e. 12, when no keyboard/count is known)."""
+        kb = self.keyboard
+        if kb is None:
+            return len(self.layer_df)
+        max_layers = getattr(kb, 'layers', len(self.layer_df)) or len(self.layer_df)
+        n = getattr(kb, 'configured_layers', max_layers)
+        try:
+            n = int(n)
+        except (TypeError, ValueError):
+            n = max_layers
+        return max(3, min(n, max_layers, len(self.layer_df)))
+
     def _make_layer_dropdown(self, header, keycodes, keycode_filter):
         dropdown = CenteredComboBox()
         dropdown.setFixedHeight(40)
@@ -3346,16 +3360,19 @@ class MacroTab(QScrollArea):
         self._add_button_section("Macro", macro_kcs, keycode_filter,
                                  extra_keycodes=[all_off_kc] if all_off_kc else None)
 
-        # Layers section (folded in here, directly below Macro; no standalone side tab)
+        # Layers section (folded in here, directly below Macro; no standalone
+        # side tab). Only the configured layers are offered (the lists are index-
+        # ordered 0..N, so a slice to the configured count is exactly layers 0..N-1).
         if self.include_layer:
+            nlayers = self._configured_layer_count()
             layer_group = QGroupBox("Layers")
             layer_row = QHBoxLayout()
             layer_row.addStretch()
-            self.default_layer_dropdown = self._make_layer_dropdown("Default Layer", self.layer_df, keycode_filter)
+            self.default_layer_dropdown = self._make_layer_dropdown("Default Layer", self.layer_df[:nlayers], keycode_filter)
             layer_row.addWidget(self.default_layer_dropdown)
-            self.hold_layer_dropdown = self._make_layer_dropdown("Hold Layer", self.layer_mo, keycode_filter)
+            self.hold_layer_dropdown = self._make_layer_dropdown("Hold Layer", self.layer_mo[:nlayers], keycode_filter)
             layer_row.addWidget(self.hold_layer_dropdown)
-            self.oneshot_layer_dropdown = self._make_layer_dropdown("One Shot Layer", self.layer_osl, keycode_filter)
+            self.oneshot_layer_dropdown = self._make_layer_dropdown("One Shot Layer", self.layer_osl[:nlayers], keycode_filter)
             layer_row.addWidget(self.oneshot_layer_dropdown)
             layer_row.addStretch()
             layer_group.setLayout(layer_row)
