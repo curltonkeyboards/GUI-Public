@@ -40,21 +40,21 @@ from keycodes.keycodes import Keycode
 FACTORY_COUNT = len(CurveEditorWidget.FACTORY_CURVES)
 
 
-# AT/CC Mode presets — a second factory band at curve indices 69-94, added
-# after the 19 factory curves (0-18) and the 50 user slots (19-68). It holds 13
-# articulations in two flavors: the FIRST 13 (idx 69-81) are CC-flavor
+# AT/CC Mode presets — a second factory band after the factory + user bands, added
+# after the factory curves and the 50 user slots. It holds 13
+# articulations in two flavors: the FIRST 13 (idx 73-85) are CC-flavor
 # (aftertouch_cc = "CC Default", gated by "Enable CC Modes"); the NEXT 13
-# (idx 82-94) are the Polyphonic (poly-AT) duplicates (gated by "Enable
+# (idx 86-98) are the Polyphonic (poly-AT) duplicates (gated by "Enable
 # Aftertouch Modes"). An AT/CC index i is CC-flavor iff i < ATCC_START + 13.
-ATCC_START = FACTORY_COUNT + 50          # 69
+ATCC_START = FACTORY_COUNT + 50          # 73
 ATCC_PER_FLAVOR = 13
 ATCC_COUNT = ATCC_PER_FLAVOR * 2         # 26
-ATCC_END = ATCC_START + ATCC_COUNT - 1   # 94
+ATCC_END = ATCC_START + ATCC_COUNT - 1   # 98
 _ATCC_BASE_NAMES = ["Leg Vib Slow", "Leg Vib Fast", "Leg Vib Smooth",
                     "Chord Vib Slow", "Chord Vib Fast", "Chord Vib Smooth",
                     "Fast Swell", "Slow Swell", "Reverse Swell",
                     "Fast Fall", "Slow Fall", "Shimmer Me", "Shimmer Leg"]
-# CC-flavor set first (69-81), then the poly-AT duplicates (82-94). The two
+# CC-flavor set first (73-85), then the poly-AT duplicates (86-98). The two
 # flavors share base names, so suffix them — flat lists (channel-articulation
 # dropdowns, preset-name header) would otherwise show 13 indistinguishable
 # duplicate pairs.
@@ -87,9 +87,9 @@ _ATCC_ART_PARAMS = [
 
 def atcc_zone_settings(curve_index):
     """zone_data dict (update_zone_controls_from_settings format) for an AT/CC
-    preset index 69-94, mirroring the firmware's atcc_mode_zones[] entry.
-    CC-flavor (69-81) presets carry aftertouch_cc 254 ("CC Default" — the
-    global Articulation CC); poly-AT (82-94) carry 255 (real aftertouch)."""
+    preset index 73-98, mirroring the firmware's atcc_mode_zones[] entry.
+    CC-flavor (73-85) presets carry aftertouch_cc 254 ("CC Default" — the
+    global Articulation CC); poly-AT (86-98) carry 255 (real aftertouch)."""
     sub = curve_index - ATCC_START
     (p1, p2, vmin, vmax, slow, fast, at_mode, vib_sens, vib_decay,
      flags, act_pt, trig_min, smooth) = _ATCC_ART_PARAMS[sub % ATCC_PER_FLAVOR]
@@ -482,7 +482,7 @@ class VelocityTab(BasicEditor):
         controls['name_header'] = QHBoxLayout()
         controls['name_header'].setContentsMargins(0, 0, 0, 0)
         controls['name_header'].setSpacing(8)
-        controls['preset_name_label'] = QLabel("Linear")
+        controls['preset_name_label'] = QLabel("Basic")
         controls['preset_name_label'].setStyleSheet("QLabel { font-size: 14px; font-weight: bold; }")
         controls['name_header'].addStretch()
         controls['name_header'].addWidget(controls['preset_name_label'])
@@ -562,7 +562,7 @@ class VelocityTab(BasicEditor):
         press_header.addStretch()
         press_container.addLayout(press_header)
 
-        controls['press_time_range_slider'] = DualRangeSlider(minimum=1, maximum=500)
+        controls['press_time_range_slider'] = DualRangeSlider(minimum=2, maximum=500)
         controls['press_time_range_slider'].setValues(20, 200)  # fast=20ms, slow=200ms
         controls['press_time_range_slider'].setProperty('zone', zone_name)
         press_container.addWidget(controls['press_time_range_slider'])
@@ -1309,7 +1309,7 @@ class VelocityTab(BasicEditor):
         self.preset_list_widget.setMinimumHeight(300)
 
         # Factory presets
-        factory_curves = ["Softest", "Soft", "Linear", "Hard", "Hardest", "Sensitive Soft", "Sensitive", "Sensitive Hard", "Fixed Vol", "Drums Easy", "Drums Soft", "Drums Linear", "Drums Hard", "Drums Sensitive", "Ultra Sensitive", "Fixed Sensitive", "Two Toned", "Reverse", "Random Highlights"]
+        factory_curves = ["Softest", "Soft", "Basic", "Hard", "Hardest", "Soft Legato", "Basic Legato", "Hard Legato", "Sensitive Legato", "Fixed Vol", "Drums Easy", "Drums Soft", "Drums Basic", "Drums Hard", "Sensitive Soft", "Sensitive", "Sensitive Hard", "Drums Sensitive", "Ultra Sensitive", "Fixed Sensitive", "Two Toned", "Reverse", "Random Highlights"]
         for i, name in enumerate(factory_curves):
             item = QListWidgetItem(name)
             item.setData(Qt.UserRole, i)  # Store curve index
@@ -1331,33 +1331,33 @@ class VelocityTab(BasicEditor):
             self.preset_list_widget.addItem(item)
             item.setHidden(True)  # Hidden until we know it's configured
 
-        # AT/CC Mode presets (indices 69-94) — a second factory band gated by
+        # AT/CC Mode presets (indices 73-98) — a second factory band gated by
         # two global enable flags. Default disabled → rows shown greyed/locked.
         # Clicking a locked row shows an "Enable … Modes" placeholder instead
         # of the settings panel (see on_preset_list_clicked).
         self.atcc_at_enabled = False
         self.atcc_cc_enabled = False
-        # atcc_row_items stays ordered by sub-index (0..25 = curve 69..94) across
+        # atcc_row_items stays ordered by sub-index (0..25 = curve 73..98) across
         # BOTH sections so the positional lookups in update_atcc_rows_enabled align.
         self.atcc_row_items = []
-        # --- CC Modes section (curve indices 69-81, ATCC_NAMES[0..12]) ---
+        # --- CC Modes section (curve indices 73-85, ATCC_NAMES[0..12]) ---
         self.atcc_cc_separator = QListWidgetItem("─── CC Articulations ───")
         self.atcc_cc_separator.setData(Qt.UserRole, -4)  # CC separator (non-selectable)
         self.atcc_cc_separator.setFlags(Qt.NoItemFlags)
         self.preset_list_widget.addItem(self.atcc_cc_separator)
         for i in range(ATCC_PER_FLAVOR):
             item = QListWidgetItem(ATCC_NAMES[i])
-            item.setData(Qt.UserRole, ATCC_START + i)  # curve index 69-81
+            item.setData(Qt.UserRole, ATCC_START + i)  # curve index 73-85
             self.preset_list_widget.addItem(item)
             self.atcc_row_items.append(item)
-        # --- AT Modes section (curve indices 82-94, ATCC_NAMES[13..25]) ---
+        # --- AT Modes section (curve indices 86-98, ATCC_NAMES[13..25]) ---
         self.atcc_at_separator = QListWidgetItem("─── AT Articulations ───")
         self.atcc_at_separator.setData(Qt.UserRole, -3)  # AT separator (non-selectable)
         self.atcc_at_separator.setFlags(Qt.NoItemFlags)
         self.preset_list_widget.addItem(self.atcc_at_separator)
         for i in range(ATCC_PER_FLAVOR, ATCC_COUNT):
             item = QListWidgetItem(ATCC_NAMES[i])
-            item.setData(Qt.UserRole, ATCC_START + i)  # curve index 82-94
+            item.setData(Qt.UserRole, ATCC_START + i)  # curve index 86-98
             self.preset_list_widget.addItem(item)
             self.atcc_row_items.append(item)
         self.update_atcc_rows_enabled()
@@ -1492,7 +1492,7 @@ class VelocityTab(BasicEditor):
 
         self.new_preset_btn = QPushButton(tr("VelocityTab", "New"))
         self.new_preset_btn.setMinimumHeight(35)
-        self.new_preset_btn.setToolTip("Create a new user preset with default (Linear) settings")
+        self.new_preset_btn.setToolTip("Create a new user preset with default (Basic) settings")
         self.new_preset_btn.clicked.connect(self.on_new_linear_preset)
         buttons_layout.addWidget(self.new_preset_btn)
 
@@ -2146,9 +2146,9 @@ class VelocityTab(BasicEditor):
         self.user_presets_separator.setHidden(False)
 
     def update_atcc_rows_enabled(self):
-        """Recolor the 26 AT/CC Mode rows (69-94): greyed (locked) unless the
-        governing global enable flag is on. Rows 69-81 (CC flavor) follow
-        atcc_cc_enabled; 82-94 (poly-AT flavor) follow atcc_at_enabled.
+        """Recolor the 26 AT/CC Mode rows (73-98): greyed (locked) unless the
+        governing global enable flag is on. Rows 73-85 (CC flavor) follow
+        atcc_cc_enabled; 86-98 (poly-AT flavor) follow atcc_at_enabled.
         Called on setup and whenever the flags change (see
         load_velocity_curve)."""
         items = getattr(self, 'atcc_row_items', None)
@@ -2228,7 +2228,7 @@ class VelocityTab(BasicEditor):
     def update_velocity_keycode_labels(self, user_curve_names):
         """Update HE_CURVE_USER_* and HE_MACRO_CURVE_* keycode labels with actual user curve names"""
         for i, name in enumerate(user_curve_names):
-            slot_num = i + 1  # 1-10
+            slot_num = i + 1  # 1-50
             display_name = name if name and name.strip() else "User {}".format(slot_num)
 
             # Update HE_CURVE_USER_* keycodes (Playing Style direct selection)
@@ -2237,11 +2237,9 @@ class VelocityTab(BasicEditor):
                 kc.label = display_name
                 kc.tooltip = "Articulation {} ({})".format(display_name, FACTORY_COUNT + i)
 
-            # Update HE_MACRO_CURVE_* keycodes (macro-aware direct selection)
-            kc_macro = Keycode.find("HE_MACRO_CURVE_{}".format(7 + i))
-            if kc_macro:
-                kc_macro.label = "Loop Articulation\n{}".format(display_name)
-                kc_macro.tooltip = "Loop Articulation {} ({})".format(display_name, 7 + i)
+            # NOTE: the HE_MACRO_CURVE_* keycodes (0-16) address FACTORY loop
+            # articulations in the new index space, so user names are no longer
+            # written over them (the old 7+i math dated from the 0-6/7-16 scheme).
 
     def on_preset_context_menu(self, pos):
         """Show context menu for right-clicking user presets"""
@@ -2366,7 +2364,7 @@ class VelocityTab(BasicEditor):
             # Separator (user presets / AT Modes / CC Modes) - do nothing
             return
 
-        # AT/CC Mode presets (69-94). If the governing enable flag is OFF, show
+        # AT/CC Mode presets (73-98). If the governing enable flag is OFF, show
         # an "Enable … Modes" placeholder instead of the settings panel and do
         # NOT apply anything to the keyboard.
         if ATCC_START <= curve_index <= ATCC_END:
@@ -2412,7 +2410,7 @@ class VelocityTab(BasicEditor):
             self.preset_rename_btn.setVisible(False)
             return
         if curve_index < FACTORY_COUNT:
-            factory_names = ["Softest", "Soft", "Linear", "Hard", "Hardest", "Sensitive Soft", "Sensitive", "Sensitive Hard", "Fixed Vol", "Drums Easy", "Drums Soft", "Drums Linear", "Drums Hard", "Drums Sensitive", "Ultra Sensitive", "Fixed Sensitive", "Two Toned", "Reverse", "Random Highlights"]
+            factory_names = ["Softest", "Soft", "Basic", "Hard", "Hardest", "Soft Legato", "Basic Legato", "Hard Legato", "Sensitive Legato", "Fixed Vol", "Drums Easy", "Drums Soft", "Drums Basic", "Drums Hard", "Sensitive Soft", "Sensitive", "Sensitive Hard", "Drums Sensitive", "Ultra Sensitive", "Fixed Sensitive", "Two Toned", "Reverse", "Random Highlights"]
             self.preset_name_label.setText(factory_names[curve_index])
             self.preset_rename_btn.setVisible(False)
         else:
@@ -2469,53 +2467,129 @@ class VelocityTab(BasicEditor):
     FACTORY_PRESET_SETTINGS = {
         0: {  # Softest
             'velocity_min': 1, 'velocity_max': 60,
-            'slow_press_time': 100, 'fast_press_time': 1,
+            'slow_press_time': 80, 'fast_press_time': 3,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 1, 'retrigger_distance': 0,
+            'speed_peak_ratio': 10, 'retrigger_distance': 20,
         },
         1: {  # Soft
-            'velocity_min': 1, 'velocity_max': 90,
-            'slow_press_time': 100, 'fast_press_time': 1,
-            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
-            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
-            'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 1, 'retrigger_distance': 0,
-        },
-        2: {  # Linear
             'velocity_min': 1, 'velocity_max': 127,
-            'slow_press_time': 100, 'fast_press_time': 1,
+            'slow_press_time': 80, 'fast_press_time': 3,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 1, 'retrigger_distance': 0,
+            'speed_peak_ratio': 10, 'retrigger_distance': 20,
+        },
+        2: {  # Basic
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 80, 'fast_press_time': 3,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 20,
+            'speed_peak_ratio': 10, 'retrigger_distance': 20,
         },
         3: {  # Hard
-            'velocity_min': 30, 'velocity_max': 127,
-            'slow_press_time': 100, 'fast_press_time': 1,
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 80, 'fast_press_time': 3,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 1, 'retrigger_distance': 0,
+            'speed_peak_ratio': 10, 'retrigger_distance': 20,
         },
         4: {  # Hardest
             'velocity_min': 60, 'velocity_max': 127,
-            'slow_press_time': 100, 'fast_press_time': 1,
+            'slow_press_time': 80, 'fast_press_time': 3,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 1, 'retrigger_distance': 0,
+            'speed_peak_ratio': 10, 'retrigger_distance': 20,
         },
-        5: {  # Sensitive Soft
+        5: {  # Soft Legato
             'velocity_min': 1, 'velocity_max': 127,
-            'slow_press_time': 67, 'fast_press_time': 1,
+            'slow_press_time': 80, 'fast_press_time': 3,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 20,
+            'speed_peak_ratio': 10, 'retrigger_distance': 0,
+            'legato': True,
+        },
+        6: {  # Basic Legato
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 80, 'fast_press_time': 3,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 20,
+            'speed_peak_ratio': 10, 'retrigger_distance': 0,
+            'legato': True,
+        },
+        7: {  # Hard Legato
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 80, 'fast_press_time': 3,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 20,
+            'speed_peak_ratio': 10, 'retrigger_distance': 0,
+            'legato': True,
+        },
+        8: {  # Sensitive Legato
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 67, 'fast_press_time': 4,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 25,
+            'speed_peak_ratio': 1, 'retrigger_distance': 5,
+            'legato': True,
+        },
+        9: {  # Fixed Vol
+            'velocity_min': 126, 'velocity_max': 127,
+            'slow_press_time': 4, 'fast_press_time': 3,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': True, 'actuation_point': 37,
+            'speed_peak_ratio': 10, 'retrigger_distance': 0,
+        },
+        10: {  # Drums Easy
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 24, 'fast_press_time': 4,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 20,
+            'speed_peak_ratio': 10, 'retrigger_distance': 5,
+        },
+        11: {  # Drums Soft
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 40, 'fast_press_time': 3,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 20,
+            'speed_peak_ratio': 10, 'retrigger_distance': 0,
+        },
+        12: {  # Drums Basic
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 40, 'fast_press_time': 3,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 20,
+            'speed_peak_ratio': 10, 'retrigger_distance': 0,
+        },
+        13: {  # Drums Hard
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 40, 'fast_press_time': 3,
+            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
+            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
+            'actuation_override': False, 'actuation_point': 20,
+            'speed_peak_ratio': 10, 'retrigger_distance': 0,
+        },
+        14: {  # Sensitive Soft
+            'velocity_min': 1, 'velocity_max': 127,
+            'slow_press_time': 67, 'fast_press_time': 3,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 25,
             'speed_peak_ratio': 1, 'retrigger_distance': 5,
         },
-        6: {  # Sensitive
+        15: {  # Sensitive
             'velocity_min': 1, 'velocity_max': 127,
             'slow_press_time': 67, 'fast_press_time': 4,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
@@ -2523,79 +2597,39 @@ class VelocityTab(BasicEditor):
             'actuation_override': False, 'actuation_point': 25,
             'speed_peak_ratio': 1, 'retrigger_distance': 5,
         },
-        7: {  # Sensitive Hard
+        16: {  # Sensitive Hard
             'velocity_min': 30, 'velocity_max': 127,
-            'slow_press_time': 67, 'fast_press_time': 1,
+            'slow_press_time': 67, 'fast_press_time': 3,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 25,
             'speed_peak_ratio': 1, 'retrigger_distance': 5,
         },
-        8: {  # Fixed Vol
-            'velocity_min': 126, 'velocity_max': 127,
-            'slow_press_time': 2, 'fast_press_time': 1,
-            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
-            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
-            'actuation_override': True, 'actuation_point': 37,
-            'speed_peak_ratio': 1, 'retrigger_distance': 0,
-        },
-        9: {  # Drums Easy
+        17: {  # Drums Sensitive
             'velocity_min': 1, 'velocity_max': 127,
-            'slow_press_time': 24, 'fast_press_time': 4,
+            'slow_press_time': 46, 'fast_press_time': 3,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 20,
             'speed_peak_ratio': 1, 'retrigger_distance': 5,
         },
-        10: {  # Drums Soft
-            'velocity_min': 1, 'velocity_max': 127,
-            'slow_press_time': 40, 'fast_press_time': 1,
-            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
-            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
-            'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 1, 'retrigger_distance': 0,
-        },
-        11: {  # Drums Linear
-            'velocity_min': 1, 'velocity_max': 127,
-            'slow_press_time': 40, 'fast_press_time': 1,
-            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
-            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
-            'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 1, 'retrigger_distance': 0,
-        },
-        12: {  # Drums Hard
-            'velocity_min': 1, 'velocity_max': 127,
-            'slow_press_time': 40, 'fast_press_time': 1,
-            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
-            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
-            'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 1, 'retrigger_distance': 0,
-        },
-        13: {  # Drums Sensitive
-            'velocity_min': 1, 'velocity_max': 127,
-            'slow_press_time': 46, 'fast_press_time': 1,
-            'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
-            'vibrato_sensitivity': 50, 'vibrato_decay': 10,
-            'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 1, 'retrigger_distance': 5,
-        },
-        14: {  # Ultra Sensitive
-            'velocity_min': 1, 'velocity_max': 127,
+        18: {  # Ultra Sensitive
+            'velocity_min': 46, 'velocity_max': 127,
             'slow_press_time': 29, 'fast_press_time': 5,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': True, 'actuation_point': 3,
             'speed_peak_ratio': 1, 'retrigger_distance': 5,
         },
-        15: {  # Fixed Sensitive
+        19: {  # Fixed Sensitive
             'velocity_min': 126, 'velocity_max': 127,
-            'slow_press_time': 2, 'fast_press_time': 1,
+            'slow_press_time': 4, 'fast_press_time': 3,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': True, 'actuation_point': 5,
             'speed_peak_ratio': 1, 'retrigger_distance': 5,
         },
-        16: {  # Two Toned
+        20: {  # Two Toned
             'velocity_min': 70, 'velocity_max': 127,
             'slow_press_time': 147, 'fast_press_time': 8,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
@@ -2603,21 +2637,21 @@ class VelocityTab(BasicEditor):
             'actuation_override': False, 'actuation_point': 0,
             'speed_peak_ratio': 1, 'retrigger_distance': 0,
         },
-        17: {  # Reverse
+        21: {  # Reverse
             'velocity_min': 1, 'velocity_max': 127,
-            'slow_press_time': 100, 'fast_press_time': 1,
+            'slow_press_time': 100, 'fast_press_time': 3,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 1, 'retrigger_distance': 0,
+            'speed_peak_ratio': 10, 'retrigger_distance': 0,
         },
-        18: {  # Random Highlights
+        22: {  # Random Highlights
             'velocity_min': 1, 'velocity_max': 127,
-            'slow_press_time': 62, 'fast_press_time': 1,
+            'slow_press_time': 62, 'fast_press_time': 3,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
             'vibrato_sensitivity': 50, 'vibrato_decay': 10,
             'actuation_override': False, 'actuation_point': 20,
-            'speed_peak_ratio': 5, 'retrigger_distance': 5,
+            'speed_peak_ratio': 10, 'retrigger_distance': 5,
         },
     }
 
@@ -3043,9 +3077,11 @@ class VelocityTab(BasicEditor):
         """Build the (label, preset_index) list for the channel dropdowns:
         None + factory + configured user + AT/CC modes."""
         opts = [(tr("VelocityTab", "None"), 255)]
-        factory_curves = ["Softest", "Soft", "Linear", "Hard", "Hardest",
-                          "Sensitive Soft", "Sensitive", "Sensitive Hard", "Fixed Vol",
-                          "Drums Easy", "Drums Soft", "Drums Linear", "Drums Hard",
+        factory_curves = ["Softest", "Soft", "Basic", "Hard", "Hardest",
+                          "Soft Legato", "Basic Legato", "Hard Legato",
+                          "Sensitive Legato", "Fixed Vol", "Drums Easy",
+                          "Drums Soft", "Drums Basic", "Drums Hard",
+                          "Sensitive Soft", "Sensitive", "Sensitive Hard",
                           "Drums Sensitive", "Ultra Sensitive", "Fixed Sensitive",
                           "Two Toned", "Reverse", "Random Highlights"]
         for i, name in enumerate(factory_curves):
@@ -3058,7 +3094,7 @@ class VelocityTab(BasicEditor):
         if user_opts:
             opts.append(("─── User Articulations ───", None))
             opts.extend(user_opts)
-        # AT/CC mode presets (indices 69-94) - always listed (device ignores them
+        # AT/CC mode presets (indices 73-98) - always listed (device ignores them
         # if their global enable is off). Entries with index None are greyed-out
         # section dividers (non-selectable).
         opts.append(("─── CC Articulations ───", None))

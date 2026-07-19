@@ -960,6 +960,44 @@ per-slot settings packet). `apply_settings` fetches it on every config load.
   released legato note keeps ringing until ANOTHER key is pressed; tooltip
   updated.
 
+## Factory articulation revamp (2026-07) — 23 presets, reorder, "Basic", Legatos
+
+Factory band grew 19 → **23** with a REORDER, the rename **Linear → "Basic"**,
+and 4 new legato presets. New order:
+
+```
+0 Softest  1 Soft  2 Basic  3 Hard  4 Hardest
+5 Soft Legato  6 Basic Legato  7 Hard Legato  8 Sensitive Legato
+9 Fixed Vol  10 Drums Easy  11 Drums Soft  12 Drums Basic  13 Drums Hard
+14 Sensitive Soft  15 Sensitive  16 Sensitive Hard  17 Drums Sensitive
+18 Ultra Sensitive  19 Fixed Sensitive  20 Two Toned  21 Reverse  22 Random Highlights
+```
+
+Index bands shift: user **23-72**, AT/CC **73-98**. GUI-side changes (mirrored
+from the firmware tables — keep in lockstep):
+
+- `widgets/curve_editor.py`: 23-entry FACTORY_CURVES + FACTORY_CURVE_POINTS
+  (Soft/Hard now carry Softest's/Hardest's points; Basic identity; new Legato +
+  updated Two Toned / Ultra Sensitive points). `FACTORY_COUNT` derives from the
+  list; `ATCC_START = FACTORY_COUNT + 50`.
+- `editor/velocity_tab.py`: 23-entry name lists + FACTORY_PRESET_SETTINGS
+  (fast min 3; non-Sensitive trigger min 1mm; Softest..Hardest retrigger 2mm +
+  slow 80ms; `legato: True` on 5-8; explicit exports for Two Toned / Ultra
+  Sensitive / Sensitive Legato). Fast-press DualRangeSlider minimum 2. All
+  user-facing "Linear" → "Basic".
+- `editor/matrix_test.py`: zone combos rebuilt (23 factory + user 23+i), ATCC
+  helper offsets 69/82 → 73/86.
+- `editor/keymap_editor.py`: 4 articulation combos rebuilt, `idx = 23 + i`,
+  FACTORY_PRESET_VEL 23 entries.
+- `keycodes/keycodes.py`: KEYCODES_HE_VELOCITY_CURVE reordered/relabeled
+  (name-stable keycodes — the firmware maps names → new indices); new
+  `HE_CURVE_FAC_19-22` = 0xECF4-0xECF7 (the 4 Legatos) in keycodes_v5/v6.
+  KEYCODES_HE_MACRO_CURVE 0-16 are INDEX-stable, relabeled to new-order names.
+- Firmware side (see vial-gui-custom): tables rebuilt, name-stable keycode
+  remap, one-time EEPROM index migration pass 2 (marker 0xCA11 → 0xCA12,
+  user/ATCC indices +4 + factory reorder map), on-device Channel Articulations
+  settings page (enable + 16-channel articulation map).
+
 ## Articulation pre-ship audit round (2026-07, round 3) — GUI side
 
 - **(C1) MIDI-Settings load no longer clobbers the device:** the combos'

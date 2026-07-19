@@ -37,21 +37,25 @@ class CurveEditorWidget(QWidget):
     save_to_user_requested = pyqtSignal(int, str)  # (slot_index, curve_name)
     user_curve_selected = pyqtSignal(int)  # slot_index (0-9) when user curve is selected
 
-    # Factory curve names (indices 0-18)
+    # Factory curve names (indices 0-22)
     FACTORY_CURVES = [
         "Softest",
         "Soft",
-        "Linear",
+        "Basic",
         "Hard",
         "Hardest",
-        "Sensitive Soft",
-        "Sensitive",
-        "Sensitive Hard",
+        "Soft Legato",
+        "Basic Legato",
+        "Hard Legato",
+        "Sensitive Legato",
         "Fixed Vol",
         "Drums Easy",
         "Drums Soft",
-        "Drums Linear",
+        "Drums Basic",
         "Drums Hard",
+        "Sensitive Soft",
+        "Sensitive",
+        "Sensitive Hard",
         "Drums Sensitive",
         "Ultra Sensitive",
         "Fixed Sensitive",
@@ -65,41 +69,49 @@ class CurveEditorWidget(QWidget):
     FACTORY_CURVE_POINTS = [
         # 0 Softest - Very gentle, output much lower than input
         [[0, 0], [85, 28], [170, 85], [255, 255]],
-        # 1 Soft - Gentle curve, gradual response
-        [[0, 0], [85, 42], [170, 128], [255, 255]],
-        # 2 Linear - 1:1 response
+        # 1 Soft - Softest's curve at full 1-127 velocity range
+        [[0, 0], [85, 28], [170, 85], [255, 255]],
+        # 2 Basic - 1:1 response (formerly "Linear")
         [[0, 0], [85, 85], [170, 170], [255, 255]],
-        # 3 Hard - Steeper curve, faster response
-        [[0, 0], [85, 128], [170, 213], [255, 255]],
+        # 3 Hard - Hardest's curve at full 1-127 velocity range
+        [[0, 0], [64, 160], [128, 230], [255, 255]],
         # 4 Hardest - Very steep, aggressive response
         [[0, 0], [64, 160], [128, 230], [255, 255]],
-        # 5 Sensitive Soft
-        [[0, 58], [92, 98], [194, 159], [255, 222]],
-        # 6 Sensitive
+        # 5 Soft Legato - Soft with legato, no retrigger
+        [[0, 0], [85, 28], [170, 85], [255, 255]],
+        # 6 Basic Legato - Basic with legato, no retrigger
+        [[0, 0], [85, 85], [170, 170], [255, 255]],
+        # 7 Hard Legato - Hard with legato, no retrigger
+        [[0, 0], [64, 160], [128, 230], [255, 255]],
+        # 8 Sensitive Legato - Sensitive with legato
         [[0, 81], [95, 125], [170, 170], [255, 255]],
-        # 7 Sensitive Hard
-        [[0, 152], [96, 175], [190, 215], [255, 255]],
-        # 8 Fixed Vol
+        # 9 Fixed Vol
         [[0, 0], [1, 255], [20, 255], [255, 255]],
-        # 9 Drums Easy
+        # 10 Drums Easy
         [[0, 0], [85, 85], [170, 170], [255, 255]],
-        # 10 Drums Soft
+        # 11 Drums Soft
         [[0, 0], [121, 36], [212, 123], [255, 255]],
-        # 11 Drums Linear
+        # 12 Drums Basic (formerly "Drums Linear")
         [[0, 0], [85, 85], [170, 170], [255, 255]],
-        # 12 Drums Hard
+        # 13 Drums Hard
         [[0, 40], [85, 128], [170, 213], [255, 255]],
-        # 13 Drums Sensitive
+        # 14 Sensitive Soft
+        [[0, 58], [92, 98], [194, 159], [255, 222]],
+        # 15 Sensitive
+        [[0, 81], [95, 125], [170, 170], [255, 255]],
+        # 16 Sensitive Hard
+        [[0, 152], [96, 175], [190, 215], [255, 255]],
+        # 17 Drums Sensitive
         [[0, 26], [75, 65], [179, 116], [255, 193]],
-        # 14 Ultra Sensitive
-        [[0, 0], [82, 128], [170, 188], [255, 255]],
-        # 15 Fixed Sensitive
+        # 18 Ultra Sensitive
+        [[0, 68], [82, 128], [170, 188], [255, 255]],
+        # 19 Fixed Sensitive
         [[0, 0], [1, 255], [20, 255], [255, 255]],
-        # 16 Two Toned
-        [[0, 0], [81, 0], [243, 0], [255, 255]],
-        # 17 Reverse
+        # 20 Two Toned
+        [[0, 0], [221, 0], [222, 255], [255, 255]],
+        # 21 Reverse
         [[0, 255], [82, 173], [169, 86], [255, 0]],
-        # 18 Random Highlights
+        # 22 Random Highlights
         [[0, 161], [88, 49], [173, 251], [255, 137]]
     ]
 

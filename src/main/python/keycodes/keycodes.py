@@ -3104,28 +3104,32 @@ for x in range (128):
 
 # Playing Style keycodes - all 29 presets (5 classic + 14 new factory + 10 user)
 KEYCODES_HE_VELOCITY_CURVE = [
-    # Factory presets (0-4) - classic
+    # Factory articulations (new indices 0-22; each keycode keeps selecting
+    # the articulation it is NAMED for — the firmware maps names to indices)
     K("HE_CURVE_SOFTEST", "Softest", "Articulation Softest"),
     K("HE_CURVE_SOFT", "Soft", "Articulation Soft"),
-    K("HE_CURVE_MEDIUM", "Linear", "Articulation Linear"),
+    K("HE_CURVE_MEDIUM", "Basic", "Articulation Basic"),
     K("HE_CURVE_HARD", "Hard", "Articulation Hard"),
     K("HE_CURVE_HARDEST", "Hardest", "Articulation Hardest"),
-    # Factory presets (5-18) - new
-    K("HE_CURVE_AGGRO", "Sensitive Soft", "Articulation Sensitive Soft"),
-    K("HE_CURVE_DIGITAL", "Sensitive", "Articulation Sensitive"),
-    K("HE_CURVE_FAC_7", "Sensitive Hard", "Articulation Sensitive Hard"),
+    K("HE_CURVE_FAC_19", "Soft Legato", "Articulation Soft Legato"),
+    K("HE_CURVE_FAC_20", "Basic Legato", "Articulation Basic Legato"),
+    K("HE_CURVE_FAC_21", "Hard Legato", "Articulation Hard Legato"),
+    K("HE_CURVE_FAC_22", "Sensitive Legato", "Articulation Sensitive Legato"),
     K("HE_CURVE_FAC_8", "Fixed Vol", "Articulation Fixed Vol"),
     K("HE_CURVE_FAC_9", "Drums Easy", "Articulation Drums Easy"),
     K("HE_CURVE_FAC_10", "Drums Soft", "Articulation Drums Soft"),
-    K("HE_CURVE_FAC_11", "Drums Linear", "Articulation Drums Linear"),
+    K("HE_CURVE_FAC_11", "Drums Basic", "Articulation Drums Basic"),
     K("HE_CURVE_FAC_12", "Drums Hard", "Articulation Drums Hard"),
+    K("HE_CURVE_AGGRO", "Sensitive Soft", "Articulation Sensitive Soft"),
+    K("HE_CURVE_DIGITAL", "Sensitive", "Articulation Sensitive"),
+    K("HE_CURVE_FAC_7", "Sensitive Hard", "Articulation Sensitive Hard"),
     K("HE_CURVE_FAC_13", "Drums Sensitive", "Articulation Drums Sensitive"),
     K("HE_CURVE_FAC_14", "Ultra Sensitive", "Articulation Ultra Sensitive"),
     K("HE_CURVE_FAC_15", "Fixed Sensitive", "Articulation Fixed Sensitive"),
     K("HE_CURVE_FAC_16", "Two Toned", "Articulation Two Toned"),
     K("HE_CURVE_FAC_17", "Reverse", "Articulation Reverse"),
     K("HE_CURVE_FAC_18", "Random Highlights", "Articulation Random Highlights"),
-    # User presets (19-68)
+    # User presets (23-72; first 10 have direct-select keycodes)
     K("HE_CURVE_USER_1", "User 1", "Articulation User Preset 1"),
     K("HE_CURVE_USER_2", "User 2", "Articulation User Preset 2"),
     K("HE_CURVE_USER_3", "User 3", "Articulation User Preset 3"),
@@ -3153,21 +3157,21 @@ KEYCODES_HE_MACRO_CURVE = [
     # Direct macro curve selection (0-16)
     K("HE_MACRO_CURVE_0", "Loop Articulation\nSoftest", "Loop Articulation Softest (0)"),
     K("HE_MACRO_CURVE_1", "Loop Articulation\nSoft", "Loop Articulation Soft (1)"),
-    K("HE_MACRO_CURVE_2", "Loop Articulation\nMedium", "Loop Articulation Medium (2)"),
+    K("HE_MACRO_CURVE_2", "Loop Articulation\nBasic", "Loop Articulation Basic (2)"),
     K("HE_MACRO_CURVE_3", "Loop Articulation\nHard", "Loop Articulation Hard (3)"),
     K("HE_MACRO_CURVE_4", "Loop Articulation\nHardest", "Loop Articulation Hardest (4)"),
-    K("HE_MACRO_CURVE_5", "Loop Articulation\nSensitive Soft", "Loop Articulation Sensitive Soft (5)"),
-    K("HE_MACRO_CURVE_6", "Loop Articulation\nSensitive", "Loop Articulation Sensitive (6)"),
-    K("HE_MACRO_CURVE_7", "Loop Articulation\nSensitive Hard", "Loop Articulation Sensitive Hard (7)"),
-    K("HE_MACRO_CURVE_8", "Loop Articulation\nFixed Vol", "Loop Articulation Fixed Vol (8)"),
-    K("HE_MACRO_CURVE_9", "Loop Articulation\nDrums Easy", "Loop Articulation Drums Easy (9)"),
-    K("HE_MACRO_CURVE_10", "Loop Articulation\nDrums Soft", "Loop Articulation Drums Soft (10)"),
-    K("HE_MACRO_CURVE_11", "Loop Articulation\nDrums Linear", "Loop Articulation Drums Linear (11)"),
-    K("HE_MACRO_CURVE_12", "Loop Articulation\nDrums Hard", "Loop Articulation Drums Hard (12)"),
-    K("HE_MACRO_CURVE_13", "Loop Articulation\nDrums Sensitive", "Loop Articulation Drums Sensitive (13)"),
-    K("HE_MACRO_CURVE_14", "Loop Articulation\nUltra Sensitive", "Loop Articulation Ultra Sensitive (14)"),
-    K("HE_MACRO_CURVE_15", "Loop Articulation\nFixed Sensitive", "Loop Articulation Fixed Sensitive (15)"),
-    K("HE_MACRO_CURVE_16", "Loop Articulation\nTwo Toned", "Loop Articulation Two Toned (16)"),
+    K("HE_MACRO_CURVE_5", "Loop Articulation\nSoft Legato", "Loop Articulation Soft Legato (5)"),
+    K("HE_MACRO_CURVE_6", "Loop Articulation\nBasic Legato", "Loop Articulation Basic Legato (6)"),
+    K("HE_MACRO_CURVE_7", "Loop Articulation\nHard Legato", "Loop Articulation Hard Legato (7)"),
+    K("HE_MACRO_CURVE_8", "Loop Articulation\nSensitive Legato", "Loop Articulation Sensitive Legato (8)"),
+    K("HE_MACRO_CURVE_9", "Loop Articulation\nFixed Vol", "Loop Articulation Fixed Vol (9)"),
+    K("HE_MACRO_CURVE_10", "Loop Articulation\nDrums Easy", "Loop Articulation Drums Easy (10)"),
+    K("HE_MACRO_CURVE_11", "Loop Articulation\nDrums Soft", "Loop Articulation Drums Soft (11)"),
+    K("HE_MACRO_CURVE_12", "Loop Articulation\nDrums Basic", "Loop Articulation Drums Basic (12)"),
+    K("HE_MACRO_CURVE_13", "Loop Articulation\nDrums Hard", "Loop Articulation Drums Hard (13)"),
+    K("HE_MACRO_CURVE_14", "Loop Articulation\nSensitive Soft", "Loop Articulation Sensitive Soft (14)"),
+    K("HE_MACRO_CURVE_15", "Loop Articulation\nSensitive", "Loop Articulation Sensitive (15)"),
+    K("HE_MACRO_CURVE_16", "Loop Articulation\nSensitive Hard", "Loop Articulation Sensitive Hard (16)"),
 ]
 
 # HE Velocity Range keycodes (min/max pairs where min ≤ max)
