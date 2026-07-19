@@ -1,5 +1,17 @@
 # Keycode Naming Review — for Head of Marketing
 
+> **REVISION 2 (2026-07-19):** Decisions received and implemented:
+> - Item 1 is named **"Dynamic CC"** — renamed throughout the GUI; it now lives
+>   in the CC Options section (and Search) as a type-a-number chooser like
+>   CC On/Off.
+> - Item 3 (arpeggiator mode keys) is **withdrawn** — arp modes are managed in
+>   the Master Quick Build menu, and the GUI keys were removed.
+> - Item 5 (ear trainer) and the Chord Progressions section are **retired** from
+>   the GUI, along with every non-Master Quick Build button (item 6 withdrawn).
+> - Still open for naming: item 2 (on-device menu keys) and item 4
+>   (Octave Modifier / Clear Hold).
+
+
 **From:** Engineering (GUI/firmware)
 **Date:** 2026-07-18
 **Status:** All keys below are now live in the configurator with *engineering placeholder names*. Every key on the keyboard is now searchable in the Advanced Keys section. **We need final customer-facing names before ship** — the placeholder names appear on key labels, tooltips, and in search, and can be changed freely (only the display text changes; saved user layouts are unaffected).

@@ -14,7 +14,7 @@ from keycodes.keycodes import KEYCODES_BASIC, KEYCODES_ISO, KEYCODES_MACRO, KEYC
     KEYCODES_BACKLIGHT, KEYCODES_MEDIA, KEYCODES_SPECIAL, KEYCODES_SHIFTED, KEYCODES_USER, Keycode, KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_TG, KEYCODES_LAYERS_TT, KEYCODES_LAYERS_OSL, KEYCODES_LAYERS_TO, KEYCODES_LAYERS_LT, KEYCODES_VELOCITY_SHUFFLE, KEYCODES_CC_ENCODERVALUE, KEYCODES_LOOP_BUTTONS, KEYCODES_DRUMLIVE, KEYCODES_GAMING, \
     KEYCODES_DAW, \
     KEYCODES_TAP_DANCE, KEYCODES_MIDI, KEYCODES_MIDI_SPLIT, KEYCODES_MIDI_SPLIT2, KEYCODES_MIDI_CHANNEL_KEYSPLIT, KEYCODES_KEYSPLIT_BUTTONS, KEYCODES_MIDI_CHANNEL_KEYSPLIT2, KEYCODES_BASIC_NUMPAD, KEYCODES_BASIC_NAV, KEYCODES_ISO_KR, BASIC_KEYCODES, \
-    KEYCODES_ARPEGGIATOR, KEYCODES_ARPEGGIATOR_PRESETS, KEYCODES_STEP_SEQUENCER, KEYCODES_STEP_SEQUENCER_PRESETS, KEYCODES_DKS, KEYCODES_TOGGLE, KEYCODES_DELAY_CLEAR, KEYCODES_DELAY, KEYCODES_DELAY_FACTORY, KEYCODES_DELAY_USER, KEYCODES_DELAY_QB, KEYCODES_CHORD_QB, KEYCODES_DYNCHORD_QB, KEYCODES_FADER_QB, KEYCODES_QB_MASTER, KEYCODES_EARTRAINER_QB, \
+    KEYCODES_ARPEGGIATOR, KEYCODES_ARPEGGIATOR_PRESETS, KEYCODES_STEP_SEQUENCER, KEYCODES_STEP_SEQUENCER_PRESETS, KEYCODES_DRUM_SLOTS, KEYCODES_DKS, KEYCODES_TOGGLE, KEYCODES_DELAY_CLEAR, KEYCODES_DELAY, KEYCODES_DELAY_FACTORY, KEYCODES_DELAY_USER, KEYCODES_DELAY_QB, KEYCODES_CHORD_QB, KEYCODES_DYNCHORD_QB, KEYCODES_FADER_QB, KEYCODES_QB_MASTER, KEYCODES_EARTRAINER_QB, \
     KEYCODES_MIDI_CC, KEYCODES_MIDI_BANK, KEYCODES_Program_Change, KEYCODES_CC_STEPSIZE, KEYCODES_MIDI_VELOCITY, KEYCODES_Program_Change_UPDOWN, KEYCODES_MIDI_BANK, KEYCODES_MIDI_BANK_LSB, KEYCODES_MIDI_BANK_MSB, KEYCODES_MIDI_CC_FIXED, KEYCODES_OLED, KEYCODES_EARTRAINER, KEYCODES_SAVE, KEYCODES_CHORDTRAINER, \
     KEYCODES_MIDI_OCTAVE2, KEYCODES_MIDI_OCTAVE3, KEYCODES_MIDI_KEY2, KEYCODES_MIDI_KEY3, KEYCODES_MIDI_VELOCITY2, KEYCODES_MIDI_VELOCITY3, KEYCODES_MIDI_ADVANCED, KEYCODES_MIDI_SMARTCHORDBUTTONS, KEYCODES_VELOCITY_STEPSIZE, KEYCODES_MIDI_CHANNEL_OS, KEYCODES_MIDI_CHANNEL_HOLD, \
     KEYCODES_HE_VELOCITY_CURVE, KEYCODES_HE_VELOCITY_RANGE, \
@@ -767,7 +767,7 @@ from PyQt5.QtCore import pyqtSignal, Qt
 class midiadvancedTab(QScrollArea):
     keycode_changed = pyqtSignal(str)
 
-    def __init__(self, parent, label, inversion_keycodes, smartchord_program_change, smartchord_LSB, smartchord_MSB, smartchord_CC_toggle, CCfixed, CCup, CCdown, velocity_multiplier_options, cc_multiplier_options, channel_options, velocity_options, channel_oneshot, channel_hold, smartchord_octave_1, smartchord_key, ksvelocity2, ksvelocity3, kskey2, kskey3, ksoctave2, ksoctave3, kschannel2, kschannel3, inversion_keycodes2, CCencoder, velocityshuffle, inversion_keycodesspecial, KEYCODES_SETTINGS1, KEYCODES_SETTINGS2, KEYCODES_SETTINGS3, keycodes_midi_inout=None):
+    def __init__(self, parent, label, inversion_keycodes, smartchord_program_change, smartchord_LSB, smartchord_MSB, smartchord_CC_toggle, CCfixed, CCup, CCdown, velocity_multiplier_options, cc_multiplier_options, channel_options, velocity_options, channel_oneshot, channel_hold, smartchord_octave_1, smartchord_key, ksvelocity2, ksvelocity3, kskey2, kskey3, ksoctave2, ksoctave3, kschannel2, kschannel3, inversion_keycodes2, CCencoder, velocityshuffle, inversion_keycodesspecial, KEYCODES_SETTINGS1, KEYCODES_SETTINGS2, KEYCODES_SETTINGS3, keycodes_midi_inout=None, include_sections=None, external_sections=None):
         super().__init__(parent)
         self.label = label
 
@@ -814,8 +814,10 @@ class midiadvancedTab(QScrollArea):
         self.main_layout.setSpacing(0)
         self.main_layout.setContentsMargins(10, 10, 10, 10)
 
-        # Define sections
-        self.sections = [
+        # Define sections (display_name, section_key). include_sections filters
+        # the standard set by display name; external_sections appends fully
+        # self-contained tab widgets as extra side-tab sections.
+        all_sections = [
             ("Channel", "Show\nChannel\nOptions"),
             ("CC Options", "Show\nCC Options"),
             ("Transposition", "Show\nTransposition\nSettings"),
@@ -827,6 +829,14 @@ class midiadvancedTab(QScrollArea):
             ("Presets", "Show\nSetting\nPresets"),
             ("Advanced Keys", "Show\nAdvanced\nKeys")
         ]
+        if include_sections is not None:
+            all_sections = [s for s in all_sections if s[0] in include_sections]
+        self.external_widgets = {}
+        if external_sections:
+            for _ext_name, _ext_widget in external_sections:
+                all_sections.append((_ext_name, _ext_name))
+                self.external_widgets[_ext_name] = _ext_widget
+        self.sections = all_sections
 
         # Create horizontal layout: side tabs on left, content box on right (VIA style)
         main_layout_h = QHBoxLayout()
@@ -878,6 +888,8 @@ class midiadvancedTab(QScrollArea):
 
         side_tabs_layout.addStretch(1)
         main_layout_h.addWidget(side_tabs_container)
+        if len(self.sections) <= 1:
+            side_tabs_container.hide()
 
         # Create content container with border
         self.content_wrapper = QWidget()
@@ -911,14 +923,16 @@ class midiadvancedTab(QScrollArea):
 
         # Create wrapper widgets for each section
         self.section_widgets = {}
-        self.section_layouts = {
-            "Show\nAdvanced MIDI\nOptions": self.advanced_h_layout,
-            "Show\nKeySplit\nOptions": self.keysplit_h_layout,
-        }
+        _wanted_keys = {sk for _, sk in self.sections if sk not in self.external_widgets}
+        self.section_layouts = {}
+        if "Show\nAdvanced MIDI\nOptions" in _wanted_keys:
+            self.section_layouts["Show\nAdvanced MIDI\nOptions"] = self.advanced_h_layout
+        if "Show\nKeySplit\nOptions" in _wanted_keys:
+            self.section_layouts["Show\nKeySplit\nOptions"] = self.keysplit_h_layout
 
         # Create VBoxLayouts for other sections
         for display_name, section_key in self.sections:
-            if section_key not in self.section_layouts:
+            if section_key not in self.section_layouts and section_key not in self.external_widgets:
                 section_layout = QVBoxLayout()
                 section_layout.setSpacing(10)
                 self.section_layouts[section_key] = section_layout
@@ -938,21 +952,33 @@ class midiadvancedTab(QScrollArea):
             self.content_layout.addWidget(wrapper)
             self.section_widgets[section_key] = wrapper
 
+        # External section widgets are full tab objects: hide, add, wire signal
+        for _ext_key, _ext_widget in self.external_widgets.items():
+            _ext_widget.hide()
+            _ext_widget.keycode_changed.connect(self.keycode_changed.emit)
+            self.content_layout.addWidget(_ext_widget)
+            self.section_widgets[_ext_key] = _ext_widget
+
         self.content_layout.addStretch(1)
         main_layout_h.addWidget(self.content_wrapper)
         self.main_layout.addLayout(main_layout_h)
 
-        # Populate all sections
-        self.populate_channel_section()
-        self.populate_cc_velocity_section()
-        self.populate_transposition_section()
-        self.populate_keysplit_section()
-        self.populate_advanced_section()
-        self.populate_velocity_section()
-        self.populate_inout_section()
-        self.populate_expression_wheel_section()
-        self.populate_settings_presets_section()
-        self.populate_advanced_keys_section()
+        # Populate the standard sections that are present
+        _populators = {
+            "Show\nChannel\nOptions": self.populate_channel_section,
+            "Show\nCC Options": self.populate_cc_velocity_section,
+            "Show\nTransposition\nSettings": self.populate_transposition_section,
+            "Show\nKeySplit\nOptions": self.populate_keysplit_section,
+            "Show\nAdvanced MIDI\nOptions": self.populate_advanced_section,
+            "Show\nVelocity\nOptions": self.populate_velocity_section,
+            "Show\nIn/Out\nOptions": self.populate_inout_section,
+            "Show\nTouch Dial\nOptions": self.populate_expression_wheel_section,
+            "Show\nSetting\nPresets": self.populate_settings_presets_section,
+            "Show\nAdvanced\nKeys": self.populate_advanced_keys_section,
+        }
+        for _sk, _populate in _populators.items():
+            if _sk in self.section_layouts:
+                _populate()
 
         self.setWidget(self.scroll_content)
         self.setWidgetResizable(True)
@@ -960,7 +986,8 @@ class midiadvancedTab(QScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
 
         # Show first section by default
-        self.show_section("Show\nChannel\nOptions")
+        if self.sections:
+            self.show_section(self.sections[0][1])
         
     def populate_settings_presets_section(self):
         """Populate the Setting Presets section with three rows of buttons."""
@@ -1025,6 +1052,7 @@ class midiadvancedTab(QScrollArea):
         from keycodes.keycodes import (
             KEYCODES_MIDI_CC, KEYCODES_MIDI_CC_UP, KEYCODES_MIDI_CC_DOWN, KEYCODES_MIDI_CC_FIXED,
             KEYCODES_MOD_PRESS,
+            KEYCODES_QB_MASTER, KEYCODES_DRUM_SLOTS,
             KEYCODES_MIDI_CHANNEL, KEYCODES_MIDI_CHANNEL_OS, KEYCODES_MIDI_CHANNEL_HOLD,
             KEYCODES_MIDI_VELOCITY, KEYCODES_VELOCITY_STEPSIZE, KEYCODES_VELOCITY_SHUFFLE,
             KEYCODES_CC_ENCODERVALUE, KEYCODES_MIDI_KEY, KEYCODES_MIDI_KEY2, KEYCODES_MIDI_KEY3,
@@ -1043,7 +1071,8 @@ class midiadvancedTab(QScrollArea):
             ("CC On/Off", KEYCODES_MIDI_CC, "cc toggle on off", "value_input", "MI_CC_{}_TOG"),
             ("CC Up", KEYCODES_MIDI_CC_UP, "cc up increment", "value_input", "MI_CC_{}_UP"),
             ("CC Down", KEYCODES_MIDI_CC_DOWN, "cc down decrement", "value_input", "MI_CC_{}_DWN"),
-            ("Mod Press", KEYCODES_MOD_PRESS, "mod press cc key depth analog", "value_input", "MI_MOD_PRESS_{}"),
+            ("Dynamic CC", KEYCODES_MOD_PRESS, "dynamic cc mod press key depth analog expression", "value_input", "MI_MOD_PRESS_{}"),
+            ("Quick Build Master", KEYCODES_QB_MASTER, "quick build master qb slot", "value_input", "QB_MASTER_{}"),
             ("CC Value", KEYCODES_MIDI_CC_FIXED, "cc fixed value set", "cc_xy", None),
             ("Touch Dial CC", KEYCODES_CC_ENCODERVALUE, "cc encoder touch dial", "value_input", "MI_CCENCODER_{}"),
             ("Program Change", KEYCODES_Program_Change, "program change", "value_input", "MI_PROG_{}"),
@@ -1070,7 +1099,8 @@ class midiadvancedTab(QScrollArea):
             ("Set Octave (KeySplit)", KEYCODES_MIDI_OCTAVE2, "octave keysplit ks", "dropdown", None),
             ("Set Octave (TripleSplit)", KEYCODES_MIDI_OCTAVE3, "octave triplesplit ts", "dropdown", None),
             ("Arpeggiator Presets", KEYCODES_ARPEGGIATOR_PRESETS, "arpeggiator arp preset", "dropdown", None),
-            ("Sequencer Presets", KEYCODES_STEP_SEQUENCER_PRESETS, "sequencer seq preset", "dropdown", None),
+            ("Sequencer Presets", KEYCODES_STEP_SEQUENCER_PRESETS, "sequencer seq user preset", "dropdown", None),
+            ("Drum Machine Slots", KEYCODES_DRUM_SLOTS, "drum machine slot", "dropdown", None),
             ("Delay Factory Presets", KEYCODES_DELAY_FACTORY, "delay factory preset", "dropdown", None),
             ("Delay User Presets", KEYCODES_DELAY_USER, "delay user preset slot", "dropdown", None),
         ]
@@ -1354,13 +1384,14 @@ class midiadvancedTab(QScrollArea):
                 btn = QPushButton(cat_name)
                 btn.setFixedSize(200, 36)
                 tmpl = val_template
-                def make_handler(t=tmpl):
+                lo, hi = (1, 100) if tmpl == "QB_MASTER_{}" else (0, 127)
+                def make_handler(t=tmpl, lo=lo, hi=hi):
                     def handler(value):
-                        if value and value.isdigit() and 0 <= int(value) <= 127:
-                            self.keycode_changed.emit(t.format(value))
+                        if value and value.isdigit() and lo <= int(value) <= hi:
+                            self.keycode_changed.emit(t.format(int(value)))
                     return handler
-                btn.clicked.connect(lambda _, n=cat_name, h=make_handler(): show_value_dialog(
-                    self, "Set Value for {}".format(n), 0, 127, h))
+                btn.clicked.connect(lambda _, n=cat_name, h=make_handler(), lo=lo, hi=hi: show_value_dialog(
+                    self, "Set Value for {}".format(n), lo, hi, h))
                 wl.addWidget(btn)
                 self.adv_dropdown_flow.addWidget(wrapper)
 
@@ -1546,6 +1577,7 @@ class midiadvancedTab(QScrollArea):
 
         # Add Touch Dial CC and CC Increment buttons/dropdowns
         self.add_value_button("Touch Dial CC", self.CCencoder, row2_layout, 200)
+        self.add_value_button("Dynamic CC", None, row2_layout, 200)
         self.add_header_dropdown("CC Increment", self.cc_multiplier_options, row2_layout, 200)
 
         row2_layout.addStretch(1)  # Right spacer
@@ -1908,6 +1940,7 @@ class midiadvancedTab(QScrollArea):
                     "CC On/Off": f"MI_CC_{value}_TOG",
                     "CC Up": f"MI_CC_{value}_UP",
                     "CC Down": f"MI_CC_{value}_DWN",
+                    "Dynamic CC": f"MI_MOD_PRESS_{value}",
                     "Touch Dial CC": f"MI_CCENCODER_{value}",
                     "Program Change": f"MI_PROG_{value}",
                     "Bank LSB": f"MI_BANK_LSB_{value}",
@@ -2148,6 +2181,10 @@ class midiadvancedTab(QScrollArea):
                     col = 0
                     row += 1
 
+        # Recreate any external section tabs (DAW / DrumLIVE / Arp / Seq / Delay)
+        for _ext_widget in getattr(self, 'external_widgets', {}).values():
+            _ext_widget.recreate_buttons(keycode_filter if keycode_filter is not None else keycode_filter_any)
+
     def relabel_buttons(self):
         # Relabel buttons in the advanced section
         for i in range(self.advanced_grid.count()):
@@ -2160,6 +2197,9 @@ class midiadvancedTab(QScrollArea):
             widget = self.keysplit_grid.itemAt(i).widget()
             if isinstance(widget, SquareButton) and hasattr(widget, 'keycode'):
                 widget.setText(Keycode.label(widget.keycode.qmk_id))
+
+        for _ext_widget in getattr(self, 'external_widgets', {}).values():
+            _ext_widget.relabel_buttons()
 
     def has_buttons(self):
         return True
@@ -2457,121 +2497,6 @@ class DrumLIVETab(QScrollArea):
 
     def relabel_buttons(self):
         pass
-
-
-class EarTrainerTab(QScrollArea):
-    keycode_changed = pyqtSignal(str)
-    def __init__(self, parent, label, eartrainer_keycodes, chordtrainer_keycodes):
-        super().__init__(parent)
-        self.label = label
-        self.eartrainer_keycodes = eartrainer_keycodes
-        self.chordtrainer_keycodes = chordtrainer_keycodes
-        
-        self.scroll_content = QWidget()
-        main_layout = QVBoxLayout(self.scroll_content)
-        main_layout.setSpacing(0)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-
-        # Horizontal layout with trainers side by side, both aligned to top
-        sections_layout = QHBoxLayout()
-        sections_layout.setSpacing(40)  # Horizontal spacing between sections
-        sections_layout.setAlignment(Qt.AlignTop)  # Align to top
-        sections_layout.addStretch(1)
-
-        # Interval Trainer section (left side)
-        intervals_section = QVBoxLayout()
-        intervals_section.setSpacing(5)
-        intervals_section.setAlignment(Qt.AlignTop)  # Align to top
-        interval_label = QLabel("Interval Trainer")
-        interval_label.setStyleSheet("font-size: 11pt; font-weight: 600;")
-        interval_label.setAlignment(Qt.AlignCenter)
-        intervals_section.addWidget(interval_label)
-
-        self.intervals_grid = QGridLayout()
-        self.intervals_grid.setSpacing(10)
-        intervals_section.addLayout(self.intervals_grid)
-
-        sections_layout.addLayout(intervals_section)
-
-        # Chord Trainer section (right side)
-        chords_section = QVBoxLayout()
-        chords_section.setSpacing(5)
-        chords_section.setAlignment(Qt.AlignTop)  # Align to top
-        chord_label = QLabel("Chord Trainer")
-        chord_label.setStyleSheet("font-size: 11pt; font-weight: 600;")
-        chord_label.setAlignment(Qt.AlignCenter)
-        chords_section.addWidget(chord_label)
-
-        self.chords_grid = QGridLayout()
-        self.chords_grid.setSpacing(10)
-        chords_section.addLayout(self.chords_grid)
-
-        sections_layout.addLayout(chords_section)
-        sections_layout.addStretch(1)
-
-        main_layout.addLayout(sections_layout)
-        main_layout.addStretch(1)
-
-        self.setWidget(self.scroll_content)
-        self.setWidgetResizable(True)
-
-        self.recreate_buttons()
-
-    def recreate_buttons(self, keycode_filter=None):
-        # Clear existing layouts
-        while self.intervals_grid.count():
-            item = self.intervals_grid.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-                
-        while self.chords_grid.count():
-            item = self.chords_grid.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        # Create Interval Trainer buttons (4 columns)
-        for i, keycode in enumerate(self.eartrainer_keycodes):
-            if keycode_filter is None or keycode_filter(keycode.qmk_id):
-                row = i // 4
-                col = i % 4
-                btn = QPushButton(Keycode.label(keycode.qmk_id))
-                btn.setFixedSize(80, 50)
-                btn.setStyleSheet("""
-                    background: palette(button);
-                    border: 1px solid palette(mid);
-                    border-radius: 6px;
-                """)
-                btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
-                btn.keycode = keycode
-                self.intervals_grid.addWidget(btn, row, col)
-
-        # Create Chord Trainer buttons (5 columns x 4 rows)
-        for i, keycode in enumerate(self.chordtrainer_keycodes):
-            if keycode_filter is None or keycode_filter(keycode.qmk_id):
-                row = i // 5
-                col = i % 5
-                btn = QPushButton(Keycode.label(keycode.qmk_id))
-                btn.setFixedSize(80, 50)
-                btn.setStyleSheet("""
-                    background: palette(button);
-                    border: 1px solid palette(mid);
-                    border-radius: 6px;
-                """)
-                btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
-                btn.keycode = keycode
-                self.chords_grid.addWidget(btn, row, col)
-
-    def relabel_buttons(self):
-        for grid in [self.intervals_grid, self.chords_grid]:
-            for i in range(grid.count()):
-                widget = grid.itemAt(i).widget()
-                if hasattr(widget, 'keycode'):
-                    widget.setText(Keycode.label(widget.keycode.qmk_id))
-
-    def has_buttons(self):
-        return (self.intervals_grid.count() > 0 or 
-                self.chords_grid.count() > 0)
-
 
 
 class LayerTab(QScrollArea):
@@ -3912,46 +3837,6 @@ class PianoKeyboard(QWidget):
                     if not is_black:
                         white_index += 1
                         
-class ChordProgressionTab(QScrollArea):
-    keycode_changed = pyqtSignal(str)
-
-    def __init__(self, parent, label):
-        super().__init__(parent)
-        self.label = label
-
-    def recreate_buttons(self, keycode_filter=None):
-        from keycodes.keycodes import KEYCODES_CPROG_SLOTS, KEYCODES_CHORD_PROG_CONTROLS
-
-        # Create a simple grid of chord progression slot buttons
-        self.setWidgetResizable(True)
-        inner = QWidget()
-        layout = QVBoxLayout()
-        inner.setLayout(layout)
-
-        label = QLabel("Chord / Bass / Lead Machines (tap=play/stop, hold 2s=OLED config menu)")
-        label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(label)
-
-        grid = FlowLayout()
-        for keycode in KEYCODES_CPROG_SLOTS + KEYCODES_CHORD_PROG_CONTROLS:
-            if keycode_filter is not None and not keycode_filter(keycode.qmk_id):
-                continue
-            btn = SquareButton()
-            btn.setRelSize(KEYCODE_BTN_RATIO)
-            btn.setToolTip(keycode.tooltip)
-            btn.clicked.connect(lambda _, k=keycode: self.keycode_changed.emit(k.qmk_id))
-            btn.setText(keycode.label)
-            grid.addWidget(btn)
-        layout.addLayout(grid)
-        layout.addStretch()
-        self.setWidget(inner)
-
-    def has_buttons(self):
-        return True
-
-    def relabel_buttons(self):
-        pass
-
 class midiTab(QScrollArea):
     keycode_changed = pyqtSignal(str)
 
@@ -4160,13 +4045,28 @@ class midiTab(QScrollArea):
             ("DM_THRULOOP_3", "Thru\n3"), ("DM_THRULOOP_4", "Thru\n4"),
             ("DM_THRULOOP_5", "Thru\n5"), ("DM_THRULOOP_6", "Thru\n6"),
             ("DM_THRULOOP_7", "Thru\n7"), ("DM_THRULOOP_8", "Thru\n8"),
-            # Quick Build
-            ("SEQ_QUICK_BUILD_1", "Seq 1\nQuick\nBuild"), ("ARP_QUICK_BUILD_1", "Arp 1\nQuick\nBuild"),
         ]
         for qmk_id, label in extra_buttons:
             extras_layout.addWidget(self._make_btn(qmk_id, label))
         extras_group.setLayout(extras_layout)
         self.main_layout.addWidget(extras_group, 0, Qt.AlignCenter)
+
+        # --- Quick Build Master chooser (slot 1-100) ---
+        qb_row = QHBoxLayout()
+        qb_row.addStretch(1)
+        qb_btn = QPushButton("Quick Build Master (1-100)")
+        qb_btn.setFixedHeight(40)
+        qb_btn.setFixedWidth(220)
+
+        def _qb_master_handler(value):
+            if value and value.isdigit() and 1 <= int(value) <= 100:
+                self.keycode_changed.emit("QB_MASTER_{}".format(int(value)))
+
+        qb_btn.clicked.connect(lambda: show_value_dialog(
+            self, "Quick Build Master slot (1-100)", 1, 100, _qb_master_handler))
+        qb_row.addWidget(qb_btn)
+        qb_row.addStretch(1)
+        self.main_layout.addLayout(qb_row)
 
         self.main_layout.addStretch(1)
 
@@ -4578,9 +4478,9 @@ class KeyboardTab(QWidget):
 
     keycode_changed = pyqtSignal(str)
 
-    def __init__(self, parent):
+    def __init__(self, parent, include_layer=True):
         super().__init__(parent)
-        self.label = "Keyboard"
+        self.label = "Keyboard & Macro"
         self.parent_widget = parent
         self.current_keycode_filter = keycode_filter_any
 
@@ -4603,19 +4503,36 @@ class KeyboardTab(QWidget):
         self.app_tab = SimpleTab(parent, "App", KEYCODES_MEDIA)
         self.advanced_tab = SimpleTab(parent, "Advanced", KEYCODES_BOOT + KEYCODES_MODIFIERS + KEYCODES_QUANTUM)
 
+        # Feature tabs folded into Keyboard & Macro as side sections
+        self.macro_tab = MacroTab(parent, "Macro", KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE)
+        self.layer_tab = LayerTab(parent, "Layers", KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_OSL) if include_layer else None
+        self.lighting_tab = LightingTab(parent, "Lighting", KEYCODES_BACKLIGHT, KEYCODES_RGBSAVE, KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_COLOR, KEYCODES_RGB_KC_CUSTOM2)
+        self.gaming_tab = GamingTab(parent, "Gaming", KEYCODES_GAMING)
+
         # Connect signals
         self.basic_tab.keycode_changed.connect(self.on_keycode_changed)
         self.iso_tab.keycode_changed.connect(self.on_keycode_changed)
         self.app_tab.keycode_changed.connect(self.on_keycode_changed)
         self.advanced_tab.keycode_changed.connect(self.on_keycode_changed)
+        self.macro_tab.keycode_changed.connect(self.on_keycode_changed)
+        if self.layer_tab is not None:
+            self.layer_tab.keycode_changed.connect(self.on_keycode_changed)
+        self.lighting_tab.keycode_changed.connect(self.on_keycode_changed)
+        self.gaming_tab.keycode_changed.connect(self.on_keycode_changed)
 
         # Define sections (tab_widget, display_name)
         self.sections = [
             (self.basic_tab, "Basic"),
             (self.iso_tab, "ISO/JIS"),
             (self.app_tab, "App"),
-            (self.advanced_tab, "Advanced")
+            (self.advanced_tab, "Advanced"),
+            (self.macro_tab, "Macro"),
+            (self.layer_tab, "Layer"),
+            (self.lighting_tab, "Lighting"),
+            (self.gaming_tab, "Gaming")
         ]
+        if self.layer_tab is None:
+            self.sections = [s for s in self.sections if s[0] is not None]
 
         # Create horizontal layout: side tabs on left, content on right
         main_layout_h = QHBoxLayout()
@@ -4742,6 +4659,15 @@ class KeyboardTab(QWidget):
         for tab_widget, _ in self.sections:
             tab_widget.relabel_buttons()
 
+    def set_keyboard(self, keyboard):
+        self.macro_tab.set_keyboard(keyboard)
+        self.gaming_tab.keyboard = keyboard
+
+    def set_editors(self, macro_recorder=None, tap_dance_editor=None, dks_settings=None, toggle_settings=None, delay_settings=None):
+        self.macro_tab.set_editors(macro_recorder, tap_dance_editor, dks_settings, toggle_settings, delay_settings=delay_settings)
+
+    def refresh_buttons(self):
+        self.macro_tab.refresh_buttons()
 
 
 class ArpeggiatorTab(QScrollArea):
@@ -4753,6 +4679,7 @@ class ArpeggiatorTab(QScrollArea):
         self.label = label
         self.arp_keycodes = arp_keycodes
         self.arp_preset_keycodes = arp_preset_keycodes
+        self.user_count = 0
         self.current_keycode_filter = None
         
         self.scroll_content = QWidget()
@@ -4797,39 +4724,24 @@ class ArpeggiatorTab(QScrollArea):
         control_group.setLayout(control_layout)
         self.main_layout.addWidget(control_group)
 
-        # Quick Build
-        quick_build_group = QGroupBox("Quick Build")
-        quick_build_layout = FlowLayout()
-        for keycode in self.arp_keycodes:
-            if keycode_filter(keycode) and "QUICK" in keycode.qmk_id:
-                quick_build_layout.addWidget(_make_arp_btn(keycode))
-        quick_build_group.setLayout(quick_build_layout)
-        self.main_layout.addWidget(quick_build_group)
-
-        # User Presets (40 user presets: indices 119-158)
-        user_preset_group = QGroupBox("User Presets (40)")
-        user_preset_layout = FlowLayout()
-        for keycode in self.arp_preset_keycodes[119:159]:
-            if keycode_filter(keycode):
-                btn = SquareButton()
-                btn.setRelSize(KEYCODE_BTN_RATIO)
-                btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
-                btn.keycode = keycode
-                custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
-                btn.setText(custom if custom else keycode.label)
-                btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
-                user_preset_layout.addWidget(btn)
-        user_preset_group.setLayout(user_preset_layout)
-        self.main_layout.addWidget(user_preset_group)
-
-        # Factory Patterns (119: Basic/Asc/Desc/Sync/Off/Rock/Funk/Hip/Dance/Chords)
-        factory_preset_group = QGroupBox("Factory Patterns (119)")
-        factory_preset_layout = FlowLayout()
-        for keycode in self.arp_preset_keycodes[:119]:
-            if keycode_filter(keycode):
-                factory_preset_layout.addWidget(_make_arp_btn(keycode))
-        factory_preset_group.setLayout(factory_preset_layout)
-        self.main_layout.addWidget(factory_preset_group)
+        # User Presets - only slots the connected keyboard reports configured.
+        # (Factory rhythm patterns are managed via the Master Quick Build menu.)
+        shown = min(self.user_count, len(self.arp_preset_keycodes))
+        if shown > 0:
+            user_preset_group = QGroupBox("User Presets ({} configured)".format(shown))
+            user_preset_layout = FlowLayout()
+            for keycode in self.arp_preset_keycodes[:shown]:
+                if keycode_filter(keycode):
+                    btn = SquareButton()
+                    btn.setRelSize(KEYCODE_BTN_RATIO)
+                    btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                    btn.keycode = keycode
+                    custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
+                    btn.setText(custom if custom else keycode.label)
+                    btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
+                    user_preset_layout.addWidget(btn)
+            user_preset_group.setLayout(user_preset_layout)
+            self.main_layout.addWidget(user_preset_group)
 
         # Extra Global Controls (Gate Length + Rate Overrides + Playback Modes)
         extra_group = QGroupBox("Extra Global Controls")
@@ -4842,6 +4754,13 @@ class ArpeggiatorTab(QScrollArea):
 
         self.main_layout.addStretch(1)
 
+    def set_user_count(self, count):
+        """Show only the first `count` (configured) user preset slots."""
+        count = max(0, int(count or 0))
+        if count != self.user_count:
+            self.user_count = count
+            self.recreate_buttons(self.current_keycode_filter or keycode_filter_any)
+
     def has_buttons(self):
         return len(self.arp_keycodes) > 0
 
@@ -4853,11 +4772,13 @@ class StepSequencerTab(QScrollArea):
     """Step Sequencer control tab"""
     keycode_changed = pyqtSignal(str)
     
-    def __init__(self, parent, label, seq_keycodes, seq_preset_keycodes):
+    def __init__(self, parent, label, seq_keycodes, seq_preset_keycodes, drum_slot_keycodes=None):
         super().__init__(parent)
         self.label = label
         self.seq_keycodes = seq_keycodes
         self.seq_preset_keycodes = seq_preset_keycodes
+        self.drum_slot_keycodes = drum_slot_keycodes or []
+        self.user_count = 0
         self.current_keycode_filter = None
         
         self.scroll_content = QWidget()
@@ -4902,39 +4823,41 @@ class StepSequencerTab(QScrollArea):
         control_group.setLayout(control_layout)
         self.main_layout.addWidget(control_group)
 
-        # Quick Build
-        quick_build_group = QGroupBox("Quick Build")
-        quick_build_layout = FlowLayout()
-        for keycode in self.seq_keycodes:
-            if keycode_filter(keycode) and "QUICK" in keycode.qmk_id:
-                quick_build_layout.addWidget(_make_seq_btn(keycode))
-        quick_build_group.setLayout(quick_build_layout)
-        self.main_layout.addWidget(quick_build_group)
+        # Drum Machine Slots (20 persistent slots, configured on-device)
+        if self.drum_slot_keycodes:
+            drum_group = QGroupBox("Drum Machine Slots (20)")
+            drum_layout = FlowLayout()
+            for keycode in self.drum_slot_keycodes:
+                if keycode_filter(keycode):
+                    btn = SquareButton()
+                    btn.setRelSize(KEYCODE_BTN_RATIO)
+                    btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                    btn.keycode = keycode
+                    custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
+                    btn.setText(custom if custom else keycode.label)
+                    btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
+                    drum_layout.addWidget(btn)
+            drum_group.setLayout(drum_layout)
+            self.main_layout.addWidget(drum_group)
 
-        # User Presets (40 user presets: indices 48-87)
-        user_preset_group = QGroupBox("User Presets (40)")
-        user_preset_layout = FlowLayout()
-        for keycode in self.seq_preset_keycodes[48:88]:
-            if keycode_filter(keycode):
-                btn = SquareButton()
-                btn.setRelSize(KEYCODE_BTN_RATIO)
-                btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
-                btn.keycode = keycode
-                custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
-                btn.setText(custom if custom else keycode.label)
-                btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
-                user_preset_layout.addWidget(btn)
-        user_preset_group.setLayout(user_preset_layout)
-        self.main_layout.addWidget(user_preset_group)
-
-        # Factory Presets (48)
-        factory_preset_group = QGroupBox("Factory Presets (48)")
-        factory_preset_layout = FlowLayout()
-        for keycode in self.seq_preset_keycodes[:48]:  # Drum Machine presets
-            if keycode_filter(keycode):
-                factory_preset_layout.addWidget(_make_seq_btn(keycode))
-        factory_preset_group.setLayout(factory_preset_layout)
-        self.main_layout.addWidget(factory_preset_group)
+        # User Presets - only slots the connected keyboard reports configured.
+        # (Factory step-seq presets are managed via the Master Quick Build menu.)
+        shown = min(self.user_count, len(self.seq_preset_keycodes))
+        if shown > 0:
+            user_preset_group = QGroupBox("User Presets ({} configured)".format(shown))
+            user_preset_layout = FlowLayout()
+            for keycode in self.seq_preset_keycodes[:shown]:
+                if keycode_filter(keycode):
+                    btn = SquareButton()
+                    btn.setRelSize(KEYCODE_BTN_RATIO)
+                    btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                    btn.keycode = keycode
+                    custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
+                    btn.setText(custom if custom else keycode.label)
+                    btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
+                    user_preset_layout.addWidget(btn)
+            user_preset_group.setLayout(user_preset_layout)
+            self.main_layout.addWidget(user_preset_group)
 
         # Extra Global Controls (Gate Length + Rate Overrides)
         extra_group = QGroupBox("Extra Global Controls")
@@ -4946,6 +4869,13 @@ class StepSequencerTab(QScrollArea):
         self.main_layout.addWidget(extra_group)
 
         self.main_layout.addStretch(1)
+
+    def set_user_count(self, count):
+        """Show only the first `count` (configured) user preset slots."""
+        count = max(0, int(count or 0))
+        if count != self.user_count:
+            self.user_count = count
+            self.recreate_buttons(self.current_keycode_filter or keycode_filter_any)
 
     def has_buttons(self):
         return len(self.seq_keycodes) > 0
@@ -4966,7 +4896,7 @@ class DelayMusicTab(QScrollArea):
         self.user_keycodes = user_keycodes        # 50 user slot keycodes (limited by count)
         self.delay_clear_keycodes = delay_clear_keycodes or []
         self.delay_qb_keycodes = delay_qb_keycodes or []
-        self.user_button_count = len(user_keycodes)  # Show all user slots by default
+        self.user_button_count = 0  # Only configured slots are shown (set_button_count)
         self.current_keycode_filter = None
 
         self.scroll_content = QWidget()
@@ -5019,17 +4949,6 @@ class DelayMusicTab(QScrollArea):
             clear_group.setLayout(clear_layout)
             self.main_layout.addWidget(clear_group)
 
-        # Quick Build Delay slots
-        if self.delay_qb_keycodes:
-            qb_group = QGroupBox("Quick Build Delay")
-            qb_layout = FlowLayout()
-            for keycode in self.delay_qb_keycodes:
-                btn = self._make_btn(keycode, keycode_filter)
-                if btn:
-                    qb_layout.addWidget(btn)
-            qb_group.setLayout(qb_layout)
-            self.main_layout.addWidget(qb_group)
-
         # Factory Presets - ALWAYS fully visible (48 presets in flash)
         if self.factory_keycodes:
             factory_group = QGroupBox("Factory Delay Presets")
@@ -5041,9 +4960,9 @@ class DelayMusicTab(QScrollArea):
             factory_group.setLayout(factory_layout)
             self.main_layout.addWidget(factory_group)
 
-        # User Delay Slots - limited by user_button_count
-        if self.user_keycodes:
-            user_group = QGroupBox("User Delay Presets ({})".format(min(self.user_button_count, len(self.user_keycodes))))
+        # User Delay Slots - only slots the delay editor reports configured
+        if self.user_keycodes and self.user_button_count > 0:
+            user_group = QGroupBox("User Delay Presets ({} configured)".format(min(self.user_button_count, len(self.user_keycodes))))
             user_layout = FlowLayout()
             for i, keycode in enumerate(self.user_keycodes):
                 if i >= self.user_button_count:
@@ -5054,115 +4973,10 @@ class DelayMusicTab(QScrollArea):
             user_group.setLayout(user_layout)
             self.main_layout.addWidget(user_group)
 
-        # Factory Delay Presets
-        if self.factory_keycodes:
-            factory_group = QGroupBox("Factory Delay Presets (48)")
-            factory_layout = FlowLayout()
-            for keycode in self.factory_keycodes:
-                btn = self._make_btn(keycode, keycode_filter)
-                if btn:
-                    factory_layout.addWidget(btn)
-            factory_group.setLayout(factory_layout)
-            self.main_layout.addWidget(factory_group)
-
         self.main_layout.addStretch(1)
 
     def has_buttons(self):
         return len(self.factory_keycodes) > 0 or len(self.user_keycodes) > 0
-
-    def relabel_buttons(self):
-        pass
-
-
-class QuickBuildTab(QScrollArea):
-    """Quick Build tab consolidating all quick build keycodes"""
-    keycode_changed = pyqtSignal(str)
-
-    def __init__(self, parent, label, arp_keycodes, seq_keycodes, chord_qb, dynchord_qb, delay_qb, fader_qb, master_qb=None, ear_trainer_qb=None):
-        super().__init__(parent)
-        self.label = label
-        self.arp_keycodes = arp_keycodes
-        self.seq_keycodes = seq_keycodes
-        self.chord_qb = chord_qb
-        self.dynchord_qb = dynchord_qb
-        self.delay_qb = delay_qb
-        self.fader_qb = fader_qb
-        self.master_qb = master_qb or []
-        self.ear_trainer_qb = ear_trainer_qb or []
-        self.current_keycode_filter = None
-
-        self.scroll_content = QWidget()
-        self.main_layout = QVBoxLayout(self.scroll_content)
-        self.main_layout.setSpacing(20)
-        self.main_layout.setContentsMargins(20, 15, 20, 15)
-        self.main_layout.setAlignment(Qt.AlignTop)
-
-        self.recreate_buttons(keycode_filter_any)
-
-        self.setWidget(self.scroll_content)
-        self.setWidgetResizable(True)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-
-    def recreate_buttons(self, keycode_filter):
-        self.current_keycode_filter = keycode_filter
-
-        while self.main_layout.count():
-            child = self.main_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
-
-        def _make_btn(keycode):
-            btn = SquareButton()
-            btn.setRelSize(KEYCODE_BTN_RATIO)
-            btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
-            btn.keycode = keycode
-            btn.setText(keycode.label)
-            btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
-            return btn
-
-        # Helper to add a group box with keycodes
-        def _add_group(title, keycodes):
-            group = QGroupBox(title)
-            layout = FlowLayout()
-            for kc in keycodes:
-                if keycode_filter(kc):
-                    layout.addWidget(_make_btn(kc))
-            group.setLayout(layout)
-            self.main_layout.addWidget(group)
-
-        # Master Quick Build (single keycode that opens an on-device picker)
-        if self.master_qb:
-            _add_group("Master", self.master_qb)
-
-        # Arp quick builds (filtered from KEYCODES_ARPEGGIATOR)
-        arp_qb = [kc for kc in self.arp_keycodes if "QUICK" in kc.qmk_id]
-        _add_group("Arpeggiator", arp_qb)
-
-        # Seq quick builds (filtered from KEYCODES_STEP_SEQUENCER)
-        seq_qb = [kc for kc in self.seq_keycodes if "QUICK" in kc.qmk_id]
-        _add_group("Step Sequencer", seq_qb)
-
-        # Dynamic Chord
-        _add_group("Dynamic Chord", self.dynchord_qb)
-
-        # Delay
-        _add_group("Delay", self.delay_qb)
-
-        # SmartChord
-        _add_group("SmartChord", self.chord_qb)
-
-        # Fader
-        _add_group("Fader", self.fader_qb)
-
-        # Ear Trainer (per-key, hold to configure)
-        if self.ear_trainer_qb:
-            _add_group("Ear Trainer", self.ear_trainer_qb)
-
-        self.main_layout.addStretch(1)
-
-    def has_buttons(self):
-        return True
 
     def relabel_buttons(self):
         pass
@@ -5179,50 +4993,27 @@ class MusicTab(QWidget):
         self.parent_widget = parent
         self.current_keycode_filter = keycode_filter_any
 
-        # Create the individual tabs
+        # Create the individual tabs. (DrumLIVE, Arpeggiator, Step Sequencer
+        # and Delay moved to the Advanced tab; Quick Build buttons other than
+        # the Master Quick Build chooser are gone; Ear Training and Chord
+        # Progressions are retired.)
         self.midiswitch_tab = midiTab(parent, "MIDIswitch", KEYCODES_MIDI_UPDOWN)
         self.loop_control_tab = LoopTab(parent, "Loop Control", KEYCODES_LOOP_BUTTONS)
-        self.drumlive_tab = DrumLIVETab(parent, "DrumLIVE", KEYCODES_DRUMLIVE)
         self.smartchord_tab = SmartChordTab(parent, "SmartChord", KEYCODES_MIDI_CHORD_0, KEYCODES_MIDI_CHORD_1,
                                            KEYCODES_MIDI_CHORD_2, KEYCODES_MIDI_CHORD_3, KEYCODES_MIDI_CHORD_4,
                                            KEYCODES_MIDI_CHORD_5, KEYCODES_MIDI_SCALES,
-                                           KEYCODES_MIDI_SMARTCHORDBUTTONS+KEYCODES_MIDI_INVERSION,
-                                           KEYCODES_CHORD_QB, KEYCODES_DYNCHORD_QB)
-        self.arpeggiator_tab = ArpeggiatorTab(parent, "Arpeggiator", KEYCODES_ARPEGGIATOR, KEYCODES_ARPEGGIATOR_PRESETS)
-        self.step_sequencer_tab = StepSequencerTab(parent, "Step Sequencer", KEYCODES_STEP_SEQUENCER, KEYCODES_STEP_SEQUENCER_PRESETS)
-        self.delay_tab = DelayMusicTab(parent, "Delay", KEYCODES_DELAY_FACTORY, KEYCODES_DELAY_USER, KEYCODES_DELAY_CLEAR, KEYCODES_DELAY_QB)
-        self.ear_training_tab = EarTrainerTab(parent, "Ear Training", KEYCODES_EARTRAINER, KEYCODES_CHORDTRAINER)
-        self.chord_progressions_tab = ChordProgressionTab(parent, "Chord Progressions")
-        self.quick_build_tab = QuickBuildTab(parent, "Quick Build",
-                                             KEYCODES_ARPEGGIATOR, KEYCODES_STEP_SEQUENCER,
-                                             KEYCODES_CHORD_QB, KEYCODES_DYNCHORD_QB,
-                                             KEYCODES_DELAY_QB, KEYCODES_FADER_QB,
-                                             KEYCODES_QB_MASTER, KEYCODES_EARTRAINER_QB)
+                                           KEYCODES_MIDI_SMARTCHORDBUTTONS+KEYCODES_MIDI_INVERSION)
 
         # Connect signals
         self.midiswitch_tab.keycode_changed.connect(self.on_keycode_changed)
         self.loop_control_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.drumlive_tab.keycode_changed.connect(self.on_keycode_changed)
         self.smartchord_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.ear_training_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.chord_progressions_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.arpeggiator_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.step_sequencer_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.delay_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.quick_build_tab.keycode_changed.connect(self.on_keycode_changed)
 
         # Define sections (tab_widget, display_name)
         self.sections = [
-            (self.quick_build_tab, "Quick Build"),
             (self.midiswitch_tab, "MIDIswitch"),
             (self.loop_control_tab, "Loop Control"),
-            (self.drumlive_tab, "DrumLIVE"),
-            (self.smartchord_tab, "SmartChord"),
-            (self.ear_training_tab, "Ear Training"),
-            (self.chord_progressions_tab, "Chord Progressions"),
-            (self.arpeggiator_tab, "Arpeggiator"),
-            (self.step_sequencer_tab, "Step Sequencer"),
-            (self.delay_tab, "Delay")
+            (self.smartchord_tab, "SmartChord")
         ]
 
         # Create horizontal layout: side tabs on left, content on right
@@ -5302,12 +5093,7 @@ class MusicTab(QWidget):
         self.setLayout(main_layout_h)
 
         # Show first section by default
-        self.show_section("Quick Build")
-
-    def set_editors(self, macro_recorder=None, tap_dance_editor=None, dks_settings=None, toggle_settings=None, delay_settings=None):
-        """Set editor references - used to get delay visible tab count"""
-        if delay_settings is not None and hasattr(delay_settings, '_visible_tab_count'):
-            self.delay_tab.set_button_count(max(1, delay_settings._visible_tab_count))
+        self.show_section("MIDIswitch")
 
     def show_section(self, section_name):
         """Show the specified section and update tab button states"""
@@ -5346,7 +5132,7 @@ class MusicTab(QWidget):
         if current_section and current_section in self.section_widgets:
             self.show_section(current_section)
         else:
-            self.show_section("Quick Build")
+            self.show_section("MIDIswitch")
 
     def has_buttons(self):
         return any(tab.has_buttons() for tab, _ in self.sections)
@@ -5357,11 +5143,30 @@ class MusicTab(QWidget):
 
 
 class MIDITab(midiadvancedTab):
-    """MIDI tab that directly exposes all MIDI advanced sections"""
+    """The "Advanced" tab: all MIDI advanced sections plus the DAW, DrumLIVE,
+    Arpeggiator, Step Sequencer and Delay sections as side tabs."""
 
-    def __init__(self, parent):
-        # Initialize with all the MIDI advanced parameters
-        super().__init__(parent, "MIDI", KEYCODES_MIDI_ADVANCED, KEYCODES_Program_Change,
+    _STD_SECTIONS = ["Channel", "CC Options", "Transposition", "KeySplit",
+                     "Advanced MIDI", "Velocity", "In/Out", "Touch Dial", "Presets"]
+
+    def __init__(self, parent, label="Advanced", include_sections=None, with_external=True):
+        external = []
+        if with_external:
+            self.daw_tab = DAWTab(parent)
+            self.drumlive_tab = DrumLIVETab(parent, "DrumLIVE", KEYCODES_DRUMLIVE)
+            self.arpeggiator_tab = ArpeggiatorTab(parent, "Arpeggiator", KEYCODES_ARPEGGIATOR, KEYCODES_ARPEGGIATOR_PRESETS)
+            self.step_sequencer_tab = StepSequencerTab(parent, "Step Sequencer", KEYCODES_STEP_SEQUENCER, KEYCODES_STEP_SEQUENCER_PRESETS, KEYCODES_DRUM_SLOTS)
+            self.delay_music_tab = DelayMusicTab(parent, "Delay", KEYCODES_DELAY_FACTORY, KEYCODES_DELAY_USER, KEYCODES_DELAY_CLEAR)
+            external = [
+                ("DAW", self.daw_tab),
+                ("DrumLIVE", self.drumlive_tab),
+                ("Arpeggiator", self.arpeggiator_tab),
+                ("Step Sequencer", self.step_sequencer_tab),
+                ("Delay", self.delay_music_tab),
+            ]
+        if include_sections is None:
+            include_sections = list(self._STD_SECTIONS)
+        super().__init__(parent, label, KEYCODES_MIDI_ADVANCED, KEYCODES_Program_Change,
                         KEYCODES_MIDI_BANK_LSB, KEYCODES_MIDI_BANK_MSB, KEYCODES_MIDI_CC,
                         KEYCODES_MIDI_CC_FIXED, KEYCODES_MIDI_CC_UP, KEYCODES_MIDI_CC_DOWN,
                         KEYCODES_VELOCITY_STEPSIZE, KEYCODES_CC_STEPSIZE, KEYCODES_MIDI_CHANNEL,
@@ -5371,10 +5176,39 @@ class MIDITab(midiadvancedTab):
                         KEYCODES_MIDI_OCTAVE2, KEYCODES_MIDI_OCTAVE3, KEYCODES_MIDI_CHANNEL_KEYSPLIT,
                         KEYCODES_MIDI_CHANNEL_KEYSPLIT2, KEYCODES_MIDI_SPLIT_BUTTONS,
                         KEYCODES_CC_ENCODERVALUE, KEYCODES_VELOCITY_SHUFFLE, KEYCODES_EXWHEEL,
-                        KEYCODES_SETTINGS1, KEYCODES_SETTINGS2, KEYCODES_SETTINGS3)
+                        KEYCODES_SETTINGS1, KEYCODES_SETTINGS2, KEYCODES_SETTINGS3,
+                        include_sections=include_sections, external_sections=external)
+        self.label = label
 
-        # Update label to just "MIDI"
-        self.label = "MIDI"
+    def set_keyboard(self, keyboard):
+        """Fetch configured user arp/seq preset counts so those sections show
+        only configured slots. keyboard may be None (no device)."""
+        self.keyboard = keyboard
+        counts = None
+        if keyboard is not None and hasattr(keyboard, 'get_arp_seq_used'):
+            try:
+                counts = keyboard.get_arp_seq_used()
+            except Exception:
+                counts = None
+        arp_used, seq_used = counts if counts else (0, 0)
+        if hasattr(self, 'arpeggiator_tab'):
+            self.arpeggiator_tab.set_user_count(arp_used)
+        if hasattr(self, 'step_sequencer_tab'):
+            self.step_sequencer_tab.set_user_count(seq_used)
+
+    def set_editors(self, macro_recorder=None, tap_dance_editor=None, dks_settings=None, toggle_settings=None, delay_settings=None):
+        """Delay editor reports how many user delay slots are configured."""
+        if (delay_settings is not None and hasattr(delay_settings, '_visible_tab_count')
+                and hasattr(self, 'delay_music_tab')):
+            self.delay_music_tab.set_button_count(max(0, delay_settings._visible_tab_count))
+
+
+class SearchTab(MIDITab):
+    """Top-level Search tab: the searchable browser over every keycode."""
+
+    def __init__(self, parent):
+        super().__init__(parent, label="Search",
+                         include_sections=["Advanced Keys"], with_external=False)
 
 
 # =============================================================================
@@ -5522,12 +5356,8 @@ class FilteredTabbedKeycodes(QTabWidget):
         self.tabs = [
             KeyboardTab(self),
             MusicTab(self),
-            DAWTab(self),
-            GamingTab(self, "Gaming", KEYCODES_GAMING),
-            MacroTab(self, "Macro", KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE),
-            LayerTab(self, "Layers", KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_OSL),
-            LightingTab(self, "Lighting", KEYCODES_BACKLIGHT, KEYCODES_RGBSAVE, KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_COLOR, KEYCODES_RGB_KC_CUSTOM2),
             MIDITab(self),
+            SearchTab(self),
             SimpleTab(self, " ", KEYCODES_CLEAR),
         ]
 

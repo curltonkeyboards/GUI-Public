@@ -1437,6 +1437,21 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         
         return bytes(packet)
 
+    def get_arp_seq_used(self):
+        """Return (arp_used, seq_used): counts of configured user arp/seq
+        presets, from ARP_CMD_GET_INFO (0xC9) params[11]/params[12].
+        Returns None on failure (e.g. non-custom firmware)."""
+        try:
+            packet = self._create_hid_packet(0xC9, 0, None)
+            response = self.usb_send(self.dev, packet, retries=5)
+            if (response and len(response) >= 17 and
+                    response[0] == HID_MANUFACTURER_ID and
+                    response[3] == 0xC9 and response[4] == 0):
+                return response[15], response[16]
+            return None
+        except Exception:
+            return None
+
     def get_lcd_theme(self):
         """Get the keyboard's current global LCD colour theme index.
 
