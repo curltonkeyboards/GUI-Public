@@ -4806,10 +4806,10 @@ class ArpeggiatorTab(QScrollArea):
         quick_build_group.setLayout(quick_build_layout)
         self.main_layout.addWidget(quick_build_group)
 
-        # User Presets (40 user presets: indices 48-87)
+        # User Presets (40 user presets: indices 119-158)
         user_preset_group = QGroupBox("User Presets (40)")
         user_preset_layout = FlowLayout()
-        for keycode in self.arp_preset_keycodes[48:88]:
+        for keycode in self.arp_preset_keycodes[119:159]:
             if keycode_filter(keycode):
                 btn = SquareButton()
                 btn.setRelSize(KEYCODE_BTN_RATIO)
@@ -4822,10 +4822,10 @@ class ArpeggiatorTab(QScrollArea):
         user_preset_group.setLayout(user_preset_layout)
         self.main_layout.addWidget(user_preset_group)
 
-        # Factory Presets (48)
-        factory_preset_group = QGroupBox("Factory Presets (48)")
+        # Factory Patterns (119: Basic/Asc/Desc/Sync/Off/Rock/Funk/Hip/Dance/Chords)
+        factory_preset_group = QGroupBox("Factory Patterns (119)")
         factory_preset_layout = FlowLayout()
-        for keycode in self.arp_preset_keycodes[:48]:
+        for keycode in self.arp_preset_keycodes[:119]:
             if keycode_filter(keycode):
                 factory_preset_layout.addWidget(_make_arp_btn(keycode))
         factory_preset_group.setLayout(factory_preset_layout)

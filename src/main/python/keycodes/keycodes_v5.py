@@ -1733,6 +1733,11 @@ class keycodes_v5:
         "CPROG_SLOT_19": 0xCA22,
         "CPROG_SLOT_20": 0xCA23,
 
+        # On-device settings menus (0xCA24-0xCA26)
+        "MI_SETTINGS_MENU": 0xCA24,  # Open full keyboard-settings OLED menu
+        "MI_LOAD_MENU": 0xCA25,      # Open Load-preset picker (auto-exit on select)
+        "MI_EDIT_STYLES": 0xCA26,    # Open OLED velocity-preset (playing style) editor
+
         # SmartChord Voice Leading override keycodes — cycle Highest rule
         # through None/Desc/Asc/Alt/Tight; cleared when SmartChord menu opens.
         "MI_SC_VL_UP":   0xCA27,
@@ -2043,6 +2048,8 @@ class keycodes_v5:
         "ARP_MODE_SINGLE": 0xEE24,  # Single note mode
         "ARP_MODE_CHORD_BASIC": 0xEE25,  # Chord basic mode
         "ARP_MODE_CHORD_ADVANCED": 0xEE26,  # Chord advanced mode
+        "ARP_MODE_CHORD_UNSYNC": 0xEE27,  # Chord unsynced mode (independent timing per held note)
+        "ARP_MODE_CHORD_ROTATE": 0xEE28,  # Chord rotation mode (rotates held notes at the base rate)
 
         # Mod Press Base (0xF300-0xF37F) - 128 codes, one per MIDI CC (key depth -> CC value)
         "MI_MOD_PRESS_0": 0xF300,  # Base for Mod Press CC keycodes
@@ -2240,6 +2247,7 @@ class keycodes_v5:
         "TGL_00": 0xEF10,  # Base for Toggle slot selection
 
         # MIDI Delay Navigation/Control (0xEF89-0xEF8F)
+        "CLEAR_HOLD": 0xEF88,   # Hold: OLED shows "Press Loop/Seq to Clear", then press to clear
         "DELAY_PREV": 0xEF89,   # Cycle to previous delay slot
         "DELAY_NEXT": 0xEF8A,   # Cycle to next delay slot
         "DELAY_ONOFF": 0xEF8B,  # Toggle selected delay on/off (exclusive)
@@ -2262,9 +2270,25 @@ class keycodes_v5:
         "CHORD_QB_6": 0xEFF9,       # Quick build smart chord slot 6
         "CHORD_QB_7": 0xEFFA,       # Quick build smart chord slot 7
         "CHORD_QB_8": 0xEFFB,       # Quick build smart chord slot 8
+        "CHORD_QB_9": 0xF132,       # Quick build smart chord slot 9 (ext block 0xF132-0xF13D)
+        "CHORD_QB_10": 0xF133,      # Quick build smart chord slot 10
+        "CHORD_QB_11": 0xF134,      # Quick build smart chord slot 11
+        "CHORD_QB_12": 0xF135,      # Quick build smart chord slot 12
+        "CHORD_QB_13": 0xF136,      # Quick build smart chord slot 13
+        "CHORD_QB_14": 0xF137,      # Quick build smart chord slot 14
+        "CHORD_QB_15": 0xF138,      # Quick build smart chord slot 15
+        "CHORD_QB_16": 0xF139,      # Quick build smart chord slot 16
+        "CHORD_QB_17": 0xF13A,      # Quick build smart chord slot 17
+        "CHORD_QB_18": 0xF13B,      # Quick build smart chord slot 18
+        "CHORD_QB_19": 0xF13C,      # Quick build smart chord slot 19
+        "CHORD_QB_20": 0xF13D,      # Quick build smart chord slot 20
         "DYNCHORD_QB_2": 0xEFFC,    # Quick build dynamic chord slot 2
         "DYNCHORD_QB_3": 0xEFFD,    # Quick build dynamic chord slot 3
         "DYNCHORD_QB_4": 0xEFFE,    # Quick build dynamic chord slot 4
+        "DYNCHORD_QB_5": 0xF184,    # Quick build dynamic chord slot 5 (ext block 0xF184-0xF187)
+        "DYNCHORD_QB_6": 0xF185,    # Quick build dynamic chord slot 6
+        "DYNCHORD_QB_7": 0xF186,    # Quick build dynamic chord slot 7
+        "DYNCHORD_QB_8": 0xF187,    # Quick build dynamic chord slot 8
 
         "QK_KB": 0xF500, #custom keycodes safe range - moved from 0xCC57 to avoid Gaming keycode collision
 

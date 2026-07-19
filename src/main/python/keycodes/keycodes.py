@@ -902,6 +902,9 @@ KEYCODES_SETTINGS1 = [
     K("DEFAULT_SETTINGS", "Reset to\nFactory\nSettings", "reset to factory"),    
     K("SAVE_SETTINGS", "Save as\nDefault\nSettings", "save settings"),     
     K("LOAD_SETTINGS", "Load\nDefault\nSettings", "load settings"),
+    K("MI_SETTINGS_MENU", "Settings\nMenu", "Open the on-device settings menu on the keyboard screen"),
+    K("MI_LOAD_MENU", "Load\nPreset\nMenu", "Open the on-device load-preset picker on the keyboard screen"),
+    K("MI_EDIT_STYLES", "Playing\nStyle\nEditor", "Open the on-device velocity-preset (playing style) editor"),
 ]    
 
 KEYCODES_SETTINGS2 = [
@@ -1250,6 +1253,10 @@ KEYCODES_EARTRAINER = [
      K("MI_ET_5", "Octave\nIntervals\nLevel 2", "Interval\nLevel 5"),
      K("MI_ET_8", "Extended\nIntervals\nLevel 2", "Interval\nLevel 8"),
      K("MI_ET_11", "All\nIntervals\nLevel 2", "Interval\nLevel 9"),
+     K("MI_ET_3", "Basic\nIntervals\nUp+Down", "Ear trainer: intervals up to P5, ascending and descending"),
+     K("MI_ET_6", "Octave\nIntervals\nUp+Down", "Ear trainer: intervals up to an octave, ascending and descending"),
+     K("MI_ET_9", "Extended\nIntervals\nUp+Down", "Ear trainer: intervals from an octave to two octaves, ascending and descending"),
+     K("MI_ET_12", "All\nIntervals\nUp+Down", "Ear trainer: all intervals up to two octaves, ascending and descending"),
      K("MI_ET_13", "Basic\nIntervals\nLevel 3", "Interval\nLevel 9"),     
      K("MI_ET_14", "Octave\nIntervals\nLevel 3", "Interval\nLevel 9"),          
      K("MI_ET_15", "Extended\nIntervals\nLevel 3", "Interval\nLevel 9"),            
@@ -2411,7 +2418,9 @@ KEYCODES_LOOP_BUTTONS = [
     K("DM_OCT_6", "Octave\nDouble\nLoop 6", "Octave doubler toggle for loop 6"),
     K("DM_OCT_7", "Octave\nDouble\nLoop 7", "Octave doubler toggle for loop 7"),
     K("DM_OCT_8", "Octave\nDouble\nLoop 8", "Octave doubler toggle for loop 8"),
+    K("DM_OCT_MOD", "Octave\nModifier", "Octave doubler modifier (hold, then press a loop key to toggle that loop's octave doubler)"),
     K("OCT_DBL_TOGGLE", "Oct Dbl\nToggle", "Octave doubler modifier/toggle (hold=modifier, release=cycle Off/+1/+2/-1)"),
+    K("CLEAR_HOLD", "Clear\nHold", "Hold, then press a loop or sequencer key to clear it"),
     
     # Speed controls
     K("DM_SPEED_MOD", "Speed\nModifier", "Speed modifier button (hold + loop)"),
@@ -2625,10 +2634,17 @@ KEYCODES_ARPEGGIATOR = [
     K("ARP_SET_GATE_90", "Gate\n90%", "Set arpeggiator gate to 90%"),
     K("ARP_SET_GATE_100", "Gate\n100%", "Set arpeggiator gate to 100%"),
 
-    # Modes
-    K("ARP_MODE_SINGLE", "Single\nNote", "Arpeggiator mode: single note"),
-    K("ARP_MODE_CHORD_BASIC", "Chord\nBasic", "Arpeggiator mode: chord basic"),
-    K("ARP_MODE_CHORD_ADVANCED", "Chord\nAdvanced", "Arpeggiator mode: chord advanced"),
+    # Modes. Labels follow firmware semantics (matrix of single/chord x
+    # synced/unsynced + rotation); the first three qmk_ids are kept unchanged
+    # for saved-layout compatibility even though two of them no longer match
+    # what the firmware calls the mode:
+    #   ARP_MODE_CHORD_BASIC    = firmware ARP_MODE_SINGLE_UNSYNCED (0xEE25)
+    #   ARP_MODE_CHORD_ADVANCED = firmware ARP_MODE_CHORD_SYNCED    (0xEE26)
+    K("ARP_MODE_SINGLE", "Arp Mode\nSingle\nSynced", "Arpeggiator mode: single note, synced to the beat"),
+    K("ARP_MODE_CHORD_BASIC", "Arp Mode\nSingle\nUnsync", "Arpeggiator mode: single note, unsynced (free-running)"),
+    K("ARP_MODE_CHORD_ADVANCED", "Arp Mode\nChord\nSynced", "Arpeggiator mode: chord synced (all held notes each step)"),
+    K("ARP_MODE_CHORD_UNSYNC", "Arp Mode\nChord\nUnsync", "Arpeggiator mode: chord unsynced (independent timing per held note)"),
+    K("ARP_MODE_CHORD_ROTATE", "Arp Mode\nChord\nRotation", "Arpeggiator mode: chord rotation (rotates held notes at the base rate)"),
 
     # Gate quick controls
     K("ARP_GATE_UP", "Gate\nUp 10%", "Increase arpeggiator gate by 10%"),
@@ -2898,6 +2914,9 @@ KEYCODES_CHORD_QB = [
     K("CHORD_QB_6", "Chord 6\nQuick\nBuild", "Quick build smart chord slot 6"),
     K("CHORD_QB_7", "Chord 7\nQuick\nBuild", "Quick build smart chord slot 7"),
     K("CHORD_QB_8", "Chord 8\nQuick\nBuild", "Quick build smart chord slot 8"),
+] + [
+    K("CHORD_QB_%d" % n, "Chord %d\nQuick\nBuild" % n, "Quick build smart chord slot %d" % n)
+    for n in range(9, 21)
 ]
 
 # SmartChord voice-leading override.  Each press cycles a single-rule
@@ -2913,6 +2932,10 @@ KEYCODES_DYNCHORD_QB = [
     K("DYNCHORD_QB_2", "DynC 2\nQuick\nBuild", "Quick build dynamic chord slot 2"),
     K("DYNCHORD_QB_3", "DynC 3\nQuick\nBuild", "Quick build dynamic chord slot 3"),
     K("DYNCHORD_QB_4", "DynC 4\nQuick\nBuild", "Quick build dynamic chord slot 4"),
+    K("DYNCHORD_QB_5", "DynC 5\nQuick\nBuild", "Quick build dynamic chord slot 5"),
+    K("DYNCHORD_QB_6", "DynC 6\nQuick\nBuild", "Quick build dynamic chord slot 6"),
+    K("DYNCHORD_QB_7", "DynC 7\nQuick\nBuild", "Quick build dynamic chord slot 7"),
+    K("DYNCHORD_QB_8", "DynC 8\nQuick\nBuild", "Quick build dynamic chord slot 8"),
 ]
 
 KEYCODES_FADER_QB = [
