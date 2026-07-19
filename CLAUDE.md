@@ -998,6 +998,20 @@ from the firmware tables — keep in lockstep):
   user/ATCC indices +4 + factory reorder map), on-device Channel Articulations
   settings page (enable + 16-channel articulation map).
 
+## Stuck-note / display pre-ship audit (2026-07, legato + looper round) — firmware only
+
+Firmware-side audit + fix round (see vial-gui-custom CLAUDE.md, same section
+name, for the full list). **No GUI, HID-protocol, or EEPROM-layout changes** —
+nothing to mirror here. Headlines: the MIDI note-off channel is now captured at
+note-on (mid-note channel changes — encoder, Hold/Temp Channel, keysplit
+toggle, CC-master override — used to strand notes; Temporary Channel was
+deterministically broken), the VL release gate evaluates the emitted pitch,
+looper stop paths stop-then-flush (was flush-then-stop, a race that hung a
+just-due note-on), arp/dynchord activation flushes are now recorded into an
+in-progress loop, recorded CC/AT honour the Mute-mode gate, panic covers all
+16 channels, and several held-key/luna display resurrection paths (sustain
+list overflow, arp-mid-pedal desync, panic + pedal) are closed.
+
 ## Articulation pre-ship audit round (2026-07, round 3) — GUI side
 
 - **(C1) MIDI-Settings load no longer clobbers the device:** the combos'
