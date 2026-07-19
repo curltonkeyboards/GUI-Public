@@ -118,39 +118,6 @@ class FeatureNameManager:
         except IOError:
             pass
 
-    def _layers_file_path(self):
-        """Sibling file storing the per-keyboard configured-layer count. Kept
-        separate from the names JSON so sync_all_to_firmware()'s iteration over
-        _names never trips over a non-name value."""
-        if not self._keyboard_id:
-            return None
-        cache_dir = QStandardPaths.writableLocation(QStandardPaths.CacheLocation)
-        names_dir = os.path.join(cache_dir, "feature_names")
-        return os.path.join(names_dir, "{}.layers".format(self._keyboard_id))
-
-    def get_configured_layers(self, default=3):
-        """Number of layers the user has 'configured' (3-12) for this keyboard,
-        or `default` if never set."""
-        p = self._layers_file_path()
-        if p and os.path.isfile(p):
-            try:
-                with open(p, "r") as f:
-                    return int(f.read().strip())
-            except (IOError, ValueError):
-                pass
-        return default
-
-    def set_configured_layers(self, count):
-        """Persist the configured-layer count for this keyboard."""
-        p = self._layers_file_path()
-        if not p:
-            return
-        try:
-            with open(p, "w") as f:
-                f.write(str(int(count)))
-        except IOError:
-            pass
-
     def get_name(self, feature_type, index):
         """Get the name for a feature slot, or the default if not set."""
         names = self._names.get(feature_type, {})

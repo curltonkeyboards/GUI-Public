@@ -2391,24 +2391,6 @@ class KeymapEditor(BasicEditor):
         layout_labels_container = QHBoxLayout()
         layout_labels_container.addWidget(layer_label)
         layout_labels_container.addLayout(self.layout_layers)
-
-        # Add / delete configured layers (min 3, max = keyboard.layers). Only
-        # configured layers are shown here, in Trigger settings, and in the
-        # layer keycode dropdowns.
-        self.btn_add_layer = QPushButton("+")
-        self.btn_add_layer.setToolTip(tr("KeymapEditor", "Add a layer"))
-        self.btn_add_layer.setFixedSize(26, 26)
-        self.btn_add_layer.setFocusPolicy(Qt.NoFocus)
-        self.btn_add_layer.clicked.connect(self.add_configured_layer)
-        layout_labels_container.addWidget(self.btn_add_layer)
-
-        self.btn_del_layer = QPushButton("−")  # minus sign
-        self.btn_del_layer.setToolTip(tr("KeymapEditor", "Delete the last layer (minimum 3)"))
-        self.btn_del_layer.setFixedSize(26, 26)
-        self.btn_del_layer.setFocusPolicy(Qt.NoFocus)
-        self.btn_del_layer.clicked.connect(self.delete_configured_layer)
-        layout_labels_container.addWidget(self.btn_del_layer)
-
         layout_labels_container.addStretch()
 
         # Preset menu button with nested submenus (applies on selection)
@@ -2762,13 +2744,8 @@ class KeymapEditor(BasicEditor):
         from protocol.feature_names import get_feature_name_manager, FEATURE_LAYER
         mgr = get_feature_name_manager()
 
-        n = self.configured_layers()
-        # Clamp the active layer into the configured range
-        if self.current_layer >= n:
-            self.current_layer = n - 1
-
-        # create new layer labels (only the configured layers)
-        for x in range(n):
+        # create new layer labels
+        for x in range(self.keyboard.layers):
             layer_name = mgr.get_name(FEATURE_LAYER, x)
             btn = SquareButton(str(x + 1))
             btn.setFocusPolicy(Qt.NoFocus)
@@ -2785,47 +2762,6 @@ class KeymapEditor(BasicEditor):
             btn.clicked.connect(lambda state, idx=x: self.adjust_size(idx))
             self.layout_size.addWidget(btn)
             self.layer_buttons.append(btn)
-
-        # Enable/disable the add/delete-layer buttons at the bounds
-        if hasattr(self, 'btn_add_layer'):
-            self.btn_add_layer.setEnabled(n < self.keyboard.layers)
-            self.btn_del_layer.setEnabled(n > 3)
-
-    def configured_layers(self):
-        """How many layers are configured (3..keyboard.layers) for this keyboard."""
-        if self.keyboard is None:
-            return 3
-        max_layers = self.keyboard.layers or 3
-        n = getattr(self.keyboard, 'configured_layers', max_layers)
-        return max(3, min(int(n), max_layers))
-
-    def _set_configured_layers(self, n):
-        if self.keyboard is None:
-            return
-        n = max(3, min(int(n), self.keyboard.layers))
-        if n == self.configured_layers():
-            return
-        self.keyboard.configured_layers = n
-        try:
-            from protocol.feature_names import get_feature_name_manager
-            get_feature_name_manager().set_configured_layers(n)
-        except Exception:
-            pass
-        if self.current_layer >= n:
-            self.current_layer = n - 1
-        self.rebuild_layers()
-        self.switch_layer(self.current_layer)
-        # Refresh the keycode palette so the Layer dropdowns match the new count
-        try:
-            self.tabbed_keycodes.recreate_keycode_buttons()
-        except Exception:
-            pass
-
-    def add_configured_layer(self):
-        self._set_configured_layers(self.configured_layers() + 1)
-
-    def delete_configured_layer(self):
-        self._set_configured_layers(self.configured_layers() - 1)
 
     def adjust_size(self, minus):
         if minus:

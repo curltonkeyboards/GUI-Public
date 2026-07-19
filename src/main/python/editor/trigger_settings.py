@@ -2962,14 +2962,6 @@ class TriggerSettingsTab(BasicEditor):
 
         self.refresh_layer_display()
 
-    def configured_layers(self):
-        """How many layers are configured (3..keyboard.layers) for this keyboard."""
-        if self.keyboard is None:
-            return 3
-        max_layers = self.keyboard.layers or 3
-        n = getattr(self.keyboard, 'configured_layers', max_layers)
-        return max(3, min(int(n), max_layers))
-
     def rebuild_layers(self):
         """Create layer selection buttons"""
         # Delete old buttons
@@ -2978,14 +2970,11 @@ class TriggerSettingsTab(BasicEditor):
             btn.deleteLater()
         self.layer_buttons = []
 
-        # Create layer buttons — only the configured layers, 1-based labels +
-        # layer-name tooltips, matching the keymap editor.
+        # Create layer buttons — 1-based labels + layer-name tooltips, matching
+        # the keymap editor (and the rest of the GUI's 1-based layer numbering).
         from protocol.feature_names import get_feature_name_manager, FEATURE_LAYER
         mgr = get_feature_name_manager()
-        n = self.configured_layers()
-        if self.current_layer >= n:
-            self.current_layer = n - 1
-        for x in range(n):
+        for x in range(self.keyboard.layers):
             btn = SquareButton(str(x + 1))
             btn.setFocusPolicy(Qt.NoFocus)
             btn.setRelSize(2.0)  # Increased from 1.667 to 2.0 for bigger buttons
@@ -3016,7 +3005,7 @@ class TriggerSettingsTab(BasicEditor):
     def switch_layer(self, layer):
         """Switch to a different layer"""
         self.current_layer = layer
-        for idx, btn in enumerate(self.layer_buttons[:self.configured_layers()]):
+        for idx, btn in enumerate(self.layer_buttons[:self.keyboard.layers]):
             btn.setChecked(idx == layer)
 
         # Load layer data into controls
@@ -3266,7 +3255,7 @@ class TriggerSettingsTab(BasicEditor):
         # Update layer button highlighting + keep tooltips in sync with names
         from protocol.feature_names import get_feature_name_manager, FEATURE_LAYER
         mgr = get_feature_name_manager()
-        for idx, btn in enumerate(self.layer_buttons[:self.configured_layers()]):
+        for idx, btn in enumerate(self.layer_buttons[:self.keyboard.layers]):
             btn.setChecked(idx == self.current_layer)
             btn.setToolTip(mgr.get_name(FEATURE_LAYER, idx))
 
