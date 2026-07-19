@@ -682,6 +682,20 @@ class DelayTab(BasicEditor):
         self._visible_tab_count = 1
         self._manually_expanded_count = 0
 
+        # Header: Delay Configurator title + description (matches Loop Manager style)
+        title = QLabel("Delay Configurator")
+        title.setStyleSheet("font-size: 14pt; font-weight: bold;")
+        title.setAlignment(Qt.AlignCenter)
+        self.addWidget(title)
+
+        desc_label = QLabel(
+            "Build delay effects for MIDI notes played or passed through the MIDIswitch.\n"
+            "Assign delays to the keymap using the User Delay Buttons, which can be renamed.")
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
+        desc_label.setAlignment(Qt.AlignCenter)
+        self.addWidget(desc_label)
+
         # Tab widget for user delay slots
         self.tabs = QTabWidget()
 

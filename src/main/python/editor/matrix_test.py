@@ -11,9 +11,10 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5 import QtCore
 from PyQt5.QtGui import QPainterPath, QRegion, QPainter, QColor, QBrush, QPen, QFont, QLinearGradient
 
-from widgets.combo_box import ArrowComboBox
+from widgets.combo_box import ArrowComboBox, ArrowSpinBox
 from editor.basic_editor import BasicEditor
 from editor.articulation_options import populate_articulation_combo, apply_articulation_visibility
+from editor import drum_voices
 from themes import Theme
 from protocol.constants import VIAL_PROTOCOL_MATRIX_TESTER
 from tabbed_keycodes import GamepadWidget, DpadButton
@@ -3111,26 +3112,15 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
     # matches the previous default (uncustomized slots follow along); manually-
     # customized slots keep their own bindings. "Reset ALL bindings to default"
     # restores all slots AND the global default to GM factory.
-    DRUM_VOICE_NAMES = ["Kick", "Snare", "Closed HH", "Open HH", "Clap",
-                        "Rimshot", "Cowbell", "Cymbal", "Low Tom", "Mid Tom",
-                        "Hi Tom", "Shaker"]
-    # GM factory defaults (mirror firmware factory_seq_gm_default_notes/velocities)
-    DRUM_GM_DEFAULT_NOTES = [36, 38, 42, 46, 39, 37, 56, 51, 45, 47, 50, 54]
-    DRUM_GM_DEFAULT_VELS = [100] * 12
-    DRUM_GM_DEFAULT_CHANNEL = 9  # 0-indexed (channel 10 = GM drums)
-
-    # Extra DrumLIVE-only voicings (mirror firmware drum_live.c dl_extra_defs).
-    # Notes only (no velocity); each is fixed to a DrumLIVE category. The filter
-    # recognises these notes so the category filters catch them.
-    DRUM_EXTRA_NAMES = ["Crash", "Crash 2", "Splash", "China", "Ride Bell",
-                        "Pedal HH", "Elec Snare", "Hi-Mid Tom", "Floor Tom L",
-                        "Floor Tom H", "Hi Bongo", "Lo Bongo", "Maracas",
-                        "Vibraslap", "Claves", "Triangle"]
-    DRUM_EXTRA_CATS = ["Cymbal", "Cymbal", "Cymbal", "Cymbal", "Cymbal",
-                       "Hats", "Snare", "Toms", "Toms", "Toms",
-                       "Perc", "Perc", "Perc", "Perc", "Perc", "Perc"]
-    DRUM_EXTRA_DEFAULT_NOTES = [49, 57, 55, 52, 53, 44, 40, 48, 41, 43,
-                                60, 61, 70, 58, 75, 81]
+    # Sourced from editor/drum_voices.py (shared with the step sequencer);
+    # keep that module in lockstep with firmware factory_seq / drum_live defs.
+    DRUM_VOICE_NAMES = drum_voices.DRUM_VOICE_NAMES
+    DRUM_GM_DEFAULT_NOTES = drum_voices.DRUM_GM_DEFAULT_NOTES
+    DRUM_GM_DEFAULT_VELS = drum_voices.DRUM_GM_DEFAULT_VELS
+    DRUM_GM_DEFAULT_CHANNEL = drum_voices.DRUM_GM_DEFAULT_CHANNEL
+    DRUM_EXTRA_NAMES = drum_voices.DRUM_EXTRA_NAMES
+    DRUM_EXTRA_CATS = drum_voices.DRUM_EXTRA_CATS
+    DRUM_EXTRA_DEFAULT_NOTES = drum_voices.DRUM_EXTRA_DEFAULT_NOTES
 
     @staticmethod
     def _midi_note_label(note):
@@ -3165,10 +3155,11 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         # Default channel (applies to every drum machine)
         chan_row = QHBoxLayout()
         chan_row.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Default Channel")))
-        self.drum_channel_combo = QComboBox()
+        self.drum_channel_combo = ArrowComboBox()
         for ch in range(16):
             self.drum_channel_combo.addItem("Ch {}".format(ch + 1), ch)
         self.drum_channel_combo.setCurrentIndex(self.DRUM_GM_DEFAULT_CHANNEL)
+        self.drum_channel_combo.setFixedWidth(100)
         self.drum_channel_combo.currentIndexChanged.connect(self.on_drum_channel_changed)
         chan_row.addWidget(self.drum_channel_combo)
         chan_row.addStretch()
@@ -3189,56 +3180,66 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         layout.addWidget(preset_group)
         layout.addSpacing(6)
 
-        # ---- Custom Layout: 12 sequenced voices (Note + Velocity) ----------
+        # ---- Custom Layout: 12 sequenced voices (left: Note + Velocity) and
+        #      the 16 DrumLIVE-only extra voicings (right: Note only) side by
+        #      side. All dropdowns / velocity boxes are 100px and packed tight.
+        W = 100
         custom_group = QGroupBox(tr("MIDIswitchSettingsConfigurator", "Custom Layout"))
         grid = QGridLayout()
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(2)
         custom_group.setLayout(grid)
+
+        # Left panel headers (cols 0-2)
         grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Voice")), 0, 0)
         grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Note")), 0, 1)
         grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Velocity")), 0, 2)
+        # Right panel header (cols 4-5): Extra Voicings
+        extra_hdr = QLabel(tr("MIDIswitchSettingsConfigurator",
+            "Extra Voicings (DrumLIVE filter only — notes, no velocity)"))
+        extra_hdr.setStyleSheet("color: #888; font-style: italic;")
+        grid.addWidget(extra_hdr, 0, 4, 1, 2)
 
         self.drum_note_combos = []
         self.drum_vel_spins = []
         for v in range(12):
             grid.addWidget(QLabel(self.DRUM_VOICE_NAMES[v]), v + 1, 0)
 
-            note_combo = QComboBox()
+            note_combo = ArrowComboBox()
             for n in range(128):
                 note_combo.addItem(self._midi_note_label(n), n)
             note_combo.setCurrentIndex(self.DRUM_GM_DEFAULT_NOTES[v])
+            note_combo.setFixedWidth(W)
             note_combo.currentIndexChanged.connect(self.on_drum_keybinds_changed)
             grid.addWidget(note_combo, v + 1, 1)
             self.drum_note_combos.append(note_combo)
 
-            vel_spin = QSpinBox()
+            vel_spin = ArrowSpinBox()
             vel_spin.setRange(0, 127)
             vel_spin.setValue(self.DRUM_GM_DEFAULT_VELS[v])
+            vel_spin.setFixedWidth(W)
             # editingFinished (not valueChanged) to avoid an EEPROM write per tick
             vel_spin.editingFinished.connect(self.on_drum_keybinds_changed)
             grid.addWidget(vel_spin, v + 1, 2)
             self.drum_vel_spins.append(vel_spin)
 
-        # ---- Extra DrumLIVE-only voicings (notes only) ---------------------
-        extra_hdr = QLabel(tr("MIDIswitchSettingsConfigurator",
-            "Extra voicings (DrumLIVE filter only — notes, no velocity)"))
-        extra_hdr.setStyleSheet("color: #888; font-style: italic;")
-        grid.addWidget(extra_hdr, 13, 0, 1, 3)
-        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Category")), 14, 2)
-
+        # Right panel: extra voicings (Name + Note only — no velocity, no category)
         self.drum_extra_note_combos = []
         for e in range(len(self.DRUM_EXTRA_NAMES)):
-            row = 15 + e
-            grid.addWidget(QLabel(self.DRUM_EXTRA_NAMES[e]), row, 0)
-            note_combo = QComboBox()
+            r = e + 1
+            grid.addWidget(QLabel(self.DRUM_EXTRA_NAMES[e]), r, 4)
+            note_combo = ArrowComboBox()
             for n in range(128):
                 note_combo.addItem(self._midi_note_label(n), n)
             note_combo.setCurrentIndex(self.DRUM_EXTRA_DEFAULT_NOTES[e])
+            note_combo.setFixedWidth(W)
             note_combo.currentIndexChanged.connect(self.on_drum_extra_changed)
-            grid.addWidget(note_combo, row, 1)
+            grid.addWidget(note_combo, r, 5)
             self.drum_extra_note_combos.append(note_combo)
-            cat_lbl = QLabel(self.DRUM_EXTRA_CATS[e])
-            cat_lbl.setStyleSheet("color: #888;")
-            grid.addWidget(cat_lbl, row, 2)
+
+        # gap column between the two panels; keep everything left-packed
+        grid.setColumnMinimumWidth(3, 24)
+        grid.setColumnStretch(6, 1)
 
         layout.addWidget(custom_group)
         layout.addStretch()

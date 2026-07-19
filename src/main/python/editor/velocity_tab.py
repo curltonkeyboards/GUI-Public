@@ -1242,37 +1242,14 @@ class VelocityTab(BasicEditor):
         title_label.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(title_label)
 
-        # Description
-        desc_label = QLabel(tr("VelocityTab",
-            "Monitor real-time MIDI velocity values for keys.\n"
-            "Configure articulation, aftertouch, and press timing."))
-        desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
-        desc_label.setAlignment(QtCore.Qt.AlignCenter)
-        main_layout.addWidget(desc_label)
-
-        # Layer indicator — the velocity tab auto-follows the keyboard's
-        # currently-active layer (polled from the firmware); there is no manual
-        # layer switching here.
-        layer_chooser_layout = QHBoxLayout()
-        layer_chooser_layout.setSpacing(4)
-        layer_chooser_layout.setContentsMargins(0, 0, 0, 0)
-
-        layer_chooser_layout.addStretch()
+        # NOTE: the description, "Active Layer" indicator and "MIDI keys on
+        # layer" count were removed from the Velocity Monitor — it now shows just
+        # the title + virtual keyboard. The labels below are still created (but
+        # NOT added to the layout) because rebuild()/scan_midi_keys() update their
+        # text; keeping them as detached widgets avoids AttributeError there.
         self.layer_status_label = QLabel(tr("VelocityTab", "Active Layer: 1  (auto-follows keyboard)"))
-        self.layer_status_label.setStyleSheet("font-weight: bold; font-size: 10pt;")
-        layer_chooser_layout.addWidget(self.layer_status_label)
-        layer_chooser_layout.addStretch()
-        main_layout.addLayout(layer_chooser_layout)
-
-        # Kept for back-compat with the helper methods (no buttons in auto mode)
         self.layer_buttons = []
-
-        # MIDI keys info label
         self.midi_info_label = QLabel(tr("VelocityTab", "MIDI Keys: 0"))
-        self.midi_info_label.setStyleSheet("color: #888; font-size: 10pt;")
-        self.midi_info_label.setAlignment(QtCore.Qt.AlignCenter)
-        main_layout.addWidget(self.midi_info_label)
 
         # Keyboard widget
         self.keyboard_widget = VelocityKeyboardWidget(self.layout_editor)
