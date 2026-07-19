@@ -1019,3 +1019,63 @@ from the firmware tables — keep in lockstep):
   Channel Articulations HID command was being rejected — root cause of the
   feature not working), on-device AT/CC + Channel Artic enable rows, legato
   AT/CC re-press resume, `atcc_sanitize_zone_curves()`.
+
+## Keycode picker restructure — "Keyboard" tab + Macros window (tabbed_keycodes.py)
+
+- The nested `KeyboardTab` (`KeyboardTab.label`) is renamed **"Keyboard & Macro"
+  → "Keyboard"**. Side-tab order is now **Basic / Macros / Lighting / Gaming /
+  ISO/JIS / App / Advanced** (ISO, App and Advanced moved BELOW Gaming).
+- **`MacroTab` rewritten** from an inner side-tab widget (Macro/Tapdance/DKS/
+  Toggle sub-tabs) into a single `QScrollArea` that stacks **`QGroupBox`
+  sections** in one window (like "Basic Loop Controls" in `LoopTab`): **Macro /
+  Layers / Tapdance / DKS / Toggle**. The side-tab entry is labelled **"Macros"**.
+  The old `MacroSubTab` class is now unused (kept, harmless). Dynamic button
+  counts (`macro_count`/`tapdance_count`/`dks_count`/`toggle_count` from the
+  editors' `_visible_tab_count`) are preserved; external API
+  (`set_keyboard`/`set_editors`/`refresh_buttons`/`recreate_buttons`/
+  `relabel_buttons`) is unchanged.
+- **Layers folded into the Macros window** (directly below the Macro section) —
+  the standalone "Layer" side tab is gone (`KeyboardTab.layer_tab = None`).
+  `MacroTab.__init__` gained `layer_df/layer_mo/layer_osl` + `include_layer`; the
+  three layer dropdowns (Default / Hold / One Shot) are built inline in
+  `recreate_buttons`. `include_layer=False` (used by `toggle_settings.py`'s
+  `FilteredTabbedKeycodesNoLayers`, which supplies layers via `LightingTab2`)
+  simply omits the Layers section.
+
+## Articulation dropdown consistency (`editor/articulation_options.py`, shared)
+
+New shared helper `editor/articulation_options.py` makes every zone / per-key
+Articulation combo behave like the reference **Channel Articulations** tab:
+
+- `populate_articulation_combo(combo, user_names=...)` builds the FULL model once
+  — factory (0-22) + greyed **"User Articulations"** divider + all 50 user slots
+  (23-72) + greyed **"CC Articulations"** divider + CC band (73-85) + greyed
+  **"AT Articulations"** divider + AT band (86-98). Rows are never removed, so any
+  device index round-trips.
+- `apply_articulation_visibility(combo, user_configured, cc_enabled, at_enabled,
+  keep_index)` hides (via `view().setRowHidden`, not removal) **unconfigured user
+  slots** and the **AT/CC bands when their Enable toggle is off**, plus each
+  empty band's divider. The currently selected index (`keep_index`) is always
+  kept visible so a device sitting on a hidden index still displays + saves.
+
+Wired in:
+- **`keymap_editor.py`** — the 4 Articulation combos (`simple_velocity_preset_combo`,
+  `midi_velocity_curve`, `keysplit_velocity_curve`, `triplesplit_velocity_curve`)
+  previously had NO AT/CC entries, no user-slot hiding and no dividers. They now
+  use the shared helper; `load_midi_settings_from_device` →
+  `_refresh_articulation_combos()` fetches user names/configured
+  (`get_all_user_curve_names`) + AT/CC enable flags and applies visibility.
+- **`matrix_test.py`** — the 3 zone combos (`global_velocity_curve`,
+  `velocity_curve2`, `velocity_curve3`) + the per-key/per-layer `he_curve_combo`
+  pickers. `apply_settings` calls `_refresh_zone_articulation_combos()` (rebuild
+  with names + visibility) then `_refresh_zone_articulation_visibility()` after
+  the final selection is set; the **Enable AT/CC Modes** toggles live-update band
+  visibility via `_on_atcc_enable_changed`. Per-key/layer pickers refresh in
+  `LayerActuationConfigurator.rebuild` → `_refresh_articulation_pickers()`. The
+  old `_append_atcc_zone_items` is superseded (kept, unused).
+- **Not changed:** the velocity-tab preset LIST + Channel Articulations combos
+  are the reference (already correct); `curve_editor.py`'s `preset_combo` is
+  hidden in every use (`velocity_tab` sets `preset_selector_widget` invisible);
+  and `KEYCODES_HE_VELOCITY_CURVE` is a static keycode-picker grid (23 factory +
+  10 direct-select user keycodes, no AT/CC) — not a dropdown, so band
+  hiding/dividers don't apply.

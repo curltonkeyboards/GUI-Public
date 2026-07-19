@@ -11,6 +11,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from widgets.combo_box import ArrowComboBox
 from any_keycode_dialog import AnyKeycodeDialog
 from editor.basic_editor import BasicEditor
+from editor.articulation_options import populate_articulation_combo, apply_articulation_visibility
 from widgets.keyboard_widget import KeyboardWidget2, KeyboardWidgetSimple, EncoderWidget, EncoderWidget2
 from keycodes.keycodes import Keycode
 from widgets.square_button import SquareButton
@@ -523,33 +524,7 @@ class QuickActuationWidget(QWidget):
         self.simple_velocity_preset_combo.setEditable(True)
         self.simple_velocity_preset_combo.lineEdit().setReadOnly(True)
         self.simple_velocity_preset_combo.lineEdit().setAlignment(Qt.AlignCenter)
-        # Factory curves (0-22)
-        self.simple_velocity_preset_combo.addItem("Softest", 0)
-        self.simple_velocity_preset_combo.addItem("Soft", 1)
-        self.simple_velocity_preset_combo.addItem("Basic", 2)
-        self.simple_velocity_preset_combo.addItem("Hard", 3)
-        self.simple_velocity_preset_combo.addItem("Hardest", 4)
-        self.simple_velocity_preset_combo.addItem("Soft Legato", 5)
-        self.simple_velocity_preset_combo.addItem("Basic Legato", 6)
-        self.simple_velocity_preset_combo.addItem("Hard Legato", 7)
-        self.simple_velocity_preset_combo.addItem("Sensitive Legato", 8)
-        self.simple_velocity_preset_combo.addItem("Fixed Vol", 9)
-        self.simple_velocity_preset_combo.addItem("Drums Easy", 10)
-        self.simple_velocity_preset_combo.addItem("Drums Soft", 11)
-        self.simple_velocity_preset_combo.addItem("Drums Basic", 12)
-        self.simple_velocity_preset_combo.addItem("Drums Hard", 13)
-        self.simple_velocity_preset_combo.addItem("Sensitive Soft", 14)
-        self.simple_velocity_preset_combo.addItem("Sensitive", 15)
-        self.simple_velocity_preset_combo.addItem("Sensitive Hard", 16)
-        self.simple_velocity_preset_combo.addItem("Drums Sensitive", 17)
-        self.simple_velocity_preset_combo.addItem("Ultra Sensitive", 18)
-        self.simple_velocity_preset_combo.addItem("Fixed Sensitive", 19)
-        self.simple_velocity_preset_combo.addItem("Two Toned", 20)
-        self.simple_velocity_preset_combo.addItem("Reverse", 21)
-        self.simple_velocity_preset_combo.addItem("Random Highlights", 22)
-        # User curves (23-72) - will be populated when keyboard connects
-        for i in range(50):
-            self.simple_velocity_preset_combo.addItem("User {}".format(i + 1), 23 + i)
+        populate_articulation_combo(self.simple_velocity_preset_combo)
         self.simple_velocity_preset_combo.setCurrentIndex(0)
         self.simple_velocity_preset_combo.currentIndexChanged.connect(self.on_velocity_preset_changed)
         preset_row.addWidget(self.simple_velocity_preset_combo)
@@ -648,33 +623,7 @@ class QuickActuationWidget(QWidget):
         self.midi_velocity_curve.setEditable(True)
         self.midi_velocity_curve.lineEdit().setReadOnly(True)
         self.midi_velocity_curve.lineEdit().setAlignment(Qt.AlignCenter)
-        # Factory curves (0-22)
-        self.midi_velocity_curve.addItem("Softest", 0)
-        self.midi_velocity_curve.addItem("Soft", 1)
-        self.midi_velocity_curve.addItem("Basic", 2)
-        self.midi_velocity_curve.addItem("Hard", 3)
-        self.midi_velocity_curve.addItem("Hardest", 4)
-        self.midi_velocity_curve.addItem("Soft Legato", 5)
-        self.midi_velocity_curve.addItem("Basic Legato", 6)
-        self.midi_velocity_curve.addItem("Hard Legato", 7)
-        self.midi_velocity_curve.addItem("Sensitive Legato", 8)
-        self.midi_velocity_curve.addItem("Fixed Vol", 9)
-        self.midi_velocity_curve.addItem("Drums Easy", 10)
-        self.midi_velocity_curve.addItem("Drums Soft", 11)
-        self.midi_velocity_curve.addItem("Drums Basic", 12)
-        self.midi_velocity_curve.addItem("Drums Hard", 13)
-        self.midi_velocity_curve.addItem("Sensitive Soft", 14)
-        self.midi_velocity_curve.addItem("Sensitive", 15)
-        self.midi_velocity_curve.addItem("Sensitive Hard", 16)
-        self.midi_velocity_curve.addItem("Drums Sensitive", 17)
-        self.midi_velocity_curve.addItem("Ultra Sensitive", 18)
-        self.midi_velocity_curve.addItem("Fixed Sensitive", 19)
-        self.midi_velocity_curve.addItem("Two Toned", 20)
-        self.midi_velocity_curve.addItem("Reverse", 21)
-        self.midi_velocity_curve.addItem("Random Highlights", 22)
-        # User curves (23-72)
-        for i in range(50):
-            self.midi_velocity_curve.addItem("User {}".format(i + 1), 23 + i)
+        populate_articulation_combo(self.midi_velocity_curve)
         self.midi_velocity_curve.setCurrentIndex(0)
         self.midi_velocity_curve.currentIndexChanged.connect(self.on_base_velocity_curve_changed)
         curve_row.addWidget(self.midi_velocity_curve)
@@ -804,33 +753,7 @@ class QuickActuationWidget(QWidget):
         self.keysplit_velocity_curve.setEditable(True)
         self.keysplit_velocity_curve.lineEdit().setReadOnly(True)
         self.keysplit_velocity_curve.lineEdit().setAlignment(Qt.AlignCenter)
-        # Factory curves (0-22)
-        self.keysplit_velocity_curve.addItem("Softest", 0)
-        self.keysplit_velocity_curve.addItem("Soft", 1)
-        self.keysplit_velocity_curve.addItem("Basic", 2)
-        self.keysplit_velocity_curve.addItem("Hard", 3)
-        self.keysplit_velocity_curve.addItem("Hardest", 4)
-        self.keysplit_velocity_curve.addItem("Soft Legato", 5)
-        self.keysplit_velocity_curve.addItem("Basic Legato", 6)
-        self.keysplit_velocity_curve.addItem("Hard Legato", 7)
-        self.keysplit_velocity_curve.addItem("Sensitive Legato", 8)
-        self.keysplit_velocity_curve.addItem("Fixed Vol", 9)
-        self.keysplit_velocity_curve.addItem("Drums Easy", 10)
-        self.keysplit_velocity_curve.addItem("Drums Soft", 11)
-        self.keysplit_velocity_curve.addItem("Drums Basic", 12)
-        self.keysplit_velocity_curve.addItem("Drums Hard", 13)
-        self.keysplit_velocity_curve.addItem("Sensitive Soft", 14)
-        self.keysplit_velocity_curve.addItem("Sensitive", 15)
-        self.keysplit_velocity_curve.addItem("Sensitive Hard", 16)
-        self.keysplit_velocity_curve.addItem("Drums Sensitive", 17)
-        self.keysplit_velocity_curve.addItem("Ultra Sensitive", 18)
-        self.keysplit_velocity_curve.addItem("Fixed Sensitive", 19)
-        self.keysplit_velocity_curve.addItem("Two Toned", 20)
-        self.keysplit_velocity_curve.addItem("Reverse", 21)
-        self.keysplit_velocity_curve.addItem("Random Highlights", 22)
-        # User curves (23-72)
-        for i in range(50):
-            self.keysplit_velocity_curve.addItem("User {}".format(i + 1), 23 + i)
+        populate_articulation_combo(self.keysplit_velocity_curve)
         self.keysplit_velocity_curve.setCurrentIndex(2)  # Default: Linear
         self.keysplit_velocity_curve.currentIndexChanged.connect(self.on_keysplit_velocity_curve_changed)
         ks_curve_row.addWidget(self.keysplit_velocity_curve)
@@ -953,33 +876,7 @@ class QuickActuationWidget(QWidget):
         self.triplesplit_velocity_curve.setEditable(True)
         self.triplesplit_velocity_curve.lineEdit().setReadOnly(True)
         self.triplesplit_velocity_curve.lineEdit().setAlignment(Qt.AlignCenter)
-        # Factory curves (0-22)
-        self.triplesplit_velocity_curve.addItem("Softest", 0)
-        self.triplesplit_velocity_curve.addItem("Soft", 1)
-        self.triplesplit_velocity_curve.addItem("Basic", 2)
-        self.triplesplit_velocity_curve.addItem("Hard", 3)
-        self.triplesplit_velocity_curve.addItem("Hardest", 4)
-        self.triplesplit_velocity_curve.addItem("Soft Legato", 5)
-        self.triplesplit_velocity_curve.addItem("Basic Legato", 6)
-        self.triplesplit_velocity_curve.addItem("Hard Legato", 7)
-        self.triplesplit_velocity_curve.addItem("Sensitive Legato", 8)
-        self.triplesplit_velocity_curve.addItem("Fixed Vol", 9)
-        self.triplesplit_velocity_curve.addItem("Drums Easy", 10)
-        self.triplesplit_velocity_curve.addItem("Drums Soft", 11)
-        self.triplesplit_velocity_curve.addItem("Drums Basic", 12)
-        self.triplesplit_velocity_curve.addItem("Drums Hard", 13)
-        self.triplesplit_velocity_curve.addItem("Sensitive Soft", 14)
-        self.triplesplit_velocity_curve.addItem("Sensitive", 15)
-        self.triplesplit_velocity_curve.addItem("Sensitive Hard", 16)
-        self.triplesplit_velocity_curve.addItem("Drums Sensitive", 17)
-        self.triplesplit_velocity_curve.addItem("Ultra Sensitive", 18)
-        self.triplesplit_velocity_curve.addItem("Fixed Sensitive", 19)
-        self.triplesplit_velocity_curve.addItem("Two Toned", 20)
-        self.triplesplit_velocity_curve.addItem("Reverse", 21)
-        self.triplesplit_velocity_curve.addItem("Random Highlights", 22)
-        # User curves (23-72)
-        for i in range(50):
-            self.triplesplit_velocity_curve.addItem("User {}".format(i + 1), 23 + i)
+        populate_articulation_combo(self.triplesplit_velocity_curve)
         self.triplesplit_velocity_curve.setCurrentIndex(2)  # Default: Linear
         self.triplesplit_velocity_curve.currentIndexChanged.connect(self.on_triplesplit_velocity_curve_changed)
         ts_curve_row.addWidget(self.triplesplit_velocity_curve)
@@ -1869,6 +1766,20 @@ class QuickActuationWidget(QWidget):
 
             # Velocity curves
             base_curve = config.get('he_velocity_curve', 2)
+            ks_curve = config.get('keysplit_he_velocity_curve', 2)
+            ts_curve = config.get('triplesplit_he_velocity_curve', 2)
+
+            # Rebuild the Articulation combos with the device's user-slot names,
+            # hiding unconfigured user slots and showing the AT/CC bands only
+            # when enabled (each combo keeps its own current index visible so a
+            # device sitting on a hidden index still round-trips).
+            self._refresh_articulation_combos(config, {
+                'simple_velocity_preset_combo': base_curve,
+                'midi_velocity_curve': base_curve,
+                'keysplit_velocity_curve': ks_curve,
+                'triplesplit_velocity_curve': ts_curve,
+            })
+
             for i in range(self.simple_velocity_preset_combo.count()):
                 if self.simple_velocity_preset_combo.itemData(i) == base_curve:
                     self.simple_velocity_preset_combo.setCurrentIndex(i)
@@ -1878,13 +1789,11 @@ class QuickActuationWidget(QWidget):
                     self.midi_velocity_curve.setCurrentIndex(i)
                     break
 
-            ks_curve = config.get('keysplit_he_velocity_curve', 2)
             for i in range(self.keysplit_velocity_curve.count()):
                 if self.keysplit_velocity_curve.itemData(i) == ks_curve:
                     self.keysplit_velocity_curve.setCurrentIndex(i)
                     break
 
-            ts_curve = config.get('triplesplit_he_velocity_curve', 2)
             for i in range(self.triplesplit_velocity_curve.count()):
                 if self.triplesplit_velocity_curve.itemData(i) == ts_curve:
                     self.triplesplit_velocity_curve.setCurrentIndex(i)
@@ -1907,7 +1816,35 @@ class QuickActuationWidget(QWidget):
             self.syncing = False
         except Exception:
             self.syncing = False
-    
+
+    def _refresh_articulation_combos(self, config, combo_keep):
+        """Rebuild the Articulation combos with device user-slot names and apply
+        band visibility. `combo_keep` maps this object's combo attribute name to
+        the curve index that combo should keep visible (its to-be-selected
+        value). Cheap and safe to call whenever the device config reloads."""
+        # User-slot names + configured flags (device round-trip; guard failures)
+        user_names, user_configured = None, None
+        try:
+            if self.device and isinstance(self.device, VialKeyboard):
+                res = self.device.keyboard.get_all_user_curve_names()
+                if res:
+                    user_names, user_configured = res
+        except Exception:
+            user_names, user_configured = None, None
+        # Cache so a later enable-toggle refresh can reuse them
+        self._artic_user_names = user_names
+        self._artic_user_configured = user_configured
+        cc_enabled = bool(config.get('enable_cc_modes', False))
+        at_enabled = bool(config.get('enable_at_modes', False))
+        for attr, keep_index in combo_keep.items():
+            combo = getattr(self, attr, None)
+            if combo is None:
+                continue
+            populate_articulation_combo(combo, user_names=user_names)
+            apply_articulation_visibility(combo, user_configured=user_configured,
+                                          cc_enabled=cc_enabled, at_enabled=at_enabled,
+                                          keep_index=keep_index)
+
     def load_all_layers_from_device(self):
         """Load all 12 layers from device into memory cache (only called once on connect)"""
         try:

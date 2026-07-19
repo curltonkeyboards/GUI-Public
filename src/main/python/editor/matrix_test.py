@@ -13,6 +13,7 @@ from PyQt5.QtGui import QPainterPath, QRegion, QPainter, QColor, QBrush, QPen, Q
 
 from widgets.combo_box import ArrowComboBox
 from editor.basic_editor import BasicEditor
+from editor.articulation_options import populate_articulation_combo, apply_articulation_visibility
 from themes import Theme
 from protocol.constants import VIAL_PROTOCOL_MATRIX_TESTER
 from tabbed_keycodes import GamepadWidget, DpadButton
@@ -1651,33 +1652,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.global_velocity_curve.setMaximumWidth(120)
         self.global_velocity_curve.setMinimumHeight(25)
         self.global_velocity_curve.setMaximumHeight(25)
-        self.global_velocity_curve.addItem("Softest", 0)
-        self.global_velocity_curve.addItem("Soft", 1)
-        self.global_velocity_curve.addItem("Basic", 2)
-        self.global_velocity_curve.addItem("Hard", 3)
-        self.global_velocity_curve.addItem("Hardest", 4)
-        self.global_velocity_curve.addItem("Soft Legato", 5)
-        self.global_velocity_curve.addItem("Basic Legato", 6)
-        self.global_velocity_curve.addItem("Hard Legato", 7)
-        self.global_velocity_curve.addItem("Sensitive Legato", 8)
-        self.global_velocity_curve.addItem("Fixed Vol", 9)
-        self.global_velocity_curve.addItem("Drums Easy", 10)
-        self.global_velocity_curve.addItem("Drums Soft", 11)
-        self.global_velocity_curve.addItem("Drums Basic", 12)
-        self.global_velocity_curve.addItem("Drums Hard", 13)
-        self.global_velocity_curve.addItem("Sensitive Soft", 14)
-        self.global_velocity_curve.addItem("Sensitive", 15)
-        self.global_velocity_curve.addItem("Sensitive Hard", 16)
-        self.global_velocity_curve.addItem("Drums Sensitive", 17)
-        self.global_velocity_curve.addItem("Ultra Sensitive", 18)
-        self.global_velocity_curve.addItem("Fixed Sensitive", 19)
-        self.global_velocity_curve.addItem("Two Toned", 20)
-        self.global_velocity_curve.addItem("Reverse", 21)
-        self.global_velocity_curve.addItem("Random Highlights", 22)
-        # User curves (23-72)
-        for i in range(50):
-            self.global_velocity_curve.addItem("User {}".format(i + 1), 23 + i)
-        _append_atcc_zone_items(self.global_velocity_curve)
+        populate_articulation_combo(self.global_velocity_curve)
         self.global_velocity_curve.setCurrentIndex(0)
         self.global_velocity_curve.setEditable(True)
         self.global_velocity_curve.lineEdit().setReadOnly(True)
@@ -1850,33 +1825,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.velocity_curve2.setMaximumWidth(100)
         self.velocity_curve2.setMinimumHeight(25)
         self.velocity_curve2.setMaximumHeight(25)
-        self.velocity_curve2.addItem("Softest", 0)
-        self.velocity_curve2.addItem("Soft", 1)
-        self.velocity_curve2.addItem("Basic", 2)
-        self.velocity_curve2.addItem("Hard", 3)
-        self.velocity_curve2.addItem("Hardest", 4)
-        self.velocity_curve2.addItem("Soft Legato", 5)
-        self.velocity_curve2.addItem("Basic Legato", 6)
-        self.velocity_curve2.addItem("Hard Legato", 7)
-        self.velocity_curve2.addItem("Sensitive Legato", 8)
-        self.velocity_curve2.addItem("Fixed Vol", 9)
-        self.velocity_curve2.addItem("Drums Easy", 10)
-        self.velocity_curve2.addItem("Drums Soft", 11)
-        self.velocity_curve2.addItem("Drums Basic", 12)
-        self.velocity_curve2.addItem("Drums Hard", 13)
-        self.velocity_curve2.addItem("Sensitive Soft", 14)
-        self.velocity_curve2.addItem("Sensitive", 15)
-        self.velocity_curve2.addItem("Sensitive Hard", 16)
-        self.velocity_curve2.addItem("Drums Sensitive", 17)
-        self.velocity_curve2.addItem("Ultra Sensitive", 18)
-        self.velocity_curve2.addItem("Fixed Sensitive", 19)
-        self.velocity_curve2.addItem("Two Toned", 20)
-        self.velocity_curve2.addItem("Reverse", 21)
-        self.velocity_curve2.addItem("Random Highlights", 22)
-        # User curves (23-72)
-        for i in range(50):
-            self.velocity_curve2.addItem("User {}".format(i + 1), 23 + i)
-        _append_atcc_zone_items(self.velocity_curve2)
+        populate_articulation_combo(self.velocity_curve2)
         self.velocity_curve2.setCurrentIndex(0)
         self.velocity_curve2.setEditable(True)
         self.velocity_curve2.lineEdit().setReadOnly(True)
@@ -2062,33 +2011,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.velocity_curve3.setMaximumWidth(100)
         self.velocity_curve3.setMinimumHeight(25)
         self.velocity_curve3.setMaximumHeight(25)
-        self.velocity_curve3.addItem("Softest", 0)
-        self.velocity_curve3.addItem("Soft", 1)
-        self.velocity_curve3.addItem("Basic", 2)
-        self.velocity_curve3.addItem("Hard", 3)
-        self.velocity_curve3.addItem("Hardest", 4)
-        self.velocity_curve3.addItem("Soft Legato", 5)
-        self.velocity_curve3.addItem("Basic Legato", 6)
-        self.velocity_curve3.addItem("Hard Legato", 7)
-        self.velocity_curve3.addItem("Sensitive Legato", 8)
-        self.velocity_curve3.addItem("Fixed Vol", 9)
-        self.velocity_curve3.addItem("Drums Easy", 10)
-        self.velocity_curve3.addItem("Drums Soft", 11)
-        self.velocity_curve3.addItem("Drums Basic", 12)
-        self.velocity_curve3.addItem("Drums Hard", 13)
-        self.velocity_curve3.addItem("Sensitive Soft", 14)
-        self.velocity_curve3.addItem("Sensitive", 15)
-        self.velocity_curve3.addItem("Sensitive Hard", 16)
-        self.velocity_curve3.addItem("Drums Sensitive", 17)
-        self.velocity_curve3.addItem("Ultra Sensitive", 18)
-        self.velocity_curve3.addItem("Fixed Sensitive", 19)
-        self.velocity_curve3.addItem("Two Toned", 20)
-        self.velocity_curve3.addItem("Reverse", 21)
-        self.velocity_curve3.addItem("Random Highlights", 22)
-        # User curves (23-72)
-        for i in range(50):
-            self.velocity_curve3.addItem(f"User {i+1}", 23 + i)
-        _append_atcc_zone_items(self.velocity_curve3)
+        populate_articulation_combo(self.velocity_curve3)
         self.velocity_curve3.setCurrentIndex(0)
         self.velocity_curve3.setEditable(True)
         self.velocity_curve3.lineEdit().setReadOnly(True)
@@ -2827,6 +2750,10 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             _atcc_combo.addItem("On", True)
             advanced_layout.addWidget(_atcc_combo, 6, _atcc_col + 1)
             setattr(self, _atcc_attr, _atcc_combo)
+        # Toggling either enable live-updates which AT/CC band rows are shown in
+        # the zone Articulation combos.
+        self.enable_at_modes.currentIndexChanged.connect(self._on_atcc_enable_changed)
+        self.enable_cc_modes.currentIndexChanged.connect(self._on_atcc_enable_changed)
 
         # Enable Channel Articulations (own dedicated HID region, not the stop-mode
         # byte). Toggling writes to the device immediately (reads the current map
@@ -3450,6 +3377,67 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             # Silently fail - firmware may not support this parameter yet
             pass
 
+    def _atcc_enabled_flags(self):
+        """Current AT/CC-band enable state from the Advanced toggles (default On
+        if the widgets aren't built yet)."""
+        cc, at = True, True
+        try:
+            cc = bool(self.enable_cc_modes.currentData())
+        except Exception:
+            pass
+        try:
+            at = bool(self.enable_at_modes.currentData())
+        except Exception:
+            pass
+        return cc, at
+
+    def _refresh_zone_articulation_combos(self):
+        """Rebuild the three zone Articulation combos with the device's user-slot
+        names, then hide unconfigured user slots + disabled AT/CC bands. Each
+        combo's current selection is preserved and kept visible."""
+        user_names, user_configured = None, None
+        try:
+            if self.device and isinstance(self.device, VialKeyboard):
+                res = self.device.keyboard.get_all_user_curve_names()
+                if res:
+                    user_names, user_configured = res
+        except Exception:
+            user_names, user_configured = None, None
+        self._artic_user_names = user_names
+        self._artic_user_configured = user_configured
+        cc, at = self._atcc_enabled_flags()
+        for combo in (self.global_velocity_curve, self.velocity_curve2, self.velocity_curve3):
+            keep = combo.currentData()
+            populate_articulation_combo(combo, user_names=user_names)
+            blocked = combo.blockSignals(True)
+            try:
+                if keep is not None:
+                    for i in range(combo.count()):
+                        if combo.itemData(i) == keep:
+                            combo.setCurrentIndex(i)
+                            break
+            finally:
+                combo.blockSignals(blocked)
+            apply_articulation_visibility(combo, user_configured=user_configured,
+                                          cc_enabled=cc, at_enabled=at, keep_index=keep)
+
+    def _refresh_zone_articulation_visibility(self):
+        """Re-apply band visibility to the zone Articulation combos using the
+        cached user-configured flags + the live Enable AT/CC toggles, keeping
+        each combo's current index visible. Cheap (no device read / rebuild)."""
+        cc, at = self._atcc_enabled_flags()
+        cfg = getattr(self, '_artic_user_configured', None)
+        for combo in (self.global_velocity_curve, self.velocity_curve2, self.velocity_curve3):
+            apply_articulation_visibility(combo, user_configured=cfg,
+                                          cc_enabled=cc, at_enabled=at,
+                                          keep_index=combo.currentData())
+
+    def _on_atcc_enable_changed(self, *args):
+        """Live-update zone Articulation combos when an Enable AT/CC toggle flips."""
+        if getattr(self, '_loading_settings', False):
+            return
+        self._refresh_zone_articulation_visibility()
+
     def _on_split_enable_changed(self):
         """Handle split enable changes - compute and send split status based on on/off combinations"""
         if getattr(self, '_loading_settings', False):
@@ -3726,6 +3714,11 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         # lookups ("velocity_curve2", "global_velocity_curve", ...) never
         # existed there, so these combos always showed the fallback instead of
         # the device's real values.
+        # Rebuild the zone Articulation combos with the device's user-slot names
+        # first (so set_combo_by_data can find AT/CC + user indices), hiding
+        # unconfigured user slots + disabled AT/CC bands. Enable flags were
+        # already applied above.
+        self._refresh_zone_articulation_combos()
         set_combo_by_data(self.velocity_curve2,
                           config.get("keysplit_he_velocity_curve", config.get("velocity_curve2")), 2)
         set_combo_by_data(self.velocity_curve3,
@@ -3737,6 +3730,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                           config.get("channel_number", config.get("global_channel")), 0)
         set_combo_by_data(self.global_velocity_curve,
                           config.get("he_velocity_curve", config.get("global_velocity_curve")), 2)
+        # Re-apply band visibility now that each zone combo holds its final index
+        # (so a just-selected AT/CC or user index stays visible).
+        self._refresh_zone_articulation_visibility()
         # Sustain settings
         set_combo_by_data(self.base_sustain, config.get("base_sustain"), 0)
         set_combo_by_data(self.keysplit_sustain, config.get("keysplit_sustain"), 0)
@@ -4594,34 +4590,7 @@ class LayerActuationConfigurator(BasicEditor):
         he_curve_combo = ArrowComboBox()
         he_curve_combo.setMinimumHeight(30)
         he_curve_combo.setStyleSheet("QComboBox { padding: 0px; text-align: center; font-size: 12px; } QComboBox QAbstractItemView { min-height: 125px; }")
-        # Factory articulations (0-22)
-        he_curve_combo.addItem("Softest", 0)
-        he_curve_combo.addItem("Soft", 1)
-        he_curve_combo.addItem("Basic", 2)
-        he_curve_combo.addItem("Hard", 3)
-        he_curve_combo.addItem("Hardest", 4)
-        he_curve_combo.addItem("Soft Legato", 5)
-        he_curve_combo.addItem("Basic Legato", 6)
-        he_curve_combo.addItem("Hard Legato", 7)
-        he_curve_combo.addItem("Sensitive Legato", 8)
-        he_curve_combo.addItem("Fixed Vol", 9)
-        he_curve_combo.addItem("Drums Easy", 10)
-        he_curve_combo.addItem("Drums Soft", 11)
-        he_curve_combo.addItem("Drums Basic", 12)
-        he_curve_combo.addItem("Drums Hard", 13)
-        he_curve_combo.addItem("Sensitive Soft", 14)
-        he_curve_combo.addItem("Sensitive", 15)
-        he_curve_combo.addItem("Sensitive Hard", 16)
-        he_curve_combo.addItem("Drums Sensitive", 17)
-        he_curve_combo.addItem("Ultra Sensitive", 18)
-        he_curve_combo.addItem("Fixed Sensitive", 19)
-        he_curve_combo.addItem("Two Toned", 20)
-        he_curve_combo.addItem("Reverse", 21)
-        he_curve_combo.addItem("Random Highlights", 22)
-        # User curves (23-72)
-        for i in range(50):
-            he_curve_combo.addItem("User {}".format(i + 1), 23 + i)
-        _append_atcc_zone_items(he_curve_combo)
+        populate_articulation_combo(he_curve_combo)
         he_curve_combo.setCurrentIndex(0)  # Default: Linear
         he_curve_combo.setEditable(True)
         he_curve_combo.lineEdit().setReadOnly(True)
@@ -5089,34 +5058,7 @@ class LayerActuationConfigurator(BasicEditor):
         he_curve_combo = ArrowComboBox()
         he_curve_combo.setMinimumHeight(30)
         he_curve_combo.setStyleSheet("QComboBox { padding: 0px; text-align: center; font-size: 12px; } QComboBox QAbstractItemView { min-height: 125px; }")
-        # Factory articulations (0-22)
-        he_curve_combo.addItem("Softest", 0)
-        he_curve_combo.addItem("Soft", 1)
-        he_curve_combo.addItem("Basic", 2)
-        he_curve_combo.addItem("Hard", 3)
-        he_curve_combo.addItem("Hardest", 4)
-        he_curve_combo.addItem("Soft Legato", 5)
-        he_curve_combo.addItem("Basic Legato", 6)
-        he_curve_combo.addItem("Hard Legato", 7)
-        he_curve_combo.addItem("Sensitive Legato", 8)
-        he_curve_combo.addItem("Fixed Vol", 9)
-        he_curve_combo.addItem("Drums Easy", 10)
-        he_curve_combo.addItem("Drums Soft", 11)
-        he_curve_combo.addItem("Drums Basic", 12)
-        he_curve_combo.addItem("Drums Hard", 13)
-        he_curve_combo.addItem("Sensitive Soft", 14)
-        he_curve_combo.addItem("Sensitive", 15)
-        he_curve_combo.addItem("Sensitive Hard", 16)
-        he_curve_combo.addItem("Drums Sensitive", 17)
-        he_curve_combo.addItem("Ultra Sensitive", 18)
-        he_curve_combo.addItem("Fixed Sensitive", 19)
-        he_curve_combo.addItem("Two Toned", 20)
-        he_curve_combo.addItem("Reverse", 21)
-        he_curve_combo.addItem("Random Highlights", 22)
-        # User curves (23-72)
-        for i in range(50):
-            he_curve_combo.addItem("User {}".format(i + 1), 23 + i)
-        _append_atcc_zone_items(he_curve_combo)
+        populate_articulation_combo(he_curve_combo)
         he_curve_combo.setCurrentIndex(0)  # Default: Linear
         he_curve_combo.setEditable(True)
         he_curve_combo.lineEdit().setReadOnly(True)
@@ -5689,6 +5631,54 @@ class LayerActuationConfigurator(BasicEditor):
 
         # Load actuation settings from keyboard
         self.on_load_from_keyboard_silent()
+        # Bring the per-key / per-layer Articulation pickers in line with the
+        # device: real user-slot names, unconfigured user slots hidden, AT/CC
+        # bands shown only when enabled.
+        self._refresh_articulation_pickers()
+
+    def _refresh_articulation_pickers(self):
+        """Rebuild the master (per-key) + per-layer Articulation pickers with the
+        device's user-slot names and hide unconfigured user slots / disabled
+        AT/CC bands. These combos are setters (not stored state), so hiding a row
+        never affects a stored per-key value."""
+        combos = []
+        try:
+            combos.append(self.master_widgets['he_curve_combo'])
+        except Exception:
+            pass
+        try:
+            combos.append(self.layer_widgets['he_curve_combo'])
+        except Exception:
+            pass
+        if not combos:
+            return
+        user_names, user_configured = None, None
+        cc_enabled, at_enabled = True, True
+        try:
+            if self.device and isinstance(self.device, VialKeyboard):
+                res = self.device.keyboard.get_all_user_curve_names()
+                if res:
+                    user_names, user_configured = res
+                config = self.device.keyboard.get_midi_config() or {}
+                cc_enabled = bool(config.get('enable_cc_modes', False))
+                at_enabled = bool(config.get('enable_at_modes', False))
+        except Exception:
+            pass
+        for combo in combos:
+            keep = combo.currentData()
+            populate_articulation_combo(combo, user_names=user_names)
+            blocked = combo.blockSignals(True)
+            try:
+                if keep is not None:
+                    for i in range(combo.count()):
+                        if combo.itemData(i) == keep:
+                            combo.setCurrentIndex(i)
+                            break
+            finally:
+                combo.blockSignals(blocked)
+            apply_articulation_visibility(combo, user_configured=user_configured,
+                                          cc_enabled=cc_enabled, at_enabled=at_enabled,
+                                          keep_index=keep)
 
     def on_load_from_keyboard_silent(self):
         """Load settings without showing success message"""
