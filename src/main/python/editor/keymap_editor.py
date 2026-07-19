@@ -523,29 +523,33 @@ class QuickActuationWidget(QWidget):
         self.simple_velocity_preset_combo.setEditable(True)
         self.simple_velocity_preset_combo.lineEdit().setReadOnly(True)
         self.simple_velocity_preset_combo.lineEdit().setAlignment(Qt.AlignCenter)
-        # Factory curves (0-6)
+        # Factory curves (0-22)
         self.simple_velocity_preset_combo.addItem("Softest", 0)
         self.simple_velocity_preset_combo.addItem("Soft", 1)
-        self.simple_velocity_preset_combo.addItem("Linear", 2)
+        self.simple_velocity_preset_combo.addItem("Basic", 2)
         self.simple_velocity_preset_combo.addItem("Hard", 3)
         self.simple_velocity_preset_combo.addItem("Hardest", 4)
-        self.simple_velocity_preset_combo.addItem("Sensitive Soft", 5)
-        self.simple_velocity_preset_combo.addItem("Sensitive", 6)
-        self.simple_velocity_preset_combo.addItem("Sensitive Hard", 7)
-        self.simple_velocity_preset_combo.addItem("Fixed Vol", 8)
-        self.simple_velocity_preset_combo.addItem("Drums Easy", 9)
-        self.simple_velocity_preset_combo.addItem("Drums Soft", 10)
-        self.simple_velocity_preset_combo.addItem("Drums Linear", 11)
-        self.simple_velocity_preset_combo.addItem("Drums Hard", 12)
-        self.simple_velocity_preset_combo.addItem("Drums Sensitive", 13)
-        self.simple_velocity_preset_combo.addItem("Ultra Sensitive", 14)
-        self.simple_velocity_preset_combo.addItem("Fixed Sensitive", 15)
-        self.simple_velocity_preset_combo.addItem("Two Toned", 16)
-        self.simple_velocity_preset_combo.addItem("Reverse", 17)
-        self.simple_velocity_preset_combo.addItem("Random Highlights", 18)
-        # User curves (19-68) - will be populated when keyboard connects
+        self.simple_velocity_preset_combo.addItem("Soft Legato", 5)
+        self.simple_velocity_preset_combo.addItem("Basic Legato", 6)
+        self.simple_velocity_preset_combo.addItem("Hard Legato", 7)
+        self.simple_velocity_preset_combo.addItem("Sensitive Legato", 8)
+        self.simple_velocity_preset_combo.addItem("Fixed Vol", 9)
+        self.simple_velocity_preset_combo.addItem("Drums Easy", 10)
+        self.simple_velocity_preset_combo.addItem("Drums Soft", 11)
+        self.simple_velocity_preset_combo.addItem("Drums Basic", 12)
+        self.simple_velocity_preset_combo.addItem("Drums Hard", 13)
+        self.simple_velocity_preset_combo.addItem("Sensitive Soft", 14)
+        self.simple_velocity_preset_combo.addItem("Sensitive", 15)
+        self.simple_velocity_preset_combo.addItem("Sensitive Hard", 16)
+        self.simple_velocity_preset_combo.addItem("Drums Sensitive", 17)
+        self.simple_velocity_preset_combo.addItem("Ultra Sensitive", 18)
+        self.simple_velocity_preset_combo.addItem("Fixed Sensitive", 19)
+        self.simple_velocity_preset_combo.addItem("Two Toned", 20)
+        self.simple_velocity_preset_combo.addItem("Reverse", 21)
+        self.simple_velocity_preset_combo.addItem("Random Highlights", 22)
+        # User curves (23-72) - will be populated when keyboard connects
         for i in range(50):
-            self.simple_velocity_preset_combo.addItem("User {}".format(i + 1), 19 + i)
+            self.simple_velocity_preset_combo.addItem("User {}".format(i + 1), 23 + i)
         self.simple_velocity_preset_combo.setCurrentIndex(0)
         self.simple_velocity_preset_combo.currentIndexChanged.connect(self.on_velocity_preset_changed)
         preset_row.addWidget(self.simple_velocity_preset_combo)
@@ -644,29 +648,33 @@ class QuickActuationWidget(QWidget):
         self.midi_velocity_curve.setEditable(True)
         self.midi_velocity_curve.lineEdit().setReadOnly(True)
         self.midi_velocity_curve.lineEdit().setAlignment(Qt.AlignCenter)
-        # Factory curves (0-6)
+        # Factory curves (0-22)
         self.midi_velocity_curve.addItem("Softest", 0)
         self.midi_velocity_curve.addItem("Soft", 1)
-        self.midi_velocity_curve.addItem("Linear", 2)
+        self.midi_velocity_curve.addItem("Basic", 2)
         self.midi_velocity_curve.addItem("Hard", 3)
         self.midi_velocity_curve.addItem("Hardest", 4)
-        self.midi_velocity_curve.addItem("Sensitive Soft", 5)
-        self.midi_velocity_curve.addItem("Sensitive", 6)
-        self.midi_velocity_curve.addItem("Sensitive Hard", 7)
-        self.midi_velocity_curve.addItem("Fixed Vol", 8)
-        self.midi_velocity_curve.addItem("Drums Easy", 9)
-        self.midi_velocity_curve.addItem("Drums Soft", 10)
-        self.midi_velocity_curve.addItem("Drums Linear", 11)
-        self.midi_velocity_curve.addItem("Drums Hard", 12)
-        self.midi_velocity_curve.addItem("Drums Sensitive", 13)
-        self.midi_velocity_curve.addItem("Ultra Sensitive", 14)
-        self.midi_velocity_curve.addItem("Fixed Sensitive", 15)
-        self.midi_velocity_curve.addItem("Two Toned", 16)
-        self.midi_velocity_curve.addItem("Reverse", 17)
-        self.midi_velocity_curve.addItem("Random Highlights", 18)
-        # User curves (19-68)
+        self.midi_velocity_curve.addItem("Soft Legato", 5)
+        self.midi_velocity_curve.addItem("Basic Legato", 6)
+        self.midi_velocity_curve.addItem("Hard Legato", 7)
+        self.midi_velocity_curve.addItem("Sensitive Legato", 8)
+        self.midi_velocity_curve.addItem("Fixed Vol", 9)
+        self.midi_velocity_curve.addItem("Drums Easy", 10)
+        self.midi_velocity_curve.addItem("Drums Soft", 11)
+        self.midi_velocity_curve.addItem("Drums Basic", 12)
+        self.midi_velocity_curve.addItem("Drums Hard", 13)
+        self.midi_velocity_curve.addItem("Sensitive Soft", 14)
+        self.midi_velocity_curve.addItem("Sensitive", 15)
+        self.midi_velocity_curve.addItem("Sensitive Hard", 16)
+        self.midi_velocity_curve.addItem("Drums Sensitive", 17)
+        self.midi_velocity_curve.addItem("Ultra Sensitive", 18)
+        self.midi_velocity_curve.addItem("Fixed Sensitive", 19)
+        self.midi_velocity_curve.addItem("Two Toned", 20)
+        self.midi_velocity_curve.addItem("Reverse", 21)
+        self.midi_velocity_curve.addItem("Random Highlights", 22)
+        # User curves (23-72)
         for i in range(50):
-            self.midi_velocity_curve.addItem("User {}".format(i + 1), 19 + i)
+            self.midi_velocity_curve.addItem("User {}".format(i + 1), 23 + i)
         self.midi_velocity_curve.setCurrentIndex(0)
         self.midi_velocity_curve.currentIndexChanged.connect(self.on_base_velocity_curve_changed)
         curve_row.addWidget(self.midi_velocity_curve)
@@ -796,29 +804,33 @@ class QuickActuationWidget(QWidget):
         self.keysplit_velocity_curve.setEditable(True)
         self.keysplit_velocity_curve.lineEdit().setReadOnly(True)
         self.keysplit_velocity_curve.lineEdit().setAlignment(Qt.AlignCenter)
-        # Factory curves (0-6)
+        # Factory curves (0-22)
         self.keysplit_velocity_curve.addItem("Softest", 0)
         self.keysplit_velocity_curve.addItem("Soft", 1)
-        self.keysplit_velocity_curve.addItem("Linear", 2)
+        self.keysplit_velocity_curve.addItem("Basic", 2)
         self.keysplit_velocity_curve.addItem("Hard", 3)
         self.keysplit_velocity_curve.addItem("Hardest", 4)
-        self.keysplit_velocity_curve.addItem("Sensitive Soft", 5)
-        self.keysplit_velocity_curve.addItem("Sensitive", 6)
-        self.keysplit_velocity_curve.addItem("Sensitive Hard", 7)
-        self.keysplit_velocity_curve.addItem("Fixed Vol", 8)
-        self.keysplit_velocity_curve.addItem("Drums Easy", 9)
-        self.keysplit_velocity_curve.addItem("Drums Soft", 10)
-        self.keysplit_velocity_curve.addItem("Drums Linear", 11)
-        self.keysplit_velocity_curve.addItem("Drums Hard", 12)
-        self.keysplit_velocity_curve.addItem("Drums Sensitive", 13)
-        self.keysplit_velocity_curve.addItem("Ultra Sensitive", 14)
-        self.keysplit_velocity_curve.addItem("Fixed Sensitive", 15)
-        self.keysplit_velocity_curve.addItem("Two Toned", 16)
-        self.keysplit_velocity_curve.addItem("Reverse", 17)
-        self.keysplit_velocity_curve.addItem("Random Highlights", 18)
-        # User curves (19-68)
+        self.keysplit_velocity_curve.addItem("Soft Legato", 5)
+        self.keysplit_velocity_curve.addItem("Basic Legato", 6)
+        self.keysplit_velocity_curve.addItem("Hard Legato", 7)
+        self.keysplit_velocity_curve.addItem("Sensitive Legato", 8)
+        self.keysplit_velocity_curve.addItem("Fixed Vol", 9)
+        self.keysplit_velocity_curve.addItem("Drums Easy", 10)
+        self.keysplit_velocity_curve.addItem("Drums Soft", 11)
+        self.keysplit_velocity_curve.addItem("Drums Basic", 12)
+        self.keysplit_velocity_curve.addItem("Drums Hard", 13)
+        self.keysplit_velocity_curve.addItem("Sensitive Soft", 14)
+        self.keysplit_velocity_curve.addItem("Sensitive", 15)
+        self.keysplit_velocity_curve.addItem("Sensitive Hard", 16)
+        self.keysplit_velocity_curve.addItem("Drums Sensitive", 17)
+        self.keysplit_velocity_curve.addItem("Ultra Sensitive", 18)
+        self.keysplit_velocity_curve.addItem("Fixed Sensitive", 19)
+        self.keysplit_velocity_curve.addItem("Two Toned", 20)
+        self.keysplit_velocity_curve.addItem("Reverse", 21)
+        self.keysplit_velocity_curve.addItem("Random Highlights", 22)
+        # User curves (23-72)
         for i in range(50):
-            self.keysplit_velocity_curve.addItem("User {}".format(i + 1), 19 + i)
+            self.keysplit_velocity_curve.addItem("User {}".format(i + 1), 23 + i)
         self.keysplit_velocity_curve.setCurrentIndex(2)  # Default: Linear
         self.keysplit_velocity_curve.currentIndexChanged.connect(self.on_keysplit_velocity_curve_changed)
         ks_curve_row.addWidget(self.keysplit_velocity_curve)
@@ -941,29 +953,33 @@ class QuickActuationWidget(QWidget):
         self.triplesplit_velocity_curve.setEditable(True)
         self.triplesplit_velocity_curve.lineEdit().setReadOnly(True)
         self.triplesplit_velocity_curve.lineEdit().setAlignment(Qt.AlignCenter)
-        # Factory curves (0-6)
+        # Factory curves (0-22)
         self.triplesplit_velocity_curve.addItem("Softest", 0)
         self.triplesplit_velocity_curve.addItem("Soft", 1)
-        self.triplesplit_velocity_curve.addItem("Linear", 2)
+        self.triplesplit_velocity_curve.addItem("Basic", 2)
         self.triplesplit_velocity_curve.addItem("Hard", 3)
         self.triplesplit_velocity_curve.addItem("Hardest", 4)
-        self.triplesplit_velocity_curve.addItem("Sensitive Soft", 5)
-        self.triplesplit_velocity_curve.addItem("Sensitive", 6)
-        self.triplesplit_velocity_curve.addItem("Sensitive Hard", 7)
-        self.triplesplit_velocity_curve.addItem("Fixed Vol", 8)
-        self.triplesplit_velocity_curve.addItem("Drums Easy", 9)
-        self.triplesplit_velocity_curve.addItem("Drums Soft", 10)
-        self.triplesplit_velocity_curve.addItem("Drums Linear", 11)
-        self.triplesplit_velocity_curve.addItem("Drums Hard", 12)
-        self.triplesplit_velocity_curve.addItem("Drums Sensitive", 13)
-        self.triplesplit_velocity_curve.addItem("Ultra Sensitive", 14)
-        self.triplesplit_velocity_curve.addItem("Fixed Sensitive", 15)
-        self.triplesplit_velocity_curve.addItem("Two Toned", 16)
-        self.triplesplit_velocity_curve.addItem("Reverse", 17)
-        self.triplesplit_velocity_curve.addItem("Random Highlights", 18)
-        # User curves (19-68)
+        self.triplesplit_velocity_curve.addItem("Soft Legato", 5)
+        self.triplesplit_velocity_curve.addItem("Basic Legato", 6)
+        self.triplesplit_velocity_curve.addItem("Hard Legato", 7)
+        self.triplesplit_velocity_curve.addItem("Sensitive Legato", 8)
+        self.triplesplit_velocity_curve.addItem("Fixed Vol", 9)
+        self.triplesplit_velocity_curve.addItem("Drums Easy", 10)
+        self.triplesplit_velocity_curve.addItem("Drums Soft", 11)
+        self.triplesplit_velocity_curve.addItem("Drums Basic", 12)
+        self.triplesplit_velocity_curve.addItem("Drums Hard", 13)
+        self.triplesplit_velocity_curve.addItem("Sensitive Soft", 14)
+        self.triplesplit_velocity_curve.addItem("Sensitive", 15)
+        self.triplesplit_velocity_curve.addItem("Sensitive Hard", 16)
+        self.triplesplit_velocity_curve.addItem("Drums Sensitive", 17)
+        self.triplesplit_velocity_curve.addItem("Ultra Sensitive", 18)
+        self.triplesplit_velocity_curve.addItem("Fixed Sensitive", 19)
+        self.triplesplit_velocity_curve.addItem("Two Toned", 20)
+        self.triplesplit_velocity_curve.addItem("Reverse", 21)
+        self.triplesplit_velocity_curve.addItem("Random Highlights", 22)
+        # User curves (23-72)
         for i in range(50):
-            self.triplesplit_velocity_curve.addItem("User {}".format(i + 1), 19 + i)
+            self.triplesplit_velocity_curve.addItem("User {}".format(i + 1), 23 + i)
         self.triplesplit_velocity_curve.setCurrentIndex(2)  # Default: Linear
         self.triplesplit_velocity_curve.currentIndexChanged.connect(self.on_triplesplit_velocity_curve_changed)
         ts_curve_row.addWidget(self.triplesplit_velocity_curve)
@@ -1057,25 +1073,29 @@ class QuickActuationWidget(QWidget):
 
     # Factory preset vel_min/vel_max settings - must match firmware factory_preset_zones[]
     FACTORY_PRESET_VEL = {
-        0: (1, 60),      # Softest
-        1: (1, 90),      # Soft
-        2: (1, 127),     # Linear
-        3: (30, 127),    # Hard
-        4: (60, 127),    # Hardest
-        5: (1, 127),     # Sensitive Soft
-        6: (1, 127),     # Sensitive
-        7: (30, 127),    # Sensitive Hard
-        8: (126, 127),   # Fixed Vol
-        9: (1, 127),     # Drums Easy
-        10: (1, 127),    # Drums Soft
-        11: (1, 127),    # Drums Linear
-        12: (1, 127),    # Drums Hard
-        13: (1, 127),    # Drums Sensitive
-        14: (1, 127),    # Ultra Sensitive
-        15: (126, 127),  # Fixed Sensitive
-        16: (70, 127),   # Two Toned
-        17: (1, 127),    # Reverse
-        18: (1, 127),    # Random Highlights
+        0: (1, 60), # Softest
+        1: (1, 127), # Soft
+        2: (1, 127), # Basic
+        3: (1, 127), # Hard
+        4: (60, 127), # Hardest
+        5: (1, 127), # Soft Legato
+        6: (1, 127), # Basic Legato
+        7: (1, 127), # Hard Legato
+        8: (1, 127), # Sensitive Legato
+        9: (126, 127), # Fixed Vol
+        10: (1, 127), # Drums Easy
+        11: (1, 127), # Drums Soft
+        12: (1, 127), # Drums Basic
+        13: (1, 127), # Drums Hard
+        14: (1, 127), # Sensitive Soft
+        15: (1, 127), # Sensitive
+        16: (30, 127), # Sensitive Hard
+        17: (1, 127), # Drums Sensitive
+        18: (46, 127), # Ultra Sensitive
+        19: (126, 127), # Fixed Sensitive
+        20: (70, 127), # Two Toned
+        21: (1, 127), # Reverse
+        22: (1, 127), # Random Highlights
     }
 
     def send_param(self, param_id, value):
@@ -1370,7 +1390,7 @@ class QuickActuationWidget(QWidget):
 
     def _apply_curve_vel_range(self, curve_index):
         """Look up vel_min/vel_max for a curve and apply to UI + keyboard.
-        Factory curves (0-18) use hardcoded table. User curves (19-68) load from device."""
+        Factory curves (0-22) use hardcoded table. User curves (23-72) load from device."""
         vel_min = None
         vel_max = None
 
@@ -1774,7 +1794,7 @@ class QuickActuationWidget(QWidget):
                   self.keysplit_velocity_curve, self.triplesplit_velocity_curve]
         for combo in combos:
             for i, name in enumerate(names):
-                idx = 19 + i  # Factory curves take indices 0-18 (19 factory presets)
+                idx = 23 + i  # Factory curves take indices 0-22 (23 factory presets)
                 display = name if name and name.strip() else "User {}".format(i + 1)
                 # Find the combo item with this data value
                 for j in range(combo.count()):

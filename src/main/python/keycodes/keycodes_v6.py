@@ -1963,6 +1963,12 @@ class keycodes_v6:
         "HE_CURVE_FAC_16": 0xECF1,
         "HE_CURVE_FAC_17": 0xECF2,
         "HE_CURVE_FAC_18": 0xECF3,
+        # New legato articulations (2026-07 factory reorder): map to new
+        # factory indices 5-8 (Soft/Basic/Hard/Sensitive Legato)
+        "HE_CURVE_FAC_19": 0xECF4,
+        "HE_CURVE_FAC_20": 0xECF5,
+        "HE_CURVE_FAC_21": 0xECF6,
+        "HE_CURVE_FAC_22": 0xECF7,
 
         # Macro-aware HE Velocity Controls (0xEC90-0xEC95)
         "HE_MACRO_CURVE_UP": 0xEC90,
