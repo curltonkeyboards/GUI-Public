@@ -68,9 +68,9 @@ class CurveEditorWidget(QWidget):
     # All 4 points are on the curve, connected by straight line segments (piecewise linear)
     FACTORY_CURVE_POINTS = [
         # 0 Softest - Very gentle, output much lower than input
-        [[0, 0], [85, 28], [170, 85], [255, 255]],
+        [[0, 0], [85, 28], [170, 85], [255, 193]],
         # 1 Soft - Softest's curve at full 1-127 velocity range
-        [[0, 0], [85, 28], [170, 85], [255, 255]],
+        [[0, 0], [85, 28], [170, 85], [255, 193]],
         # 2 Basic - 1:1 response (formerly "Linear")
         [[0, 0], [85, 85], [170, 170], [255, 255]],
         # 3 Hard - Hardest's curve at full 1-127 velocity range
@@ -78,7 +78,7 @@ class CurveEditorWidget(QWidget):
         # 4 Hardest - Very steep, aggressive response
         [[0, 0], [64, 160], [128, 230], [255, 255]],
         # 5 Soft Leg - Soft with legato, no retrigger
-        [[0, 0], [85, 28], [170, 85], [255, 255]],
+        [[0, 0], [85, 28], [170, 85], [255, 193]],
         # 6 Basic Leg - Basic with legato, no retrigger
         [[0, 0], [85, 85], [170, 170], [255, 255]],
         # 7 Hard Leg - Hard with legato, no retrigger

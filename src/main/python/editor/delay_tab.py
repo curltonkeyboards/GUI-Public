@@ -127,31 +127,33 @@ class DelaySlotEditor(QWidget):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
 
-        # Header row: title, rename button, description (matching macro tab layout)
+        # Header: centered title (slot name) + Rename button, with a
+        # centered description below -- both within the tab.
         from protocol.feature_names import get_feature_name_manager, FEATURE_DELAY
-        header_layout = QHBoxLayout()
         name = get_feature_name_manager().get_name(FEATURE_DELAY, slot_index)
+
+        title_row = QHBoxLayout()
+        title_row.addStretch()
         self.title_label = QLabel(f"<b>{name}</b>")
         self.title_label.setStyleSheet("font-size: 14pt;")
-        header_layout.addWidget(self.title_label)
+        title_row.addWidget(self.title_label)
 
         self.btn_rename = QPushButton("Rename")
         self.btn_rename.setMaximumHeight(24)
         self.btn_rename.setMaximumWidth(60)
         self.btn_rename.setStyleSheet("QPushButton { font-size: 8pt; border-radius: 3px; padding: 2px 6px; }")
         self.btn_rename.clicked.connect(self._on_rename)
-        header_layout.addWidget(self.btn_rename)
-
-        header_layout.addSpacing(12)
+        title_row.addWidget(self.btn_rename)
+        title_row.addStretch()
+        layout.addLayout(title_row)
 
         desc = QLabel("Configure delay effects for MIDI notes played/passed through the "
                       "MIDIswitch. Assign these to the keymap using the User Delay Buttons "
                       "which can be renamed.")
         desc.setWordWrap(True)
         desc.setStyleSheet("color: gray; font-size: 9pt;")
-        header_layout.addWidget(desc, 1)
-
-        layout.addLayout(header_layout)
+        desc.setAlignment(Qt.AlignCenter)
+        layout.addWidget(desc)
 
         # ---- Centered content area (max 600px) ----
         center_outer = QHBoxLayout()

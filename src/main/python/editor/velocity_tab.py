@@ -1254,7 +1254,11 @@ class VelocityTab(BasicEditor):
         # Keyboard widget
         self.keyboard_widget = VelocityKeyboardWidget(self.layout_editor)
         self.keyboard_widget.setMinimumWidth(800)
-        self.keyboard_widget.setMinimumHeight(250)
+        # The background velocity image is painted at a fixed 345px height
+        # (keyboard_widget.py paintEvent). Reserve at least that much so the
+        # image doesn't overflow past the widget box and get covered by the
+        # separator line below it.
+        self.keyboard_widget.setMinimumHeight(350)
         main_layout.addWidget(self.keyboard_widget, alignment=Qt.AlignCenter)
 
         # Separator

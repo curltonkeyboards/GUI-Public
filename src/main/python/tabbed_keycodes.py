@@ -1072,7 +1072,7 @@ class midiadvancedTab(QScrollArea):
             ("CC Up", KEYCODES_MIDI_CC_UP, "cc up increment", "value_input", "MI_CC_{}_UP"),
             ("CC Down", KEYCODES_MIDI_CC_DOWN, "cc down decrement", "value_input", "MI_CC_{}_DWN"),
             ("Dynamic CC", KEYCODES_MOD_PRESS, "dynamic cc mod press key depth analog expression", "value_input", "MI_MOD_PRESS_{}"),
-            ("Quick Build Master", KEYCODES_QB_MASTER, "quick build master qb slot", "value_input", "QB_MASTER_{}"),
+            ("Quickbuild", KEYCODES_QB_MASTER, "quickbuild quick build master qb slot", "value_input", "QB_MASTER_{}"),
             ("CC Value", KEYCODES_MIDI_CC_FIXED, "cc fixed value set", "cc_xy", None),
             ("Touch Dial CC", KEYCODES_CC_ENCODERVALUE, "cc encoder touch dial", "value_input", "MI_CCENCODER_{}"),
             ("Program Change", KEYCODES_Program_Change, "program change", "value_input", "MI_PROG_{}"),
@@ -3978,12 +3978,14 @@ class midiTab(QScrollArea):
 
         grid_up = [
             ("MI_TRNSU", "Transpose\n\u25B2"),
+            ("MI_OCTU", "Octave\n\u25B2"),
             ("MI_CHU", "Channel\n\u25B2"),
             ("SMARTCHORD_UP", "SmartChord\n\u25B2"),
             ("HE_VEL_CURVE_UP", "Playing\nStyle \u25B2"),
         ]
         grid_down = [
             ("MI_TRNSD", "Transpose\n\u25BC"),
+            ("MI_OCTD", "Octave\n\u25BC"),
             ("MI_CHD", "Channel\n\u25BC"),
             ("SMARTCHORD_DOWN", "SmartChord\n\u25BC"),
             ("HE_VEL_CURVE_DOWN", "Playing\nStyle \u25BC"),
@@ -3998,8 +4000,7 @@ class midiTab(QScrollArea):
         extras_group = QGroupBox("Extra Buttons")
         extras_layout = FlowLayout()
         extra_buttons = [
-            # Octave
-            ("MI_OCTU", "Octave\n\u25B2"), ("MI_OCTD", "Octave\n\u25BC"),
+            # (Octave up/down moved into the main Transpose/Channel grid above)
             # BPM
             ("BPM_UP", "BPM\nUp"), ("BPM_DOWN", "BPM\nDown"),
             # Touch Dials
@@ -4021,22 +4022,8 @@ class midiTab(QScrollArea):
         extras_group.setLayout(extras_layout)
         self.main_layout.addWidget(extras_group, 0, Qt.AlignCenter)
 
-        # --- Quick Build Master chooser (slot 1-100) ---
-        qb_row = QHBoxLayout()
-        qb_row.addStretch(1)
-        qb_btn = QPushButton("Quick Build Master (1-100)")
-        qb_btn.setFixedHeight(40)
-        qb_btn.setFixedWidth(220)
-
-        def _qb_master_handler(value):
-            if value and value.isdigit() and 1 <= int(value) <= 100:
-                self.keycode_changed.emit("QB_MASTER_{}".format(int(value)))
-
-        qb_btn.clicked.connect(lambda: show_value_dialog(
-            self, "Quick Build Master slot (1-100)", 1, 100, _qb_master_handler))
-        qb_row.addWidget(qb_btn)
-        qb_row.addStretch(1)
-        self.main_layout.addLayout(qb_row)
+        # (The Quick Build Master chooser was moved out of MIDIswitch into
+        # its own "Quickbuild" side-tab -- see MusicTab.)
 
         self.main_layout.addStretch(1)
 
@@ -4963,26 +4950,30 @@ class MusicTab(QWidget):
         self.current_keycode_filter = keycode_filter_any
 
         # Create the individual tabs. (DrumLIVE, Arpeggiator, Step Sequencer
-        # and Delay moved to the Advanced tab; Quick Build buttons other than
-        # the Master Quick Build chooser are gone; Ear Training and Chord
-        # Progressions are retired.)
+        # and Delay moved to the Advanced tab; Ear Training and Chord
+        # Progressions are retired.) The Quickbuild side-tab holds all 100
+        # Quickbuild slot buttons (formerly a single chooser button in
+        # MIDIswitch).
         self.midiswitch_tab = midiTab(parent, "MIDIswitch", KEYCODES_MIDI_UPDOWN)
         self.loop_control_tab = LoopTab(parent, "Loop Control", KEYCODES_LOOP_BUTTONS)
         self.smartchord_tab = SmartChordTab(parent, "SmartChord", KEYCODES_MIDI_CHORD_0, KEYCODES_MIDI_CHORD_1,
                                            KEYCODES_MIDI_CHORD_2, KEYCODES_MIDI_CHORD_3, KEYCODES_MIDI_CHORD_4,
                                            KEYCODES_MIDI_CHORD_5, KEYCODES_MIDI_SCALES,
                                            KEYCODES_MIDI_SMARTCHORDBUTTONS+KEYCODES_MIDI_INVERSION)
+        self.quickbuild_tab = SimpleTab(parent, "Quickbuild", KEYCODES_QB_MASTER)
 
         # Connect signals
         self.midiswitch_tab.keycode_changed.connect(self.on_keycode_changed)
         self.loop_control_tab.keycode_changed.connect(self.on_keycode_changed)
         self.smartchord_tab.keycode_changed.connect(self.on_keycode_changed)
+        self.quickbuild_tab.keycode_changed.connect(self.on_keycode_changed)
 
         # Define sections (tab_widget, display_name)
         self.sections = [
             (self.midiswitch_tab, "MIDIswitch"),
             (self.loop_control_tab, "Loop Control"),
-            (self.smartchord_tab, "SmartChord")
+            (self.smartchord_tab, "SmartChord"),
+            (self.quickbuild_tab, "Quickbuild")
         ]
 
         # Create horizontal layout: side tabs on left, content on right
