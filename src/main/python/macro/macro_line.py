@@ -25,7 +25,7 @@ class MacroLine(QObject):
         self.container = parent.container
 
         if self.parent.parent.keyboard.vial_protocol >= VIAL_PROTOCOL_ADVANCED_MACROS:
-            self.types = self.types[:] + ["Wait (ms)", "Wait (BPM)", "Fader"]
+            self.types = self.types[:] + ["Wait (ms)", "Wait (BPM)", "AutoFader"]
             self.type_to_cls = self.type_to_cls[:] + [ActionDelayUI, ActionBPMDelayUI,
                                                        ActionMixingControlUI]
 

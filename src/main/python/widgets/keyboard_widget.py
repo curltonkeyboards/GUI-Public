@@ -885,6 +885,11 @@ class KeyboardWidget2(QWidget):
         # Multi-selection support
         self.selected_keys = set()  # Set of selected key widgets
 
+        # Opt-in: when True, selected/active (theme-rendered) keys get a light
+        # translucent fill over the whole keycap in addition to the outline.
+        # Off by default so only tabs that request it (trigger settings) change.
+        self.highlight_selected_fill = False
+
     def set_keys(self, keys, encoders):
         self.common_widgets = []
         self.widgets_for_layout = []
@@ -1143,6 +1148,16 @@ class KeyboardWidget2(QWidget):
 
                 qp.setBrush(brush)
                 qp.drawPath(key.foreground_draw_path)
+
+                # Whole-key shade for selected/active keys (opt-in via
+                # highlight_selected_fill) so a selected key reads at a glance,
+                # not just from the thin outline. Drawn before the legend so
+                # text stays on top.
+                if active and self.highlight_selected_fill:
+                    hl = QApplication.palette().color(QPalette.Highlight)
+                    qp.setPen(Qt.NoPen)
+                    qp.setBrush(QColor(hl.red(), hl.green(), hl.blue(), 60))
+                    qp.drawPath(key.background_draw_path)
 
             # draw key text
             if key.masked:

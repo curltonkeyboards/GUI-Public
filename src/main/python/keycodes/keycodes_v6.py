@@ -1732,6 +1732,11 @@ class keycodes_v6:
         "CPROG_SLOT_19": 0xCA22,
         "CPROG_SLOT_20": 0xCA23,
 
+        # On-device settings menus (0xCA24-0xCA26)
+        "MI_SETTINGS_MENU": 0xCA24,  # Open full keyboard-settings OLED menu
+        "MI_LOAD_MENU": 0xCA25,      # Open Load-preset picker (auto-exit on select)
+        "MI_EDIT_STYLES": 0xCA26,    # Open OLED velocity-preset (playing style) editor
+
         # SmartChord Voice Leading override keycodes.  Each press cycles the
         # Highest-voice rule through None/Desc/Asc/Alt/Tight; the override
         # masks per-voice menu config until the SmartChord menu is opened.
@@ -1929,7 +1934,7 @@ class keycodes_v6:
         "HE_CURVE_HARD": 0xCCB3,
         "HE_CURVE_HARDEST": 0xCCB4,
 
-        # HE Velocity Curve keycodes - Aggro, Digital, and User presets (0xCC90-0xCC9B)
+        # HE Velocity Curve keycodes - factory articulations 5-16 (loop-articulation set)
         "HE_CURVE_AGGRO": 0xCC90,
         "HE_CURVE_DIGITAL": 0xCC91,
         "HE_CURVE_USER_1": 0xCC92,
@@ -1942,6 +1947,28 @@ class keycodes_v6:
         "HE_CURVE_USER_8": 0xCC99,
         "HE_CURVE_USER_9": 0xCC9A,
         "HE_CURVE_USER_10": 0xCC9B,
+
+        # HE Velocity Curve - new factory presets 7-18 (0xECE8-0xECF3)
+        # NOTE: these values overlap the legacy QB_MASTER_2..13 range
+        # (0xECB6+ ); kept per firmware-provided assignment.
+        "HE_CURVE_FAC_7": 0xECE8,
+        "HE_CURVE_FAC_8": 0xECE9,
+        "HE_CURVE_FAC_9": 0xECEA,
+        "HE_CURVE_FAC_10": 0xECEB,
+        "HE_CURVE_FAC_11": 0xECEC,
+        "HE_CURVE_FAC_12": 0xECED,
+        "HE_CURVE_FAC_13": 0xECEE,
+        "HE_CURVE_FAC_14": 0xECEF,
+        "HE_CURVE_FAC_15": 0xECF0,
+        "HE_CURVE_FAC_16": 0xECF1,
+        "HE_CURVE_FAC_17": 0xECF2,
+        "HE_CURVE_FAC_18": 0xECF3,
+        # New legato articulations (2026-07 factory reorder): map to new
+        # factory indices 5-8 (Soft/Basic/Hard/Sens Leg)
+        "HE_CURVE_FAC_19": 0xECF4,
+        "HE_CURVE_FAC_20": 0xECF5,
+        "HE_CURVE_FAC_21": 0xECF6,
+        "HE_CURVE_FAC_22": 0xECF7,
 
         # Macro-aware HE Velocity Controls (0xEC90-0xEC95)
         "HE_MACRO_CURVE_UP": 0xEC90,
@@ -1958,19 +1985,18 @@ class keycodes_v6:
         "HE_MACRO_CURVE_2": 0xEC98,   # Medium
         "HE_MACRO_CURVE_3": 0xEC99,   # Hard
         "HE_MACRO_CURVE_4": 0xEC9A,   # Hardest
-        "HE_MACRO_CURVE_5": 0xEC9B,   # Aggro
-        "HE_MACRO_CURVE_6": 0xEC9C,   # Digital
-        # User presets (curves 7-16)
-        "HE_MACRO_CURVE_7": 0xEC9D,   # User 1
-        "HE_MACRO_CURVE_8": 0xEC9E,   # User 2
-        "HE_MACRO_CURVE_9": 0xEC9F,   # User 3
-        "HE_MACRO_CURVE_10": 0xECA0,  # User 4
-        "HE_MACRO_CURVE_11": 0xECA1,  # User 5
-        "HE_MACRO_CURVE_12": 0xECA2,  # User 6
-        "HE_MACRO_CURVE_13": 0xECA3,  # User 7
-        "HE_MACRO_CURVE_14": 0xECA4,  # User 8
-        "HE_MACRO_CURVE_15": 0xECA5,  # User 9
-        "HE_MACRO_CURVE_16": 0xECA6,  # User 10
+        "HE_MACRO_CURVE_5": 0xEC9B,   # Sensitive Soft
+        "HE_MACRO_CURVE_6": 0xEC9C,   # Sensitive
+        "HE_MACRO_CURVE_7": 0xEC9D,   # Sensitive Hard
+        "HE_MACRO_CURVE_8": 0xEC9E,   # Fixed Vol
+        "HE_MACRO_CURVE_9": 0xEC9F,   # Drums Easy
+        "HE_MACRO_CURVE_10": 0xECA0,  # Drums Soft
+        "HE_MACRO_CURVE_11": 0xECA1,  # Drums Linear
+        "HE_MACRO_CURVE_12": 0xECA2,  # Drums Hard
+        "HE_MACRO_CURVE_13": 0xECA3,  # Drums Sens
+        "HE_MACRO_CURVE_14": 0xECA4,  # Ultra Sens
+        "HE_MACRO_CURVE_15": 0xECA5,  # Fixed Sens
+        "HE_MACRO_CURVE_16": 0xECA6,  # Two Toned
 
         # HE Velocity Range base (for dynamic generation, starts at 0xCCB5)
         "HE_VEL_RANGE_1_1": 0xCCB5,  # Base for range keycodes (allows min == max)
@@ -2047,6 +2073,8 @@ class keycodes_v6:
         "ARP_MODE_SINGLE": 0xEE24,  # Single note mode
         "ARP_MODE_CHORD_BASIC": 0xEE25,  # Chord basic mode
         "ARP_MODE_CHORD_ADVANCED": 0xEE26,  # Chord advanced mode
+        "ARP_MODE_CHORD_UNSYNC": 0xEE27,  # Chord unsynced mode (independent timing per held note)
+        "ARP_MODE_CHORD_ROTATE": 0xEE28,  # Chord rotation mode (rotates held notes at the base rate)
 
         # Mod Press Base (0xF300-0xF37F) - 128 codes, one per MIDI CC (key depth -> CC value)
         "MI_MOD_PRESS_0": 0xF300,  # Base for Mod Press CC keycodes
@@ -2201,10 +2229,26 @@ class keycodes_v6:
         "CHORD_QB_6": 0xEFF9,       # Quick build smart chord slot 6
         "CHORD_QB_7": 0xEFFA,       # Quick build smart chord slot 7
         "CHORD_QB_8": 0xEFFB,       # Quick build smart chord slot 8
+        "CHORD_QB_9": 0xF132,       # Quick build smart chord slot 9 (ext block 0xF132-0xF13D)
+        "CHORD_QB_10": 0xF133,      # Quick build smart chord slot 10
+        "CHORD_QB_11": 0xF134,      # Quick build smart chord slot 11
+        "CHORD_QB_12": 0xF135,      # Quick build smart chord slot 12
+        "CHORD_QB_13": 0xF136,      # Quick build smart chord slot 13
+        "CHORD_QB_14": 0xF137,      # Quick build smart chord slot 14
+        "CHORD_QB_15": 0xF138,      # Quick build smart chord slot 15
+        "CHORD_QB_16": 0xF139,      # Quick build smart chord slot 16
+        "CHORD_QB_17": 0xF13A,      # Quick build smart chord slot 17
+        "CHORD_QB_18": 0xF13B,      # Quick build smart chord slot 18
+        "CHORD_QB_19": 0xF13C,      # Quick build smart chord slot 19
+        "CHORD_QB_20": 0xF13D,      # Quick build smart chord slot 20
         "DYNCHORD_QB_1": 0xEF8E,    # Quick build dynamic chord slot 1
         "DYNCHORD_QB_2": 0xEFFC,    # Quick build dynamic chord slot 2
         "DYNCHORD_QB_3": 0xEFFD,    # Quick build dynamic chord slot 3
         "DYNCHORD_QB_4": 0xEFFE,    # Quick build dynamic chord slot 4
+        "DYNCHORD_QB_5": 0xF184,    # Quick build dynamic chord slot 5 (ext block 0xF184-0xF187)
+        "DYNCHORD_QB_6": 0xF185,    # Quick build dynamic chord slot 6
+        "DYNCHORD_QB_7": 0xF186,    # Quick build dynamic chord slot 7
+        "DYNCHORD_QB_8": 0xF187,    # Quick build dynamic chord slot 8
 
         # Master Quick Build slots — 100 programmable keys across two
         # non-contiguous ranges: QB_MASTER_1..50 at 0xECB6-0xECE7 (legacy)
@@ -2246,6 +2290,7 @@ class keycodes_v6:
         "TGL_00": 0xEF10,  # Base for Toggle slot selection
 
         # MIDI Delay Navigation/Control (0xEF89-0xEF8F)
+        "CLEAR_HOLD": 0xEF88,   # Hold: OLED shows "Press Loop/Seq to Clear", then press to clear
         "DELAY_PREV": 0xEF89,   # Cycle to previous delay slot
         "DELAY_NEXT": 0xEF8A,   # Cycle to next delay slot
         "DELAY_ONOFF": 0xEF8B,  # Toggle selected delay on/off (exclusive)

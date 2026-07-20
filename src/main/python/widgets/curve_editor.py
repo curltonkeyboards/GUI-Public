@@ -37,34 +37,82 @@ class CurveEditorWidget(QWidget):
     save_to_user_requested = pyqtSignal(int, str)  # (slot_index, curve_name)
     user_curve_selected = pyqtSignal(int)  # slot_index (0-9) when user curve is selected
 
-    # Factory curve names (indices 0-6)
+    # Factory curve names (indices 0-22)
     FACTORY_CURVES = [
         "Softest",
         "Soft",
-        "Linear",
+        "Basic",
         "Hard",
         "Hardest",
-        "Aggro",
-        "Digital"
+        "Soft Leg",
+        "Basic Leg",
+        "Hard Leg",
+        "Sens Leg",
+        "Fixed Vol",
+        "Drums Easy",
+        "Drums Soft",
+        "Drums Basic",
+        "Drums Hard",
+        "Sensitive Soft",
+        "Sensitive",
+        "Sensitive Hard",
+        "Drums Sens",
+        "Ultra Sens",
+        "Fixed Sens",
+        "Two Toned",
+        "Reverse",
+        "Random Highlights"
     ]
 
     # Factory curve presets (same as firmware)
     # All 4 points are on the curve, connected by straight line segments (piecewise linear)
     FACTORY_CURVE_POINTS = [
-        # Softest - Very gentle, output much lower than input
-        [[0, 0], [85, 28], [170, 85], [255, 255]],
-        # Soft - Gentle curve, gradual response
-        [[0, 0], [85, 42], [170, 128], [255, 255]],
-        # Linear - 1:1 response
+        # 0 Softest - Very gentle, output much lower than input
+        [[0, 0], [85, 28], [170, 85], [255, 193]],
+        # 1 Soft - Softest's curve at full 1-127 velocity range
+        [[0, 0], [85, 28], [170, 85], [255, 193]],
+        # 2 Basic - 1:1 response (formerly "Linear")
         [[0, 0], [85, 85], [170, 170], [255, 255]],
-        # Hard - Steeper curve, faster response
-        [[0, 0], [85, 128], [170, 213], [255, 255]],
-        # Hardest - Very steep, aggressive response
+        # 3 Hard - Hardest's curve at full 1-127 velocity range
         [[0, 0], [64, 160], [128, 230], [255, 255]],
-        # Aggro - Rapid acceleration
-        [[0, 0], [42, 170], [85, 220], [255, 255]],
-        # Digital - Binary-like instant response
-        [[0, 0], [10, 255], [20, 255], [255, 255]]
+        # 4 Hardest - Very steep, aggressive response
+        [[0, 0], [64, 160], [128, 230], [255, 255]],
+        # 5 Soft Leg - Soft with legato, no retrigger
+        [[0, 0], [85, 28], [170, 85], [255, 193]],
+        # 6 Basic Leg - Basic with legato, no retrigger
+        [[0, 0], [85, 85], [170, 170], [255, 255]],
+        # 7 Hard Leg - Hard with legato, no retrigger
+        [[0, 0], [64, 160], [128, 230], [255, 255]],
+        # 8 Sens Leg - Sensitive with legato
+        [[0, 81], [95, 125], [170, 170], [255, 255]],
+        # 9 Fixed Vol
+        [[0, 0], [1, 255], [20, 255], [255, 255]],
+        # 10 Drums Easy
+        [[0, 0], [85, 85], [170, 170], [255, 255]],
+        # 11 Drums Soft
+        [[0, 0], [121, 36], [212, 123], [255, 255]],
+        # 12 Drums Basic (formerly "Drums Linear")
+        [[0, 0], [85, 85], [170, 170], [255, 255]],
+        # 13 Drums Hard
+        [[0, 40], [85, 128], [170, 213], [255, 255]],
+        # 14 Sensitive Soft
+        [[0, 58], [92, 98], [194, 159], [255, 222]],
+        # 15 Sensitive
+        [[0, 81], [95, 125], [170, 170], [255, 255]],
+        # 16 Sensitive Hard
+        [[0, 152], [96, 175], [190, 215], [255, 255]],
+        # 17 Drums Sens
+        [[0, 26], [75, 65], [179, 116], [255, 193]],
+        # 18 Ultra Sens
+        [[0, 68], [82, 128], [170, 188], [255, 255]],
+        # 19 Fixed Sens
+        [[0, 0], [1, 255], [20, 255], [255, 255]],
+        # 20 Two Toned
+        [[0, 0], [221, 0], [222, 255], [255, 255]],
+        # 21 Reverse
+        [[0, 255], [82, 173], [169, 86], [255, 0]],
+        # 22 Random Highlights
+        [[0, 161], [88, 49], [173, 251], [255, 137]]
     ]
 
     def __init__(self, parent=None, show_save_button=True, canvas_size=300):
@@ -107,9 +155,9 @@ class CurveEditorWidget(QWidget):
         # Add separator
         self.preset_combo.insertSeparator(len(self.FACTORY_CURVES))
 
-        # Add user curves (indices 7-16)
+        # Add user curves (indices len(FACTORY_CURVES)..len(FACTORY_CURVES)+49)
         for i, name in enumerate(self.user_curve_names):
-            self.preset_combo.addItem(name, 7 + i)
+            self.preset_combo.addItem(name, len(self.FACTORY_CURVES) + i)
 
         # Add custom option
         self.preset_combo.insertSeparator(self.preset_combo.count())
@@ -141,13 +189,13 @@ class CurveEditorWidget(QWidget):
         if curve_index == -1:
             # Custom - don't change anything
             return
-        elif curve_index < 7:
+        elif curve_index < len(self.FACTORY_CURVES):
             # Factory curve - load points directly
             self.set_points(self.FACTORY_CURVE_POINTS[curve_index])
         else:
-            # User curve (7-16) - always emit signal to load full preset from keyboard
+            # User curve - always emit signal to load full preset from keyboard
             # This ensures all settings (velocity, aftertouch, etc.) are reloaded, not just curve points
-            slot_index = curve_index - 7  # Convert to 0-9 slot index
+            slot_index = curve_index - len(self.FACTORY_CURVES)  # Convert to 0-based slot index
             self.user_curve_selected.emit(slot_index)
 
     def on_point_moved(self, point_index, x, y):
@@ -501,7 +549,7 @@ class SaveToUserDialog(QDialog):
         self.user_curve_names = user_curve_names
         self.configured = configured or [True] * 50
         self._save_as_new = False
-        self.setWindowTitle(tr("SaveToUserDialog", "Save to User Curve"))
+        self.setWindowTitle(tr("SaveToUserDialog", "Save to User Articulation"))
         self.setup_ui()
 
     def setup_ui(self):
@@ -541,13 +589,13 @@ class SaveToUserDialog(QDialog):
         name_layout = QFormLayout()
         self.name_input = QLineEdit()
         self.name_input.setMaxLength(16)
-        self.name_input.setPlaceholderText(tr("SaveToUserDialog", "Enter curve name (max 16 chars)"))
+        self.name_input.setPlaceholderText(tr("SaveToUserDialog", "Enter articulation name (max 16 chars)"))
         # Default to the first configured slot's name
         if self._slot_map:
             self.name_input.setText(self.user_curve_names[self._slot_map[0]])
         else:
             self.name_input.setText("User 1")
-        name_layout.addRow(tr("SaveToUserDialog", "Curve Name:"), self.name_input)
+        name_layout.addRow(tr("SaveToUserDialog", "Articulation Name:"), self.name_input)
         layout.addLayout(name_layout)
 
         # Buttons

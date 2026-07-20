@@ -127,31 +127,33 @@ class DelaySlotEditor(QWidget):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
 
-        # Header row: title, rename button, description (matching macro tab layout)
+        # Header: centered title (slot name) + Rename button, with a
+        # centered description below -- both within the tab.
         from protocol.feature_names import get_feature_name_manager, FEATURE_DELAY
-        header_layout = QHBoxLayout()
         name = get_feature_name_manager().get_name(FEATURE_DELAY, slot_index)
+
+        title_row = QHBoxLayout()
+        title_row.addStretch()
         self.title_label = QLabel(f"<b>{name}</b>")
         self.title_label.setStyleSheet("font-size: 14pt;")
-        header_layout.addWidget(self.title_label)
+        title_row.addWidget(self.title_label)
 
         self.btn_rename = QPushButton("Rename")
         self.btn_rename.setMaximumHeight(24)
         self.btn_rename.setMaximumWidth(60)
         self.btn_rename.setStyleSheet("QPushButton { font-size: 8pt; border-radius: 3px; padding: 2px 6px; }")
         self.btn_rename.clicked.connect(self._on_rename)
-        header_layout.addWidget(self.btn_rename)
-
-        header_layout.addSpacing(12)
+        title_row.addWidget(self.btn_rename)
+        title_row.addStretch()
+        layout.addLayout(title_row)
 
         desc = QLabel("Configure delay effects for MIDI notes played/passed through the "
                       "MIDIswitch. Assign these to the keymap using the User Delay Buttons "
                       "which can be renamed.")
         desc.setWordWrap(True)
         desc.setStyleSheet("color: gray; font-size: 9pt;")
-        header_layout.addWidget(desc, 1)
-
-        layout.addLayout(header_layout)
+        desc.setAlignment(Qt.AlignCenter)
+        layout.addWidget(desc)
 
         # ---- Centered content area (max 600px) ----
         center_outer = QHBoxLayout()
@@ -371,7 +373,11 @@ class DelaySlotEditor(QWidget):
         row = QHBoxLayout()
         row.addWidget(QLabel("Semitones:"))
         self.transpose_slider = QSlider(Qt.Horizontal)
-        self.transpose_slider.setRange(-24, 24)
+        # Full firmware range is ±48 semitones (DELAY_TRANSPOSE_MIN/MAX). The
+        # slider previously stopped at ±24, so half the range was unreachable in
+        # the GUI and loading a slot built on-device with a wider transpose
+        # clamped the widget and silently truncated the value back on Save.
+        self.transpose_slider.setRange(-48, 48)
         self.transpose_slider.setTickInterval(12)
         self.transpose_slider.setTickPosition(QSlider.TicksBelow)
         row.addWidget(self.transpose_slider)
@@ -381,10 +387,10 @@ class DelaySlotEditor(QWidget):
         self.transpose_slider.valueChanged.connect(self._on_transpose_changed)
         pitch_controls_layout.addLayout(row)
 
-        # Tick labels for -24, -12, 0, +12, +24
+        # Tick labels for -48, -24, 0, +24, +48
         tick_row = QHBoxLayout()
         tick_row.addSpacing(72)
-        for lbl in ["-24", "-12", "0", "+12", "+24"]:
+        for lbl in ["-48", "-24", "0", "+24", "+48"]:
             t = QLabel(lbl)
             t.setStyleSheet("font-size: 9px; color: gray;")
             tick_row.addWidget(t)
@@ -678,6 +684,20 @@ class DelayTab(BasicEditor):
         self._visible_tab_count = 1
         self._manually_expanded_count = 0
 
+        # Header: Delay Configurator title + description (matches Loop Manager style)
+        title = QLabel("Delay Configurator")
+        title.setStyleSheet("font-size: 14pt; font-weight: bold;")
+        title.setAlignment(Qt.AlignCenter)
+        self.addWidget(title)
+
+        desc_label = QLabel(
+            "Build delay effects for MIDI notes played or passed through the MIDIswitch.\n"
+            "Assign delays to the keymap using the User Delay Buttons, which can be renamed.")
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
+        desc_label.setAlignment(Qt.AlignCenter)
+        self.addWidget(desc_label)
+
         # Tab widget for user delay slots
         self.tabs = QTabWidget()
 
@@ -742,10 +762,27 @@ class DelayTab(BasicEditor):
         if not self.delay_protocol:
             return
 
+        # Fetch all user slots in ONE bulk request (chunked responses) instead
+        # of 50 separate request/response round-trips on the UI thread — the old
+        # per-slot scan stalled the window on every connect (worse on a slow or
+        # flaky USB link, where each of the 50 reads burned its own retries).
+        # Any slot the bulk pass doesn't return falls back to a per-slot read,
+        # so a dropped chunk can't leave a used slot unscanned.
+        start_unified = self._user_to_unified(0)
+        bulk = {}
+        try:
+            for slot_idx, slot in self.delay_protocol.get_bulk(start_unified, DELAY_USER_SLOT_COUNT):
+                if slot_idx >= start_unified:
+                    bulk[slot_idx - DELAY_FACTORY_COUNT] = slot
+        except Exception as e:
+            print(f"Delay: bulk scan failed, falling back to per-slot ({e})")
+            bulk = {}
+
         last_used = -1
         for i in range(DELAY_USER_SLOT_COUNT):
-            unified = self._user_to_unified(i)
-            slot = self.delay_protocol.get_slot(unified)
+            slot = bulk.get(i)
+            if slot is None:
+                slot = self.delay_protocol.get_slot(self._user_to_unified(i))
             if slot:
                 self.loaded_slots[i] = slot
                 editor = self._editors.get(i)

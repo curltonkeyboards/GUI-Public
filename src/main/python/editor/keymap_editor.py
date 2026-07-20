@@ -11,6 +11,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from widgets.combo_box import ArrowComboBox
 from any_keycode_dialog import AnyKeycodeDialog
 from editor.basic_editor import BasicEditor
+from editor.articulation_options import populate_articulation_combo, apply_articulation_visibility
 from widgets.keyboard_widget import KeyboardWidget2, KeyboardWidgetSimple, EncoderWidget, EncoderWidget2
 from keycodes.keycodes import Keycode
 from widgets.square_button import SquareButton
@@ -510,30 +511,20 @@ class QuickActuationWidget(QWidget):
         preset_row.setContentsMargins(0, 0, 0, 0)
         preset_row.setSpacing(6)
 
-        preset_label = QLabel(tr("QuickActuationWidget", "Playing Style:"))
+        preset_label = QLabel(tr("QuickActuationWidget", "Articulation:"))
         preset_label.setStyleSheet("QLabel { font-size: 14px; }")
         preset_label.setMinimumWidth(90)
         preset_label.setMaximumWidth(90)
         preset_row.addWidget(preset_label)
 
         self.simple_velocity_preset_combo = ArrowComboBox()
-        self.simple_velocity_preset_combo.setFixedWidth(70)
+        self.simple_velocity_preset_combo.setFixedWidth(140)
         self.simple_velocity_preset_combo.setMaximumHeight(35)
         self.simple_velocity_preset_combo.setStyleSheet("QComboBox { padding: 0px; font-size: 14px; text-align: center; }")
         self.simple_velocity_preset_combo.setEditable(True)
         self.simple_velocity_preset_combo.lineEdit().setReadOnly(True)
         self.simple_velocity_preset_combo.lineEdit().setAlignment(Qt.AlignCenter)
-        # Factory curves (0-6)
-        self.simple_velocity_preset_combo.addItem("Softest", 0)
-        self.simple_velocity_preset_combo.addItem("Soft", 1)
-        self.simple_velocity_preset_combo.addItem("Linear", 2)
-        self.simple_velocity_preset_combo.addItem("Hard", 3)
-        self.simple_velocity_preset_combo.addItem("Hardest", 4)
-        self.simple_velocity_preset_combo.addItem("Aggro", 5)
-        self.simple_velocity_preset_combo.addItem("Digital", 6)
-        # User curves (7-56) - will be populated when keyboard connects
-        for i in range(50):
-            self.simple_velocity_preset_combo.addItem("User {}".format(i + 1), 7 + i)
+        populate_articulation_combo(self.simple_velocity_preset_combo)
         self.simple_velocity_preset_combo.setCurrentIndex(0)
         self.simple_velocity_preset_combo.currentIndexChanged.connect(self.on_velocity_preset_changed)
         preset_row.addWidget(self.simple_velocity_preset_combo)
@@ -619,30 +610,20 @@ class QuickActuationWidget(QWidget):
         curve_row.setContentsMargins(0, 0, 0, 0)
         curve_row.setSpacing(6)
 
-        curve_label = QLabel(tr("QuickActuationWidget", "Playing Style:"))
+        curve_label = QLabel(tr("QuickActuationWidget", "Articulation:"))
         curve_label.setStyleSheet("QLabel { font-size: 14px; }")
         curve_label.setMinimumWidth(100)
         curve_label.setMaximumWidth(100)
         curve_row.addWidget(curve_label)
 
         self.midi_velocity_curve = ArrowComboBox()
-        self.midi_velocity_curve.setMaximumWidth(120)
+        self.midi_velocity_curve.setMaximumWidth(180)
         self.midi_velocity_curve.setMaximumHeight(30)
         self.midi_velocity_curve.setStyleSheet("QComboBox { padding: 0px; font-size: 14px; text-align: center; }")
         self.midi_velocity_curve.setEditable(True)
         self.midi_velocity_curve.lineEdit().setReadOnly(True)
         self.midi_velocity_curve.lineEdit().setAlignment(Qt.AlignCenter)
-        # Factory curves (0-6)
-        self.midi_velocity_curve.addItem("Softest", 0)
-        self.midi_velocity_curve.addItem("Soft", 1)
-        self.midi_velocity_curve.addItem("Linear", 2)
-        self.midi_velocity_curve.addItem("Hard", 3)
-        self.midi_velocity_curve.addItem("Hardest", 4)
-        self.midi_velocity_curve.addItem("Aggro", 5)
-        self.midi_velocity_curve.addItem("Digital", 6)
-        # User curves (7-56)
-        for i in range(50):
-            self.midi_velocity_curve.addItem("User {}".format(i + 1), 7 + i)
+        populate_articulation_combo(self.midi_velocity_curve)
         self.midi_velocity_curve.setCurrentIndex(0)
         self.midi_velocity_curve.currentIndexChanged.connect(self.on_base_velocity_curve_changed)
         curve_row.addWidget(self.midi_velocity_curve)
@@ -759,30 +740,20 @@ class QuickActuationWidget(QWidget):
         ks_curve_row.setContentsMargins(0, 0, 0, 0)
         ks_curve_row.setSpacing(6)
 
-        ks_curve_label = QLabel(tr("QuickActuationWidget", "Playing Style:"))
+        ks_curve_label = QLabel(tr("QuickActuationWidget", "Articulation:"))
         ks_curve_label.setStyleSheet("QLabel { font-size: 14px; }")
         ks_curve_label.setMinimumWidth(100)
         ks_curve_label.setMaximumWidth(100)
         ks_curve_row.addWidget(ks_curve_label)
 
         self.keysplit_velocity_curve = ArrowComboBox()
-        self.keysplit_velocity_curve.setMaximumWidth(120)
+        self.keysplit_velocity_curve.setMaximumWidth(180)
         self.keysplit_velocity_curve.setMaximumHeight(30)
         self.keysplit_velocity_curve.setStyleSheet("QComboBox { padding: 0px; font-size: 14px; text-align: center; }")
         self.keysplit_velocity_curve.setEditable(True)
         self.keysplit_velocity_curve.lineEdit().setReadOnly(True)
         self.keysplit_velocity_curve.lineEdit().setAlignment(Qt.AlignCenter)
-        # Factory curves (0-6)
-        self.keysplit_velocity_curve.addItem("Softest", 0)
-        self.keysplit_velocity_curve.addItem("Soft", 1)
-        self.keysplit_velocity_curve.addItem("Linear", 2)
-        self.keysplit_velocity_curve.addItem("Hard", 3)
-        self.keysplit_velocity_curve.addItem("Hardest", 4)
-        self.keysplit_velocity_curve.addItem("Aggro", 5)
-        self.keysplit_velocity_curve.addItem("Digital", 6)
-        # User curves (7-56)
-        for i in range(50):
-            self.keysplit_velocity_curve.addItem("User {}".format(i + 1), 7 + i)
+        populate_articulation_combo(self.keysplit_velocity_curve)
         self.keysplit_velocity_curve.setCurrentIndex(2)  # Default: Linear
         self.keysplit_velocity_curve.currentIndexChanged.connect(self.on_keysplit_velocity_curve_changed)
         ks_curve_row.addWidget(self.keysplit_velocity_curve)
@@ -892,30 +863,20 @@ class QuickActuationWidget(QWidget):
         ts_curve_row.setContentsMargins(0, 0, 0, 0)
         ts_curve_row.setSpacing(6)
 
-        ts_curve_label = QLabel(tr("QuickActuationWidget", "Playing Style:"))
+        ts_curve_label = QLabel(tr("QuickActuationWidget", "Articulation:"))
         ts_curve_label.setStyleSheet("QLabel { font-size: 14px; }")
         ts_curve_label.setMinimumWidth(100)
         ts_curve_label.setMaximumWidth(100)
         ts_curve_row.addWidget(ts_curve_label)
 
         self.triplesplit_velocity_curve = ArrowComboBox()
-        self.triplesplit_velocity_curve.setMaximumWidth(120)
+        self.triplesplit_velocity_curve.setMaximumWidth(180)
         self.triplesplit_velocity_curve.setMaximumHeight(30)
         self.triplesplit_velocity_curve.setStyleSheet("QComboBox { padding: 0px; font-size: 14px; text-align: center; }")
         self.triplesplit_velocity_curve.setEditable(True)
         self.triplesplit_velocity_curve.lineEdit().setReadOnly(True)
         self.triplesplit_velocity_curve.lineEdit().setAlignment(Qt.AlignCenter)
-        # Factory curves (0-6)
-        self.triplesplit_velocity_curve.addItem("Softest", 0)
-        self.triplesplit_velocity_curve.addItem("Soft", 1)
-        self.triplesplit_velocity_curve.addItem("Linear", 2)
-        self.triplesplit_velocity_curve.addItem("Hard", 3)
-        self.triplesplit_velocity_curve.addItem("Hardest", 4)
-        self.triplesplit_velocity_curve.addItem("Aggro", 5)
-        self.triplesplit_velocity_curve.addItem("Digital", 6)
-        # User curves (7-56)
-        for i in range(50):
-            self.triplesplit_velocity_curve.addItem("User {}".format(i + 1), 7 + i)
+        populate_articulation_combo(self.triplesplit_velocity_curve)
         self.triplesplit_velocity_curve.setCurrentIndex(2)  # Default: Linear
         self.triplesplit_velocity_curve.currentIndexChanged.connect(self.on_triplesplit_velocity_curve_changed)
         ts_curve_row.addWidget(self.triplesplit_velocity_curve)
@@ -1009,13 +970,29 @@ class QuickActuationWidget(QWidget):
 
     # Factory preset vel_min/vel_max settings - must match firmware factory_preset_zones[]
     FACTORY_PRESET_VEL = {
-        0: (1, 60),     # Softest
-        1: (1, 90),     # Soft
-        2: (1, 127),    # Linear
-        3: (30, 127),   # Hard
-        4: (60, 127),   # Hardest
-        5: (80, 127),   # Aggro
-        6: (127, 127),  # Digital
+        0: (1, 60), # Softest
+        1: (1, 127), # Soft
+        2: (1, 127), # Basic
+        3: (1, 127), # Hard
+        4: (60, 127), # Hardest
+        5: (1, 127), # Soft Leg
+        6: (1, 127), # Basic Leg
+        7: (1, 127), # Hard Leg
+        8: (1, 127), # Sens Leg
+        9: (126, 127), # Fixed Vol
+        10: (1, 127), # Drums Easy
+        11: (1, 127), # Drums Soft
+        12: (1, 127), # Drums Basic
+        13: (1, 127), # Drums Hard
+        14: (1, 127), # Sensitive Soft
+        15: (1, 127), # Sensitive
+        16: (30, 127), # Sensitive Hard
+        17: (1, 127), # Drums Sens
+        18: (46, 127), # Ultra Sens
+        19: (126, 127), # Fixed Sens
+        20: (70, 127), # Two Toned
+        21: (1, 127), # Reverse
+        22: (1, 127), # Random Highlights
     }
 
     def send_param(self, param_id, value):
@@ -1237,8 +1214,8 @@ class QuickActuationWidget(QWidget):
 
         if curve_index in self.FACTORY_PRESET_VEL:
             vel_min, vel_max = self.FACTORY_PRESET_VEL[curve_index]
-        elif 7 <= curve_index <= 56:
-            slot = curve_index - 7
+        elif 19 <= curve_index <= 68:
+            slot = curve_index - 19
             try:
                 if self.device and isinstance(self.device, VialKeyboard):
                     result = self.device.keyboard.get_velocity_preset(slot)
@@ -1310,15 +1287,15 @@ class QuickActuationWidget(QWidget):
 
     def _apply_curve_vel_range(self, curve_index):
         """Look up vel_min/vel_max for a curve and apply to UI + keyboard.
-        Factory curves (0-6) use hardcoded table. User curves (7-56) load from device."""
+        Factory curves (0-22) use hardcoded table. User curves (23-72) load from device."""
         vel_min = None
         vel_max = None
 
         if curve_index in self.FACTORY_PRESET_VEL:
             vel_min, vel_max = self.FACTORY_PRESET_VEL[curve_index]
-        elif curve_index >= 7 and curve_index <= 56:
+        elif curve_index >= 19 and curve_index <= 68:
             # User curve - load from device
-            slot = curve_index - 7
+            slot = curve_index - 19
             try:
                 if self.device and isinstance(self.device, VialKeyboard):
                     result = self.device.keyboard.get_velocity_preset(slot)
@@ -1714,7 +1691,7 @@ class QuickActuationWidget(QWidget):
                   self.keysplit_velocity_curve, self.triplesplit_velocity_curve]
         for combo in combos:
             for i, name in enumerate(names):
-                idx = 7 + i  # Factory curves take indices 0-6
+                idx = 23 + i  # Factory curves take indices 0-22 (23 factory presets)
                 display = name if name and name.strip() else "User {}".format(i + 1)
                 # Find the combo item with this data value
                 for j in range(combo.count()):
@@ -1789,6 +1766,20 @@ class QuickActuationWidget(QWidget):
 
             # Velocity curves
             base_curve = config.get('he_velocity_curve', 2)
+            ks_curve = config.get('keysplit_he_velocity_curve', 2)
+            ts_curve = config.get('triplesplit_he_velocity_curve', 2)
+
+            # Rebuild the Articulation combos with the device's user-slot names,
+            # hiding unconfigured user slots and showing the AT/CC bands only
+            # when enabled (each combo keeps its own current index visible so a
+            # device sitting on a hidden index still round-trips).
+            self._refresh_articulation_combos(config, {
+                'simple_velocity_preset_combo': base_curve,
+                'midi_velocity_curve': base_curve,
+                'keysplit_velocity_curve': ks_curve,
+                'triplesplit_velocity_curve': ts_curve,
+            })
+
             for i in range(self.simple_velocity_preset_combo.count()):
                 if self.simple_velocity_preset_combo.itemData(i) == base_curve:
                     self.simple_velocity_preset_combo.setCurrentIndex(i)
@@ -1798,13 +1789,11 @@ class QuickActuationWidget(QWidget):
                     self.midi_velocity_curve.setCurrentIndex(i)
                     break
 
-            ks_curve = config.get('keysplit_he_velocity_curve', 2)
             for i in range(self.keysplit_velocity_curve.count()):
                 if self.keysplit_velocity_curve.itemData(i) == ks_curve:
                     self.keysplit_velocity_curve.setCurrentIndex(i)
                     break
 
-            ts_curve = config.get('triplesplit_he_velocity_curve', 2)
             for i in range(self.triplesplit_velocity_curve.count()):
                 if self.triplesplit_velocity_curve.itemData(i) == ts_curve:
                     self.triplesplit_velocity_curve.setCurrentIndex(i)
@@ -1827,7 +1816,35 @@ class QuickActuationWidget(QWidget):
             self.syncing = False
         except Exception:
             self.syncing = False
-    
+
+    def _refresh_articulation_combos(self, config, combo_keep):
+        """Rebuild the Articulation combos with device user-slot names and apply
+        band visibility. `combo_keep` maps this object's combo attribute name to
+        the curve index that combo should keep visible (its to-be-selected
+        value). Cheap and safe to call whenever the device config reloads."""
+        # User-slot names + configured flags (device round-trip; guard failures)
+        user_names, user_configured = None, None
+        try:
+            if self.device and isinstance(self.device, VialKeyboard):
+                res = self.device.keyboard.get_all_user_curve_names()
+                if res:
+                    user_names, user_configured = res
+        except Exception:
+            user_names, user_configured = None, None
+        # Cache so a later enable-toggle refresh can reuse them
+        self._artic_user_names = user_names
+        self._artic_user_configured = user_configured
+        cc_enabled = bool(config.get('enable_cc_modes', False))
+        at_enabled = bool(config.get('enable_at_modes', False))
+        for attr, keep_index in combo_keep.items():
+            combo = getattr(self, attr, None)
+            if combo is None:
+                continue
+            populate_articulation_combo(combo, user_names=user_names)
+            apply_articulation_visibility(combo, user_configured=user_configured,
+                                          cc_enabled=cc_enabled, at_enabled=at_enabled,
+                                          keep_index=keep_index)
+
     def load_all_layers_from_device(self):
         """Load all 12 layers from device into memory cache (only called once on connect)"""
         try:

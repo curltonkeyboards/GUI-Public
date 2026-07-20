@@ -196,7 +196,7 @@ class ProtocolDKS:
         if self._debug_log:
             self._debug_log(message, level)
 
-    def get_slot(self, slot_num: int) -> Optional[DKSSlot]:
+    def get_slot(self, slot_num: int, retries: int = 3) -> Optional[DKSSlot]:
         """Get DKS slot configuration from keyboard.
 
         The firmware sends 26 bytes of slot data (the meaningful fields) in a
@@ -205,6 +205,9 @@ class ProtocolDKS:
 
         Args:
             slot_num: Slot number (0-49)
+            retries: USB retry count. The bulk connect-time scan passes a low
+                value (a slot that fails to read is simply treated as empty for
+                tab visibility); per-tab loads keep the default.
 
         Returns:
             DKSSlot object or None on error
@@ -217,7 +220,7 @@ class ProtocolDKS:
             # Create HID packet with slot number
             packet = self.keyboard._create_hid_packet(HID_CMD_DKS_GET_SLOT, 0, [slot_num])
             self._log(f"GET slot {slot_num}: TX cmd=0xAA data=[{slot_num}] packet_len={len(packet)}", "HID_TX")
-            response = self.keyboard.usb_send(self.keyboard.dev, packet, retries=3)
+            response = self.keyboard.usb_send(self.keyboard.dev, packet, retries=retries)
 
             if not response or len(response) < (HID_HEADER_SIZE + DKS_SLOT_WIRE_SIZE):
                 resp_len = len(response) if response else 0

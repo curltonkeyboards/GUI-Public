@@ -25,7 +25,7 @@ from protocol.toggle_protocol import (ProtocolToggle, ToggleSlot,
 from keycodes.keycodes import Keycode
 from widgets.key_widget import KeyWidget
 from tabbed_keycodes import TabbedKeycodes, FilteredTabbedKeycodes, keycode_filter_any, keycode_filter_masked
-from tabbed_keycodes import KeyboardTab, MusicTab, GamingTab, MacroTab, LightingTab, LightingTab2, MIDITab, SimpleTab
+from tabbed_keycodes import KeyboardTab, MusicTab, GamingTab, MacroTab, LightingTab, LightingTab2, MIDITab, SearchTab, SimpleTab
 from keycodes.keycodes import (KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE, KEYCODES_BACKLIGHT,
                                KEYCODES_RGBSAVE, KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_COLOR,
                                KEYCODES_RGB_KC_CUSTOM2, KEYCODES_CLEAR, KEYCODES_GAMING,
@@ -45,15 +45,14 @@ class FilteredTabbedKeycodesNoLayers(QTabWidget):
 
         self.keycode_filter = keycode_filter
 
-        # Create tabs WITHOUT LayerTab
+        # Create tabs WITHOUT LayerTab (Keyboard & Macro skips its Layer
+        # section; LightingTab2 provides the overlay-safe layer pickers)
         self.tabs = [
-            KeyboardTab(self),
+            KeyboardTab(self, include_layer=False),
             MusicTab(self),
-            GamingTab(self, "Gaming", KEYCODES_GAMING),
-            MacroTab(self, "Macro", KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE),
             LightingTab2(self, "Layers", KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_OSL),
-            LightingTab(self, "Lighting", KEYCODES_BACKLIGHT, KEYCODES_RGBSAVE, KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_COLOR, KEYCODES_RGB_KC_CUSTOM2),
             MIDITab(self),
+            SearchTab(self),
             SimpleTab(self, " ", KEYCODES_CLEAR),
         ]
 

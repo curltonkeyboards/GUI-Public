@@ -814,7 +814,11 @@ Audited + de-overlapped 2026-06 (see "EEPROM de-overlap" below).
 | 65024-65247 | 224 bytes | Chord progression slots (`CPROG_EEPROM_ADDR`, moved from 60800) |
 | 65248-65263 | 16 bytes | Voice leading config (`VL_EEPROM_BASE`, moved from 60900) |
 | 65264-65405 | 142 bytes | Custom smartchord QB (magic 0x5C14 + 20 × 7: count + 6 intervals, `SMARTCHORD_EEPROM_BASE`) |
-| 65406-65535 | ~130 bytes | Available for future use |
+| 65406-65407 | 2 bytes | LCD theme (magic 0x7C + index, `LCD_THEME_EEPROM_BASE`) |
+| 65408-65426 | 19 bytes | Channel Articulations (`CHANNEL_ARTIC_EEPROM_BASE`: magic 0xCB + enable + 16-ch map + Articulation CC) |
+| 65428-65429 | 2 bytes | Curve-index migration marker (`CURVE_MIGRATION_MAGIC_ADDR`, word 0xCA11; moved from 65410 — it overlapped the channel-artic map there) |
+| 65430-65527 | 98 bytes | Free |
+| 65528-65535 | 8 bytes | Boot-magic shadow (`EECONFIG_MAGIC_SHADOW_ADDR`) |
 
 ### EEPROM de-overlap (2026-06)
 
@@ -929,3 +933,192 @@ command `HID_CMD_LCD_THEME = 0xFE` (`data[4]` 0=GET/1=SET, `data[6]`=index;
 response status@4, index@5, count@6) via `keyboard_comm.get_lcd_theme()` /
 `set_lcd_theme()` — it applies + persists instantly on change (not part of the
 per-slot settings packet). `apply_settings` fetches it on every config load.
+
+---
+
+## Articulation / AT-CC bugfix round (2026-07) — GUI side
+
+- **GUI shows AT/CC preset settings (velocity_tab.py):** new `_ATCC_ART_PARAMS`
+  + `atcc_zone_settings()` mirror the firmware `atcc_mode_zones[]` table
+  (display-only; keep in sync with the firmware `ART_*` macros). Selecting or
+  loading an enabled AT/CC preset now populates the settings panel (aftertouch
+  mode/CC, vibrato, smoothness, legato, curve points) instead of leaving stale
+  "Off" values.
+- **Channel Articulations tab:** edits (enable + 16 dropdowns) are now local
+  until the tab's own single **Save** button pushes them to the device; the
+  preset New/Save/Save As/Export row moved INTO the Preset Settings tab so it no
+  longer shows under Channel Articulations. Firmware side now applies the
+  current channel's mapping immediately on a HID SET (previously only on a
+  channel transition). Enable defaults to OFF.
+- **Articulation dropdowns:** channel-articulation combos are ArrowComboBox
+  (editable/read-only lineEdit, centered, `setMaxVisibleItems(15)` scrollable
+  popup) at 220px; keymap Articulation combos widened (70→140 / 120→180). The
+  preset list separators and the channel dropdowns carry greyed non-selectable
+  dividers "User Articulations" / "CC Articulations" / "AT Articulations"
+  (`_fill_artic_combo` disables divider rows).
+- **Legato semantics (matches firmware):** with the sustain pedal down a
+  released legato note keeps ringing until ANOTHER key is pressed; tooltip
+  updated.
+
+## Factory articulation revamp (2026-07) — 23 presets, reorder, "Basic", Legatos
+
+Factory band grew 19 → **23** with a REORDER, the rename **Linear → "Basic"**,
+and 4 new legato presets. New order:
+
+```
+0 Softest  1 Soft  2 Basic  3 Hard  4 Hardest
+5 Soft Leg  6 Basic Leg  7 Hard Leg  8 Sens Leg
+9 Fixed Vol  10 Drums Easy  11 Drums Soft  12 Drums Basic  13 Drums Hard
+14 Sensitive Soft  15 Sensitive  16 Sensitive Hard  17 Drums Sens
+18 Ultra Sens  19 Fixed Sens  20 Two Toned  21 Reverse  22 Random Highlights
+```
+
+Index bands shift: user **23-72**, AT/CC **73-98**. GUI-side changes (mirrored
+from the firmware tables — keep in lockstep):
+
+- `widgets/curve_editor.py`: 23-entry FACTORY_CURVES + FACTORY_CURVE_POINTS
+  (Soft/Hard now carry Softest's/Hardest's points; Basic identity; new Legato +
+  updated Two Toned / Ultra Sens points). `FACTORY_COUNT` derives from the
+  list; `ATCC_START = FACTORY_COUNT + 50`.
+- `editor/velocity_tab.py`: 23-entry name lists + FACTORY_PRESET_SETTINGS
+  (fast min 3; non-Sensitive trigger min 1mm; Softest..Hardest retrigger 2mm +
+  slow 80ms; `legato: True` on 5-8; explicit exports for Two Toned / Ultra
+  Sensitive / Sens Leg). Fast-press DualRangeSlider minimum 2. All
+  user-facing "Linear" → "Basic".
+- `editor/matrix_test.py`: zone combos rebuilt (23 factory + user 23+i), ATCC
+  helper offsets 69/82 → 73/86.
+- `editor/keymap_editor.py`: 4 articulation combos rebuilt, `idx = 23 + i`,
+  FACTORY_PRESET_VEL 23 entries.
+- `keycodes/keycodes.py`: KEYCODES_HE_VELOCITY_CURVE reordered/relabeled
+  (name-stable keycodes — the firmware maps names → new indices); new
+  `HE_CURVE_FAC_19-22` = 0xECF4-0xECF7 (the 4 Legatos) in keycodes_v5/v6.
+  KEYCODES_HE_MACRO_CURVE 0-16 are INDEX-stable, relabeled to new-order names.
+- Firmware side (see vial-gui-custom): tables rebuilt, name-stable keycode
+  remap, one-time EEPROM index migration pass 2 (marker 0xCA11 → 0xCA12,
+  user/ATCC indices +4 + factory reorder map), on-device Channel Articulations
+  settings page (enable + 16-channel articulation map).
+
+## Stuck-note / display pre-ship audit (2026-07, legato + looper round) — firmware only
+
+Firmware-side audit + fix round (see vial-gui-custom CLAUDE.md, same section
+name, for the full list). **No GUI, HID-protocol, or EEPROM-layout changes** —
+nothing to mirror here. Headlines: the MIDI note-off channel is now captured at
+note-on (mid-note channel changes — encoder, Hold/Temp Channel, keysplit
+toggle, CC-master override — used to strand notes; Temporary Channel was
+deterministically broken), the VL release gate evaluates the emitted pitch,
+looper stop paths stop-then-flush (was flush-then-stop, a race that hung a
+just-due note-on), arp/dynchord activation flushes are now recorded into an
+in-progress loop, recorded CC/AT honour the Mute-mode gate, panic covers all
+16 channels, and several held-key/luna display resurrection paths (sustain
+list overflow, arp-mid-pedal desync, panic + pedal) are closed.
+
+## Articulation pre-ship audit round (2026-07, round 3) — GUI side
+
+- **(C1) MIDI-Settings load no longer clobbers the device:** the combos'
+  unguarded `currentIndexChanged` live-sends could echo populated (or
+  fallen-back) values to the device during `apply_settings`. Added a
+  `_loading_settings` guard in `send_param_update` / `_on_split_enable_changed`
+  and wrapped `apply_settings`; the zone-curve/transpose/channel reads carry
+  defaults-dict fallbacks.
+- **(M1) AT/CC entries in zone/per-key articulation combos:** the MIDI-Settings
+  zone combos (`global_velocity_curve`/`velocity_curve2`/`velocity_curve3`) and
+  the per-key/layer combos now list indices 69-94 via `_append_atcc_zone_items`
+  (greyed "CC/AT Articulations" dividers), so a device on a band index
+  round-trips instead of falling back to Linear.
+- **(M2) Stale byte-20 Save clobber:** `on_save_slot` prefers the device's live
+  Stop Mode + AT/CC enable flags when the widgets are untouched since load
+  (`_byte20_loaded` snapshot), so a Save can't revert an edit made from the
+  Velocity tab or the on-device settings menu.
+- Firmware-side round-3 fixes (see vial-gui-custom): VIA 0xFF whitelist (the
+  Channel Articulations HID command was being rejected — root cause of the
+  feature not working), on-device AT/CC + Channel Artic enable rows, legato
+  AT/CC re-press resume, `atcc_sanitize_zone_curves()`.
+
+## Keycode picker restructure — "Keyboard" tab + Macros window (tabbed_keycodes.py)
+
+- The nested `KeyboardTab` (`KeyboardTab.label`) is renamed **"Keyboard & Macro"
+  → "Keyboard"**. Side-tab order is **Basic / Macros / Layers / Lighting /
+  Gaming / ISO/JIS / App / Advanced** (Layers sits directly below Macros; ISO,
+  App and Advanced are BELOW Gaming).
+- **`MacroTab` rewritten** from an inner side-tab widget (Macro/Tapdance/DKS/
+  Toggle sub-tabs) into a single `QScrollArea` that stacks **`QGroupBox`
+  sections** in one window (like "Basic Loop Controls" in `LoopTab`): **Macro /
+  Tapdance / DKS / Toggle**. The side-tab entry is labelled **"Macros"**.
+  The old `MacroSubTab` class is now unused (kept, harmless). Dynamic button
+  counts (`macro_count`/`tapdance_count`/`dks_count`/`toggle_count` from the
+  editors' `_visible_tab_count`) are preserved; external API
+  (`set_keyboard`/`set_editors`/`refresh_buttons`/`recreate_buttons`/
+  `relabel_buttons`) is unchanged.
+- **Layers is its own side-tab** (directly below Macros), NOT folded into the
+  Macros window. `KeyboardTab` builds `self.layer_tab = LayerTab(...)` (the
+  reused standalone dropdown widget: Default / Hold / One Shot) when
+  `include_layer` is true and inserts it into `self.sections` after "Macros".
+  The `MacroTab` is always constructed with `include_layer=False`, so it never
+  renders a Layers section (its `layer_df/layer_mo/layer_osl` + `include_layer`
+  plumbing is kept for back-compat but unused). `include_layer=False` (used by
+  `toggle_settings.py`'s `FilteredTabbedKeycodesNoLayers`, which supplies layers
+  via `LightingTab2`) omits the Layers side-tab entirely (`layer_tab = None`).
+- **Top-level tabs** of the keycode picker are **Keyboard / Music / Advanced /
+  Search** (`FilteredTabbedKeycodes.tabs`). The **Search** tab (`SearchTab`, a
+  `MIDITab` with `include_sections=["Advanced Keys"]`) hosts the searchable
+  Advanced-Keys browser.
+- The **"Quickbuild"** side-tab under **Music** (`MusicTab`, `SimpleTab` over
+  `KEYCODES_QB_MASTER`) displays its label on two lines as **"Quick\nBuild"**.
+
+## Articulation dropdown consistency (`editor/articulation_options.py`, shared)
+
+New shared helper `editor/articulation_options.py` makes every zone / per-key
+Articulation combo behave like the reference **Channel Articulations** tab:
+
+- `populate_articulation_combo(combo, user_names=...)` builds the FULL model once
+  — factory (0-22) + greyed **"User Articulations"** divider + all 50 user slots
+  (23-72) + greyed **"CC Articulations"** divider + CC band (73-85) + greyed
+  **"AT Articulations"** divider + AT band (86-98). Rows are never removed, so any
+  device index round-trips.
+- `apply_articulation_visibility(combo, user_configured, cc_enabled, at_enabled,
+  keep_index)` hides (via `view().setRowHidden`, not removal) **unconfigured user
+  slots** and the **AT/CC bands when their Enable toggle is off**, plus each
+  empty band's divider. The currently selected index (`keep_index`) is always
+  kept visible so a device sitting on a hidden index still displays + saves.
+
+Wired in:
+- **`keymap_editor.py`** — the 4 Articulation combos (`simple_velocity_preset_combo`,
+  `midi_velocity_curve`, `keysplit_velocity_curve`, `triplesplit_velocity_curve`)
+  previously had NO AT/CC entries, no user-slot hiding and no dividers. They now
+  use the shared helper; `load_midi_settings_from_device` →
+  `_refresh_articulation_combos()` fetches user names/configured
+  (`get_all_user_curve_names`) + AT/CC enable flags and applies visibility.
+- **`matrix_test.py`** — the 3 zone combos (`global_velocity_curve`,
+  `velocity_curve2`, `velocity_curve3`) + the per-key/per-layer `he_curve_combo`
+  pickers. `apply_settings` calls `_refresh_zone_articulation_combos()` (rebuild
+  with names + visibility) then `_refresh_zone_articulation_visibility()` after
+  the final selection is set; the **Enable AT/CC Modes** toggles live-update band
+  visibility via `_on_atcc_enable_changed`. Per-key/layer pickers refresh in
+  `LayerActuationConfigurator.rebuild` → `_refresh_articulation_pickers()`. The
+  old `_append_atcc_zone_items` is superseded (kept, unused).
+- **Not changed:** the velocity-tab preset LIST + Channel Articulations combos
+  are the reference (already correct); `curve_editor.py`'s `preset_combo` is
+  hidden in every use (`velocity_tab` sets `preset_selector_widget` invisible);
+  and `KEYCODES_HE_VELOCITY_CURVE` is a static keycode-picker grid (23 factory +
+  10 direct-select user keycodes, no AT/CC) — not a dropdown, so band
+  hiding/dividers don't apply.
+
+## Articulation up/down rename (2026-07) — GUI side
+
+The keycode-picker labels for `HE_VEL_CURVE_UP`/`HE_VEL_CURVE_DOWN` in
+`tabbed_keycodes.py` were changed "Playing Style ▲/▼" → "Articulation ▲/▼"
+(`keycodes.py` already used "Articulation"). Firmware-side (see vial-gui-custom):
+these + Octave/Transpose/Channel up/down now trigger on RELEASE and, while held,
+apply their delta to a pressed loop/drum/step-seq slot (accumulating), plus the
+on-device encoder "Playing Style +/-" → "Articulation +/-". No HID/EEPROM changes.
+
+## Modifier gestures on QB masters + Rhythm Engine (2026-07) — firmware only
+
+Firmware-side follow-up (see vial-gui-custom CLAUDE.md, same section name) — **no
+GUI/HID/EEPROM change, nothing to mirror here.** Both hold-a-modifier gestures —
+the transport up/down modifiers (Octave/Transpose/Channel/Articulation) and the
+note-doubler button — now also apply when a loop / step-seq / Rhythm-Engine
+(chord-progression) is bound to a **QuickBuild master button** (previously the
+master press bypassed the modifier capture), and the **Rhythm Engine** was added
+as a target for transpose/octave/channel/articulation (channel absolute, no
+note-doubler — its transpose is octave-based). ThruLoop and arp remain excluded.

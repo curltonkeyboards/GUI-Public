@@ -11,8 +11,10 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5 import QtCore
 from PyQt5.QtGui import QPainterPath, QRegion, QPainter, QColor, QBrush, QPen, QFont, QLinearGradient
 
-from widgets.combo_box import ArrowComboBox
+from widgets.combo_box import ArrowComboBox, ArrowSpinBox
 from editor.basic_editor import BasicEditor
+from editor.articulation_options import populate_articulation_combo, apply_articulation_visibility
+from editor import drum_voices
 from themes import Theme
 from protocol.constants import VIAL_PROTOCOL_MATRIX_TESTER
 from tabbed_keycodes import GamepadWidget, DpadButton
@@ -37,6 +39,33 @@ from widgets.keyboard_widget import KeyboardWidget2, KeyboardWidgetSimple
 from util import tr, is_hid_transfer_active
 from vial_device import VialKeyboard
 from unlocker import Unlocker
+
+
+# The 13 AT/CC articulation base names (indices 73-85 = CC flavor, 86-98 =
+# poly-AT flavor). Kept in sync with the firmware ATCC_MODE_NAMES /
+# velocity_tab ATCC_NAMES.
+_ATCC_ZONE_BASE_NAMES = ["Leg Vib Slow", "Leg Vib Fast", "Leg Vib Smooth",
+                         "Vib Slow", "Vib Fast", "Vib Smooth",
+                         "Fast Swell", "Slow Swell", "Reverse Swell",
+                         "Fast Fall", "Slow Fall", "Shimmer Me", "Shimmer Leg"]
+
+
+def _append_atcc_zone_items(combo):
+    """Append the AT/CC articulation band (indices 73-98) to a zone
+    Articulation combo, with greyed non-selectable section dividers. Without
+    these entries a device sitting on an AT/CC articulation had no matching
+    item, so loads fell back to Linear (and used to write that back)."""
+    def _divider(label):
+        combo.addItem(label)
+        item = combo.model().item(combo.count() - 1)
+        if item is not None:
+            item.setEnabled(False)
+    _divider("\u2500\u2500\u2500 CC Articulations \u2500\u2500\u2500")
+    for i, name in enumerate(_ATCC_ZONE_BASE_NAMES):
+        combo.addItem("{} (CC)".format(name), 73 + i)
+    _divider("\u2500\u2500\u2500 AT Articulations \u2500\u2500\u2500")
+    for i, name in enumerate(_ATCC_ZONE_BASE_NAMES):
+        combo.addItem("{} (Poly)".format(name), 86 + i)
 
 
 class ActuationVisualizer(QWidget):
@@ -1363,6 +1392,40 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             if theme_idx is not None:
                 self.device.keyboard.set_lcd_theme(theme_idx)
 
+    def _on_channel_artic_enable_changed(self, index):
+        """Enable Channel Articulations changed - write immediately to the device.
+
+        Global setting (own EEPROM region + dedicated HID command). Reads the
+        current channel->articulation map first so only the enable flag changes,
+        then writes both back (the firmware persists it on-device).
+        """
+        if not (self.device and isinstance(self.device, VialKeyboard)):
+            return
+        enabled = bool(self.enable_channel_artic.currentData())
+        try:
+            cur = self.device.keyboard.get_channel_articulations()
+            artic_map = cur['map'] if cur else [0xFF] * 16
+            cc = cur['articulation_cc'] if cur else 1
+            self.device.keyboard.set_channel_articulations(enabled, artic_map, cc)
+        except Exception:
+            pass
+
+    def _on_articulation_cc_changed(self, index):
+        """Global Articulation CC changed - write immediately (preserving the map
+        + enable flag)."""
+        if not (self.device and isinstance(self.device, VialKeyboard)):
+            return
+        cc = self.articulation_cc_combo.currentData()
+        if cc is None:
+            return
+        try:
+            cur = self.device.keyboard.get_channel_articulations()
+            enabled = cur['enabled'] if cur else False
+            artic_map = cur['map'] if cur else [0xFF] * 16
+            self.device.keyboard.set_channel_articulations(enabled, artic_map, cc)
+        except Exception:
+            pass
+
     def create_help_label(self, tooltip_text):
         """Create a small question mark button with tooltip for help"""
         help_btn = QPushButton("?")
@@ -1446,7 +1509,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         midi_title_layout.addWidget(title_label)
 
         desc_label = QLabel(tr("MIDIswitchSettingsConfigurator",
-            "Configure global MIDI settings including channel, transpose, velocity curves, "
+            "Configure global MIDI settings including channel, transpose, articulation, "
             "sustain behavior, and aftertouch options for your keyboard."))
         desc_label.setWordWrap(True)
         desc_label.setStyleSheet("color: gray; font-size: 9pt;")
@@ -1574,17 +1637,13 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         velocity_curve_label_layout.setContentsMargins(0, 0, 0, 0)
         velocity_curve_label_layout.setSpacing(5)
         velocity_curve_label_layout.addWidget(self.create_help_label(
-            "How key press force maps to MIDI velocity:\n"
-            "Linear: Direct 1:1 mapping\n"
-            "Aggro: More sensitive at low velocities\n"
-            "Slow: Less sensitive at low velocities\n"
-            "Smooth: Gradual S-curve response\n"
-            "Steep: Sharp response curve\n"
-            "Instant: Maximum velocity always\n"
-            "Turbo: Enhanced high velocity response\n"
-            "User 1-10: Custom user-defined curves"
+            "How key press force maps to MIDI velocity.\n"
+            "Factory articulations: Softest-Hardest response\n"
+            "curves plus Sensitive, Fixed, Drums, Two Toned,\n"
+            "Reverse and Random Highlights presets.\n"
+            "User 1-50: Custom user-defined curves"
         ))
-        velocity_curve_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Velocity Curve:")))
+        velocity_curve_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Articulation:")))
         velocity_curve_label_layout.addStretch()
         velocity_curve_label_container.setLayout(velocity_curve_label_layout)
         base_layout.addWidget(velocity_curve_label_container, row, 0)
@@ -1594,15 +1653,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.global_velocity_curve.setMaximumWidth(120)
         self.global_velocity_curve.setMinimumHeight(25)
         self.global_velocity_curve.setMaximumHeight(25)
-        self.global_velocity_curve.addItem("Softest", 0)
-        self.global_velocity_curve.addItem("Soft", 1)
-        self.global_velocity_curve.addItem("Linear", 2)
-        self.global_velocity_curve.addItem("Hard", 3)
-        self.global_velocity_curve.addItem("Hardest", 4)
-        self.global_velocity_curve.addItem("Aggro", 5)
-        self.global_velocity_curve.addItem("Digital", 6)
-        for i in range(50):
-            self.global_velocity_curve.addItem("User {}".format(i + 1), 7 + i)
+        populate_articulation_combo(self.global_velocity_curve)
         self.global_velocity_curve.setCurrentIndex(0)
         self.global_velocity_curve.setEditable(True)
         self.global_velocity_curve.lineEdit().setReadOnly(True)
@@ -1760,16 +1811,12 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         vc_label_layout.setContentsMargins(0, 0, 0, 0)
         vc_label_layout.setSpacing(3)
         vc_label_layout.addWidget(self.create_help_label(
-            "Velocity response curve for KeySplit keys:\n"
-            "Linear: Direct 1:1 mapping\n"
-            "Aggro: More sensitive at low velocities\n"
-            "Slow: Less sensitive at low velocities\n"
-            "Smooth: Gradual S-curve response\n"
-            "Steep: Sharp response curve\n"
-            "Instant: Maximum velocity always\n"
-            "Turbo: Enhanced high velocity response"
+            "Velocity response curve for KeySplit keys.\n"
+            "Factory articulations: Softest-Hardest response\n"
+            "curves plus Sensitive, Fixed, Drums, Two Toned,\n"
+            "Reverse and Random Highlights presets."
         ))
-        vc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Velocity Curve:")))
+        vc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Articulation:")))
         vc_label_layout.addStretch()
         vc_label.setLayout(vc_label_layout)
         keysplit_layout.addWidget(vc_label, ks_row, 0)
@@ -1779,15 +1826,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.velocity_curve2.setMaximumWidth(100)
         self.velocity_curve2.setMinimumHeight(25)
         self.velocity_curve2.setMaximumHeight(25)
-        self.velocity_curve2.addItem("Softest", 0)
-        self.velocity_curve2.addItem("Soft", 1)
-        self.velocity_curve2.addItem("Linear", 2)
-        self.velocity_curve2.addItem("Hard", 3)
-        self.velocity_curve2.addItem("Hardest", 4)
-        self.velocity_curve2.addItem("Aggro", 5)
-        self.velocity_curve2.addItem("Digital", 6)
-        for i in range(50):
-            self.velocity_curve2.addItem("User {}".format(i + 1), 7 + i)
+        populate_articulation_combo(self.velocity_curve2)
         self.velocity_curve2.setCurrentIndex(0)
         self.velocity_curve2.setEditable(True)
         self.velocity_curve2.lineEdit().setReadOnly(True)
@@ -1958,16 +1997,12 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ts_vc_label_layout.setContentsMargins(0, 0, 0, 0)
         ts_vc_label_layout.setSpacing(3)
         ts_vc_label_layout.addWidget(self.create_help_label(
-            "Velocity response curve for TripleSplit keys:\n"
-            "Linear: Direct 1:1 mapping\n"
-            "Aggro: More sensitive at low velocities\n"
-            "Slow: Less sensitive at low velocities\n"
-            "Smooth: Gradual S-curve response\n"
-            "Steep: Sharp response curve\n"
-            "Instant: Maximum velocity always\n"
-            "Turbo: Enhanced high velocity response"
+            "Velocity response curve for TripleSplit keys.\n"
+            "Factory articulations: Softest-Hardest response\n"
+            "curves plus Sensitive, Fixed, Drums, Two Toned,\n"
+            "Reverse and Random Highlights presets."
         ))
-        ts_vc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Velocity Curve:")))
+        ts_vc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Articulation:")))
         ts_vc_label_layout.addStretch()
         ts_vc_label.setLayout(ts_vc_label_layout)
         triplesplit_layout.addWidget(ts_vc_label, ts_row, 0)
@@ -1977,15 +2012,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.velocity_curve3.setMaximumWidth(100)
         self.velocity_curve3.setMinimumHeight(25)
         self.velocity_curve3.setMaximumHeight(25)
-        self.velocity_curve3.addItem("Softest", 0)
-        self.velocity_curve3.addItem("Soft", 1)
-        self.velocity_curve3.addItem("Linear", 2)
-        self.velocity_curve3.addItem("Hard", 3)
-        self.velocity_curve3.addItem("Hardest", 4)
-        self.velocity_curve3.addItem("Aggro", 5)
-        self.velocity_curve3.addItem("Digital", 6)
-        for i in range(10):
-            self.velocity_curve3.addItem(f"User {i+1}", 7 + i)
+        populate_articulation_combo(self.velocity_curve3)
         self.velocity_curve3.setCurrentIndex(0)
         self.velocity_curve3.setEditable(True)
         self.velocity_curve3.lineEdit().setReadOnly(True)
@@ -2370,6 +2397,11 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             stopmode_layout.addWidget(_sm_combo, _sm_row, _sm_col + 1)
             self.stop_mode_combos[_sm_bit] = _sm_combo
 
+        # (The "Enable Aftertouch Modes" / "Enable CC Modes" toggles were moved
+        # out of this Stop Mode grid into the Advanced Settings grid below — see
+        # the AT/CC enable block after the Advanced grid is built. Their wiring
+        # is unchanged.)
+
         main_layout.addWidget(stopmode_row_container)
 
         # Advanced Settings Group with title on left, container centered
@@ -2683,6 +2715,105 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         )
         advanced_layout.addWidget(aftertouch_note, 5, 1, 1, 2)  # Moved to row 5
 
+        # AT/CC Mode enable flags — two global On/Off toggles that gate the
+        # second factory velocity-preset band (curve indices 73-98). Placed in
+        # the Advanced grid (row 6). They ride the SAME keyboard-config byte as
+        # the Stop Mode mask (packet 1 byte 20): bit5 = Aftertouch Modes,
+        # bit6 = CC Modes (bit7 = validity marker). All save/load wiring lives in
+        # get_current_settings / apply_settings / pack_basic_data (byte 20) and
+        # is unchanged by the move.
+        _atcc_help = (
+            "Unlock the AT/CC Mode velocity presets (a second factory band).\n"
+            "Aftertouch Modes: Vibrato Slow/Fast, Rising, Slow Rise, Wind Chords.\n"
+            "CC Modes: the same five as CC-flavored variants.\n"
+            "While a group is Off, its presets stay locked in the Velocity tab."
+        )
+        for _atcc_name, _atcc_attr, _atcc_col in (
+            ("Enable Aftertouch Modes", "enable_at_modes", 1),
+            ("Enable CC Modes",         "enable_cc_modes", 3),
+        ):
+            _atcc_label = QWidget()
+            _atcc_label_layout = QHBoxLayout()
+            _atcc_label_layout.setContentsMargins(0, 0, 0, 0)
+            _atcc_label_layout.setSpacing(5)
+            _atcc_label_layout.addWidget(self.create_help_label(_atcc_help))
+            _atcc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", _atcc_name + ":")))
+            _atcc_label.setLayout(_atcc_label_layout)
+            advanced_layout.addWidget(_atcc_label, 6, _atcc_col)
+            _atcc_combo = ArrowComboBox()
+            _atcc_combo.setMinimumWidth(120)
+            _atcc_combo.setMinimumHeight(25)
+            _atcc_combo.setMaximumHeight(25)
+            _atcc_combo.setEditable(True)
+            _atcc_combo.lineEdit().setReadOnly(True)
+            _atcc_combo.lineEdit().setAlignment(Qt.AlignCenter)
+            _atcc_combo.addItem("Off", False)
+            _atcc_combo.addItem("On", True)
+            advanced_layout.addWidget(_atcc_combo, 6, _atcc_col + 1)
+            setattr(self, _atcc_attr, _atcc_combo)
+        # Toggling either enable live-updates which AT/CC band rows are shown in
+        # the zone Articulation combos.
+        self.enable_at_modes.currentIndexChanged.connect(self._on_atcc_enable_changed)
+        self.enable_cc_modes.currentIndexChanged.connect(self._on_atcc_enable_changed)
+
+        # Enable Channel Articulations (own dedicated HID region, not the stop-mode
+        # byte). Toggling writes to the device immediately (reads the current map
+        # first so only the enable flag changes) and the setting persists on-device.
+        _ca_help = (
+            "Channel Articulations: map each MIDI channel (1-16) to a velocity\n"
+            "articulation in the Velocity tab's 'Channel Articulations' sub-tab.\n"
+            "When On, changing a zone's MIDI channel switches that zone to the\n"
+            "articulation mapped to the new channel."
+        )
+        _ca_label = QWidget()
+        _ca_label_layout = QHBoxLayout()
+        _ca_label_layout.setContentsMargins(0, 0, 0, 0)
+        _ca_label_layout.setSpacing(5)
+        _ca_label_layout.addWidget(self.create_help_label(_ca_help))
+        _ca_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator",
+                                             "Enable Channel Articulations:")))
+        _ca_label.setLayout(_ca_label_layout)
+        advanced_layout.addWidget(_ca_label, 7, 1)
+        self.enable_channel_artic = ArrowComboBox()
+        self.enable_channel_artic.setMinimumWidth(120)
+        self.enable_channel_artic.setMinimumHeight(25)
+        self.enable_channel_artic.setMaximumHeight(25)
+        self.enable_channel_artic.setEditable(True)
+        self.enable_channel_artic.lineEdit().setReadOnly(True)
+        self.enable_channel_artic.lineEdit().setAlignment(Qt.AlignCenter)
+        self.enable_channel_artic.addItem("Off", False)
+        self.enable_channel_artic.addItem("On", True)
+        self.enable_channel_artic.currentIndexChanged.connect(
+            self._on_channel_artic_enable_changed)
+        advanced_layout.addWidget(self.enable_channel_artic, 7, 2)
+
+        # Articulation CC: the CC# that AT/CC articulations set to "CC Default"
+        # send on. Global (rides the same dedicated HID region); writes immediately.
+        _artcc_label = QWidget()
+        _artcc_label_layout = QHBoxLayout()
+        _artcc_label_layout.setContentsMargins(0, 0, 0, 0)
+        _artcc_label_layout.setSpacing(5)
+        _artcc_label_layout.addWidget(self.create_help_label(
+            "The CC number that AT/CC articulations set to 'CC Default'\n"
+            "actually send on. Change it to re-point every 'CC Default'\n"
+            "articulation at once."))
+        _artcc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator",
+                                                "Articulation CC:")))
+        _artcc_label.setLayout(_artcc_label_layout)
+        advanced_layout.addWidget(_artcc_label, 7, 3)
+        self.articulation_cc_combo = ArrowComboBox()
+        self.articulation_cc_combo.setMinimumWidth(120)
+        self.articulation_cc_combo.setMinimumHeight(25)
+        self.articulation_cc_combo.setMaximumHeight(25)
+        self.articulation_cc_combo.setEditable(True)
+        self.articulation_cc_combo.lineEdit().setReadOnly(True)
+        self.articulation_cc_combo.lineEdit().setAlignment(Qt.AlignCenter)
+        for _cc in range(128):
+            self.articulation_cc_combo.addItem("CC#{}".format(_cc), _cc)
+        self.articulation_cc_combo.currentIndexChanged.connect(
+            self._on_articulation_cc_changed)
+        advanced_layout.addWidget(self.articulation_cc_combo, 7, 4)
+
         # MIDI Routing Settings Group with title on left, container centered
         routing_row_container = QWidget()
         routing_row_layout = QHBoxLayout()
@@ -2981,26 +3112,15 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
     # matches the previous default (uncustomized slots follow along); manually-
     # customized slots keep their own bindings. "Reset ALL bindings to default"
     # restores all slots AND the global default to GM factory.
-    DRUM_VOICE_NAMES = ["Kick", "Snare", "Closed HH", "Open HH", "Clap",
-                        "Rimshot", "Cowbell", "Cymbal", "Low Tom", "Mid Tom",
-                        "Hi Tom", "Shaker"]
-    # GM factory defaults (mirror firmware factory_seq_gm_default_notes/velocities)
-    DRUM_GM_DEFAULT_NOTES = [36, 38, 42, 46, 39, 37, 56, 51, 45, 47, 50, 54]
-    DRUM_GM_DEFAULT_VELS = [100] * 12
-    DRUM_GM_DEFAULT_CHANNEL = 9  # 0-indexed (channel 10 = GM drums)
-
-    # Extra DrumLIVE-only voicings (mirror firmware drum_live.c dl_extra_defs).
-    # Notes only (no velocity); each is fixed to a DrumLIVE category. The filter
-    # recognises these notes so the category filters catch them.
-    DRUM_EXTRA_NAMES = ["Crash", "Crash 2", "Splash", "China", "Ride Bell",
-                        "Pedal HH", "Elec Snare", "Hi-Mid Tom", "Floor Tom L",
-                        "Floor Tom H", "Hi Bongo", "Lo Bongo", "Maracas",
-                        "Vibraslap", "Claves", "Triangle"]
-    DRUM_EXTRA_CATS = ["Cymbal", "Cymbal", "Cymbal", "Cymbal", "Cymbal",
-                       "Hats", "Snare", "Toms", "Toms", "Toms",
-                       "Perc", "Perc", "Perc", "Perc", "Perc", "Perc"]
-    DRUM_EXTRA_DEFAULT_NOTES = [49, 57, 55, 52, 53, 44, 40, 48, 41, 43,
-                                60, 61, 70, 58, 75, 81]
+    # Sourced from editor/drum_voices.py (shared with the step sequencer);
+    # keep that module in lockstep with firmware factory_seq / drum_live defs.
+    DRUM_VOICE_NAMES = drum_voices.DRUM_VOICE_NAMES
+    DRUM_GM_DEFAULT_NOTES = drum_voices.DRUM_GM_DEFAULT_NOTES
+    DRUM_GM_DEFAULT_VELS = drum_voices.DRUM_GM_DEFAULT_VELS
+    DRUM_GM_DEFAULT_CHANNEL = drum_voices.DRUM_GM_DEFAULT_CHANNEL
+    DRUM_EXTRA_NAMES = drum_voices.DRUM_EXTRA_NAMES
+    DRUM_EXTRA_CATS = drum_voices.DRUM_EXTRA_CATS
+    DRUM_EXTRA_DEFAULT_NOTES = drum_voices.DRUM_EXTRA_DEFAULT_NOTES
 
     @staticmethod
     def _midi_note_label(note):
@@ -3035,10 +3155,11 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         # Default channel (applies to every drum machine)
         chan_row = QHBoxLayout()
         chan_row.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Default Channel")))
-        self.drum_channel_combo = QComboBox()
+        self.drum_channel_combo = ArrowComboBox()
         for ch in range(16):
             self.drum_channel_combo.addItem("Ch {}".format(ch + 1), ch)
         self.drum_channel_combo.setCurrentIndex(self.DRUM_GM_DEFAULT_CHANNEL)
+        self.drum_channel_combo.setFixedWidth(100)
         self.drum_channel_combo.currentIndexChanged.connect(self.on_drum_channel_changed)
         chan_row.addWidget(self.drum_channel_combo)
         chan_row.addStretch()
@@ -3059,56 +3180,66 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         layout.addWidget(preset_group)
         layout.addSpacing(6)
 
-        # ---- Custom Layout: 12 sequenced voices (Note + Velocity) ----------
+        # ---- Custom Layout: 12 sequenced voices (left: Note + Velocity) and
+        #      the 16 DrumLIVE-only extra voicings (right: Note only) side by
+        #      side. All dropdowns / velocity boxes are 100px and packed tight.
+        W = 100
         custom_group = QGroupBox(tr("MIDIswitchSettingsConfigurator", "Custom Layout"))
         grid = QGridLayout()
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(2)
         custom_group.setLayout(grid)
+
+        # Left panel headers (cols 0-2)
         grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Voice")), 0, 0)
         grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Note")), 0, 1)
         grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Velocity")), 0, 2)
+        # Right panel header (cols 4-5): Extra Voicings
+        extra_hdr = QLabel(tr("MIDIswitchSettingsConfigurator",
+            "Extra Voicings (DrumLIVE filter only — notes, no velocity)"))
+        extra_hdr.setStyleSheet("color: #888; font-style: italic;")
+        grid.addWidget(extra_hdr, 0, 4, 1, 2)
 
         self.drum_note_combos = []
         self.drum_vel_spins = []
         for v in range(12):
             grid.addWidget(QLabel(self.DRUM_VOICE_NAMES[v]), v + 1, 0)
 
-            note_combo = QComboBox()
+            note_combo = ArrowComboBox()
             for n in range(128):
                 note_combo.addItem(self._midi_note_label(n), n)
             note_combo.setCurrentIndex(self.DRUM_GM_DEFAULT_NOTES[v])
+            note_combo.setFixedWidth(W)
             note_combo.currentIndexChanged.connect(self.on_drum_keybinds_changed)
             grid.addWidget(note_combo, v + 1, 1)
             self.drum_note_combos.append(note_combo)
 
-            vel_spin = QSpinBox()
+            vel_spin = ArrowSpinBox()
             vel_spin.setRange(0, 127)
             vel_spin.setValue(self.DRUM_GM_DEFAULT_VELS[v])
+            vel_spin.setFixedWidth(W)
             # editingFinished (not valueChanged) to avoid an EEPROM write per tick
             vel_spin.editingFinished.connect(self.on_drum_keybinds_changed)
             grid.addWidget(vel_spin, v + 1, 2)
             self.drum_vel_spins.append(vel_spin)
 
-        # ---- Extra DrumLIVE-only voicings (notes only) ---------------------
-        extra_hdr = QLabel(tr("MIDIswitchSettingsConfigurator",
-            "Extra voicings (DrumLIVE filter only — notes, no velocity)"))
-        extra_hdr.setStyleSheet("color: #888; font-style: italic;")
-        grid.addWidget(extra_hdr, 13, 0, 1, 3)
-        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Category")), 14, 2)
-
+        # Right panel: extra voicings (Name + Note only — no velocity, no category)
         self.drum_extra_note_combos = []
         for e in range(len(self.DRUM_EXTRA_NAMES)):
-            row = 15 + e
-            grid.addWidget(QLabel(self.DRUM_EXTRA_NAMES[e]), row, 0)
-            note_combo = QComboBox()
+            r = e + 1
+            grid.addWidget(QLabel(self.DRUM_EXTRA_NAMES[e]), r, 4)
+            note_combo = ArrowComboBox()
             for n in range(128):
                 note_combo.addItem(self._midi_note_label(n), n)
             note_combo.setCurrentIndex(self.DRUM_EXTRA_DEFAULT_NOTES[e])
+            note_combo.setFixedWidth(W)
             note_combo.currentIndexChanged.connect(self.on_drum_extra_changed)
-            grid.addWidget(note_combo, row, 1)
+            grid.addWidget(note_combo, r, 5)
             self.drum_extra_note_combos.append(note_combo)
-            cat_lbl = QLabel(self.DRUM_EXTRA_CATS[e])
-            cat_lbl.setStyleSheet("color: #888;")
-            grid.addWidget(cat_lbl, row, 2)
+
+        # gap column between the two panels; keep everything left-packed
+        grid.setColumnMinimumWidth(3, 24)
+        grid.setColumnStretch(6, 1)
 
         layout.addWidget(custom_group)
         layout.addStretch()
@@ -3233,6 +3364,13 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
 
     def send_param_update(self, param_id, value):
         """Send real-time HID parameter update to keyboard"""
+        # While apply_settings is populating the widgets from the device, the
+        # combos' currentIndexChanged handlers fire — those must never echo the
+        # (possibly defaulted) values back to the device. Without this guard a
+        # connect/load could silently overwrite device state (e.g. reset the
+        # active articulation to Linear).
+        if getattr(self, '_loading_settings', False):
+            return
         try:
             if self.device and isinstance(self.device, VialKeyboard):
                 self.device.keyboard.set_keyboard_param_single(param_id, value)
@@ -3240,8 +3378,71 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             # Silently fail - firmware may not support this parameter yet
             pass
 
+    def _atcc_enabled_flags(self):
+        """Current AT/CC-band enable state from the Advanced toggles (default On
+        if the widgets aren't built yet)."""
+        cc, at = True, True
+        try:
+            cc = bool(self.enable_cc_modes.currentData())
+        except Exception:
+            pass
+        try:
+            at = bool(self.enable_at_modes.currentData())
+        except Exception:
+            pass
+        return cc, at
+
+    def _refresh_zone_articulation_combos(self):
+        """Rebuild the three zone Articulation combos with the device's user-slot
+        names, then hide unconfigured user slots + disabled AT/CC bands. Each
+        combo's current selection is preserved and kept visible."""
+        user_names, user_configured = None, None
+        try:
+            if self.device and isinstance(self.device, VialKeyboard):
+                res = self.device.keyboard.get_all_user_curve_names()
+                if res:
+                    user_names, user_configured = res
+        except Exception:
+            user_names, user_configured = None, None
+        self._artic_user_names = user_names
+        self._artic_user_configured = user_configured
+        cc, at = self._atcc_enabled_flags()
+        for combo in (self.global_velocity_curve, self.velocity_curve2, self.velocity_curve3):
+            keep = combo.currentData()
+            populate_articulation_combo(combo, user_names=user_names)
+            blocked = combo.blockSignals(True)
+            try:
+                if keep is not None:
+                    for i in range(combo.count()):
+                        if combo.itemData(i) == keep:
+                            combo.setCurrentIndex(i)
+                            break
+            finally:
+                combo.blockSignals(blocked)
+            apply_articulation_visibility(combo, user_configured=user_configured,
+                                          cc_enabled=cc, at_enabled=at, keep_index=keep)
+
+    def _refresh_zone_articulation_visibility(self):
+        """Re-apply band visibility to the zone Articulation combos using the
+        cached user-configured flags + the live Enable AT/CC toggles, keeping
+        each combo's current index visible. Cheap (no device read / rebuild)."""
+        cc, at = self._atcc_enabled_flags()
+        cfg = getattr(self, '_artic_user_configured', None)
+        for combo in (self.global_velocity_curve, self.velocity_curve2, self.velocity_curve3):
+            apply_articulation_visibility(combo, user_configured=cfg,
+                                          cc_enabled=cc, at_enabled=at,
+                                          keep_index=combo.currentData())
+
+    def _on_atcc_enable_changed(self, *args):
+        """Live-update zone Articulation combos when an Enable AT/CC toggle flips."""
+        if getattr(self, '_loading_settings', False):
+            return
+        self._refresh_zone_articulation_visibility()
+
     def _on_split_enable_changed(self):
         """Handle split enable changes - compute and send split status based on on/off combinations"""
+        if getattr(self, '_loading_settings', False):
+            return  # populating from device — don't echo back
         # Compute channel split status: 0=disabled, 1=keysplit, 2=triplesplit, 3=both
         channel_status = self._compute_split_status(
             self.keysplit_channel_enable.currentData(),
@@ -3308,6 +3509,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             # Per-function Stop Mode bitmask (rides basic packet byte 20 as
             # 0x80 | mask; replaces the old reserved/overdub byte)
             "stop_mode": self.get_stop_mode_mask(),
+            # AT/CC Mode enable flags (same packet byte 20, bit5/bit6)
+            "enable_at_modes": self.enable_at_modes.currentData(),
+            "enable_cc_modes": self.enable_cc_modes.currentData(),
             "smart_chord_light_mode": self.smart_chord_light_mode.currentData(),
             "key_split_channel": self.key_split_channel.currentData(),
             "key_split2_channel": self.key_split2_channel.currentData(),
@@ -3359,6 +3563,16 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         }
 
     def apply_settings(self, config):
+        """Populate the tab's widgets from a device config dict. Wrapped in the
+        _loading_settings guard so the widgets' live-send handlers can't echo
+        values back to the device mid-population (see send_param_update)."""
+        self._loading_settings = True
+        try:
+            self._apply_settings_inner(config)
+        finally:
+            self._loading_settings = False
+
+    def _apply_settings_inner(self, config):
         """Apply settings dictionary to UI"""
         def set_combo_by_data(combo, value, default_value=None):
             # CRITICAL: block signals while populating from a loaded config.
@@ -3407,6 +3621,20 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             self._apply_stop_mode(config.get("stop_mode", 0),
                                   self.stop_mode_supported)
 
+        # AT/CC Mode enable flags — same packet byte 20 as Stop Mode, so gate
+        # their editability on the same feature-detect marker.
+        set_combo_by_data(self.enable_at_modes, config.get("enable_at_modes"), False)
+        set_combo_by_data(self.enable_cc_modes, config.get("enable_cc_modes"), False)
+        self.enable_at_modes.setEnabled(self.stop_mode_supported)
+        self.enable_cc_modes.setEnabled(self.stop_mode_supported)
+        # Snapshot the byte-20 widget state as loaded, so the save flow can
+        # detect "untouched since load" and prefer the device's live values
+        # (the Velocity tab and the on-device menu also write these — a stale
+        # Save must not silently revert them). See on_save_slot.
+        self._byte20_loaded = (self.get_stop_mode_mask(),
+                               bool(self.enable_at_modes.currentData()),
+                               bool(self.enable_cc_modes.currentData()))
+
         # LCD colour theme is a global setting carried over a dedicated HID
         # command (not the per-slot config packet), so fetch it directly and
         # populate the combo without re-sending it back to the keyboard.
@@ -3416,6 +3644,22 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                 self.lcd_theme.blockSignals(True)
                 set_combo_by_data(self.lcd_theme, theme_idx, 0)
                 self.lcd_theme.blockSignals(False)
+
+            # Channel Articulations enable is a global carried over its own HID
+            # command (not the per-slot packet); fetch + populate without echoing.
+            ca = self.device.keyboard.get_channel_articulations()
+            if ca is not None and hasattr(self, 'enable_channel_artic'):
+                self.enable_channel_artic.blockSignals(True)
+                set_combo_by_data(self.enable_channel_artic, bool(ca.get('enabled', False)), False)
+                self.enable_channel_artic.blockSignals(False)
+                if hasattr(self, 'articulation_cc_combo'):
+                    self.articulation_cc_combo.blockSignals(True)
+                    set_combo_by_data(self.articulation_cc_combo, ca.get('articulation_cc', 1), 1)
+                    # Firmware without the Articulation CC byte (bit-7 marker
+                    # absent) can't store it - grey the combo out.
+                    self.articulation_cc_combo.setEnabled(
+                        bool(ca.get('articulation_cc_supported', False)))
+                    self.articulation_cc_combo.blockSignals(False)
 
         set_combo_by_data(self.smart_chord_light_mode, config.get("smart_chord_light_mode"), 0)
         set_combo_by_data(self.key_split_channel, config.get("key_split_channel"), 0)
@@ -3471,12 +3715,25 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         # lookups ("velocity_curve2", "global_velocity_curve", ...) never
         # existed there, so these combos always showed the fallback instead of
         # the device's real values.
-        set_combo_by_data(self.velocity_curve2, config.get("keysplit_he_velocity_curve"), 2)
-        set_combo_by_data(self.velocity_curve3, config.get("triplesplit_he_velocity_curve"), 2)
+        # Rebuild the zone Articulation combos with the device's user-slot names
+        # first (so set_combo_by_data can find AT/CC + user indices), hiding
+        # unconfigured user slots + disabled AT/CC bands. Enable flags were
+        # already applied above.
+        self._refresh_zone_articulation_combos()
+        set_combo_by_data(self.velocity_curve2,
+                          config.get("keysplit_he_velocity_curve", config.get("velocity_curve2")), 2)
+        set_combo_by_data(self.velocity_curve3,
+                          config.get("triplesplit_he_velocity_curve", config.get("velocity_curve3")), 2)
         # Global MIDI settings
-        set_combo_by_data(self.global_transpose, config.get("transpose_number"), 0)
-        set_combo_by_data(self.global_channel, config.get("channel_number"), 0)
-        set_combo_by_data(self.global_velocity_curve, config.get("he_velocity_curve"), 2)
+        set_combo_by_data(self.global_transpose,
+                          config.get("transpose_number", config.get("global_transpose")), 0)
+        set_combo_by_data(self.global_channel,
+                          config.get("channel_number", config.get("global_channel")), 0)
+        set_combo_by_data(self.global_velocity_curve,
+                          config.get("he_velocity_curve", config.get("global_velocity_curve")), 2)
+        # Re-apply band visibility now that each zone combo holds its final index
+        # (so a just-selected AT/CC or user index stays visible).
+        self._refresh_zone_articulation_visibility()
         # Sustain settings
         set_combo_by_data(self.base_sustain, config.get("base_sustain"), 0)
         set_combo_by_data(self.keysplit_sustain, config.get("keysplit_sustain"), 0)
@@ -3538,7 +3795,14 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         struct.pack_into('<I', data, offset, settings["oled_keyboard"]); offset += 4
 
         if self.stop_mode_supported:
-            data[offset] = 0x80 | (settings.get("stop_mode", 0) & self.STOP_MODE_MASK_ALL)
+            # byte 20: 0x80 validity | Stop Mode mask (bits0-4) | AT/CC enable
+            # flags (bit5 = Aftertouch Modes, bit6 = CC Modes).
+            _byte20 = 0x80 | (settings.get("stop_mode", 0) & self.STOP_MODE_MASK_ALL)
+            if settings.get("enable_at_modes"):
+                _byte20 |= 0x20
+            if settings.get("enable_cc_modes"):
+                _byte20 |= 0x40
+            data[offset] = _byte20
         else:
             data[offset] = 0
         offset += 1
@@ -3593,6 +3857,25 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                 raise RuntimeError("Device not connected")
 
             settings = self.get_current_settings()
+
+            # Byte-20 fields (Stop Mode mask + AT/CC enable flags) are ALSO
+            # written by the Velocity tab and the on-device settings menu. If
+            # our widgets are untouched since the last device load, prefer the
+            # device's live values so a stale Save can't silently revert an
+            # edit made elsewhere (e.g. enabling CC Modes from the Velocity
+            # tab's locked-preset page). The widgets/snapshot are deliberately
+            # left alone: still-untouched widgets keep matching the snapshot,
+            # so every subsequent Save re-merges the live values too.
+            loaded = getattr(self, '_byte20_loaded', None)
+            current = (settings.get("stop_mode", 0),
+                       bool(settings.get("enable_at_modes")),
+                       bool(settings.get("enable_cc_modes")))
+            if loaded is not None and current == loaded:
+                cfg = self.device.keyboard.get_midi_config()
+                if cfg and cfg.get("stop_mode_supported"):
+                    settings["stop_mode"] = cfg.get("stop_mode", settings.get("stop_mode", 0))
+                    settings["enable_at_modes"] = bool(cfg.get("enable_at_modes"))
+                    settings["enable_cc_modes"] = bool(cfg.get("enable_cc_modes"))
 
             basic_data = self.pack_basic_data(settings)
             print(f"[MIDI Settings] Saving slot {slot}: basic_data={len(basic_data)} bytes: {basic_data.hex()}")
@@ -3698,6 +3981,8 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "random_velocity_modifier": 127,
             "oled_keyboard": 0,
             "stop_mode": 0,  # all Mute (firmware default)
+            "enable_at_modes": False,  # AT/CC Mode bands locked by default
+            "enable_cc_modes": False,
             "smart_chord_light_mode": 0,
             "key_split_channel": 0,
             "key_split2_channel": 0,
@@ -4219,7 +4504,7 @@ class LayerActuationConfigurator(BasicEditor):
         vel_speed_combo.lineEdit().setReadOnly(True)
         vel_speed_combo.lineEdit().setAlignment(Qt.AlignCenter)
         vel_speed_combo.setEnabled(False)  # Deprecated: speed scale handled by speed_peak_ratio
-        vel_speed_combo.setToolTip("Deprecated: use Speed/Peak Ratio in Velocity tab instead")
+        vel_speed_combo.setToolTip("Deprecated: handled automatically by the Articulation tab")
         combo_layout.addWidget(vel_speed_combo)
         combo_layout.addStretch()
 
@@ -4299,24 +4584,14 @@ class LayerActuationConfigurator(BasicEditor):
 
         # HE Velocity Curve (dropdown)
         curve_layout = QHBoxLayout()
-        curve_label = QLabel(tr("LayerActuationConfigurator", "HE Velocity Curve:"))
+        curve_label = QLabel(tr("LayerActuationConfigurator", "Articulation:"))
         curve_label.setMinimumWidth(200)
         curve_layout.addWidget(curve_label)
 
         he_curve_combo = ArrowComboBox()
         he_curve_combo.setMinimumHeight(30)
         he_curve_combo.setStyleSheet("QComboBox { padding: 0px; text-align: center; font-size: 12px; } QComboBox QAbstractItemView { min-height: 125px; }")
-        # Factory curves (0-6)
-        he_curve_combo.addItem("Linear", 0)
-        he_curve_combo.addItem("Aggro", 1)
-        he_curve_combo.addItem("Slow", 2)
-        he_curve_combo.addItem("Smooth", 3)
-        he_curve_combo.addItem("Steep", 4)
-        he_curve_combo.addItem("Instant", 5)
-        he_curve_combo.addItem("Turbo", 6)
-        # User curves (7-56)
-        for i in range(50):
-            he_curve_combo.addItem("User {}".format(i + 1), 7 + i)
+        populate_articulation_combo(he_curve_combo)
         he_curve_combo.setCurrentIndex(0)  # Default: Linear
         he_curve_combo.setEditable(True)
         he_curve_combo.lineEdit().setReadOnly(True)
@@ -4777,24 +5052,14 @@ class LayerActuationConfigurator(BasicEditor):
 
         # HE Velocity Curve (dropdown)
         curve_layout = QHBoxLayout()
-        curve_label = QLabel(tr("LayerActuationConfigurator", "HE Velocity Curve:"))
+        curve_label = QLabel(tr("LayerActuationConfigurator", "Articulation:"))
         curve_label.setMinimumWidth(180)
         curve_layout.addWidget(curve_label)
 
         he_curve_combo = ArrowComboBox()
         he_curve_combo.setMinimumHeight(30)
         he_curve_combo.setStyleSheet("QComboBox { padding: 0px; text-align: center; font-size: 12px; } QComboBox QAbstractItemView { min-height: 125px; }")
-        # Factory curves (0-6)
-        he_curve_combo.addItem("Linear", 0)
-        he_curve_combo.addItem("Aggro", 1)
-        he_curve_combo.addItem("Slow", 2)
-        he_curve_combo.addItem("Smooth", 3)
-        he_curve_combo.addItem("Steep", 4)
-        he_curve_combo.addItem("Instant", 5)
-        he_curve_combo.addItem("Turbo", 6)
-        # User curves (7-56)
-        for i in range(50):
-            he_curve_combo.addItem("User {}".format(i + 1), 7 + i)
+        populate_articulation_combo(he_curve_combo)
         he_curve_combo.setCurrentIndex(0)  # Default: Linear
         he_curve_combo.setEditable(True)
         he_curve_combo.lineEdit().setReadOnly(True)
@@ -5367,6 +5632,54 @@ class LayerActuationConfigurator(BasicEditor):
 
         # Load actuation settings from keyboard
         self.on_load_from_keyboard_silent()
+        # Bring the per-key / per-layer Articulation pickers in line with the
+        # device: real user-slot names, unconfigured user slots hidden, AT/CC
+        # bands shown only when enabled.
+        self._refresh_articulation_pickers()
+
+    def _refresh_articulation_pickers(self):
+        """Rebuild the master (per-key) + per-layer Articulation pickers with the
+        device's user-slot names and hide unconfigured user slots / disabled
+        AT/CC bands. These combos are setters (not stored state), so hiding a row
+        never affects a stored per-key value."""
+        combos = []
+        try:
+            combos.append(self.master_widgets['he_curve_combo'])
+        except Exception:
+            pass
+        try:
+            combos.append(self.layer_widgets['he_curve_combo'])
+        except Exception:
+            pass
+        if not combos:
+            return
+        user_names, user_configured = None, None
+        cc_enabled, at_enabled = True, True
+        try:
+            if self.device and isinstance(self.device, VialKeyboard):
+                res = self.device.keyboard.get_all_user_curve_names()
+                if res:
+                    user_names, user_configured = res
+                config = self.device.keyboard.get_midi_config() or {}
+                cc_enabled = bool(config.get('enable_cc_modes', False))
+                at_enabled = bool(config.get('enable_at_modes', False))
+        except Exception:
+            pass
+        for combo in combos:
+            keep = combo.currentData()
+            populate_articulation_combo(combo, user_names=user_names)
+            blocked = combo.blockSignals(True)
+            try:
+                if keep is not None:
+                    for i in range(combo.count()):
+                        if combo.itemData(i) == keep:
+                            combo.setCurrentIndex(i)
+                            break
+            finally:
+                combo.blockSignals(blocked)
+            apply_articulation_visibility(combo, user_configured=user_configured,
+                                          cc_enabled=cc_enabled, at_enabled=at_enabled,
+                                          keep_index=keep)
 
     def on_load_from_keyboard_silent(self):
         """Load settings without showing success message"""
@@ -5519,6 +5832,23 @@ class GamingConfigurator(BasicEditor):
         desc_label.setMaximumWidth(400)
         desc_label.setStyleSheet("color: gray; font-size: 9pt;")
         settings_column.addWidget(desc_label)
+
+        # Gaming Mode master enable. Without this the tab had no way to turn gaming
+        # mode ON — a user could assign controls and Save, but the mappings only
+        # take effect while gaming mode is active, so the gamepad stayed dead. This
+        # applies instantly (like the on-device GAMING_MODE keycode) rather than
+        # waiting for "Save Configuration".
+        enable_row = QHBoxLayout()
+        enable_row.setContentsMargins(0, 0, 0, 0)
+        self.gaming_mode_checkbox = QCheckBox(tr("GamingConfigurator", "Gaming Mode Enabled"))
+        self.gaming_mode_checkbox.setStyleSheet("font-weight: bold;")
+        self.gaming_mode_checkbox.setToolTip(
+            "Turn the keyboard's gamepad mode on or off. Applies immediately.\n"
+            "When on, assigned keys act as gamepad inputs; when off, they behave normally.")
+        self.gaming_mode_checkbox.toggled.connect(self.on_gaming_mode_toggled)
+        enable_row.addWidget(self.gaming_mode_checkbox)
+        enable_row.addStretch()
+        settings_column.addLayout(enable_row)
 
         # Horizontal layout for Response and Calibration side by side
         response_calibration_layout = QHBoxLayout()
@@ -5884,6 +6214,65 @@ class GamingConfigurator(BasicEditor):
             # Return empty stylesheet to clear any previous styling (except base_style)
             return f"QPushButton {{ {base_style} }}"
 
+    def on_gaming_mode_toggled(self, checked):
+        """Enable/disable gaming mode on the device immediately."""
+        if not self.keyboard:
+            return
+        try:
+            if not self.keyboard.set_gaming_mode(checked):
+                QMessageBox.warning(None, "Error", "Failed to change Gaming Mode on the keyboard")
+        except Exception as e:
+            QMessageBox.critical(None, "Error", f"Error setting Gaming Mode: {str(e)}")
+
+    def _apply_key_map_to_control(self, control_id, mapping):
+        """Populate one gamepad control button from a firmware key mapping dict."""
+        data = self.gaming_controls.get(control_id)
+        if data is None:
+            return
+        button_type = data.get('button_type', 'regular')
+        if mapping and mapping.get('enabled'):
+            row, col = mapping['row'], mapping['col']
+            data['row'] = row
+            data['col'] = col
+            data['enabled'] = True
+            # Resolve the keycode at that position (prefer layer 0) purely for a
+            # readable button label; the mapping itself is by row/col.
+            label = None
+            kc = None
+            if self.keyboard:
+                for (layer, r, c), k in sorted(self.keyboard.layout.items()):
+                    if r == row and c == col:
+                        kc = k
+                        break
+            if kc is not None:
+                from keycodes.keycodes import Keycode
+                label = Keycode.label(kc)
+                data['keycode'] = kc
+            if not label:
+                label = f"r{row}c{col}"
+            if len(label) > 7:
+                label = label[:6] + ".."
+            data['button'].setText(label)
+        else:
+            data['keycode'] = None
+            data['row'] = None
+            data['col'] = None
+            data['enabled'] = False
+            data['button'].setText("Not Set")
+        data['button'].setStyleSheet(self.get_button_style(button_type, highlighted=False))
+
+    def _load_key_mappings(self):
+        """Read every gamepad control's mapping back from the device and show it.
+
+        Essential for a safe Save: on_save() sends enabled=0 for any control that
+        isn't shown as assigned, so without loading the existing mappings first a
+        Save would wipe the user's gamepad layout on the device."""
+        if not self.keyboard or not hasattr(self.keyboard, 'get_gaming_key_map'):
+            return
+        for control_id in self.gaming_controls.keys():
+            mapping = self.keyboard.get_gaming_key_map(control_id)
+            self._apply_key_map_to_control(control_id, mapping)
+
     def on_assign_key(self, control_id):
         """Handle key assignment for a gaming control"""
         self.active_control_id = control_id
@@ -6060,12 +6449,20 @@ class GamingConfigurator(BasicEditor):
                 self.suppress_keystrokes_checkbox.setChecked(settings.get('suppress_keystrokes', True))
                 self.suppress_keystrokes_checkbox.blockSignals(False)
 
+                # Reflect current gaming-mode enable state (signals blocked)
+                self.gaming_mode_checkbox.blockSignals(True)
+                self.gaming_mode_checkbox.setChecked(settings.get('enabled', False))
+                self.gaming_mode_checkbox.blockSignals(False)
+
+                # Load existing key mappings so Save can't wipe them
+                self._load_key_mappings()
+
                 # Load gamepad response settings
                 response = self.keyboard.get_gaming_response()
                 if response:
                     self.angle_adj_checkbox.setChecked(response.get('angle_adj_enabled', False))
                     self.diagonal_angle_slider.setValue(response.get('diagonal_angle', 0))
-                    self.diagonal_angle_label.setText(f"Diagonal Angle: {response.get('diagonal_angle', 0)}°")
+                    self.diagonal_angle_label.setText(f"Angle: {response.get('diagonal_angle', 0)}°")
                     self.square_output_checkbox.setChecked(response.get('square_output', False))
                     self.snappy_joystick_checkbox.setChecked(response.get('snappy_joystick', False))
 
@@ -6171,6 +6568,15 @@ class GamingConfigurator(BasicEditor):
                 self.suppress_keystrokes_checkbox.setChecked(settings.get('suppress_keystrokes', True))
                 self.suppress_keystrokes_checkbox.blockSignals(False)
 
+                # Reflect the current gaming-mode enable state (block signals so
+                # showing it doesn't fire an unwanted set_gaming_mode round-trip).
+                self.gaming_mode_checkbox.blockSignals(True)
+                self.gaming_mode_checkbox.setChecked(settings.get('enabled', False))
+                self.gaming_mode_checkbox.blockSignals(False)
+
+            # Load existing key mappings so Save can't wipe them
+            self._load_key_mappings()
+
             # Load gamepad response settings
             response = self.keyboard.get_gaming_response()
             if response:
@@ -6181,7 +6587,7 @@ class GamingConfigurator(BasicEditor):
 
                 self.angle_adj_checkbox.setChecked(response.get('angle_adj_enabled', False))
                 self.diagonal_angle_slider.setValue(response.get('diagonal_angle', 0))
-                self.diagonal_angle_label.setText(f"Diagonal Angle: {response.get('diagonal_angle', 0)}°")
+                self.diagonal_angle_label.setText(f"Angle: {response.get('diagonal_angle', 0)}°")
                 self.square_output_checkbox.setChecked(response.get('square_output', False))
                 self.snappy_joystick_checkbox.setChecked(response.get('snappy_joystick', False))
 

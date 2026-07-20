@@ -12,6 +12,7 @@ from PyQt5.QtWidgets import (QWidget, QPushButton, QHBoxLayout, QVBoxLayout,
                              QApplication, QToolButton, QTextEdit, QSizePolicy)
 
 from editor.basic_editor import BasicEditor
+from editor import drum_voices
 from util import tr
 from vial_device import VialKeyboard
 from widgets.combo_box import ArrowComboBox
@@ -194,24 +195,28 @@ class DebugConsole(QWidget):
 
 def flat_semitones_to_interval_octave(flat_semitones):
     """
-    Convert flat semitones to (interval, octave) pair for firmware.
+    Convert flat semitones to (interval, octave) for the firmware arp note format.
+    `interval` is a SIGNED within-octave offset (-11..+11) and `octave` is a signed
+    octave count, such that interval + octave*12 == flat_semitones. pack_note_data
+    stores interval as sign-bit + 4-bit magnitude, so interval must carry the input
+    sign and |interval| must be <= 11.
     Examples:
         +29 → (interval=+5, octave=+2)
-        -1 → (interval=-1, octave=0)
+        -1  → (interval=-1, octave=0)
         -13 → (interval=-1, octave=-1)
-        +12 → (interval=0, octave=+1)
+        +12 → (interval=0,  octave=+1)
+
+    (#audit) The previous implementation used Python's floor // and % (which force a
+    non-negative remainder) plus an extra adjustment, producing wrong values for
+    negatives — e.g. -1 → (23, -2), and pack_note_data's `23 & 0x0F == 7` then saved
+    a completely wrong pitch. Splitting the sign and decomposing the magnitude keeps
+    interval signed and bounded, and is an exact inverse of
+    interval_octave_to_flat_semitones (interval + octave*12).
     """
-    # Calculate octave (how many complete 12-semitone octaves)
-    octave = flat_semitones // 12
-    # Calculate interval within octave (-11 to +11)
-    interval = flat_semitones % 12
-
-    # Handle negative intervals properly
-    # If we have a negative remainder, adjust
-    if flat_semitones < 0 and interval != 0:
-        octave -= 1
-        interval = 12 + interval
-
+    sign = -1 if flat_semitones < 0 else 1
+    magnitude = abs(flat_semitones)
+    octave = sign * (magnitude // 12)
+    interval = sign * (magnitude % 12)
     return interval, octave
 
 
@@ -490,6 +495,60 @@ class VelocityOctavePopup(QDialog):
         return velocity, octave
 
 
+class DrumBindingPicker(QDialog):
+    """Note picker for a step-sequencer row: the 28 drum bindings (4 rows x 7)
+    from the Drum Settings tab, plus a final row "Choose note..." that falls
+    through to the manual note/octave picker.
+
+    result_note: an absolute MIDI note (int) if a drum binding was chosen,
+                 the string 'manual' if "Choose note..." was chosen,
+                 or None if cancelled.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Choose Drum / Note")
+        self.result_note = None
+
+        layout = QVBoxLayout()
+        layout.setSpacing(6)
+
+        hint = QLabel("Pick a drum voice, or choose an exact note.")
+        hint.setStyleSheet("color: gray; font-size: 9pt;")
+        layout.addWidget(hint)
+
+        grid = QGridLayout()
+        grid.setSpacing(4)
+        names = drum_voices.DRUM_BINDING_NAMES
+        notes = drum_voices.DRUM_BINDING_NOTES
+        for i, name in enumerate(names):
+            r, c = divmod(i, 7)          # 4 rows of 7
+            btn = QPushButton(name)
+            btn.setMinimumHeight(34)
+            btn.setMinimumWidth(90)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.clicked.connect(lambda _checked, n=notes[i]: self._pick_drum(n))
+            grid.addWidget(btn, r, c)
+        layout.addLayout(grid)
+
+        # 5th row: a single wide "Choose note..." button (manual picker)
+        choose_btn = QPushButton("Choose note…")
+        choose_btn.setMinimumHeight(34)
+        choose_btn.setCursor(Qt.PointingHandCursor)
+        choose_btn.clicked.connect(self._pick_manual)
+        layout.addWidget(choose_btn)
+
+        self.setLayout(layout)
+
+    def _pick_drum(self, note):
+        self.result_note = note
+        self.accept()
+
+    def _pick_manual(self):
+        self.result_note = 'manual'
+        self.accept()
+
+
 class BasicStepSequencerGrid(QWidget):
     """Grid widget for step sequencer basic tab with dynamic rows"""
 
@@ -541,17 +600,9 @@ class BasicStepSequencerGrid(QWidget):
         self.note_title.setAlignment(Qt.AlignCenter)
         self.note_title.setStyleSheet("font-weight: bold;")
 
-        # Add 4 default rows
-        default_notes = [
-            ('C', 3),
-            ('D', 3),
-            ('E', 3),
-            ('F', 3)
-        ]
-        note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-        for note_name, octave in default_notes:
-            note_index = note_names.index(note_name)
-            self._create_row(note_index, octave)
+        # Add 4 default rows: Kick / Snare / Closed HH / Open HH (drum voices)
+        for note in drum_voices.DRUM_GM_DEFAULT_NOTES[:4]:
+            self._create_row(note % 12, note // 12)
 
         # Position the "+" button after all rows
         self._update_add_button_position()
@@ -712,14 +763,17 @@ class BasicStepSequencerGrid(QWidget):
         delete_btn.clicked.connect(lambda checked, r=row_idx: self.delete_note_row(r))
         note_layout.addWidget(delete_btn)
 
-        # Note label - clickable with theme styling (50x50 square)
-        note_label = QPushButton(f"{note_names[note_index]}{octave}")
+        # Note label - clickable with theme styling (50x50 square). Shows the
+        # drum-binding name (e.g. "Kick") when the note maps to a Drum Settings
+        # voice, else the pitch (e.g. "C3").
+        note_label = QPushButton(self._row_label(note_index, octave))
         note_label.setFixedSize(50, 50)
         palette = self.palette()
         highlight = palette.color(QPalette.Highlight)
         note_label.setStyleSheet(f"""
             QPushButton {{
                 font-weight: bold;
+                font-size: 9px;
                 text-align: center;
                 border: 2px solid {highlight.name()};
                 background-color: rgba({highlight.red()}, {highlight.green()}, {highlight.blue()}, 50);
@@ -749,23 +803,52 @@ class BasicStepSequencerGrid(QWidget):
         self._update_add_button_position()
         self._update_note_label_position()
 
+    def _row_label(self, note_index, octave):
+        """Display text for a row's note button: the drum-binding name (from the
+        Drum Settings voices) if the absolute note matches one, else "C3" etc.
+        Multi-word drum names wrap onto two lines to fit the 50x50 button."""
+        note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        abs_note = octave * 12 + note_index
+        name = drum_voices.DRUM_NOTE_TO_NAME.get(abs_note)
+        if name:
+            return name.replace(" ", "\n")
+        return "{}{}".format(note_names[note_index], octave)
+
+    def _manual_note_octave(self, current_note_index=0, current_octave=4):
+        """The classic manual "Choose note" + "Choose octave" dialogs. Returns
+        (note_index, octave) or None if cancelled."""
+        note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        note, ok1 = QInputDialog.getItem(self, "Choose Note", "Choose note:", note_names,
+                                         current_note_index, False)
+        if not ok1:
+            return None
+        octave, ok2 = QInputDialog.getInt(self, "Choose Octave", "Choose octave:",
+                                          current_octave, 0, 7, 1)
+        if not ok2:
+            return None
+        return (note_names.index(note), octave)
+
+    def _pick_note_for_row(self, current_note_index=0, current_octave=4):
+        """Open the drum-binding picker (4x7 drum voices + "Choose note…").
+        Returns (note_index, octave) or None if cancelled."""
+        picker = DrumBindingPicker(self)
+        if picker.exec_() != QDialog.Accepted or picker.result_note is None:
+            return None
+        if picker.result_note == 'manual':
+            return self._manual_note_octave(current_note_index, current_octave)
+        note = picker.result_note
+        return (note % 12, note // 12)
+
     def add_note_row(self):
         """Add a new note row"""
         if len(self.rows) >= 128:  # MAX_PRESET_NOTES
             QMessageBox.warning(self, "Maximum Rows", "Maximum 128 note rows reached")
             return
 
-        # Ask user to select note and octave
-        note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-        note, ok1 = QInputDialog.getItem(self, "Select Note", "Choose note:", note_names, 0, False)
-        if not ok1:
+        result = self._pick_note_for_row(0, 4)
+        if result is None:
             return
-
-        octave, ok2 = QInputDialog.getInt(self, "Select Octave", "Choose octave:", 4, 0, 7, 1)
-        if not ok2:
-            return
-
-        note_index = note_names.index(note)
+        note_index, octave = result
         self._create_row(note_index, octave)
         self._update_add_button_position()
         self.dataChanged.emit()
@@ -776,21 +859,11 @@ class BasicStepSequencerGrid(QWidget):
             return
 
         row_data = self.rows[row_idx]
-        note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
-        # Ask user to select new note and octave
-        current_note = note_names[row_data['note']]
-        note, ok1 = QInputDialog.getItem(self, "Edit Note", "Choose note:", note_names, note_names.index(current_note), False)
-        if not ok1:
+        result = self._pick_note_for_row(row_data['note'], row_data['octave'])
+        if result is None:
             return
-
-        octave, ok2 = QInputDialog.getInt(self, "Edit Octave", "Choose octave:", row_data['octave'], 0, 7, 1)
-        if not ok2:
-            return
-
-        # Update row data
-        row_data['note'] = note_names.index(note)
-        row_data['octave'] = octave
+        row_data['note'], row_data['octave'] = result
 
         # Update label (row offset +2 for headers, col 1 for note widgets)
         item = self.grid_layout.itemAtPosition(row_idx + 2, 1)
@@ -799,7 +872,7 @@ class BasicStepSequencerGrid(QWidget):
             # Find the note label button (not the delete "X" button)
             for btn in widget.findChildren(QPushButton):
                 if btn.text() != "X":
-                    btn.setText(f"{note}{octave}")
+                    btn.setText(self._row_label(row_data['note'], row_data['octave']))
                     break
 
         self.dataChanged.emit()
@@ -1096,18 +1169,11 @@ class BasicStepSequencerGrid(QWidget):
         self.num_steps = num_steps
         self.rebuild_header()
 
-        # If no data AND no existing rows, create default rows (C3, D3, E3, F3)
+        # If no data AND no existing rows, create default rows:
+        # Kick / Snare / Closed HH / Open HH (drum voices)
         if not note_groups:
-            note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-            default_notes = [
-                ('C', 3),
-                ('D', 3),
-                ('E', 3),
-                ('F', 3)
-            ]
-            for note_name, octave in default_notes:
-                note_index = note_names.index(note_name)
-                self._create_row(note_index, octave)
+            for note in drum_voices.DRUM_GM_DEFAULT_NOTES[:4]:
+                self._create_row(note % 12, note // 12)
             self._update_add_button_position()
             self._update_note_label_position()
             return
@@ -3807,6 +3873,31 @@ class Arpeggiator(BasicEditor):
             self.debug_log(f"SAVE: note[{i}] = {note}", "DATA")
         if firmware_note_count > 5:
             self.debug_log(f"SAVE: ... and {firmware_note_count - 5} more notes", "DATA")
+
+        # (#audit) Protocol bounds check BEFORE building/sending the packet.
+        # pattern_length rides two bytes but the firmware validator rejects anything
+        # outside [1,127] (and requires every note timing < pattern_length), so a
+        # longer pattern silently wraps its 7-bit note timing and is then rejected
+        # by the device. note_count rides a single byte (params[2]) AND the chunk
+        # start index, so a count > 255 wraps and silently corrupts / partially
+        # sends the preset. Abort with a clear message instead of shipping garbage.
+        pattern_len = self.preset_data.get('pattern_length_16ths', 0)
+        if pattern_len < 1 or pattern_len > 127:
+            self.debug_log(f"SAVE: BLOCKED - pattern_length {pattern_len} out of [1,127]", "ERROR")
+            self.update_status(
+                f"Pattern is {pattern_len} sixteenth-notes long; the device limit is 127. "
+                f"Reduce the number of steps or use a finer note rate.", error=True)
+            if hasattr(self, 'debug_console'):
+                self.debug_console.mark_operation_end(success=False)
+            return
+        if firmware_note_count > 255:
+            self.debug_log(f"SAVE: BLOCKED - note_count {firmware_note_count} exceeds 255", "ERROR")
+            self.update_status(
+                f"Preset has {firmware_note_count} notes; the device limit is 255. "
+                f"Remove some notes before saving.", error=True)
+            if hasattr(self, 'debug_console'):
+                self.debug_console.mark_operation_end(success=False)
+            return
 
         # Build parameter list (new protocol without name field)
         # params[0] = preset_id

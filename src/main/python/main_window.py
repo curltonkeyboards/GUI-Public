@@ -177,7 +177,7 @@ class MainWindow(QMainWindow):
                         (self.delay_tab, "Delay"),
                         (self.tap_dance, "Tap Dance"), (self.combos, "Combos"),
                         (self.key_override, "Key Overrides"), (self.qmk_settings, "QMK Settings"),
-                        (self.matrix_tester, "Matrix tester"), (self.velocity_tab, "Velocity"),
+                        (self.matrix_tester, "Matrix tester"), (self.velocity_tab, "Articulation"),
                         (self.firmware_flasher, "Firmware updater")]
 
         Unlocker.global_layout_editor = self.layout_editor

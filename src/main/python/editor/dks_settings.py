@@ -905,7 +905,11 @@ class DKSActionEditor(QWidget):
         slider_container.setSpacing(4)
 
         self.actuation_slider = QSlider(Qt.Horizontal)
-        self.actuation_slider.setMinimum(0)
+        # Minimum actuation is floored so the user can't go below 0.1mm. This
+        # slider is 0-100 = 0-4.0mm (0.04mm/step); 3 = 0.12mm is the smallest
+        # step >= 0.1mm. Qt clamps setValue() to this minimum, so the marker-drag
+        # path (_on_*_actuation_dragged -> setValue) is covered too.
+        self.actuation_slider.setMinimum(3)
         self.actuation_slider.setMaximum(100)
         self.actuation_slider.setValue(50)
         self.actuation_slider.setFixedWidth(70)
@@ -1225,6 +1229,14 @@ class DKSEntryUI(QWidget):
         self._send_status_label.setStyleSheet("color: red; font-size: 10px;")
         button_layout.addWidget(self._send_status_label)
 
+        # Unsaved-changes cue. Live slider/keycode edits take effect on the
+        # keyboard immediately (RAM), but are NOT persisted until "Save to
+        # EEPROM" — without this cue a user tweaks a key, it works, then the
+        # config silently reverts on the next power cycle.
+        self._dirty_label = QLabel("")
+        self._dirty_label.setStyleSheet("color: #e0a020; font-size: 10px; font-weight: bold;")
+        button_layout.addWidget(self._dirty_label)
+
         button_layout.addStretch()
 
         self.reset_btn = QPushButton("Reset Slot")
@@ -1327,9 +1339,16 @@ class DKSEntryUI(QWidget):
             if not self._send_failed:
                 self._send_failed = True
                 self._send_status_label.setText("Send to keyboard failed")
-        elif self._send_failed:
-            self._send_failed = False
-            self._send_status_label.setText("")
+        else:
+            if self._send_failed:
+                self._send_failed = False
+                self._send_status_label.setText("")
+            # The edit is live on the keyboard but not yet persisted.
+            self._set_dirty(True)
+
+    def _set_dirty(self, dirty):
+        """Show/hide the unsaved-changes cue."""
+        self._dirty_label.setText("● Unsaved — click Save to EEPROM to keep" if dirty else "")
 
     def _on_key_selected(self, widget):
         """Handle key widget selection - update visual feedback"""
@@ -1414,9 +1433,19 @@ class DKSEntryUI(QWidget):
             finally:
                 self.reset_btn.setEnabled(True)
             if ok:
-                self._log(f"Slot {self.slot_idx} reset OK, reloading...", "INFO")
-                QMessageBox.information(self, "Success", "Slot reset to defaults")
+                self._log(f"Slot {self.slot_idx} reset OK, persisting + reloading...", "INFO")
+                # reset_slot only changes firmware RAM; persist it so the reset
+                # survives a power cycle (matches the confirmation dialog).
+                saved = self.dks_protocol.save_to_eeprom()
                 self._on_load()
+                if saved:
+                    self._set_dirty(False)
+                    QMessageBox.information(self, "Success", "Slot reset to defaults")
+                else:
+                    self._set_dirty(True)
+                    QMessageBox.warning(self, "Saved to RAM only",
+                                        "Slot reset, but writing to EEPROM failed — "
+                                        "click Save to EEPROM to make it permanent.")
             else:
                 self._log(f"Slot {self.slot_idx} reset FAILED", "ERROR")
                 QMessageBox.warning(self, "Error", "Failed to reset slot")
@@ -1437,6 +1466,7 @@ class DKSEntryUI(QWidget):
             self.save_eeprom_btn.setEnabled(True)
         if success:
             self._log("Save to EEPROM: SUCCESS", "INFO")
+            self._set_dirty(False)
             QMessageBox.information(self, "Success", "DKS configuration saved to EEPROM")
         else:
             self._log("Save to EEPROM: FAILED", "ERROR")
@@ -1463,9 +1493,19 @@ class DKSEntryUI(QWidget):
             finally:
                 self.reset_all_btn.setEnabled(True)
             if ok:
-                self._log("Reset all slots: SUCCESS, reloading...", "INFO")
-                QMessageBox.information(self, "Success", "All slots reset to defaults")
+                self._log("Reset all slots: SUCCESS, persisting + reloading...", "INFO")
+                # reset_all_slots only changes firmware RAM; persist it so the
+                # reset survives a power cycle (matches "cannot be undone").
+                saved = self.dks_protocol.save_to_eeprom()
                 self._on_load()
+                if saved:
+                    self._set_dirty(False)
+                    QMessageBox.information(self, "Success", "All slots reset to defaults")
+                else:
+                    self._set_dirty(True)
+                    QMessageBox.warning(self, "Saved to RAM only",
+                                        "All slots reset, but writing to EEPROM failed — "
+                                        "click Save to EEPROM to make it permanent.")
             else:
                 self._log("Reset all slots: FAILED", "ERROR")
                 QMessageBox.warning(self, "Error", "Failed to reset slots")
@@ -1486,6 +1526,7 @@ class DKSEntryUI(QWidget):
             self.load_eeprom_btn.setEnabled(True)
         if success:
             self._log("Load from EEPROM: SUCCESS, reloading current slot...", "INFO")
+            self._set_dirty(False)
             QMessageBox.information(self, "Success", "DKS configurations loaded from EEPROM")
             self._on_load()
         else:
@@ -1624,15 +1665,26 @@ class DKSSettingsTab(BasicEditor):
         self.loaded_slots.clear()
         self._scanned_slots.clear()
 
-        # Reset manual expansion and scan for used slots
+        # Reset manual expansion. Show a single tab immediately and defer the
+        # 50-slot content scan to the next event-loop turn, so connecting does
+        # not block the UI thread on a burst of synchronous HID reads. The scan
+        # itself uses low USB retries (best-effort tab visibility).
         self._manually_expanded_count = 0
-        self.debug_log("Scanning all slots for content...", "INFO")
-        self._scan_and_update_visible_tabs()
-        self.debug_log(f"Scan complete - {self._visible_tab_count} tabs visible", "INFO")
+        self._update_visible_tabs_with_last_used(-1)
+        QTimer.singleShot(0, self._deferred_scan)
 
         # Set keyboard reference for tabbed keycodes
         if hasattr(device, 'keyboard'):
             self.tabbed_keycodes.set_keyboard(device.keyboard)
+
+    def _deferred_scan(self):
+        """Run the connect-time slot scan off the initial rebuild path."""
+        # The device may have been torn down between scheduling and firing.
+        if not self.dks_protocol:
+            return
+        self.debug_log("Scanning all slots for content...", "INFO")
+        self._scan_and_update_visible_tabs()
+        self.debug_log(f"Scan complete - {self._visible_tab_count} tabs visible", "INFO")
 
     def _dks_slot_has_content(self, slot):
         """Check if a DKS slot has any keycodes assigned"""
@@ -1651,10 +1703,12 @@ class DKSSettingsTab(BasicEditor):
         if not self.dks_protocol:
             return
 
-        # Load all slots to find which have content
+        # Load all slots to find which have content. Low retries: this is a
+        # best-effort visibility scan, and a slot that momentarily fails to read
+        # is simply treated as empty (the per-tab lazy load uses full retries).
         last_used = -1
         for i in range(DKS_NUM_SLOTS):
-            slot = self.dks_protocol.get_slot(i)
+            slot = self.dks_protocol.get_slot(i, retries=1)
             if slot:
                 self._scanned_slots[i] = slot
                 entry = self._entries.get(i)

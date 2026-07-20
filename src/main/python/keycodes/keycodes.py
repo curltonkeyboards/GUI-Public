@@ -902,6 +902,9 @@ KEYCODES_SETTINGS1 = [
     K("DEFAULT_SETTINGS", "Reset to\nFactory\nSettings", "reset to factory"),    
     K("SAVE_SETTINGS", "Save as\nDefault\nSettings", "save settings"),     
     K("LOAD_SETTINGS", "Load\nDefault\nSettings", "load settings"),
+    K("MI_SETTINGS_MENU", "Settings\nMenu", "Open the on-device settings menu on the keyboard screen"),
+    K("MI_LOAD_MENU", "Load\nPreset\nMenu", "Open the on-device load-preset picker on the keyboard screen"),
+    K("MI_EDIT_STYLES", "Playing\nStyle\nEditor", "Open the on-device velocity-preset (playing style) editor"),
 ]    
 
 KEYCODES_SETTINGS2 = [
@@ -1241,46 +1244,9 @@ KEYCODES_MACRO_BASE = [
     K("QK_MACRO_ALL_OFF", "All\nMacros\nOff", "Stop all playing Vial macros"),
 ]
 
-KEYCODES_EARTRAINER = [
-     K("MI_ET_1", "Basic\nIntervals\nLevel 1", "Ear Train\nLevel 1"),
-     K("MI_ET_4", "Octave\nIntervals\nLevel 1", "Interval\nLevel 4"),
-     K("MI_ET_7", "Extended\nIntervals\nLevel 1", "Interval\nLevel 7"),
-     K("MI_ET_10", "All\nIntervals\nLevel 1", "Interval\nLevel 9"),
-     K("MI_ET_2", "Basic\nIntervals\nLevel 2", "Ear Train\nLevel 2"),
-     K("MI_ET_5", "Octave\nIntervals\nLevel 2", "Interval\nLevel 5"),
-     K("MI_ET_8", "Extended\nIntervals\nLevel 2", "Interval\nLevel 8"),
-     K("MI_ET_11", "All\nIntervals\nLevel 2", "Interval\nLevel 9"),
-     K("MI_ET_13", "Basic\nIntervals\nLevel 3", "Interval\nLevel 9"),     
-     K("MI_ET_14", "Octave\nIntervals\nLevel 3", "Interval\nLevel 9"),          
-     K("MI_ET_15", "Extended\nIntervals\nLevel 3", "Interval\nLevel 9"),            
-     K("MI_ET_16", "All\nIntervals\nLevel 3", "Ear Train\nLevel 9"),
-]
+KEYCODES_EARTRAINER = []  # removed: ear trainer is outdated / managed on-device
 
-KEYCODES_CHORDTRAINER = [
-     K("MI_CET_1", "Triads\nLevel 1", "Chord Train\nLevel 1"),
-     K("MI_CET_2", "Basic\n7ths\nLevel 1", "Chord Train\nLevel 2"),
-     K("MI_CET_3", "All 7ths\nLevel 1", "Chord Train\nLevel 3"),
-     K("MI_CET_4", "Triads &\nBasic 7ths\nLevel 1", "Chord Train\nLevel 4"),
-     K("MI_CET_5", "Triads &\nAll 7ths\nLevel 1", "Chord Train\nLevel 5"),
-     
-     K("MI_CET_6", "Triads\nLevel 2", "Chord Train\nLevel 6"),
-     K("MI_CET_7", "Basic\n7ths\nLevel 2", "Chord Train\nLevel 7"),
-     K("MI_CET_8", "All 7ths\nLevel 2", "Chord Train\nLevel 8"),
-     K("MI_CET_9", "Triads &\nBasic 7ths\nLevel 2", "Chord Train\nLevel 9"),
-     K("MI_CET_10", "Triads &\nAll 7ths\nLevel 2", "Chord Train\nLevel 9"),
-     
-     K("MI_CET_11", "Triads\nLevel 3", "Chord Train\nLevel 9"),
-     K("MI_CET_12", "Basic\n7ths\nLevel 3", "Chord Train\nLevel 9"),
-     K("MI_CET_13", "All 7ths\nLevel 3", "Chord Train\nLevel 9"),
-     K("MI_CET_14", "Triads &\nBasic 7ths\nLevel 3", "Chord Train\nLevel 9"),
-     K("MI_CET_15", "Triads &\nAll 7ths\nLevel 3", "Chord Train\nLevel 9"),
-     
-     K("MI_CET_16", "Triads\nLevel 4", "Chord Train\nLevel 9"),
-     K("MI_CET_17", "Basic\n7ths\nLevel 4", "Chord Train\nLevel 9"),
-     K("MI_CET_18", "All 7ths\nLevel 4", "Chord Train\nLevel 9"),
-     K("MI_CET_19", "Triads &\nBasic 7ths\nLevel 4", "Chord Train\nLevel 9"),
-     K("MI_CET_20", "Triads &\nAll 7ths\nLevel 4", "Chord Train\nLevel 9"),
-]
+KEYCODES_CHORDTRAINER = []  # removed: ear trainer is outdated / managed on-device
 
 KEYCODES_MIDI = []
 
@@ -1669,12 +1635,12 @@ KEYCODES_MIDI_UPDOWN = [
     K("MI_TRNSU", "Transpose\n▲", "Midi increase transposition"),
     K("MI_OCTU", "Octave\n▲", "Midi move up an octave"),
     K("MI_CHU", "Channel\n▲", "Midi increase channel"),
-    K("HE_VEL_CURVE_UP", "Playing\nStyle ▲", "Playing Style Up (hold loop modifier for loop-specific)"),
+    K("HE_VEL_CURVE_UP", "Articulation\n▲", "Articulation Up (hold loop modifier for loop-specific)"),
     K("SMARTCHORD_UP", "Smart\nChord\n▲", "QuickChord Up"),
     K("MI_TRNSD", "Transpose\n▼", "Midi decrease transposition"),
     K("MI_OCTD", "Octave\n▼", "Midi move down an octave"),
     K("MI_CHD", "Channel\n▼", "Midi decrease channel"),
-    K("HE_VEL_CURVE_DOWN", "Playing\nStyle ▼", "Playing Style Down (hold loop modifier for loop-specific)"),
+    K("HE_VEL_CURVE_DOWN", "Articulation\n▼", "Articulation Down (hold loop modifier for loop-specific)"),
     K("SMARTCHORD_DOWN", "Smart\nChord\n▼", "QuickChord Down"),
 
 ]    
@@ -2298,7 +2264,7 @@ KEYCODES_RGBSAVE = [
 
 KEYCODES_EXWHEEL = [
     K("EXWHEEL_TRA", "Touch\nDial\nTranspose", "Touch dial: transpose"),
-    K("EXWHEEL_VEL", "Touch\nDial\nDynamics", "Touch dial: dynamics (playing style)"),
+    K("EXWHEEL_VEL", "Touch\nDial\nDynamics", "Touch dial: dynamics (articulation)"),
     K("EXWHEEL_CHA", "Touch\nDial\nChannel", "Touch dial: channel"),
     K("EXWHEEL_SC", "Touch\nDial\nSmartChord", "Touch dial: SmartChord (encoder = chord up/down, press = play)"),
     K("EXWHEEL_BPM", "Touch\nDial\nBPM", "Touch dial: BPM (encoder = BPM up/down, press = Tap BPM)"),
@@ -2328,47 +2294,14 @@ KEYCODES_RGB_KC_COLOR = [
 # BASIC - MINOR PROGRESSIONS
 # Chord Progression Slot Keycodes (20 slots, interval-based system)
 # Tap = play/stop, Hold 2s = open OLED config menu
-KEYCODES_CPROG_SLOTS = [
-    # Chord Machine 1-6 (slots 0-5: Full layer, ch1, oct 0)
-    K("CPROG_SLOT_1", "Chord\nMachine\n1", "Chord Machine 1 (hold=config)"),
-    K("CPROG_SLOT_2", "Chord\nMachine\n2", "Chord Machine 2 (hold=config)"),
-    K("CPROG_SLOT_3", "Chord\nMachine\n3", "Chord Machine 3 (hold=config)"),
-    K("CPROG_SLOT_4", "Chord\nMachine\n4", "Chord Machine 4 (hold=config)"),
-    K("CPROG_SLOT_5", "Chord\nMachine\n5", "Chord Machine 5 (hold=config)"),
-    K("CPROG_SLOT_6", "Chord\nMachine\n6", "Chord Machine 6 (hold=config)"),
-    # Bass Machine 1-6 (slots 6-11: Bass layer, ch2, oct 0)
-    K("CPROG_SLOT_7", "Bass\nMachine\n1", "Bass Machine 1 (hold=config)"),
-    K("CPROG_SLOT_8", "Bass\nMachine\n2", "Bass Machine 2 (hold=config)"),
-    K("CPROG_SLOT_9", "Bass\nMachine\n3", "Bass Machine 3 (hold=config)"),
-    K("CPROG_SLOT_10", "Bass\nMachine\n4", "Bass Machine 4 (hold=config)"),
-    K("CPROG_SLOT_11", "Bass\nMachine\n5", "Bass Machine 5 (hold=config)"),
-    K("CPROG_SLOT_12", "Bass\nMachine\n6", "Bass Machine 6 (hold=config)"),
-    # Lead Machine 1-6 (slots 12-17: Chord layer, ch3, oct +1)
-    K("CPROG_SLOT_13", "Lead\nMachine\n1", "Lead Machine 1 (hold=config)"),
-    K("CPROG_SLOT_14", "Lead\nMachine\n2", "Lead Machine 2 (hold=config)"),
-    K("CPROG_SLOT_15", "Lead\nMachine\n3", "Lead Machine 3 (hold=config)"),
-    K("CPROG_SLOT_16", "Lead\nMachine\n4", "Lead Machine 4 (hold=config)"),
-    K("CPROG_SLOT_17", "Lead\nMachine\n5", "Lead Machine 5 (hold=config)"),
-    K("CPROG_SLOT_18", "Lead\nMachine\n6", "Lead Machine 6 (hold=config)"),
-    # Extra slots 19-20
-    K("CPROG_SLOT_19", "Chord\nProg\n19", "Chord Progression Slot 19 (hold=config)"),
-    K("CPROG_SLOT_20", "Chord\nProg\n20", "Chord Progression Slot 20 (hold=config)"),
-]
+# (#audit) Each slot's type (Chords / Arp / Bass / Lead) is now stored per-slot in
+# the firmware and set on-device, so the old fixed "Chord/Bass/Lead Machine N"
+# labels misdescribed slots the user had reconfigured. Label generically by slot;
+# the keycode identity (CPROG_SLOT_N) and default per-slot type are unchanged.
+KEYCODES_CPROG_SLOTS = []  # removed: Rhythm Engine slots are bound via Master Quick Build
 
 # VOICINGS AND OCTAVE CONTROLS
-KEYCODES_CHORD_PROG_CONTROLS = [
-    K("PROG_VOICING_BASIC", "Voicing\nStyle\n1", "Use basic chord voicings for progressions"),
-    K("PROG_VOICING_ADVANCED", "Voicing\nStyle\n2", "Use advanced chord voicings for progressions"),
-    K("PROG_VOICING_DESCENDING", "Voicing\nStyle\n3", "Use descending voice leading for progressions"),
-    K("PROG_VOICING_ASCENDING", "Voicing\nStyle\n4", "Use ascending voice leading for progressions"),
-    K("PROG_VOICING_RANDOM", "Voicing\nStyle\n5", "Use ascending voice leading for progressions"),
-    K("PROG_OCTAVE_UP", "Octave\nUp", "Raise progression octave"),
-    K("PROG_OCTAVE_DOWN", "Octave\nDown", "Lower progression octave"),
-    K("PROG_OCTAVE_RESET", "Octave\nReset", "Reset progression octave to default"),
-    K("MI_TAP", "Set\nBPM", "Set BPM"),
-    K("BPM_UP", "BPM\nUp", "Set BPM"),
-    K("BPM_DOWN", "BPM\nDown", "Set BPM"),
-]
+KEYCODES_CHORD_PROG_CONTROLS = []  # removed with the Chord Progressions section (BPM/tap keys live in KEYCODES_MIDI_ADVANCED)
 
 KEYCODES_LOOP_BUTTONS = [
     # Main macro keys
@@ -2428,7 +2361,9 @@ KEYCODES_LOOP_BUTTONS = [
     K("DM_OCT_6", "Octave\nDouble\nLoop 6", "Octave doubler toggle for loop 6"),
     K("DM_OCT_7", "Octave\nDouble\nLoop 7", "Octave doubler toggle for loop 7"),
     K("DM_OCT_8", "Octave\nDouble\nLoop 8", "Octave doubler toggle for loop 8"),
+    K("DM_OCT_MOD", "Octave\nModifier", "Octave doubler modifier (hold, then press a loop key to toggle that loop's octave doubler)"),
     K("OCT_DBL_TOGGLE", "Oct Dbl\nToggle", "Octave doubler modifier/toggle (hold=modifier, release=cycle Off/+1/+2/-1)"),
+    K("CLEAR_HOLD", "Clear\nHold", "Hold, then press a loop or sequencer key to clear it"),
     
     # Speed controls
     K("DM_SPEED_MOD", "Speed\nModifier", "Speed modifier button (hold + loop)"),
@@ -2537,7 +2472,7 @@ KEYCODES_DRUMLIVE = _build_drumlive_keycodes()
 # Gaming Controller Keycodes
 KEYCODES_GAMING = [
     # Toggle gaming mode
-    K("GAMING_MODE", "Gaming\nMode", "Toggle gaming mode (auto-maps WASD to left stick + arrows to D-pad)"),
+    K("GAMING_MODE", "Gaming\nMode", "Toggle gaming mode on/off. When on, keys assigned in the Gaming Settings tab act as gamepad inputs."),
 
     # Digital Buttons (Face buttons)
     K("XBOX_A", "Button\n1", "Button 1 (Button 0)"),
@@ -2642,20 +2577,12 @@ KEYCODES_ARPEGGIATOR = [
     K("ARP_SET_GATE_90", "Gate\n90%", "Set arpeggiator gate to 90%"),
     K("ARP_SET_GATE_100", "Gate\n100%", "Set arpeggiator gate to 100%"),
 
-    # Modes
-    K("ARP_MODE_SINGLE", "Single\nNote", "Arpeggiator mode: single note"),
-    K("ARP_MODE_CHORD_BASIC", "Chord\nBasic", "Arpeggiator mode: chord basic"),
-    K("ARP_MODE_CHORD_ADVANCED", "Chord\nAdvanced", "Arpeggiator mode: chord advanced"),
 
     # Gate quick controls
     K("ARP_GATE_UP", "Gate\nUp 10%", "Increase arpeggiator gate by 10%"),
     K("ARP_GATE_DOWN", "Gate\nDn 10%", "Decrease arpeggiator gate by 10%"),
 
     # Quick Build
-    K("ARP_QUICK_BUILD_1", "Arp 1\nQuick\nBuild", "Quick build arpeggiator slot 1"),
-    K("ARP_QUICK_BUILD_2", "Arp 2\nQuick\nBuild", "Quick build arpeggiator slot 2"),
-    K("ARP_QUICK_BUILD_3", "Arp 3\nQuick\nBuild", "Quick build arpeggiator slot 3"),
-    K("ARP_QUICK_BUILD_4", "Arp 4\nQuick\nBuild", "Quick build arpeggiator slot 4"),
 ]
 
 # Generate preset selection keycodes (200 factory rhythm arps + 40 user = 240 total)
@@ -2700,20 +2627,14 @@ def _arp_factory_name(idn):
     return ch_pfx[t], ["Flat", "Rise", "Fall"][vs]
 
 KEYCODES_ARPEGGIATOR_PRESETS = []
-# Factory rhythm PATTERNS 0-118 (rate/gate applied as per-master flags)
-for x in range(119):
-    _pfx, _tag = _arp_factory_name(x)
-    _label = "Arp\n{}\n{}".format(_pfx, _tag) if _tag else "Arp\n{}".format(_pfx)
-    KEYCODES_ARPEGGIATOR_PRESETS.append(
-        K("ARP_PRESET_{}".format(x), _label,
-          "Arp rhythm pattern {}: {} {}".format(x, _pfx, _tag))
-    )
-# User presets 119-158 (displayed as User 1-40)
+# User presets only (119-158, displayed as User 1-40). Factory rhythm patterns
+# are managed via the Master Quick Build menu and are not exposed in the GUI.
 for x in range(119, 159):
     user_num = x - 118
     KEYCODES_ARPEGGIATOR_PRESETS.append(
         K("ARP_PRESET_{}".format(x), "Arp\nUser\n{}".format(user_num), "Load arpeggiator user preset {}".format(user_num))
     )
+
 
 KEYCODES_STEP_SEQUENCER = [
     # Control keycodes
@@ -2786,14 +2707,6 @@ KEYCODES_STEP_SEQUENCER = [
     K("SEQ_GATE_DOWN", "Gate\nDn 10%", "Decrease sequencer gate by 10%"),
 
     # Quick Build
-    K("SEQ_QUICK_BUILD_1", "Seq 1\nQuick\nBuild", "Quick build step sequencer slot 1"),
-    K("SEQ_QUICK_BUILD_2", "Seq 2\nQuick\nBuild", "Quick build step sequencer slot 2"),
-    K("SEQ_QUICK_BUILD_3", "Seq 3\nQuick\nBuild", "Quick build step sequencer slot 3"),
-    K("SEQ_QUICK_BUILD_4", "Seq 4\nQuick\nBuild", "Quick build step sequencer slot 4"),
-    K("SEQ_QUICK_BUILD_5", "Seq 5\nQuick\nBuild", "Quick build step sequencer slot 5"),
-    K("SEQ_QUICK_BUILD_6", "Seq 6\nQuick\nBuild", "Quick build step sequencer slot 6"),
-    K("SEQ_QUICK_BUILD_7", "Seq 7\nQuick\nBuild", "Quick build step sequencer slot 7"),
-    K("SEQ_QUICK_BUILD_8", "Seq 8\nQuick\nBuild", "Quick build step sequencer slot 8"),
 ]
 
 # Octave Doubler & Temporary Transposition keycodes
@@ -2812,23 +2725,22 @@ KEYCODES_OCTAVE_DOUBLER = [
 # NOTE: the first 20 SEQ_PRESET keycodes (0xED98-0xEDAB) are the persistent
 # DRUM MACHINE slots (MAX_FACTORY_SEQ_SLOTS = 20), not step-sequencer presets —
 # tapping one opens/plays its drum slot. Only 20-87 are step-seq presets.
-KEYCODES_STEP_SEQUENCER_PRESETS = []
-# Drum machine slots 0-19
+KEYCODES_DRUM_SLOTS = []
+# Drum machine slots 0-19 (persistent slots, configured on-device)
 for x in range(20):
-    KEYCODES_STEP_SEQUENCER_PRESETS.append(
+    KEYCODES_DRUM_SLOTS.append(
         K("SEQ_PRESET_{}".format(x), "Drum\nSlot\n{}".format(x + 1), "Drum machine slot {}".format(x + 1))
     )
-# Step-sequencer factory presets 20-47
-for x in range(20, 48):
-    KEYCODES_STEP_SEQUENCER_PRESETS.append(
-        K("SEQ_PRESET_{}".format(x), "Seq\nPreset\n{}".format(x), "Load sequencer preset {}".format(x))
-    )
-# User presets 48-87 (displayed as User 1-40)
+
+KEYCODES_STEP_SEQUENCER_PRESETS = []
+# User presets 48-87 (displayed as User 1-40). Factory step-seq presets 20-47
+# are managed via the Master Quick Build menu and are not exposed in the GUI.
 for x in range(48, 88):
     user_num = x - 47
     KEYCODES_STEP_SEQUENCER_PRESETS.append(
         K("SEQ_PRESET_{}".format(x), "Seq\nUser\n{}".format(user_num), "Load sequencer user preset {}".format(user_num))
     )
+
 
 # DKS (Dynamic Keystroke) slot keycodes (50 slots)
 KEYCODES_DKS = []
@@ -2899,23 +2811,9 @@ KEYCODES_DELAY = KEYCODES_DELAY_FACTORY + KEYCODES_DELAY_USER
 # Quick Build: Delay / Smart Chord / Dynamic Chord
 # =============================================================================
 
-KEYCODES_DELAY_QB = [
-    K("DELAY_QB_1", "Delay 1\nQuick\nBuild", "Quick build delay slot 1"),
-    K("DELAY_QB_2", "Delay 2\nQuick\nBuild", "Quick build delay slot 2"),
-    K("DELAY_QB_3", "Delay 3\nQuick\nBuild", "Quick build delay slot 3"),
-    K("DELAY_QB_4", "Delay 4\nQuick\nBuild", "Quick build delay slot 4"),
-]
+KEYCODES_DELAY_QB = []  # removed: only Master Quick Build buttons are supported
 
-KEYCODES_CHORD_QB = [
-    K("CHORD_QB_1", "Chord 1\nQuick\nBuild", "Quick build smart chord slot 1"),
-    K("CHORD_QB_2", "Chord 2\nQuick\nBuild", "Quick build smart chord slot 2"),
-    K("CHORD_QB_3", "Chord 3\nQuick\nBuild", "Quick build smart chord slot 3"),
-    K("CHORD_QB_4", "Chord 4\nQuick\nBuild", "Quick build smart chord slot 4"),
-    K("CHORD_QB_5", "Chord 5\nQuick\nBuild", "Quick build smart chord slot 5"),
-    K("CHORD_QB_6", "Chord 6\nQuick\nBuild", "Quick build smart chord slot 6"),
-    K("CHORD_QB_7", "Chord 7\nQuick\nBuild", "Quick build smart chord slot 7"),
-    K("CHORD_QB_8", "Chord 8\nQuick\nBuild", "Quick build smart chord slot 8"),
-]
+KEYCODES_CHORD_QB = []  # removed: only Master Quick Build buttons are supported
 
 # SmartChord voice-leading override.  Each press cycles a single-rule
 # Highest-voice override that masks per-voice menu config.  Reopening the
@@ -2925,55 +2823,9 @@ KEYCODES_SMARTCHORD_VL = [
     K("MI_SC_VL_DOWN", "SC VL\n-",  "Cycle Highest voice-leading rule backward"),
 ]
 
-KEYCODES_DYNCHORD_QB = [
-    K("DYNCHORD_QB_1", "DynC 1\nQuick\nBuild", "Quick build dynamic chord slot 1"),
-    K("DYNCHORD_QB_2", "DynC 2\nQuick\nBuild", "Quick build dynamic chord slot 2"),
-    K("DYNCHORD_QB_3", "DynC 3\nQuick\nBuild", "Quick build dynamic chord slot 3"),
-    K("DYNCHORD_QB_4", "DynC 4\nQuick\nBuild", "Quick build dynamic chord slot 4"),
-]
+KEYCODES_DYNCHORD_QB = []  # removed: only Master Quick Build buttons are supported
 
-KEYCODES_FADER_QB = [
-    K("FADER_QB_1", "Fader 1\nQuick\nBuild", "Quick build fader slot 1"),
-    K("FADER_QB_2", "Fader 2\nQuick\nBuild", "Quick build fader slot 2"),
-    K("FADER_QB_3", "Fader 3\nQuick\nBuild", "Quick build fader slot 3"),
-    K("FADER_QB_4", "Fader 4\nQuick\nBuild", "Quick build fader slot 4"),
-    K("FADER_QB_5", "Fader 5\nQuick\nBuild", "Quick build fader slot 5"),
-    K("FADER_QB_6", "Fader 6\nQuick\nBuild", "Quick build fader slot 6"),
-    K("FADER_QB_7", "Fader 7\nQuick\nBuild", "Quick build fader slot 7"),
-    K("FADER_QB_8", "Fader 8\nQuick\nBuild", "Quick build fader slot 8"),
-    K("FADER_QB_9", "Fader 9\nQuick\nBuild", "Quick build fader slot 9"),
-    K("FADER_QB_10", "Fader 10\nQuick\nBuild", "Quick build fader slot 10"),
-    K("FADER_QB_11", "Fader 11\nQuick\nBuild", "Quick build fader slot 11"),
-    K("FADER_QB_12", "Fader 12\nQuick\nBuild", "Quick build fader slot 12"),
-    K("FADER_QB_13", "Fader 13\nQuick\nBuild", "Quick build fader slot 13"),
-    K("FADER_QB_14", "Fader 14\nQuick\nBuild", "Quick build fader slot 14"),
-    K("FADER_QB_15", "Fader 15\nQuick\nBuild", "Quick build fader slot 15"),
-    K("FADER_QB_16", "Fader 16\nQuick\nBuild", "Quick build fader slot 16"),
-    K("FADER_QB_17", "Fader 17\nQuick\nBuild", "Quick build fader slot 17"),
-    K("FADER_QB_18", "Fader 18\nQuick\nBuild", "Quick build fader slot 18"),
-    K("FADER_QB_19", "Fader 19\nQuick\nBuild", "Quick build fader slot 19"),
-    K("FADER_QB_20", "Fader 20\nQuick\nBuild", "Quick build fader slot 20"),
-    K("FADER_QB_21", "Fader 21\nQuick\nBuild", "Quick build fader slot 21"),
-    K("FADER_QB_22", "Fader 22\nQuick\nBuild", "Quick build fader slot 22"),
-    K("FADER_QB_23", "Fader 23\nQuick\nBuild", "Quick build fader slot 23"),
-    K("FADER_QB_24", "Fader 24\nQuick\nBuild", "Quick build fader slot 24"),
-    K("FADER_QB_25", "Fader 25\nQuick\nBuild", "Quick build fader slot 25"),
-    K("FADER_QB_26", "Fader 26\nQuick\nBuild", "Quick build fader slot 26"),
-    K("FADER_QB_27", "Fader 27\nQuick\nBuild", "Quick build fader slot 27"),
-    K("FADER_QB_28", "Fader 28\nQuick\nBuild", "Quick build fader slot 28"),
-    K("FADER_QB_29", "Fader 29\nQuick\nBuild", "Quick build fader slot 29"),
-    K("FADER_QB_30", "Fader 30\nQuick\nBuild", "Quick build fader slot 30"),
-    K("FADER_QB_31", "Fader 31\nQuick\nBuild", "Quick build fader slot 31"),
-    K("FADER_QB_32", "Fader 32\nQuick\nBuild", "Quick build fader slot 32"),
-    K("FADER_QB_33", "Fader 33\nQuick\nBuild", "Quick build fader slot 33"),
-    K("FADER_QB_34", "Fader 34\nQuick\nBuild", "Quick build fader slot 34"),
-    K("FADER_QB_35", "Fader 35\nQuick\nBuild", "Quick build fader slot 35"),
-    K("FADER_QB_36", "Fader 36\nQuick\nBuild", "Quick build fader slot 36"),
-    K("FADER_QB_37", "Fader 37\nQuick\nBuild", "Quick build fader slot 37"),
-    K("FADER_QB_38", "Fader 38\nQuick\nBuild", "Quick build fader slot 38"),
-    K("FADER_QB_39", "Fader 39\nQuick\nBuild", "Quick build fader slot 39"),
-    K("FADER_QB_40", "Fader 40\nQuick\nBuild", "Quick build fader slot 40"),
-]
+KEYCODES_FADER_QB = []  # removed: only Master Quick Build buttons are supported
 
 # Master Quick Build slots — 50 programmable keys.  Each keycode stores
 # its own {category, slot} assignment in EEPROM, so you can place them
@@ -2982,20 +2834,15 @@ KEYCODES_FADER_QB = [
 # / SmartChord / Fader / drum machine / chord prog / ear trainer).
 KEYCODES_QB_MASTER = [
     K("QB_MASTER_{}".format(i + 1),
-      "Master\nQB {}".format(i + 1),
-      "Master Quick Build slot {} - tap: picker (unconfigured) or run assigned target".format(i + 1))
+      "Quickbuild\n{}".format(i + 1),
+      "Quickbuild slot {} - tap: picker (unconfigured) or run assigned target".format(i + 1))
     for i in range(100)
 ]
 
 # Ear Trainer Quick Build — 10 per-key slots.  Tap starts a session
 # (countdown, play, answer picker, streak).  Hold 2 s opens setup to pick
 # mode (intervals/chords), preset or custom selection, and difficulty.
-KEYCODES_EARTRAINER_QB = [
-    K("ET_QB_{}".format(i + 1),
-      "Ear\nTrainer\n{}".format(i + 1),
-      "Ear Trainer slot {} - tap: start; hold 2s: setup".format(i + 1))
-    for i in range(10)
-]
+KEYCODES_EARTRAINER_QB = []  # removed: only Master Quick Build buttons are supported
 
 # =============================================================================
 # UNIFIED DAW Shortcut Keycodes
@@ -3086,8 +2933,8 @@ KEYCODES_MOD_PRESS = []
 
 for x in range (128):
     KEYCODES_MOD_PRESS.append(K("MI_MOD_PRESS_{}".format(x),
-                              "ModPrs\nCC{}".format(x),
-                              "Mod Press CC{} (key depth -> CC value, averaged across mapped keys)".format(x)))
+                              "Dyn CC\n{}".format(x),
+                              "Dynamic CC {}: analog key depth -> CC value; all Dynamic CC keys for this CC on the active layer combine into one controller".format(x)))
 
 
 for x in range(128):
@@ -3119,59 +2966,76 @@ for x in range (128):
                               "TS\nVelocity\n{}".format(x),
                               "TS\nVelocity {}".format(x)))
 
-# Playing Style keycodes - all 17 presets (7 factory + 10 user)
+# Playing Style keycodes - all 29 presets (5 classic + 14 new factory + 10 user)
 KEYCODES_HE_VELOCITY_CURVE = [
-    # Factory presets (0-6)
-    K("HE_CURVE_SOFTEST", "Softest", "Playing Style Softest"),
-    K("HE_CURVE_SOFT", "Soft", "Playing Style Soft"),
-    K("HE_CURVE_MEDIUM", "Linear", "Playing Style Linear"),
-    K("HE_CURVE_HARD", "Hard", "Playing Style Hard"),
-    K("HE_CURVE_HARDEST", "Hardest", "Playing Style Hardest"),
-    K("HE_CURVE_AGGRO", "Aggro", "Playing Style Aggro"),
-    K("HE_CURVE_DIGITAL", "Digital", "Playing Style Digital"),
-    # User presets (7-16)
-    K("HE_CURVE_USER_1", "User 1", "Playing Style User Preset 1"),
-    K("HE_CURVE_USER_2", "User 2", "Playing Style User Preset 2"),
-    K("HE_CURVE_USER_3", "User 3", "Playing Style User Preset 3"),
-    K("HE_CURVE_USER_4", "User 4", "Playing Style User Preset 4"),
-    K("HE_CURVE_USER_5", "User 5", "Playing Style User Preset 5"),
-    K("HE_CURVE_USER_6", "User 6", "Playing Style User Preset 6"),
-    K("HE_CURVE_USER_7", "User 7", "Playing Style User Preset 7"),
-    K("HE_CURVE_USER_8", "User 8", "Playing Style User Preset 8"),
-    K("HE_CURVE_USER_9", "User 9", "Playing Style User Preset 9"),
-    K("HE_CURVE_USER_10", "User 10", "Playing Style User Preset 10"),
+    # Factory articulations (new indices 0-22; each keycode keeps selecting
+    # the articulation it is NAMED for — the firmware maps names to indices)
+    K("HE_CURVE_SOFTEST", "Softest", "Articulation Softest"),
+    K("HE_CURVE_SOFT", "Soft", "Articulation Soft"),
+    K("HE_CURVE_MEDIUM", "Basic", "Articulation Basic"),
+    K("HE_CURVE_HARD", "Hard", "Articulation Hard"),
+    K("HE_CURVE_HARDEST", "Hardest", "Articulation Hardest"),
+    K("HE_CURVE_FAC_19", "Soft Leg", "Articulation Soft Leg"),
+    K("HE_CURVE_FAC_20", "Basic Leg", "Articulation Basic Leg"),
+    K("HE_CURVE_FAC_21", "Hard Leg", "Articulation Hard Leg"),
+    K("HE_CURVE_FAC_22", "Sens Leg", "Articulation Sens Leg"),
+    K("HE_CURVE_FAC_8", "Fixed Vol", "Articulation Fixed Vol"),
+    K("HE_CURVE_FAC_9", "Drums Easy", "Articulation Drums Easy"),
+    K("HE_CURVE_FAC_10", "Drums Soft", "Articulation Drums Soft"),
+    K("HE_CURVE_FAC_11", "Drums Basic", "Articulation Drums Basic"),
+    K("HE_CURVE_FAC_12", "Drums Hard", "Articulation Drums Hard"),
+    K("HE_CURVE_AGGRO", "Sensitive Soft", "Articulation Sensitive Soft"),
+    K("HE_CURVE_DIGITAL", "Sensitive", "Articulation Sensitive"),
+    K("HE_CURVE_FAC_7", "Sensitive Hard", "Articulation Sensitive Hard"),
+    K("HE_CURVE_FAC_13", "Drums Sens", "Articulation Drums Sens"),
+    K("HE_CURVE_FAC_14", "Ultra Sens", "Articulation Ultra Sens"),
+    K("HE_CURVE_FAC_15", "Fixed Sens", "Articulation Fixed Sens"),
+    K("HE_CURVE_FAC_16", "Two Toned", "Articulation Two Toned"),
+    K("HE_CURVE_FAC_17", "Reverse", "Articulation Reverse"),
+    K("HE_CURVE_FAC_18", "Random Highlights", "Articulation Random Highlights"),
+    # User presets (23-72; first 10 have direct-select keycodes)
+    K("HE_CURVE_USER_1", "User 1", "Articulation User Preset 1"),
+    K("HE_CURVE_USER_2", "User 2", "Articulation User Preset 2"),
+    K("HE_CURVE_USER_3", "User 3", "Articulation User Preset 3"),
+    K("HE_CURVE_USER_4", "User 4", "Articulation User Preset 4"),
+    K("HE_CURVE_USER_5", "User 5", "Articulation User Preset 5"),
+    K("HE_CURVE_USER_6", "User 6", "Articulation User Preset 6"),
+    K("HE_CURVE_USER_7", "User 7", "Articulation User Preset 7"),
+    K("HE_CURVE_USER_8", "User 8", "Articulation User Preset 8"),
+    K("HE_CURVE_USER_9", "User 9", "Articulation User Preset 9"),
+    K("HE_CURVE_USER_10", "User 10", "Articulation User Preset 10"),
 ]
 
 # Macro-aware HE Velocity Curve keycodes - these target loops when modifiers are held
 KEYCODES_HE_MACRO_CURVE = [
     # Cycling keycodes
-    K("HE_MACRO_CURVE_UP", "Loop\nCurve ▲", "Loop Velocity Curve Up (cycles 0-16)"),
-    K("HE_MACRO_CURVE_DOWN", "Loop\nCurve ▼", "Loop Velocity Curve Down (cycles 0-16)"),
+    K("HE_MACRO_CURVE_UP", "Loop\nArticulation ▲", "Loop Articulation Up (cycles 0-16)"),
+    K("HE_MACRO_CURVE_DOWN", "Loop\nArticulation ▼", "Loop Articulation Down (cycles 0-16)"),
     K("HE_MACRO_MIN_UP", "Loop\nMin ▲", "Loop Velocity Min Up"),
     K("HE_MACRO_MIN_DOWN", "Loop\nMin ▼", "Loop Velocity Min Down"),
     K("HE_MACRO_MAX_UP", "Loop\nMax ▲", "Loop Velocity Max Up"),
     K("HE_MACRO_MAX_DOWN", "Loop\nMax ▼", "Loop Velocity Max Down"),
     # Playing Style cycling (global, or loop-specific when loop modifier held)
-    K("HE_VEL_CURVE_UP", "Playing\nStyle ▲", "Playing Style Up (hold loop modifier for loop-specific)"),
-    K("HE_VEL_CURVE_DOWN", "Playing\nStyle ▼", "Playing Style Down (hold loop modifier for loop-specific)"),
+    K("HE_VEL_CURVE_UP", "Articulation\n▲", "Articulation Up (hold loop modifier for loop-specific)"),
+    K("HE_VEL_CURVE_DOWN", "Articulation\n▼", "Articulation Down (hold loop modifier for loop-specific)"),
     # Direct macro curve selection (0-16)
-    K("HE_MACRO_CURVE_0", "Loop Curve\nSoftest", "Loop Velocity Curve Softest (0)"),
-    K("HE_MACRO_CURVE_1", "Loop Curve\nSoft", "Loop Velocity Curve Soft (1)"),
-    K("HE_MACRO_CURVE_2", "Loop Curve\nMedium", "Loop Velocity Curve Medium (2)"),
-    K("HE_MACRO_CURVE_3", "Loop Curve\nHard", "Loop Velocity Curve Hard (3)"),
-    K("HE_MACRO_CURVE_4", "Loop Curve\nHardest", "Loop Velocity Curve Hardest (4)"),
-    K("HE_MACRO_CURVE_5", "Loop Curve\nAggro", "Loop Velocity Curve Aggro (5)"),
-    K("HE_MACRO_CURVE_6", "Loop Curve\nDigital", "Loop Velocity Curve Digital (6)"),
-    K("HE_MACRO_CURVE_7", "Loop Curve\nUser 1", "Loop Velocity Curve User 1 (7)"),
-    K("HE_MACRO_CURVE_8", "Loop Curve\nUser 2", "Loop Velocity Curve User 2 (8)"),
-    K("HE_MACRO_CURVE_9", "Loop Curve\nUser 3", "Loop Velocity Curve User 3 (9)"),
-    K("HE_MACRO_CURVE_10", "Loop Curve\nUser 4", "Loop Velocity Curve User 4 (10)"),
-    K("HE_MACRO_CURVE_11", "Loop Curve\nUser 5", "Loop Velocity Curve User 5 (11)"),
-    K("HE_MACRO_CURVE_12", "Loop Curve\nUser 6", "Loop Velocity Curve User 6 (12)"),
-    K("HE_MACRO_CURVE_13", "Loop Curve\nUser 7", "Loop Velocity Curve User 7 (13)"),
-    K("HE_MACRO_CURVE_14", "Loop Curve\nUser 8", "Loop Velocity Curve User 8 (14)"),
-    K("HE_MACRO_CURVE_15", "Loop Curve\nUser 9", "Loop Velocity Curve User 9 (15)"),
-    K("HE_MACRO_CURVE_16", "Loop Curve\nUser 10", "Loop Velocity Curve User 10 (16)"),
+    K("HE_MACRO_CURVE_0", "Loop Articulation\nSoftest", "Loop Articulation Softest (0)"),
+    K("HE_MACRO_CURVE_1", "Loop Articulation\nSoft", "Loop Articulation Soft (1)"),
+    K("HE_MACRO_CURVE_2", "Loop Articulation\nBasic", "Loop Articulation Basic (2)"),
+    K("HE_MACRO_CURVE_3", "Loop Articulation\nHard", "Loop Articulation Hard (3)"),
+    K("HE_MACRO_CURVE_4", "Loop Articulation\nHardest", "Loop Articulation Hardest (4)"),
+    K("HE_MACRO_CURVE_5", "Loop Articulation\nSoft Leg", "Loop Articulation Soft Leg (5)"),
+    K("HE_MACRO_CURVE_6", "Loop Articulation\nBasic Leg", "Loop Articulation Basic Leg (6)"),
+    K("HE_MACRO_CURVE_7", "Loop Articulation\nHard Leg", "Loop Articulation Hard Leg (7)"),
+    K("HE_MACRO_CURVE_8", "Loop Articulation\nSens Leg", "Loop Articulation Sens Leg (8)"),
+    K("HE_MACRO_CURVE_9", "Loop Articulation\nFixed Vol", "Loop Articulation Fixed Vol (9)"),
+    K("HE_MACRO_CURVE_10", "Loop Articulation\nDrums Easy", "Loop Articulation Drums Easy (10)"),
+    K("HE_MACRO_CURVE_11", "Loop Articulation\nDrums Soft", "Loop Articulation Drums Soft (11)"),
+    K("HE_MACRO_CURVE_12", "Loop Articulation\nDrums Basic", "Loop Articulation Drums Basic (12)"),
+    K("HE_MACRO_CURVE_13", "Loop Articulation\nDrums Hard", "Loop Articulation Drums Hard (13)"),
+    K("HE_MACRO_CURVE_14", "Loop Articulation\nSensitive Soft", "Loop Articulation Sensitive Soft (14)"),
+    K("HE_MACRO_CURVE_15", "Loop Articulation\nSensitive", "Loop Articulation Sensitive (15)"),
+    K("HE_MACRO_CURVE_16", "Loop Articulation\nSensitive Hard", "Loop Articulation Sensitive Hard (16)"),
 ]
 
 # HE Velocity Range keycodes (min/max pairs where min ≤ max)
@@ -3182,7 +3046,7 @@ for min_val in range(1, 128):  # 1 to 127
     for max_val in range(min_val, 128):  # min to 127 (includes min == max for fixed velocity)
         KEYCODES_HE_VELOCITY_RANGE.append(K("HE_VEL_RANGE_{}_{}".format(min_val, max_val),
                                   "VEL\n{}\n{}".format(min_val, max_val),
-                                  "HE Velocity Range {}-{}".format(min_val, max_val)))
+                                  "Velocity Range {}-{}".format(min_val, max_val)))
 
 KEYCODES_MIDI_BANK = []
 KEYCODES_MIDI_BANK_MSB = []
@@ -3232,7 +3096,7 @@ def recreate_keycodes():
                     KEYCODES_MIDI_CC_FIXED+KEYCODES_MIDI_CC+KEYCODES_MIDI_CC_DOWN+KEYCODES_MIDI_CC_UP+KEYCODES_MOD_PRESS+KEYCODES_MIDI_BANK+KEYCODES_Program_Change+KEYCODES_MIDI_SMARTCHORDBUTTONS+KEYCODES_VELOCITY_STEPSIZE+KEYCODES_VELOCITY_SHUFFLE + KEYCODES_CC_ENCODERVALUE+ KEYCODES_EXWHEEL +
                     KEYCODES_MIDI_VELOCITY+KEYCODES_CC_STEPSIZE+KEYCODES_MIDI_CHANNEL+KEYCODES_MIDI_UPDOWN+KEYCODES_MIDI_CHORD_0+KEYCODES_MIDI_CHORD_1+KEYCODES_MIDI_CHORD_2+KEYCODES_MIDI_CHORD_3+KEYCODES_MIDI_CHORD_4+KEYCODES_MIDI_CHORD_5+KEYCODES_MIDI_SPLIT+KEYCODES_MIDI_SPLIT2+
                     KEYCODES_HE_VELOCITY_CURVE+KEYCODES_HE_MACRO_CURVE+KEYCODES_HE_VELOCITY_RANGE+
-                    KEYCODES_ARPEGGIATOR+KEYCODES_ARPEGGIATOR_PRESETS+KEYCODES_STEP_SEQUENCER+KEYCODES_STEP_SEQUENCER_PRESETS+KEYCODES_OCTAVE_DOUBLER+KEYCODES_DKS+KEYCODES_TOGGLE+KEYCODES_DELAY_CLEAR+KEYCODES_DELAY+KEYCODES_DELAY_QB+KEYCODES_CHORD_QB+KEYCODES_SMARTCHORD_VL+KEYCODES_DYNCHORD_QB+KEYCODES_FADER_QB+KEYCODES_QB_MASTER+KEYCODES_EARTRAINER_QB+
+                    KEYCODES_ARPEGGIATOR+KEYCODES_ARPEGGIATOR_PRESETS+KEYCODES_STEP_SEQUENCER+KEYCODES_STEP_SEQUENCER_PRESETS+KEYCODES_DRUM_SLOTS+KEYCODES_OCTAVE_DOUBLER+KEYCODES_DKS+KEYCODES_TOGGLE+KEYCODES_DELAY_CLEAR+KEYCODES_DELAY+KEYCODES_DELAY_QB+KEYCODES_CHORD_QB+KEYCODES_SMARTCHORD_VL+KEYCODES_DYNCHORD_QB+KEYCODES_FADER_QB+KEYCODES_QB_MASTER+KEYCODES_EARTRAINER_QB+
                     KEYCODES_CPROG_SLOTS + KEYCODES_LOOP_BUTTONS + KEYCODES_DRUMLIVE + KEYCODES_GAMING +
                     KEYCODES_MIDI_INVERSION+KEYCODES_MIDI_SCALES+KEYCODES_MIDI_OCTAVE+KEYCODES_MIDI_KEY+KEYCODES_Program_Change_UPDOWN+KEYCODES_MIDI_BANK_LSB+KEYCODES_MIDI_BANK_MSB+KEYCODES_MIDI_PEDAL+KEYCODES_MIDI_ADVANCED+KEYCODES_MIDI_INOUT+KEYCODES_MIDI_SPLIT_BUTTONS+KEYCODES_BASIC + KEYCODES_SHIFTED + KEYCODES_CHORD_PROG_CONTROLS +
                     KEYCODES_DAW)

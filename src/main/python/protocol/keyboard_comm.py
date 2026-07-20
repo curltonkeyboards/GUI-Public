@@ -66,6 +66,7 @@ HID_CMD_SAVE_KEYBOARD_SLOT = 0xB9
 HID_CMD_LOAD_KEYBOARD_SLOT = 0xBA
 HID_CMD_SET_KEYBOARD_CONFIG_ADVANCED = 0xBB
 HID_CMD_LCD_THEME = 0xFE  # Get/set global LCD colour theme (sub 0=GET, 1=SET)
+HID_CMD_CHANNEL_ARTIC = 0xFF  # Get/set channel->articulation map + enable (sub 0=GET, 1=SET)
 HID_CMD_SET_KEYBOARD_PARAM_SINGLE = 0xE8  # Set individual parameter (changed from 0xBD collision)
 
 # Parameter IDs for HID_CMD_SET_KEYBOARD_PARAM_SINGLE
@@ -1436,6 +1437,21 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         
         return bytes(packet)
 
+    def get_arp_seq_used(self):
+        """Return (arp_used, seq_used): counts of configured user arp/seq
+        presets, from ARP_CMD_GET_INFO (0xC9) params[11]/params[12].
+        Returns None on failure (e.g. non-custom firmware)."""
+        try:
+            packet = self._create_hid_packet(0xC9, 0, None)
+            response = self.usb_send(self.dev, packet, retries=5)
+            if (response and len(response) >= 17 and
+                    response[0] == HID_MANUFACTURER_ID and
+                    response[3] == 0xC9 and response[4] == 0):
+                return response[15], response[16]
+            return None
+        except Exception:
+            return None
+
     def get_lcd_theme(self):
         """Get the keyboard's current global LCD colour theme index.
 
@@ -1466,6 +1482,53 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         try:
             # sub-cmd 1 = SET; payload byte 0 = theme index
             packet = self._create_hid_packet(HID_CMD_LCD_THEME, 1, [theme_index & 0xFF])
+            data = self.usb_send(self.dev, packet, retries=3)
+            return bool(data) and len(data) > 4 and data[4] == 0
+        except Exception:
+            return False
+
+    def get_channel_articulations(self):
+        """Get the global Channel Articulations map + enable flag.
+
+        Returns dict {'enabled': bool, 'map': [16 ints], 'articulation_cc': int,
+        'articulation_cc_supported': bool} where each map entry is a
+        velocity-preset index (0-94) or 255 (=None). None on failure / unsupported
+        firmware. Response: status@4, enable@5, map@6..21, 0x80|cc@22 (bit 7 =
+        firmware supports the Articulation CC byte; clear on older firmware,
+        whose unhandled echo leaves the byte 0).
+        """
+        try:
+            packet = self._create_hid_packet(HID_CMD_CHANNEL_ARTIC, 0, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if not data or len(data) < 22 or data[3] != HID_CMD_CHANNEL_ARTIC:
+                return None
+            if data[4] != 0:
+                return None
+            cc_raw = data[22] if len(data) > 22 else 0
+            return {
+                'enabled': data[5] != 0,
+                'map': [data[6 + i] for i in range(16)],
+                'articulation_cc': (cc_raw & 0x7F) if (cc_raw & 0x80) else 1,
+                'articulation_cc_supported': bool(cc_raw & 0x80)
+            }
+        except Exception:
+            return None
+
+    def set_channel_articulations(self, enabled, artic_map, articulation_cc=1):
+        """Set the global Channel Articulations map + enable + Articulation CC.
+
+        artic_map: list of 16 velocity-preset indices (0-94) or 255 (=None).
+        articulation_cc: global CC# (0-127) used by "CC Default" articulations.
+        Payload: [enable, map0..map15, 0x80|articulation_cc] — bit 7 is the
+        validity marker the firmware requires before it will store the CC
+        (protects it from legacy zero-padded packets).
+        """
+        try:
+            m = list(artic_map)[:16]
+            m += [0xFF] * (16 - len(m))
+            payload = ([1 if enabled else 0] + [(x & 0xFF) for x in m]
+                       + [0x80 | (int(articulation_cc) & 0x7F)])
+            packet = self._create_hid_packet(HID_CMD_CHANNEL_ARTIC, 1, payload)
             data = self.usb_send(self.dev, packet, retries=3)
             return bool(data) and len(data) > 4 and data[4] == 0
         except Exception:
@@ -1865,6 +1928,62 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception as e:
             return False
 
+    def set_atcc_enable(self, at=None, cc=None):
+        """Enable/disable the AT/CC Mode velocity presets on the device.
+
+        Reads the CURRENT device config (get_midi_config), flips bit5
+        (Aftertouch Modes) and/or bit6 (CC Modes) in the Stop Mode byte
+        (packet-1 byte 20) while PRESERVING the Stop Mode mask (bits 0-4) and
+        the 0x80 validity marker, rebuilds the 22-byte basic-config packet from
+        the current device state, and writes it back to slot 0 ("Save as
+        Default") so the firmware persists it. This never clobbers the user's
+        other unsaved GUI edits — it round-trips the live device state, not the
+        GUI widgets.
+
+        at / cc: True to enable, False to disable, None to leave unchanged.
+        Returns True on success, False if there is no device, the read failed,
+        or the firmware predates the Stop Mode / AT-CC byte (no bit-7 marker).
+        """
+        config = self.get_midi_config()
+        if not config:
+            return False
+        # Firmware that doesn't advertise the Stop Mode byte can't store these
+        # flags; refuse rather than write a byte it will ignore.
+        if not config.get("stop_mode_supported", False):
+            return False
+
+        at_on = config.get("enable_at_modes", False) if at is None else bool(at)
+        cc_on = config.get("enable_cc_modes", False) if cc is None else bool(cc)
+
+        # byte 20: 0x80 validity | Stop Mode mask (bits 0-4) | AT (bit5) | CC (bit6)
+        byte20 = 0x80 | (config.get("stop_mode", 0) & 0x1F)
+        if at_on:
+            byte20 |= 0x20
+        if cc_on:
+            byte20 |= 0x40
+
+        # Rebuild the basic-config packet (same layout as
+        # matrix_test.pack_basic_data) from the live device state.
+        data = bytearray(22)
+        struct.pack_into('<I', data, 0, config.get("velocity_sensitivity", 0))
+        struct.pack_into('<I', data, 4, config.get("cc_sensitivity", 0))
+        data[8]  = config.get("channel_number", 0) & 0xFF        # global_channel
+        data[9]  = config.get("transpose_number", 0) & 0xFF      # global_transpose
+        data[10] = 0                                             # octave_number
+        data[11] = config.get("transpose_number2", 0) & 0xFF
+        data[12] = 0                                             # octave_number2
+        data[13] = config.get("transpose_number3", 0) & 0xFF
+        data[14] = 0                                             # octave_number3
+        data[15] = config.get("random_velocity_modifier", 0) & 0xFF
+        struct.pack_into('<I', data, 16, config.get("oled_keyboard", 0))
+        data[20] = byte20
+        data[21] = config.get("smart_chord_light_mode", 0) & 0xFF
+
+        # Persist to slot 0 (the "Save as Default" / active-settings slot), the
+        # same path the MIDI Settings "Save Settings" flow uses for the basic
+        # packet — so "Load Active Settings" round-trips it.
+        return self.save_midi_slot(0, data)
+
     def load_midi_slot(self, slot):
         """Load MIDIswitch configuration from slot"""
         try:
@@ -1979,6 +2098,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                     "oled_keyboard": oled_keyboard,
                     "stop_mode_supported": bool(stop_mode_byte & 0x80),
                     "stop_mode": stop_mode_byte & 0x1F,
+                    # AT/CC Mode enable flags share the same byte (bit5/bit6).
+                    "enable_at_modes": bool(stop_mode_byte & 0x20),
+                    "enable_cc_modes": bool(stop_mode_byte & 0x40),
                     "smart_chord_light_mode": smart_chord_light_mode,
                     "chord_display_mode": chord_display_mode,
                     "base_sustain": base_sustain,
@@ -2081,6 +2203,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
             flags = response[10]
             vibrato_decay_time = response[14] | (response[15] << 8)
+            # velocity_as_at is a global device setting reported as byte 11
+            # (packet index 16). Older firmware doesn't send it; default False.
+            velocity_as_at = (len(response) > 16 and response[16] != 0)
             return {
                 'normal': response[6],
                 'midi': response[7],
@@ -2091,7 +2216,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 'aftertouch_mode': response[11],
                 'aftertouch_cc': response[12],
                 'vibrato_sensitivity': response[13],
-                'vibrato_decay_time': vibrato_decay_time
+                'vibrato_decay_time': vibrato_decay_time,
+                'velocity_as_at': velocity_as_at
             }
         except Exception as e:
             return None
@@ -2261,6 +2387,34 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception as e:
             return False
 
+    def get_gaming_key_map(self, control_id):
+        """Read back a single gamepad control's key mapping from the keyboard.
+
+        Needed so the configurator can restore existing gamepad assignments on
+        connect. Without it the GUI cannot see current mappings, and its Save
+        would overwrite every control with "unassigned" — silently wiping the
+        user's gamepad layout.
+
+        Args:
+            control_id: 0-9 = axes/triggers, 10-25 = buttons
+
+        Returns:
+            dict {'row', 'col', 'enabled'} or None on error/unmapped
+        """
+        try:
+            # HID_CMD_GAMING_GET_KEY_MAP (0xBD). Firmware success = status byte 0x00.
+            packet = self._create_hid_packet(0xBD, 0, [int(control_id) & 0xFF])
+            response = self.usb_send(self.dev, packet, retries=3)
+            if not response or len(response) < 10 or response[5] != 0x00:
+                return None
+            return {
+                'row': response[7],
+                'col': response[8],
+                'enabled': response[9] != 0,
+            }
+        except Exception:
+            return None
+
     def get_gaming_settings(self):
         """Get current gaming settings from keyboard
 
@@ -2271,7 +2425,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             packet = self._create_hid_packet(HID_CMD_GAMING_GET_SETTINGS, 0, None)
             response = self.usb_send(self.dev, packet, retries=3)
 
-            if not response or len(response) < 13:
+            # Firmware GET_SETTINGS reports success with status byte (index 5) == 0.
+            # Check it so a joystick-disabled build (which returns an error packet of
+            # zeros) is not misread as "all sliders at 0.0mm".
+            if not response or len(response) < 14 or response[5] != 0x00:
                 return None
 
             # Parse gaming settings from response
@@ -2338,9 +2495,19 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         data.append(vib & 0xFF)
         data.append((vib >> 8) & 0xFF)
         flags = 0x01 if zone.get('actuation_override', False) else 0x00
+        if zone.get('at_uses_curve', False):
+            flags |= 0x02  # AT/CC value mapped through this zone's velocity curve
+        if zone.get('legato', False):
+            flags |= 0x04  # Monophonic legato (last-note priority, overrides sustain)
         data.append(flags)
         data.append(int(zone.get('actuation_point', 20)) & 0xFF)
-        data.append(int(zone.get('speed_peak_ratio', 50)) & 0xFF)
+        # Repurposed byte: Trigger Minimum in 0.1mm steps (1-35 = 0.1-3.5mm)
+        _tmin = int(zone.get('speed_peak_ratio', 1))
+        if _tmin < 1:
+            _tmin = 1
+        elif _tmin > 35:
+            _tmin = 35
+        data.append(_tmin & 0xFF)
         # Dual-use byte: smoothness (0-100) when aftertouch active, retrigger (0-20) when off
         if at_mode > 0:
             data.append(int(zone.get('aftertouch_smoothness', 0)) & 0xFF)
@@ -2353,7 +2520,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                             aftertouch_smoothness=0, aftertouch_cc=255,
                             vibrato_sensitivity=100, vibrato_decay=200,
                             actuation_override=False, actuation_point=20,
-                            speed_peak_ratio=50, retrigger_distance=0,
+                            speed_peak_ratio=1, retrigger_distance=0,
+                            at_uses_curve=False, legato=False,
                             **kwargs):
         """
         Set a velocity preset slot with curve points and all associated settings.
@@ -2374,7 +2542,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             vibrato_decay: ms per unit of aftertouch decay (0-50)
             actuation_override: Enable per-key actuation override
             actuation_point: Actuation point (0-40 = 0.0-4.0mm)
-            speed_peak_ratio: Ratio of speed to peak for velocity (0-100)
+            speed_peak_ratio: Trigger Minimum in 0.1mm steps (1-35 = 0.1-3.5mm)
             retrigger_distance: Retrigger distance (0=off, 5-20)
 
         Returns:
@@ -2401,7 +2569,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             'actuation_override': actuation_override,
             'actuation_point': actuation_point,
             'speed_peak_ratio': speed_peak_ratio,
-            'retrigger_distance': retrigger_distance
+            'retrigger_distance': retrigger_distance,
+            'at_uses_curve': at_uses_curve,
+            'legato': legato
         }
 
         # === Send Chunk 0: name ===
@@ -2458,6 +2628,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             'vibrato_sensitivity': data[offset + 16],
             'vibrato_decay': data[offset + 17] | (data[offset + 18] << 8),
             'actuation_override': (data[offset + 19] & 0x01) != 0,
+            'at_uses_curve': (data[offset + 19] & 0x02) != 0,
+            'legato': (data[offset + 19] & 0x04) != 0,
             'actuation_point': data[offset + 20],
             'speed_peak_ratio': data[offset + 21],
             # Dual-use byte: smoothness when aftertouch active, retrigger when off

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-from PyQt5 import QtCore
+from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import pyqtSignal, QObject, Qt
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QWidget, QPushButton, QHBoxLayout, QSizePolicy, QGridLayout, QLabel, QSlider, \
@@ -3267,101 +3267,104 @@ class CustomLightsHandler(BasicHandler):
 
 # State definitions matching firmware enum func_led_state
 FUNC_LED_STATES = [
-    # (index, name, group)
-    # Arpeggiator Quick Build states [0-7]
+    # (index, name, group) — indices match the firmware func_led_state enum
+    # Arpeggiator Quick Build states [0-5]
     (0, "QB: Empty / No Build", "Arpeggiator"),
     (1, "QB: Has Build (Idle)", "Arpeggiator"),
     (2, "QB: Playing", "Arpeggiator"),
     (3, "QB: Pending Play", "Arpeggiator"),
     (4, "QB: Pending Stop", "Arpeggiator"),
     (5, "QB: Building / Recording", "Arpeggiator"),
-    (6, "QB: Hold to Erase", "Arpeggiator"),
-    (7, "QB: Just Cleared", "Arpeggiator"),
-    # Arp Play button states [8-10]
-    (8, "Play: Active / Playing", "Arpeggiator"),
-    (9, "Play: Deferred Start", "Arpeggiator"),
-    (10, "Play: Idle", "Arpeggiator"),
-    # Arp Preset button states [11-13]
-    (11, "Preset: Playing", "Arpeggiator"),
-    (12, "Preset: Deferred", "Arpeggiator"),
-    (13, "Preset: Idle", "Arpeggiator"),
-    # Step Sequencer Quick Build states [62-69]
-    (62, "QB: Empty / No Build", "Step Sequencer"),
-    (63, "QB: Has Build (Idle)", "Step Sequencer"),
-    (64, "QB: Playing", "Step Sequencer"),
-    (65, "QB: Pending Play", "Step Sequencer"),
-    (66, "QB: Pending Stop", "Step Sequencer"),
-    (67, "QB: Building / Recording", "Step Sequencer"),
-    (68, "QB: Hold to Erase", "Step Sequencer"),
-    (69, "QB: Just Cleared", "Step Sequencer"),
-    # Seq Play button states [70-72]
-    (70, "Play: Active / Playing", "Step Sequencer"),
-    (71, "Play: Deferred Start", "Step Sequencer"),
-    (72, "Play: Idle", "Step Sequencer"),
-    # Seq Preset button states [73-75]
-    (73, "Preset: Playing", "Step Sequencer"),
-    (74, "Preset: Deferred", "Step Sequencer"),
-    (75, "Preset: Idle", "Step Sequencer"),
-    # Vial Macros [14-17]
-    (14, "Loop Idle", "Vial Macros"),
-    (15, "Playing", "Vial Macros"),
-    (16, "Deferred Start", "Vial Macros"),
-    (17, "CC Ramp Active", "Vial Macros"),
-    # Loop Pedal base states [18-23]
-    (18, "Primed for Recording", "Loop Pedal"),
-    (19, "Recording (REC/DUB)", "Loop Pedal"),
-    (20, "Recording End Pending", "Loop Pedal"),
-    (21, "Playing", "Loop Pedal"),
-    (22, "Stopped / Muted", "Loop Pedal"),
-    (23, "Empty Slot", "Loop Pedal"),
-    # Loop Pedal overdub combination alt colors [58-61]
-    (58, "Playing + OD Playing: Alt Color", "Loop Pedal"),
-    (59, "Playing + OD Muted: Alt Color", "Loop Pedal"),
-    (60, "Playing + OD Recording: Alt Color", "Loop Pedal"),
-    (61, "Stopped + OD Playing: Alt Color", "Loop Pedal"),
-    # Toggle keys [24-34]
-    (24, "Standard: Idle", "Toggle Keys"),
-    (25, "Standard: Held", "Toggle Keys"),
-    (26, "Unconfigured", "Toggle Keys"),
-    (27, "Multi-Key Step 1", "Toggle Keys"),
-    (28, "Multi-Key Step 2", "Toggle Keys"),
-    (29, "Multi-Key Step 3", "Toggle Keys"),
-    (30, "Multi-Key Step 4", "Toggle Keys"),
-    (31, "Multi-Key Step 5", "Toggle Keys"),
-    (32, "Multi-Key Step 6", "Toggle Keys"),
-    (33, "Multi-Key Step 7", "Toggle Keys"),
-    (34, "Multi-Key Step 8", "Toggle Keys"),
-    # Delay [35-36]
-    (35, "Active", "Delay Slots"),
-    (36, "Inactive", "Delay Slots"),
-    # SmartChord [37-51]
-    (37, "Toggle Latched", "SmartChord"),
-    (38, "Chord 1 (Normal)", "SmartChord"),
-    (39, "Chord 2 (Normal)", "SmartChord"),
-    (40, "Chord 3 (Normal)", "SmartChord"),
-    (41, "Chord 4 (Normal)", "SmartChord"),
-    (42, "Chord 5 (Normal)", "SmartChord"),
-    (43, "Chord 6 (Normal)", "SmartChord"),
-    (44, "Chord 7 (Normal)", "SmartChord"),
-    (45, "Chord 1 (Colorblind)", "SmartChord"),
-    (46, "Chord 2 (Colorblind)", "SmartChord"),
-    (47, "Chord 3 (Colorblind)", "SmartChord"),
-    (48, "Chord 4 (Colorblind)", "SmartChord"),
-    (49, "Chord 5 (Colorblind)", "SmartChord"),
-    (50, "Chord 6 (Colorblind)", "SmartChord"),
-    (51, "Chord 7 (Colorblind)", "SmartChord"),
-    # Other [52-57]
-    (52, "Caps Lock", "Other Indicators"),
-    (53, "Gaming Mode", "Other Indicators"),
-    (54, "Tap Tempo: Manual Beat 1", "Other Indicators"),
-    (55, "Tap Tempo: Manual Beats 2-4", "Other Indicators"),
-    (56, "Tap Tempo: Auto Beat 1", "Other Indicators"),
-    (57, "Tap Tempo: Auto Beats 2-4", "Other Indicators"),
-    # Chord Progression slot button states [96-99]
-    (96, "Idle / Stopped", "Chord Progression"),
-    (97, "Playing", "Chord Progression"),
-    (98, "Pending Play (Deferred Start)", "Chord Progression"),
-    (99, "Pending Stop (Deferred Stop)", "Chord Progression"),
+    # Arp Play button states [6-8]
+    (6, "Play: Active / Playing", "Arpeggiator"),
+    (7, "Play: Deferred Start", "Arpeggiator"),
+    (8, "Play: Idle", "Arpeggiator"),
+    # Arp Preset button states [9-11]
+    (9, "Preset: Playing", "Arpeggiator"),
+    (10, "Preset: Deferred", "Arpeggiator"),
+    (11, "Preset: Idle", "Arpeggiator"),
+    # Step Sequencer Quick Build states [52-57]
+    (52, "QB: Empty / No Build", "Step Sequencer"),
+    (53, "QB: Has Build (Idle)", "Step Sequencer"),
+    (54, "QB: Playing", "Step Sequencer"),
+    (55, "QB: Pending Play", "Step Sequencer"),
+    (56, "QB: Pending Stop", "Step Sequencer"),
+    (57, "QB: Building / Recording", "Step Sequencer"),
+    # Seq Play button states [58-60]
+    (58, "Play: Active / Playing", "Step Sequencer"),
+    (59, "Play: Deferred Start", "Step Sequencer"),
+    (60, "Play: Idle", "Step Sequencer"),
+    # Seq Preset button states [61-63]
+    (61, "Preset: Playing", "Step Sequencer"),
+    (62, "Preset: Deferred", "Step Sequencer"),
+    (63, "Preset: Idle", "Step Sequencer"),
+    # Chord Progression slot button states [80-83]
+    (80, "Idle / Stopped", "Chord Progression"),
+    (81, "Playing", "Chord Progression"),
+    (82, "Pending Play (Deferred Start)", "Chord Progression"),
+    (83, "Pending Stop (Deferred Stop)", "Chord Progression"),
+    # Vial Macros [12-14]
+    (12, "Loop Idle", "Vial Macros"),
+    (13, "Playing", "Vial Macros"),
+    (14, "Deferred Start", "Vial Macros"),
+    # Loop Pedal base states [15-20]
+    (15, "Primed for Recording", "Loop Pedal"),
+    (16, "Recording (REC/DUB)", "Loop Pedal"),
+    (17, "Recording End Pending", "Loop Pedal"),
+    (18, "Playing", "Loop Pedal"),
+    (19, "Stopped / Muted", "Loop Pedal"),
+    (20, "Empty Slot", "Loop Pedal"),
+    # Loop Pedal overdub combination alt colors [48-51]
+    (48, "Playing + OD Playing: Alt Color", "Loop Pedal"),
+    (49, "Playing + OD Muted: Alt Color", "Loop Pedal"),
+    (50, "Playing + OD Recording: Alt Color", "Loop Pedal"),
+    (51, "Stopped + OD Playing: Alt Color", "Loop Pedal"),
+    # Toggle keys [21-31]
+    (21, "Standard: Idle", "Toggle Keys"),
+    (22, "Standard: Held", "Toggle Keys"),
+    (23, "Unconfigured", "Toggle Keys"),
+    (24, "Multi-Key Step 1", "Toggle Keys"),
+    (25, "Multi-Key Step 2", "Toggle Keys"),
+    (26, "Multi-Key Step 3", "Toggle Keys"),
+    (27, "Multi-Key Step 4", "Toggle Keys"),
+    (28, "Multi-Key Step 5", "Toggle Keys"),
+    (29, "Multi-Key Step 6", "Toggle Keys"),
+    (30, "Multi-Key Step 7", "Toggle Keys"),
+    (31, "Multi-Key Step 8", "Toggle Keys"),
+    # Delay [32-33]
+    (32, "Active", "Delay Slots"),
+    (33, "Inactive", "Delay Slots"),
+    # SmartChord [34-41]
+    (34, "Toggle Latched", "SmartChord"),
+    (35, "Chord 1", "SmartChord"),
+    (36, "Chord 2", "SmartChord"),
+    (37, "Chord 3", "SmartChord"),
+    (38, "Chord 4", "SmartChord"),
+    (39, "Chord 5", "SmartChord"),
+    (40, "Chord 6", "SmartChord"),
+    (41, "Chord 7", "SmartChord"),
+    # AutoFader On/Off [78, 77]
+    (78, "On", "AutoFader"),
+    (77, "Off", "AutoFader"),
+    # Dynamic Chord On/Off [74, 73]
+    (74, "On", "Dynamic Chord"),
+    (73, "Off", "Dynamic Chord"),
+    # DrumLIVE On/Off [84-85]
+    (84, "On", "DrumLIVE"),
+    (85, "Off", "DrumLIVE"),
+    # Drum Machine On/Off [86-87]
+    (86, "On", "Drum Machine"),
+    (87, "Off", "Drum Machine"),
+    # Ear Trainer On/Off [88-89]
+    (88, "On", "Ear Trainer"),
+    (89, "Off", "Ear Trainer"),
+    # Other [42-47]
+    (42, "Caps Lock", "Other Indicators"),
+    (43, "Gaming Mode", "Other Indicators"),
+    (44, "Tap Tempo: Manual Beat 1", "Other Indicators"),
+    (45, "Tap Tempo: Manual Beats 2-4", "Other Indicators"),
+    (46, "Tap Tempo: Auto Beat 1", "Other Indicators"),
+    (47, "Tap Tempo: Auto Beats 2-4", "Other Indicators"),
 ]
 
 BLINK_MODES = ["Solid", "Slow Blink", "Fast Blink"]
@@ -3369,24 +3372,17 @@ BLINK_MODES = ["Solid", "Slow Blink", "Fast Blink"]
 # Group ordering for the dropdown
 FUNC_LED_GROUPS = [
     "Arpeggiator", "Step Sequencer", "Chord Progression", "Vial Macros",
-    "Loop Pedal", "Toggle Keys", "Delay Slots", "SmartChord", "Other Indicators"
+    "Loop Pedal", "Toggle Keys", "Delay Slots", "SmartChord", "AutoFader",
+    "Dynamic Chord", "DrumLIVE", "Drum Machine", "Ear Trainer",
+    "Other Indicators"
 ]
 
 # Descriptions shown at top of each group section
 FUNC_LED_GROUP_DESCRIPTIONS = {
     "Arpeggiator": "Colors for arpeggiator quick build, play button, and preset button LEDs.",
     "Step Sequencer": "Colors for step sequencer quick build, play button, and preset button LEDs.",
-    "Chord Progression": (
-        "Colors for chord progression slot buttons (CPROG_SLOT_1..20).\n"
-        "Chord progressions integrate with the loop/step-sequencer sync group:\n"
-        "when something else is already playing they defer until the next loop\n"
-        "trigger (Pending Play), and when tapped to stop mid-bar they flash\n"
-        "Pending Stop until the current bar boundary. When no BPM is present\n"
-        "and nothing is playing, starting a progression auto-sets BPM to 120;\n"
-        "the BPM is cleared back to 0 when playback stops with no other clock\n"
-        "user still running."
-    ),
-    "Vial Macros": "Colors for Vial macro keys (loop idle, playing, deferred, CC ramp).",
+    "Chord Progression": "Colors for chord progression.",
+    "Vial Macros": "Colors for Vial macro keys (loop idle, playing, deferred).",
     "Loop Pedal": (
         "Colors for the hardware loop pedal macro system.\n"
         "Base states control the primary color. Overdub 'Alt Color' entries control\n"
@@ -3395,7 +3391,12 @@ FUNC_LED_GROUP_DESCRIPTIONS = {
     ),
     "Toggle Keys": "Colors for toggle key states and multi-key cycle steps.",
     "Delay Slots": "Colors for MIDI delay slot indicators.",
-    "SmartChord": "Colors for SmartChord toggle and individual chord keys (normal + colorblind).",
+    "SmartChord": "Colors for SmartChord toggle and individual chord keys.",
+    "AutoFader": "On/Off colors for AutoFader keys (On while the CC ramp is running).",
+    "Dynamic Chord": "On/Off colors for Dynamic Chord keys.",
+    "DrumLIVE": "On/Off colors for DrumLIVE keys (On while the live drum filter is active).",
+    "Drum Machine": "On/Off colors for Drum Machine slot keys (On while a slot is playing).",
+    "Ear Trainer": "On/Off colors for Ear Trainer keys (On while a session is running).",
     "Other Indicators": "Colors for caps lock, gaming mode, and tap tempo indicators.",
 }
 
@@ -3519,7 +3520,7 @@ class AdvancedKeyLightingHandler(QObject):
 
             for state_idx, state_name in group_states:
                 # Add separator before overdub alt colors in Loop Pedal
-                if group_name == "Loop Pedal" and state_idx >= 58 and not in_overdub_section:
+                if group_name == "Loop Pedal" and state_idx >= 48 and not in_overdub_section:
                     in_overdub_section = True
                     sep_label = QLabel("  Overdub Combination Colors")
                     sep_label.setStyleSheet(
