@@ -1102,3 +1102,14 @@ The keycode-picker labels for `HE_VEL_CURVE_UP`/`HE_VEL_CURVE_DOWN` in
 these + Octave/Transpose/Channel up/down now trigger on RELEASE and, while held,
 apply their delta to a pressed loop/drum/step-seq slot (accumulating), plus the
 on-device encoder "Playing Style +/-" → "Articulation +/-". No HID/EEPROM changes.
+
+## Modifier gestures on QB masters + Rhythm Engine (2026-07) — firmware only
+
+Firmware-side follow-up (see vial-gui-custom CLAUDE.md, same section name) — **no
+GUI/HID/EEPROM change, nothing to mirror here.** Both hold-a-modifier gestures —
+the transport up/down modifiers (Octave/Transpose/Channel/Articulation) and the
+note-doubler button — now also apply when a loop / step-seq / Rhythm-Engine
+(chord-progression) is bound to a **QuickBuild master button** (previously the
+master press bypassed the modifier capture), and the **Rhythm Engine** was added
+as a target for transpose/octave/channel/articulation (channel absolute, no
+note-doubler — its transpose is octave-based). ThruLoop and arp remain excluded.
