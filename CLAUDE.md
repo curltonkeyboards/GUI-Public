@@ -1037,24 +1037,33 @@ list overflow, arp-mid-pedal desync, panic + pedal) are closed.
 ## Keycode picker restructure — "Keyboard" tab + Macros window (tabbed_keycodes.py)
 
 - The nested `KeyboardTab` (`KeyboardTab.label`) is renamed **"Keyboard & Macro"
-  → "Keyboard"**. Side-tab order is now **Basic / Macros / Lighting / Gaming /
-  ISO/JIS / App / Advanced** (ISO, App and Advanced moved BELOW Gaming).
+  → "Keyboard"**. Side-tab order is **Basic / Macros / Layers / Lighting /
+  Gaming / ISO/JIS / App / Advanced** (Layers sits directly below Macros; ISO,
+  App and Advanced are BELOW Gaming).
 - **`MacroTab` rewritten** from an inner side-tab widget (Macro/Tapdance/DKS/
   Toggle sub-tabs) into a single `QScrollArea` that stacks **`QGroupBox`
   sections** in one window (like "Basic Loop Controls" in `LoopTab`): **Macro /
-  Layers / Tapdance / DKS / Toggle**. The side-tab entry is labelled **"Macros"**.
+  Tapdance / DKS / Toggle**. The side-tab entry is labelled **"Macros"**.
   The old `MacroSubTab` class is now unused (kept, harmless). Dynamic button
   counts (`macro_count`/`tapdance_count`/`dks_count`/`toggle_count` from the
   editors' `_visible_tab_count`) are preserved; external API
   (`set_keyboard`/`set_editors`/`refresh_buttons`/`recreate_buttons`/
   `relabel_buttons`) is unchanged.
-- **Layers folded into the Macros window** (directly below the Macro section) —
-  the standalone "Layer" side tab is gone (`KeyboardTab.layer_tab = None`).
-  `MacroTab.__init__` gained `layer_df/layer_mo/layer_osl` + `include_layer`; the
-  three layer dropdowns (Default / Hold / One Shot) are built inline in
-  `recreate_buttons`. `include_layer=False` (used by `toggle_settings.py`'s
-  `FilteredTabbedKeycodesNoLayers`, which supplies layers via `LightingTab2`)
-  simply omits the Layers section.
+- **Layers is its own side-tab** (directly below Macros), NOT folded into the
+  Macros window. `KeyboardTab` builds `self.layer_tab = LayerTab(...)` (the
+  reused standalone dropdown widget: Default / Hold / One Shot) when
+  `include_layer` is true and inserts it into `self.sections` after "Macros".
+  The `MacroTab` is always constructed with `include_layer=False`, so it never
+  renders a Layers section (its `layer_df/layer_mo/layer_osl` + `include_layer`
+  plumbing is kept for back-compat but unused). `include_layer=False` (used by
+  `toggle_settings.py`'s `FilteredTabbedKeycodesNoLayers`, which supplies layers
+  via `LightingTab2`) omits the Layers side-tab entirely (`layer_tab = None`).
+- **Top-level tabs** of the keycode picker are **Keyboard / Music / Advanced /
+  Search** (`FilteredTabbedKeycodes.tabs`). The **Search** tab (`SearchTab`, a
+  `MIDITab` with `include_sections=["Advanced Keys"]`) hosts the searchable
+  Advanced-Keys browser.
+- The **"Quickbuild"** side-tab under **Music** (`MusicTab`, `SimpleTab` over
+  `KEYCODES_QB_MASTER`) displays its label on two lines as **"Quick\nBuild"**.
 
 ## Articulation dropdown consistency (`editor/articulation_options.py`, shared)
 

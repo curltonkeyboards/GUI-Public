@@ -3164,8 +3164,10 @@ class MacroSubTab(QScrollArea):
 
 
 class MacroTab(QScrollArea):
-    """Macros tab: Macro / Layers / Tapdance / DKS / Toggle shown as stacked
-    sections in a single scrolling window (no inner side-tabs)."""
+    """Macros tab: Macro / Tapdance / DKS / Toggle shown as stacked sections in
+    a single scrolling window (no inner side-tabs). Layers is its own side-tab
+    under Keyboard now, so callers pass include_layer=False; the optional Layers
+    section is retained for back-compat but is unused by the Keyboard tab."""
     keycode_changed = pyqtSignal(str)
 
     def __init__(self, parent, label, inversion_keycodes, smartchord_LSB, smartchord_MSB,
@@ -4460,12 +4462,16 @@ class KeyboardTab(QWidget):
         self.app_tab = SimpleTab(parent, "App", KEYCODES_MEDIA)
         self.advanced_tab = SimpleTab(parent, "Advanced", KEYCODES_BOOT + KEYCODES_MODIFIERS + KEYCODES_QUANTUM)
 
-        # Feature tabs folded into Keyboard as side sections. Layers are folded
-        # into the Macros window (no standalone side tab).
+        # Feature tabs folded into Keyboard as side sections. Layers are their
+        # own side-tab (directly below Macros), NOT folded into the Macros
+        # window -- the MacroTab therefore never renders the Layers section.
         self.macro_tab = MacroTab(parent, "Macros", KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE,
                                   KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_OSL,
-                                  include_layer=include_layer)
-        self.layer_tab = None
+                                  include_layer=False)
+        # include_layer gates the standalone Layers side-tab (the Toggle-settings
+        # picker passes include_layer=False and supplies layers via LightingTab2).
+        self.layer_tab = LayerTab(parent, "Layers", KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO,
+                                  KEYCODES_LAYERS_OSL) if include_layer else None
         self.lighting_tab = LightingTab(parent, "Lighting", KEYCODES_BACKLIGHT, KEYCODES_RGBSAVE, KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_COLOR, KEYCODES_RGB_KC_CUSTOM2)
         self.gaming_tab = GamingTab(parent, "Gaming", KEYCODES_GAMING)
 
@@ -4475,14 +4481,20 @@ class KeyboardTab(QWidget):
         self.app_tab.keycode_changed.connect(self.on_keycode_changed)
         self.advanced_tab.keycode_changed.connect(self.on_keycode_changed)
         self.macro_tab.keycode_changed.connect(self.on_keycode_changed)
+        if self.layer_tab is not None:
+            self.layer_tab.keycode_changed.connect(self.on_keycode_changed)
         self.lighting_tab.keycode_changed.connect(self.on_keycode_changed)
         self.gaming_tab.keycode_changed.connect(self.on_keycode_changed)
 
-        # Define sections (tab_widget, display_name). ISO/App/Advanced sit below
-        # Gaming; Macros carries Layers inside it.
+        # Define sections (tab_widget, display_name). Layers is its own side-tab
+        # directly below Macros; ISO/App/Advanced sit below Gaming.
         self.sections = [
             (self.basic_tab, "Basic"),
             (self.macro_tab, "Macros"),
+        ]
+        if self.layer_tab is not None:
+            self.sections.append((self.layer_tab, "Layers"))
+        self.sections += [
             (self.lighting_tab, "Lighting"),
             (self.gaming_tab, "Gaming"),
             (self.iso_tab, "ISO/JIS"),
@@ -4973,7 +4985,7 @@ class MusicTab(QWidget):
             (self.midiswitch_tab, "MIDIswitch"),
             (self.loop_control_tab, "Loop Control"),
             (self.smartchord_tab, "SmartChord"),
-            (self.quickbuild_tab, "Quickbuild")
+            (self.quickbuild_tab, "Quick\nBuild")
         ]
 
         # Create horizontal layout: side tabs on left, content on right
