@@ -20,10 +20,10 @@ selected index is always kept visible.
 
 FACTORY_ARTIC_NAMES = [
     "Softest", "Soft", "Basic", "Hard", "Hardest",
-    "Soft Legato", "Basic Legato", "Hard Legato", "Sensitive Legato",
+    "Soft Leg", "Basic Leg", "Hard Leg", "Sens Leg",
     "Fixed Vol", "Drums Easy", "Drums Soft", "Drums Basic", "Drums Hard",
-    "Sensitive Soft", "Sensitive", "Sensitive Hard", "Drums Sensitive",
-    "Ultra Sensitive", "Fixed Sensitive", "Two Toned", "Reverse",
+    "Sensitive Soft", "Sensitive", "Sensitive Hard", "Drums Sens",
+    "Ultra Sens", "Fixed Sens", "Two Toned", "Reverse",
     "Random Highlights",
 ]
 
@@ -39,7 +39,7 @@ ATCC_END = ATCC_START + ATCC_COUNT - 1             # 98
 # sync with the firmware ATCC_MODE_NAMES / velocity_tab ATCC_NAMES.
 ATCC_BASE_NAMES = [
     "Leg Vib Slow", "Leg Vib Fast", "Leg Vib Smooth",
-    "Chord Vib Slow", "Chord Vib Fast", "Chord Vib Smooth",
+    "Vib Slow", "Vib Fast", "Vib Smooth",
     "Fast Swell", "Slow Swell", "Reverse Swell",
     "Fast Fall", "Slow Fall", "Shimmer Me", "Shimmer Leg",
 ]

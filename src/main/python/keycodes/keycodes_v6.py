@@ -1964,7 +1964,7 @@ class keycodes_v6:
         "HE_CURVE_FAC_17": 0xECF2,
         "HE_CURVE_FAC_18": 0xECF3,
         # New legato articulations (2026-07 factory reorder): map to new
-        # factory indices 5-8 (Soft/Basic/Hard/Sensitive Legato)
+        # factory indices 5-8 (Soft/Basic/Hard/Sens Leg)
         "HE_CURVE_FAC_19": 0xECF4,
         "HE_CURVE_FAC_20": 0xECF5,
         "HE_CURVE_FAC_21": 0xECF6,
@@ -1993,9 +1993,9 @@ class keycodes_v6:
         "HE_MACRO_CURVE_10": 0xECA0,  # Drums Soft
         "HE_MACRO_CURVE_11": 0xECA1,  # Drums Linear
         "HE_MACRO_CURVE_12": 0xECA2,  # Drums Hard
-        "HE_MACRO_CURVE_13": 0xECA3,  # Drums Sensitive
-        "HE_MACRO_CURVE_14": 0xECA4,  # Ultra Sensitive
-        "HE_MACRO_CURVE_15": 0xECA5,  # Fixed Sensitive
+        "HE_MACRO_CURVE_13": 0xECA3,  # Drums Sens
+        "HE_MACRO_CURVE_14": 0xECA4,  # Ultra Sens
+        "HE_MACRO_CURVE_15": 0xECA5,  # Fixed Sens
         "HE_MACRO_CURVE_16": 0xECA6,  # Two Toned
 
         # HE Velocity Range base (for dynamic generation, starts at 0xCCB5)

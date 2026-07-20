@@ -44,10 +44,10 @@ class CurveEditorWidget(QWidget):
         "Basic",
         "Hard",
         "Hardest",
-        "Soft Legato",
-        "Basic Legato",
-        "Hard Legato",
-        "Sensitive Legato",
+        "Soft Leg",
+        "Basic Leg",
+        "Hard Leg",
+        "Sens Leg",
         "Fixed Vol",
         "Drums Easy",
         "Drums Soft",
@@ -56,9 +56,9 @@ class CurveEditorWidget(QWidget):
         "Sensitive Soft",
         "Sensitive",
         "Sensitive Hard",
-        "Drums Sensitive",
-        "Ultra Sensitive",
-        "Fixed Sensitive",
+        "Drums Sens",
+        "Ultra Sens",
+        "Fixed Sens",
         "Two Toned",
         "Reverse",
         "Random Highlights"
@@ -77,13 +77,13 @@ class CurveEditorWidget(QWidget):
         [[0, 0], [64, 160], [128, 230], [255, 255]],
         # 4 Hardest - Very steep, aggressive response
         [[0, 0], [64, 160], [128, 230], [255, 255]],
-        # 5 Soft Legato - Soft with legato, no retrigger
+        # 5 Soft Leg - Soft with legato, no retrigger
         [[0, 0], [85, 28], [170, 85], [255, 255]],
-        # 6 Basic Legato - Basic with legato, no retrigger
+        # 6 Basic Leg - Basic with legato, no retrigger
         [[0, 0], [85, 85], [170, 170], [255, 255]],
-        # 7 Hard Legato - Hard with legato, no retrigger
+        # 7 Hard Leg - Hard with legato, no retrigger
         [[0, 0], [64, 160], [128, 230], [255, 255]],
-        # 8 Sensitive Legato - Sensitive with legato
+        # 8 Sens Leg - Sensitive with legato
         [[0, 81], [95, 125], [170, 170], [255, 255]],
         # 9 Fixed Vol
         [[0, 0], [1, 255], [20, 255], [255, 255]],
@@ -101,11 +101,11 @@ class CurveEditorWidget(QWidget):
         [[0, 81], [95, 125], [170, 170], [255, 255]],
         # 16 Sensitive Hard
         [[0, 152], [96, 175], [190, 215], [255, 255]],
-        # 17 Drums Sensitive
+        # 17 Drums Sens
         [[0, 26], [75, 65], [179, 116], [255, 193]],
-        # 18 Ultra Sensitive
+        # 18 Ultra Sens
         [[0, 68], [82, 128], [170, 188], [255, 255]],
-        # 19 Fixed Sensitive
+        # 19 Fixed Sens
         [[0, 0], [1, 255], [20, 255], [255, 255]],
         # 20 Two Toned
         [[0, 0], [221, 0], [222, 255], [255, 255]],

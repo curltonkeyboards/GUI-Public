@@ -45,7 +45,7 @@ from unlocker import Unlocker
 # poly-AT flavor). Kept in sync with the firmware ATCC_MODE_NAMES /
 # velocity_tab ATCC_NAMES.
 _ATCC_ZONE_BASE_NAMES = ["Leg Vib Slow", "Leg Vib Fast", "Leg Vib Smooth",
-                         "Chord Vib Slow", "Chord Vib Fast", "Chord Vib Smooth",
+                         "Vib Slow", "Vib Fast", "Vib Smooth",
                          "Fast Swell", "Slow Swell", "Reverse Swell",
                          "Fast Fall", "Slow Fall", "Shimmer Me", "Shimmer Leg"]
 

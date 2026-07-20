@@ -51,7 +51,7 @@ ATCC_PER_FLAVOR = 13
 ATCC_COUNT = ATCC_PER_FLAVOR * 2         # 26
 ATCC_END = ATCC_START + ATCC_COUNT - 1   # 98
 _ATCC_BASE_NAMES = ["Leg Vib Slow", "Leg Vib Fast", "Leg Vib Smooth",
-                    "Chord Vib Slow", "Chord Vib Fast", "Chord Vib Smooth",
+                    "Vib Slow", "Vib Fast", "Vib Smooth",
                     "Fast Swell", "Slow Swell", "Reverse Swell",
                     "Fast Fall", "Slow Fall", "Shimmer Me", "Shimmer Leg"]
 # CC-flavor set first (73-85), then the poly-AT duplicates (86-98). The two
@@ -72,9 +72,9 @@ _ATCC_ART_PARAMS = [
     ((85, 85),  (170, 170), 1, 127, 200, 20, 7,  50, 10, 7, 30, 18,  0),  # Leg Vib Slow
     ((88, 61),  (180, 161), 1, 127, 200, 20, 7,  66,  5, 7, 30, 18,  6),  # Leg Vib Fast
     ((88, 61),  (180, 161), 1, 127, 200, 20, 7, 100, 10, 7, 30, 18, 41),  # Leg Vib Smooth
-    ((85, 85),  (170, 170), 1, 127, 200, 20, 7,  50, 10, 3, 30, 18,  0),  # Chord Vib Slow
-    ((88, 61),  (180, 161), 1, 127, 200, 20, 7,  66,  5, 3, 30, 18,  6),  # Chord Vib Fast
-    ((88, 61),  (180, 161), 1, 127, 200, 20, 7, 100, 10, 3, 30, 18, 41),  # Chord Vib Smooth
+    ((85, 85),  (170, 170), 1, 127, 200, 20, 7,  50, 10, 3, 30, 18,  0),  # Vib Slow
+    ((88, 61),  (180, 161), 1, 127, 200, 20, 7,  66,  5, 3, 30, 18,  6),  # Vib Fast
+    ((88, 61),  (180, 161), 1, 127, 200, 20, 7, 100, 10, 3, 30, 18, 41),  # Vib Smooth
     ((102, 52), (222, 141), 1, 127, 105,  1, 1, 100, 10, 3,  2, 35,  0),  # Fast Swell
     ((91, 77),  (176, 164), 1, 127, 105,  1, 1, 100, 10, 3,  2, 35, 22),  # Slow Swell
     ((55, 130), (164, 201), 1,   5,  90,  1, 3, 100, 10, 3, 35, 35,  0),  # Reverse Swell
@@ -1286,7 +1286,7 @@ class VelocityTab(BasicEditor):
         self.preset_list_widget.setMinimumHeight(300)
 
         # Factory presets
-        factory_curves = ["Softest", "Soft", "Basic", "Hard", "Hardest", "Soft Legato", "Basic Legato", "Hard Legato", "Sensitive Legato", "Fixed Vol", "Drums Easy", "Drums Soft", "Drums Basic", "Drums Hard", "Sensitive Soft", "Sensitive", "Sensitive Hard", "Drums Sensitive", "Ultra Sensitive", "Fixed Sensitive", "Two Toned", "Reverse", "Random Highlights"]
+        factory_curves = ["Softest", "Soft", "Basic", "Hard", "Hardest", "Soft Leg", "Basic Leg", "Hard Leg", "Sens Leg", "Fixed Vol", "Drums Easy", "Drums Soft", "Drums Basic", "Drums Hard", "Sensitive Soft", "Sensitive", "Sensitive Hard", "Drums Sens", "Ultra Sens", "Fixed Sens", "Two Toned", "Reverse", "Random Highlights"]
         for i, name in enumerate(factory_curves):
             item = QListWidgetItem(name)
             item.setData(Qt.UserRole, i)  # Store curve index
@@ -2387,7 +2387,7 @@ class VelocityTab(BasicEditor):
             self.preset_rename_btn.setVisible(False)
             return
         if curve_index < FACTORY_COUNT:
-            factory_names = ["Softest", "Soft", "Basic", "Hard", "Hardest", "Soft Legato", "Basic Legato", "Hard Legato", "Sensitive Legato", "Fixed Vol", "Drums Easy", "Drums Soft", "Drums Basic", "Drums Hard", "Sensitive Soft", "Sensitive", "Sensitive Hard", "Drums Sensitive", "Ultra Sensitive", "Fixed Sensitive", "Two Toned", "Reverse", "Random Highlights"]
+            factory_names = ["Softest", "Soft", "Basic", "Hard", "Hardest", "Soft Leg", "Basic Leg", "Hard Leg", "Sens Leg", "Fixed Vol", "Drums Easy", "Drums Soft", "Drums Basic", "Drums Hard", "Sensitive Soft", "Sensitive", "Sensitive Hard", "Drums Sens", "Ultra Sens", "Fixed Sens", "Two Toned", "Reverse", "Random Highlights"]
             self.preset_name_label.setText(factory_names[curve_index])
             self.preset_rename_btn.setVisible(False)
         else:
@@ -2482,7 +2482,7 @@ class VelocityTab(BasicEditor):
             'actuation_override': False, 'actuation_point': 20,
             'speed_peak_ratio': 10, 'retrigger_distance': 20,
         },
-        5: {  # Soft Legato
+        5: {  # Soft Leg
             'velocity_min': 1, 'velocity_max': 127,
             'slow_press_time': 80, 'fast_press_time': 3,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
@@ -2491,7 +2491,7 @@ class VelocityTab(BasicEditor):
             'speed_peak_ratio': 10, 'retrigger_distance': 0,
             'legato': True,
         },
-        6: {  # Basic Legato
+        6: {  # Basic Leg
             'velocity_min': 1, 'velocity_max': 127,
             'slow_press_time': 80, 'fast_press_time': 3,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
@@ -2500,7 +2500,7 @@ class VelocityTab(BasicEditor):
             'speed_peak_ratio': 10, 'retrigger_distance': 0,
             'legato': True,
         },
-        7: {  # Hard Legato
+        7: {  # Hard Leg
             'velocity_min': 1, 'velocity_max': 127,
             'slow_press_time': 80, 'fast_press_time': 3,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
@@ -2509,7 +2509,7 @@ class VelocityTab(BasicEditor):
             'speed_peak_ratio': 10, 'retrigger_distance': 0,
             'legato': True,
         },
-        8: {  # Sensitive Legato
+        8: {  # Sens Leg
             'velocity_min': 1, 'velocity_max': 127,
             'slow_press_time': 67, 'fast_press_time': 4,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
@@ -2582,7 +2582,7 @@ class VelocityTab(BasicEditor):
             'actuation_override': False, 'actuation_point': 25,
             'speed_peak_ratio': 1, 'retrigger_distance': 5,
         },
-        17: {  # Drums Sensitive
+        17: {  # Drums Sens
             'velocity_min': 1, 'velocity_max': 127,
             'slow_press_time': 46, 'fast_press_time': 3,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
@@ -2590,7 +2590,7 @@ class VelocityTab(BasicEditor):
             'actuation_override': False, 'actuation_point': 20,
             'speed_peak_ratio': 1, 'retrigger_distance': 5,
         },
-        18: {  # Ultra Sensitive
+        18: {  # Ultra Sens
             'velocity_min': 46, 'velocity_max': 127,
             'slow_press_time': 29, 'fast_press_time': 5,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
@@ -2598,7 +2598,7 @@ class VelocityTab(BasicEditor):
             'actuation_override': True, 'actuation_point': 3,
             'speed_peak_ratio': 1, 'retrigger_distance': 5,
         },
-        19: {  # Fixed Sensitive
+        19: {  # Fixed Sens
             'velocity_min': 126, 'velocity_max': 127,
             'slow_press_time': 4, 'fast_press_time': 3,
             'aftertouch_mode': 0, 'aftertouch_smoothness': 0, 'aftertouch_cc': 255,
@@ -3055,11 +3055,11 @@ class VelocityTab(BasicEditor):
         None + factory + configured user + AT/CC modes."""
         opts = [(tr("VelocityTab", "None"), 255)]
         factory_curves = ["Softest", "Soft", "Basic", "Hard", "Hardest",
-                          "Soft Legato", "Basic Legato", "Hard Legato",
-                          "Sensitive Legato", "Fixed Vol", "Drums Easy",
+                          "Soft Leg", "Basic Leg", "Hard Leg",
+                          "Sens Leg", "Fixed Vol", "Drums Easy",
                           "Drums Soft", "Drums Basic", "Drums Hard",
                           "Sensitive Soft", "Sensitive", "Sensitive Hard",
-                          "Drums Sensitive", "Ultra Sensitive", "Fixed Sensitive",
+                          "Drums Sens", "Ultra Sens", "Fixed Sens",
                           "Two Toned", "Reverse", "Random Highlights"]
         for i, name in enumerate(factory_curves):
             opts.append((name, i))

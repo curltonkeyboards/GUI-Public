@@ -967,10 +967,10 @@ and 4 new legato presets. New order:
 
 ```
 0 Softest  1 Soft  2 Basic  3 Hard  4 Hardest
-5 Soft Legato  6 Basic Legato  7 Hard Legato  8 Sensitive Legato
+5 Soft Leg  6 Basic Leg  7 Hard Leg  8 Sens Leg
 9 Fixed Vol  10 Drums Easy  11 Drums Soft  12 Drums Basic  13 Drums Hard
-14 Sensitive Soft  15 Sensitive  16 Sensitive Hard  17 Drums Sensitive
-18 Ultra Sensitive  19 Fixed Sensitive  20 Two Toned  21 Reverse  22 Random Highlights
+14 Sensitive Soft  15 Sensitive  16 Sensitive Hard  17 Drums Sens
+18 Ultra Sens  19 Fixed Sens  20 Two Toned  21 Reverse  22 Random Highlights
 ```
 
 Index bands shift: user **23-72**, AT/CC **73-98**. GUI-side changes (mirrored
@@ -978,12 +978,12 @@ from the firmware tables — keep in lockstep):
 
 - `widgets/curve_editor.py`: 23-entry FACTORY_CURVES + FACTORY_CURVE_POINTS
   (Soft/Hard now carry Softest's/Hardest's points; Basic identity; new Legato +
-  updated Two Toned / Ultra Sensitive points). `FACTORY_COUNT` derives from the
+  updated Two Toned / Ultra Sens points). `FACTORY_COUNT` derives from the
   list; `ATCC_START = FACTORY_COUNT + 50`.
 - `editor/velocity_tab.py`: 23-entry name lists + FACTORY_PRESET_SETTINGS
   (fast min 3; non-Sensitive trigger min 1mm; Softest..Hardest retrigger 2mm +
   slow 80ms; `legato: True` on 5-8; explicit exports for Two Toned / Ultra
-  Sensitive / Sensitive Legato). Fast-press DualRangeSlider minimum 2. All
+  Sensitive / Sens Leg). Fast-press DualRangeSlider minimum 2. All
   user-facing "Linear" → "Basic".
 - `editor/matrix_test.py`: zone combos rebuilt (23 factory + user 23+i), ATCC
   helper offsets 69/82 → 73/86.

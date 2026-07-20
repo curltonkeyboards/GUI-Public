@@ -975,10 +975,10 @@ class QuickActuationWidget(QWidget):
         2: (1, 127), # Basic
         3: (1, 127), # Hard
         4: (60, 127), # Hardest
-        5: (1, 127), # Soft Legato
-        6: (1, 127), # Basic Legato
-        7: (1, 127), # Hard Legato
-        8: (1, 127), # Sensitive Legato
+        5: (1, 127), # Soft Leg
+        6: (1, 127), # Basic Leg
+        7: (1, 127), # Hard Leg
+        8: (1, 127), # Sens Leg
         9: (126, 127), # Fixed Vol
         10: (1, 127), # Drums Easy
         11: (1, 127), # Drums Soft
@@ -987,9 +987,9 @@ class QuickActuationWidget(QWidget):
         14: (1, 127), # Sensitive Soft
         15: (1, 127), # Sensitive
         16: (30, 127), # Sensitive Hard
-        17: (1, 127), # Drums Sensitive
-        18: (46, 127), # Ultra Sensitive
-        19: (126, 127), # Fixed Sensitive
+        17: (1, 127), # Drums Sens
+        18: (46, 127), # Ultra Sens
+        19: (126, 127), # Fixed Sens
         20: (70, 127), # Two Toned
         21: (1, 127), # Reverse
         22: (1, 127), # Random Highlights
