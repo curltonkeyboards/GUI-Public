@@ -4985,7 +4985,7 @@ class MusicTab(QWidget):
             (self.midiswitch_tab, "MIDIswitch"),
             (self.loop_control_tab, "Loop Control"),
             (self.smartchord_tab, "SmartChord"),
-            (self.quickbuild_tab, "Quick\nBuild")
+            (self.quickbuild_tab, "Quickbuild")
         ]
 
         # Create horizontal layout: side tabs on left, content on right

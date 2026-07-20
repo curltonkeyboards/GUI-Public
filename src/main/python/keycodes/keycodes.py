@@ -2834,7 +2834,7 @@ KEYCODES_FADER_QB = []  # removed: only Master Quick Build buttons are supported
 # / SmartChord / Fader / drum machine / chord prog / ear trainer).
 KEYCODES_QB_MASTER = [
     K("QB_MASTER_{}".format(i + 1),
-      "Quickbuild\n{}".format(i + 1),
+      "Quick\nBuild\n{}".format(i + 1),
       "Quickbuild slot {} - tap: picker (unconfigured) or run assigned target".format(i + 1))
     for i in range(100)
 ]

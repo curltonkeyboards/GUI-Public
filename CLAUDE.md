@@ -1063,7 +1063,9 @@ list overflow, arp-mid-pedal desync, panic + pedal) are closed.
   `MIDITab` with `include_sections=["Advanced Keys"]`) hosts the searchable
   Advanced-Keys browser.
 - The **"Quickbuild"** side-tab under **Music** (`MusicTab`, `SimpleTab` over
-  `KEYCODES_QB_MASTER`) displays its label on two lines as **"Quick\nBuild"**.
+  `KEYCODES_QB_MASTER`) keeps its single-word side-tab label; the individual QB
+  slot **buttons** render on three lines as **"Quick\nBuild\nN"** (label set in
+  `keycodes.py` `KEYCODES_QB_MASTER`).
 
 ## Articulation dropdown consistency (`editor/articulation_options.py`, shared)
 
