@@ -3981,14 +3981,14 @@ class midiTab(QScrollArea):
             ("MI_OCTU", "Octave\n\u25B2"),
             ("MI_CHU", "Channel\n\u25B2"),
             ("SMARTCHORD_UP", "SmartChord\n\u25B2"),
-            ("HE_VEL_CURVE_UP", "Playing\nStyle \u25B2"),
+            ("HE_VEL_CURVE_UP", "Articulation\n\u25B2"),
         ]
         grid_down = [
             ("MI_TRNSD", "Transpose\n\u25BC"),
             ("MI_OCTD", "Octave\n\u25BC"),
             ("MI_CHD", "Channel\n\u25BC"),
             ("SMARTCHORD_DOWN", "SmartChord\n\u25BC"),
-            ("HE_VEL_CURVE_DOWN", "Playing\nStyle \u25BC"),
+            ("HE_VEL_CURVE_DOWN", "Articulation\n\u25BC"),
         ]
         for col, (qmk_id, label) in enumerate(grid_up):
             grid_layout.addWidget(self._make_big_btn(qmk_id, label), 0, col)

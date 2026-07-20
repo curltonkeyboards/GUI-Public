@@ -1093,3 +1093,12 @@ Wired in:
   and `KEYCODES_HE_VELOCITY_CURVE` is a static keycode-picker grid (23 factory +
   10 direct-select user keycodes, no AT/CC) — not a dropdown, so band
   hiding/dividers don't apply.
+
+## Articulation up/down rename (2026-07) — GUI side
+
+The keycode-picker labels for `HE_VEL_CURVE_UP`/`HE_VEL_CURVE_DOWN` in
+`tabbed_keycodes.py` were changed "Playing Style ▲/▼" → "Articulation ▲/▼"
+(`keycodes.py` already used "Articulation"). Firmware-side (see vial-gui-custom):
+these + Octave/Transpose/Channel up/down now trigger on RELEASE and, while held,
+apply their delta to a pressed loop/drum/step-seq slot (accumulating), plus the
+on-device encoder "Playing Style +/-" → "Articulation +/-". No HID/EEPROM changes.
