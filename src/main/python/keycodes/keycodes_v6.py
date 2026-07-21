@@ -1852,6 +1852,9 @@ class keycodes_v6:
         "LOOP_QUANTIZE": 0xCC55,
         "LOOP_BPM_DOUBLE": 0xCC56,
 
+        # Next Loop Rec: stop the recording loop + start recording the next empty loop
+        "DM_NEXT_LOOP_REC": 0xCC58,
+
         # Gaming Controller Keycodes (0xCC60-0xCC74)
         "GAMING_MODE": 0xCC60,  # Toggle gaming mode
         "XBOX_A": 0xCC61,  # A button (Button 0)
