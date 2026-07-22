@@ -25,6 +25,55 @@ from widgets.big_square_button import BigSquareButton
 from util import tr, KeycodeDisplay
 import widgets.resources  # Import Qt resources for controller images
 
+
+def clear_layout_widgets(layout):
+    """Remove and schedule deletion of every widget/sub-layout in ``layout``.
+
+    Uses ``takeAt(0)`` (which removes the item synchronously) in a while-loop
+    instead of the old ``for i in reversed(range(layout.count())):
+    layout.itemAt(i).widget()`` pattern. That pattern cached ``count()`` up
+    front, but a ``deleteLater()`` from a *previous* rebuild can be processed
+    while this loop runs (any nested event processing), shrinking the real
+    count below the cached range — so ``itemAt(i)`` returned ``None`` and the
+    following ``.widget()`` raised
+    ``AttributeError: 'NoneType' object has no attribute 'widget'`` (seen e.g.
+    when renaming a macro, which triggers a full keycode-button rebuild).
+    Re-reading the live count each iteration removes that race entirely.
+    """
+    if layout is None:
+        return
+    while layout.count():
+        item = layout.takeAt(0)
+        if item is None:
+            continue
+        w = item.widget()
+        if w is not None:
+            w.setParent(None)
+            w.deleteLater()
+        else:
+            child = item.layout()
+            if child is not None:
+                clear_layout_widgets(child)
+
+
+def iter_layout_widgets(layout):
+    """Yield each widget currently in ``layout``, skipping missing/None items.
+
+    A None-safe replacement for ``for i in range(layout.count()):
+    layout.itemAt(i).widget()`` in relabel loops — guards against the same
+    mid-loop count shrink that made ``itemAt(i)`` return ``None``.
+    """
+    if layout is None:
+        return
+    for i in range(layout.count()):
+        item = layout.itemAt(i)
+        if item is None:
+            continue
+        w = item.widget()
+        if w is not None:
+            yield w
+
+
 class AsyncValueDialog(QDialog):
     def __init__(self, parent, title, min_val, max_val, callback):
         super().__init__(parent)
@@ -692,10 +741,7 @@ class SmartChordTab(QScrollArea):
 
     def recreate_buttons(self, keycode_filter=None):
         """Recreates the buttons for the inversion keycodes."""
-        for i in reversed(range(self.button_layout.count())):
-            widget = self.button_layout.itemAt(i).widget()
-            if widget is not None:
-                widget.deleteLater()
+        clear_layout_widgets(self.button_layout)
 
         row = 0
         col = 0
@@ -736,8 +782,7 @@ class SmartChordTab(QScrollArea):
 
     def relabel_buttons(self):
         """Relabel buttons based on keycodes."""
-        for i in range(self.button_layout.count()):
-            widget = self.button_layout.itemAt(i).widget()
+        for widget in iter_layout_widgets(self.button_layout):
             if isinstance(widget, SquareButton) and hasattr(widget, 'keycode'):
                 keycode = widget.keycode
                 if keycode:
@@ -1690,10 +1735,7 @@ class midiadvancedTab(QScrollArea):
     def populate_advanced_section(self):
         """Populate the Advanced MIDI Options section with buttons."""
         # Clear existing buttons
-        for i in reversed(range(self.advanced_grid.count())):
-            widget = self.advanced_grid.itemAt(i).widget()
-            if widget is not None:
-                widget.deleteLater()
+        clear_layout_widgets(self.advanced_grid)
 
         # Add buttons in a grid layout
         row = 0
@@ -2133,16 +2175,10 @@ class midiadvancedTab(QScrollArea):
     def recreate_buttons(self, keycode_filter=None):
         """Update to include both advanced and keysplit section buttons."""
         # Clear and recreate the advanced section
-        for i in reversed(range(self.advanced_grid.count())):
-            widget = self.advanced_grid.itemAt(i).widget()
-            if widget is not None:
-                widget.deleteLater()
+        clear_layout_widgets(self.advanced_grid)
 
         # Clear and recreate the keysplit section
-        for i in reversed(range(self.keysplit_grid.count())):
-            widget = self.keysplit_grid.itemAt(i).widget()
-            if widget is not None:
-                widget.deleteLater()
+        clear_layout_widgets(self.keysplit_grid)
 
         # Repopulate advanced section
         row = 0
@@ -2187,14 +2223,12 @@ class midiadvancedTab(QScrollArea):
 
     def relabel_buttons(self):
         # Relabel buttons in the advanced section
-        for i in range(self.advanced_grid.count()):
-            widget = self.advanced_grid.itemAt(i).widget()
+        for widget in iter_layout_widgets(self.advanced_grid):
             if isinstance(widget, SquareButton) and hasattr(widget, 'keycode'):
                 widget.setText(Keycode.label(widget.keycode.qmk_id))
                 
         # Relabel buttons in the keysplit section
-        for i in range(self.keysplit_grid.count()):
-            widget = self.keysplit_grid.itemAt(i).widget()
+        for widget in iter_layout_widgets(self.keysplit_grid):
             if isinstance(widget, SquareButton) and hasattr(widget, 'keycode'):
                 widget.setText(Keycode.label(widget.keycode.qmk_id))
 
@@ -2819,17 +2853,9 @@ class LightingTab(QScrollArea):
         return dropdown
 
     def populate_buttons(self, keycode_filter=None):
-        # Clear previous widgets in buttons1 layout
-        for i in reversed(range(self.buttons1_layout.count())):
-            widget = self.buttons1_layout.itemAt(i).widget()
-            if widget is not None:
-                widget.deleteLater()
-                
-        # Clear previous widgets in buttons2 layout
-        for i in reversed(range(self.buttons2_layout.count())):
-            widget = self.buttons2_layout.itemAt(i).widget()
-            if widget is not None:
-                widget.deleteLater()
+        # Clear previous widgets in both button layouts
+        clear_layout_widgets(self.buttons1_layout)
+        clear_layout_widgets(self.buttons2_layout)
 
         # Add buttons from inversion_keycodes to the first button grid
         row = 0
@@ -2912,16 +2938,14 @@ class LightingTab(QScrollArea):
 
     def relabel_buttons(self):
         # Handle relabeling for buttons in first grid
-        for i in range(self.buttons1_layout.count()):
-            widget = self.buttons1_layout.itemAt(i).widget()
+        for widget in iter_layout_widgets(self.buttons1_layout):
             if isinstance(widget, SquareButton):
                 keycode = widget.keycode
                 if keycode:
                     widget.setText(Keycode.label(keycode.qmk_id))
                     
         # Handle relabeling for buttons in second grid
-        for i in range(self.buttons2_layout.count()):
-            widget = self.buttons2_layout.itemAt(i).widget()
+        for widget in iter_layout_widgets(self.buttons2_layout):
             if isinstance(widget, SquareButton):
                 keycode = widget.keycode
                 if keycode:
@@ -3499,8 +3523,7 @@ class KeySplitTab(QScrollArea):
         # Relabel control buttons
         for controls in [self.ks_controls, self.ts_controls]:
             layout = controls.layout()
-            for i in range(layout.count()):
-                widget = layout.itemAt(i).widget()
+            for widget in iter_layout_widgets(layout):
                 if isinstance(widget, QPushButton) and hasattr(widget, 'midi_id'):
                     widget.setText(Keycode.label(widget.midi_id))
 
