@@ -4019,6 +4019,13 @@ class midiTab(QScrollArea):
             ("DM_THRULOOP_3", "Thru\n3"), ("DM_THRULOOP_4", "Thru\n4"),
             ("DM_THRULOOP_5", "Thru\n5"), ("DM_THRULOOP_6", "Thru\n6"),
             ("DM_THRULOOP_7", "Thru\n7"), ("DM_THRULOOP_8", "Thru\n8"),
+            # Clear / reset actions (individual keycodes; also in the Clear Menu)
+            ("CLEAR_MENU", "Clear\nMenu"),
+            ("CLEAR_MODIFIERS", "Clear\nModifiers"),
+            ("CLEAR_LOOPS", "Clear\nAll Loops"),
+            ("RESET_DEFAULT", "Reset to\nDefault"),
+            ("RESET_QUICKBUILDS", "Reset All\nQuickbuilds"),
+            ("RESET_FACTORY", "Reset\nFactory\nDefaults"),
         ]
         for qmk_id, label in extra_buttons:
             extras_layout.addWidget(self._make_btn(qmk_id, label))

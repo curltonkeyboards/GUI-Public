@@ -1855,6 +1855,13 @@ class keycodes_v6:
         # Next Loop Rec: stop the recording loop + start recording the next empty loop
         "DM_NEXT_LOOP_REC": 0xCC58,
 
+        # Individual clear/reset actions (mirror the Clear Menu options)
+        "CLEAR_MODIFIERS": 0xCC59,     # Reset all modifiers
+        "CLEAR_LOOPS": 0xCC5A,         # Clear all loops
+        "RESET_DEFAULT": 0xCC5B,       # Reload saved settings (ALL)
+        "RESET_FACTORY": 0xCC5C,       # Factory reset (full wipe, on-device confirm)
+        "RESET_QUICKBUILDS": 0xCC5D,   # Unbind ALL quickbuild masters
+
         # Gaming Controller Keycodes (0xCC60-0xCC74)
         "GAMING_MODE": 0xCC60,  # Toggle gaming mode
         "XBOX_A": 0xCC61,  # A button (Button 0)

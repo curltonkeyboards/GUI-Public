@@ -1734,7 +1734,12 @@ KEYCODES_KEYSPLIT_BUTTONS = [
     K("KS_VELOCITY_TOGGLE", "Velocity\nSplit\nToggle", "Toggle keysplit mode"),
     K("KS_MODIFIER", "KeySplit\nModifier", "Hold: redirect channel/transpose/velocity to keysplit zone. Double-tap: turn off keysplit and reset velocity range"),
     K("TS_MODIFIER", "TripleSplit\nModifier", "Hold: redirect channel/transpose/velocity to triplesplit zone. Double-tap: turn off triplesplit and reset velocity range"),
-    K("CLEAR_MENU", "Clear\nMenu", "Open clear/reset menu (ALL, MODIFIERS, LOOPS, QUICK BUILD, FACTORY)"),
+    K("CLEAR_MENU", "Clear\nMenu", "Open clear/reset menu (ALL, MODIFIERS, LOOPS, UNBIND QB, FACTORY)"),
+    K("CLEAR_MODIFIERS", "Clear\nModifiers", "Reset all modifiers: key/triple split, transpose, channel, velocity range, octave doubler, and per-loop modifiers."),
+    K("CLEAR_LOOPS", "Clear\nAll Loops", "Clear all loop content and reset every loop's modifiers."),
+    K("RESET_DEFAULT", "Reset to\nDefault", "Reload the saved keyboard settings, clear all loops, cancel any quick build, and reset per-loop modifiers."),
+    K("RESET_QUICKBUILDS", "Reset All\nQuickbuilds", "Unbind ALL QuickBuild master keys (a fresh reset of the master bindings). Built content is kept; only the key→function bindings are removed."),
+    K("RESET_FACTORY", "Reset\nFactory\nDefaults", "FACTORY RESET — opens an \"Are you sure?\" confirmation on the keyboard, then ERASES ALL saved data (settings, key layouts, macros, quickbuilds, presets, curves, names, loops — everything) and reboots. Cannot be undone."),
 ]
 
 KEYCODES_MIDI_CHANNEL_KEYSPLIT2 = [
