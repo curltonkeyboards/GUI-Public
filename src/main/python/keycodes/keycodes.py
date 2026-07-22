@@ -2313,7 +2313,7 @@ KEYCODES_LOOP_BUTTONS = [
     K("DM_REC6", "Loop\n6", "Main loop/macro key 6"),
     K("DM_REC7", "Loop\n7", "Main loop/macro key 7"),
     K("DM_REC8", "Loop\n8", "Main loop/macro key 8"),
-    K("DM_NEXT_LOOP_REC", "Next\nLoop\nRec", "If a loop is recording, stops it (like pressing that loop's button) and starts recording the next empty loop (like pressing its button). If nothing is recording, starts recording the first empty loop."),
+    K("DM_NEXT_LOOP_REC", "Next\nLoop\nRec", "Starts recording the next empty loop (like pressing its button). If a loop is currently recording, starting the new one automatically stops it (the built-in quick record handoff), so the new recording begins right away. If nothing is recording, starts recording the first empty loop."),
 
     # ThruLoop transport keys (silent CC-only loop tracks 1-8)
     K("DM_THRULOOP_1", "Thru\n1", "ThruLoop 1: record/play/stop timing + ThruLoop CCs (no MIDI notes). Hold for menu."),
