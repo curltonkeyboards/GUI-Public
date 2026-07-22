@@ -2291,7 +2291,7 @@ class LoopTab(QScrollArea):
         basic_group = QGroupBox("Basic Loop Controls")
         basic_layout = FlowLayout()
         for keycode in self.loop_keycodes:
-            if keycode_filter(keycode) and keycode.qmk_id in ["DM_MACRO_1", "DM_MACRO_2", "DM_MACRO_3", "DM_MACRO_4", "DM_REC5", "DM_REC6", "DM_REC7", "DM_REC8", "DM_MUTE", "DM_OVERDUB", "OCT_DBL_TOGGLE"]:
+            if keycode_filter(keycode) and keycode.qmk_id in ["DM_MACRO_1", "DM_MACRO_2", "DM_MACRO_3", "DM_MACRO_4", "DM_REC5", "DM_REC6", "DM_REC7", "DM_REC8", "DM_NEXT_LOOP_REC", "DM_MUTE", "DM_OVERDUB", "OCT_DBL_TOGGLE"]:
                 btn = SquareButton()
                 btn.setRelSize(KEYCODE_BTN_RATIO)
                 btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
@@ -4012,12 +4012,20 @@ class midiTab(QScrollArea):
             ("DM_MACRO_3", "Loop\n3"), ("DM_MACRO_4", "Loop\n4"),
             ("DM_REC5", "Loop\n5"), ("DM_REC6", "Loop\n6"),
             ("DM_REC7", "Loop\n7"), ("DM_REC8", "Loop\n8"),
+            ("DM_NEXT_LOOP_REC", "Next\nLoop\nRec"),
             ("DM_OVERDUB", "Overdub\nLoop"), ("DM_MUTE", "Mute\nLoop"),
             # ThruLoops (silent CC-only loop tracks)
             ("DM_THRULOOP_1", "Thru\n1"), ("DM_THRULOOP_2", "Thru\n2"),
             ("DM_THRULOOP_3", "Thru\n3"), ("DM_THRULOOP_4", "Thru\n4"),
             ("DM_THRULOOP_5", "Thru\n5"), ("DM_THRULOOP_6", "Thru\n6"),
             ("DM_THRULOOP_7", "Thru\n7"), ("DM_THRULOOP_8", "Thru\n8"),
+            # Clear / reset actions (individual keycodes; also in the Clear Menu)
+            ("CLEAR_MENU", "Clear\nMenu"),
+            ("CLEAR_MODIFIERS", "Clear\nModifiers"),
+            ("CLEAR_LOOPS", "Clear\nAll Loops"),
+            ("RESET_DEFAULT", "Reset to\nDefault"),
+            ("RESET_QUICKBUILDS", "Reset All\nQuickbuilds"),
+            ("RESET_FACTORY", "Reset\nFactory\nDefaults"),
         ]
         for qmk_id, label in extra_buttons:
             extras_layout.addWidget(self._make_btn(qmk_id, label))

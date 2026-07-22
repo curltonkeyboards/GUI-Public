@@ -1734,7 +1734,12 @@ KEYCODES_KEYSPLIT_BUTTONS = [
     K("KS_VELOCITY_TOGGLE", "Velocity\nSplit\nToggle", "Toggle keysplit mode"),
     K("KS_MODIFIER", "KeySplit\nModifier", "Hold: redirect channel/transpose/velocity to keysplit zone. Double-tap: turn off keysplit and reset velocity range"),
     K("TS_MODIFIER", "TripleSplit\nModifier", "Hold: redirect channel/transpose/velocity to triplesplit zone. Double-tap: turn off triplesplit and reset velocity range"),
-    K("CLEAR_MENU", "Clear\nMenu", "Open clear/reset menu (ALL, MODIFIERS, LOOPS, QUICK BUILD, FACTORY)"),
+    K("CLEAR_MENU", "Clear\nMenu", "Open clear/reset menu (ALL, MODIFIERS, LOOPS, UNBIND QB, FACTORY)"),
+    K("CLEAR_MODIFIERS", "Clear\nModifiers", "Reset all modifiers: key/triple split, transpose, channel, velocity range, octave doubler, and per-loop modifiers."),
+    K("CLEAR_LOOPS", "Clear\nAll Loops", "Clear all loop content and reset every loop's modifiers."),
+    K("RESET_DEFAULT", "Reset to\nDefault", "Reload the saved keyboard settings, clear all loops, cancel any quick build, and reset per-loop modifiers."),
+    K("RESET_QUICKBUILDS", "Reset All\nQuickbuilds", "Unbind ALL QuickBuild master keys (a fresh reset of the master bindings). Built content is kept; only the key→function bindings are removed."),
+    K("RESET_FACTORY", "Reset\nFactory\nDefaults", "FACTORY RESET — opens an \"Are you sure?\" confirmation on the keyboard, then ERASES ALL saved data (settings, key layouts, macros, quickbuilds, presets, curves, names, loops — everything) and reboots. Cannot be undone."),
 ]
 
 KEYCODES_MIDI_CHANNEL_KEYSPLIT2 = [
@@ -2313,6 +2318,7 @@ KEYCODES_LOOP_BUTTONS = [
     K("DM_REC6", "Loop\n6", "Main loop/macro key 6"),
     K("DM_REC7", "Loop\n7", "Main loop/macro key 7"),
     K("DM_REC8", "Loop\n8", "Main loop/macro key 8"),
+    K("DM_NEXT_LOOP_REC", "Next\nLoop\nRec", "Starts recording the next empty loop (like pressing its button). If a loop is currently recording, starting the new one automatically stops it (the built-in quick record handoff), so the new recording begins right away. If nothing is recording, starts recording the first empty loop."),
 
     # ThruLoop transport keys (silent CC-only loop tracks 1-8)
     K("DM_THRULOOP_1", "Thru\n1", "ThruLoop 1: record/play/stop timing + ThruLoop CCs (no MIDI notes). Hold for menu."),
