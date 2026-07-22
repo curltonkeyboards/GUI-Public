@@ -2122,9 +2122,18 @@ class LoopManager(BasicEditor):
 
     def update_track_display(self, filename=None):
         """Update the track selection display"""
-        # Clear existing track buttons
-        for i in reversed(range(self.track_buttons_layout.count())):
-            self.track_buttons_layout.itemAt(i).widget().deleteLater()
+        # Clear existing track buttons. Use takeAt(0) (synchronous removal) in a
+        # while-loop rather than a cached range()+itemAt(i): a deleteLater() from a
+        # prior rebuild can be processed mid-loop and shrink the live count below the
+        # cached range, making itemAt(i) return None -> AttributeError on .widget().
+        while self.track_buttons_layout.count():
+            item = self.track_buttons_layout.takeAt(0)
+            if item is None:
+                continue
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
 
         # Clear button group
         for button in self.track_button_group.buttons():
