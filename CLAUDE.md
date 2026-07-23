@@ -659,6 +659,28 @@ preview and persist **once on exit** (save-on-exit, Done *or* ESC, via
   preset (save sends it; load restores it with signals blocked so it doesn't fire
   a live `SET_MODE`). `SET_MODE` (0xCC) still works for live preview.
 
+## On-device Macro Configurator (QB "Macro" masters, 2026-07) — firmware only
+
+Firmware-side feature (see vial-gui-custom CLAUDE.md, same section name, for
+the full map). **No GUI or HID-protocol changes — nothing to mirror here**, but
+two things matter for GUI work:
+
+- **Bytecode compatibility:** the on-device editor parses/serializes the SAME
+  `SS_QMK_PREFIX` macro grammar this GUI's `macro/macro_action.py` writes
+  (tap/down/up incl. the 0xFF00 low-byte-zero encode, delay, bpm-delay
+  (+repeat), mixing-control). Macros edited on-device round-trip through the
+  GUI macro editor unchanged, and vice versa. A macro larger than the device's
+  400-byte edit buffer opens read-only on-device ("use the GUI").
+- **Loop-mode / per-sync persistence fixed:** `macro_loop_modes` +
+  `macro_per_sync` (HID SET params 52/53 from this GUI) were RAM-only in the
+  firmware and silently reset on every power-cycle; they now persist in EEPROM
+  (60274, magic 0xAC07). No GUI change needed — the same SET params now stick.
+- **Search-name source of truth:** the device's keycode-search database is
+  GENERATED from this GUI's keycode tables
+  (`keyboards/orthomidi5x14/gen_keycode_search.py` joins `keycodes.py` labels
+  with `keycodes_v6` values). When keycode labels/values change here,
+  regenerate `keycode_search_table.h` in the firmware repo.
+
 ## Zone System
 
 Three independent zones for split keyboard configurations:
