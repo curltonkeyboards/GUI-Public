@@ -1200,6 +1200,24 @@ GUI method: `get_eq_settings()` (retries=1)
 | 0xFA | DIAG_RUN | `handle_eeprom_diag_run(response)` |
 | 0xFB | DIAG_GET | `handle_eeprom_diag_get(response)` |
 
+#### Keyboard Clone (0x94) — whole-EEPROM save/restore
+
+One command, sub-command in `data[4]` (GUI `_create_hid_packet` macro_num byte):
+
+| Sub | Name | Request | Response |
+|-----|------|---------|----------|
+| 0 | INFO | (none) | status@4=0x01, `EEPROM_LAYOUT_VERSION` u16 LE @5-6, EEPROM size u32 LE @7-10, max chunk (22) @11, fw version @12-14 |
+| 1 | READ | addr u16 LE @6-7, len @8 (≤22) | status@4, addr echo @5-6, len @7, bytes @8.. |
+| 2 | WRITE | addr u16 LE @6-7, len @8 (≤22), bytes @9.. | status@4, addr echo @5-6 |
+| 3 | FINALIZE | (none) | status@4; flushes deferred EEPROM writes, re-stamps the running build's boot magics, reboots ~500ms later |
+
+WRITE never overwrites the QMK magic (0-1), VIA/Vial magic (`VIA_EEPROM_MAGIC_ADDR`+0-2)
+or the boot-magic shadow (`EECONFIG_MAGIC_SHADOW_ADDR`+0-7) — those bytes are overlaid
+with the chip's current contents, so a clone from a different BUILD_ID can't make the
+next boot factory-reset the restored data. The GUI (`main_window.on_clone_save/load`)
+stamps `eeprom_layout_version` into every `.kbclone` file and refuses to restore onto
+a firmware whose layout version differs.
+
 ---
 
 ## 6. Command ID Map

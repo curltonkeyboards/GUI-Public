@@ -67,6 +67,7 @@ HID_CMD_LOAD_KEYBOARD_SLOT = 0xBA
 HID_CMD_SET_KEYBOARD_CONFIG_ADVANCED = 0xBB
 HID_CMD_LCD_THEME = 0xFE  # Get/set global LCD colour theme (sub 0=GET, 1=SET)
 HID_CMD_CHANNEL_ARTIC = 0xFF  # Get/set channel->articulation map + enable (sub 0=GET, 1=SET)
+HID_CMD_KEYBOARD_CLONE = 0x94  # Whole-EEPROM clone (sub 0=INFO, 1=READ, 2=WRITE, 3=FINALIZE)
 HID_CMD_SET_KEYBOARD_PARAM_SINGLE = 0xE8  # Set individual parameter (changed from 0xBD collision)
 
 # Parameter IDs for HID_CMD_SET_KEYBOARD_PARAM_SINGLE
@@ -1484,6 +1485,84 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             packet = self._create_hid_packet(HID_CMD_LCD_THEME, 1, [theme_index & 0xFF])
             data = self.usb_send(self.dev, packet, retries=3)
             return bool(data) and len(data) > 4 and data[4] == 0
+        except Exception:
+            return False
+
+    # ------------------------------------------------------------------
+    # Keyboard Clone (whole-EEPROM save/restore, HID command 0x94)
+    # ------------------------------------------------------------------
+
+    def get_clone_info(self):
+        """Query the firmware's keyboard-clone (whole-EEPROM) capabilities.
+
+        Returns {'layout_version', 'eeprom_size', 'chunk_size',
+        'fw_version': (major, minor, patch)} or None when the firmware
+        predates the clone command. Old firmware ECHOes the request with an
+        error flag instead of answering: its echo never carries status 0x01
+        at byte 4 nor a non-zero chunk size at byte 11, so both are checked.
+        Response: status@4, layout_ver u16 LE @5-6, eeprom size u32 LE @7-10,
+        chunk @11, fw version @12-14."""
+        try:
+            packet = self._create_hid_packet(HID_CMD_KEYBOARD_CLONE, 0, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if (not data or len(data) < 15 or data[3] != HID_CMD_KEYBOARD_CLONE
+                    or data[4] != 0x01):
+                return None
+            size = data[7] | (data[8] << 8) | (data[9] << 16) | (data[10] << 24)
+            chunk = data[11]
+            if size == 0 or chunk == 0:
+                return None
+            return {
+                'layout_version': data[5] | (data[6] << 8),
+                'eeprom_size': size,
+                'chunk_size': chunk,
+                'fw_version': (data[12], data[13], data[14]),
+            }
+        except Exception:
+            return None
+
+    def clone_read_chunk(self, addr, length):
+        """Read `length` EEPROM bytes at `addr` (one HID round-trip).
+
+        Returns bytes or None. The response echoes addr+length so a stale
+        packet from an earlier request can't be mistaken for this chunk."""
+        try:
+            payload = [addr & 0xFF, (addr >> 8) & 0xFF, length & 0xFF]
+            packet = self._create_hid_packet(HID_CMD_KEYBOARD_CLONE, 1, payload)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if (not data or len(data) < 8 + length
+                    or data[3] != HID_CMD_KEYBOARD_CLONE or data[4] != 0x01
+                    or data[5] != (addr & 0xFF) or data[6] != ((addr >> 8) & 0xFF)
+                    or data[7] != length):
+                return None
+            return bytes(data[8:8 + length])
+        except Exception:
+            return None
+
+    def clone_write_chunk(self, addr, chunk):
+        """Write a chunk of EEPROM bytes at `addr` (one HID round-trip).
+
+        The firmware only burns bytes that actually differ, and silently
+        preserves its own boot-magic bytes. Returns True on success."""
+        try:
+            payload = [addr & 0xFF, (addr >> 8) & 0xFF, len(chunk) & 0xFF] + list(chunk)
+            packet = self._create_hid_packet(HID_CMD_KEYBOARD_CLONE, 2, payload)
+            data = self.usb_send(self.dev, packet, retries=3)
+            return (bool(data) and len(data) >= 7
+                    and data[3] == HID_CMD_KEYBOARD_CLONE and data[4] == 0x01
+                    and data[5] == (addr & 0xFF) and data[6] == ((addr >> 8) & 0xFF))
+        except Exception:
+            return False
+
+    def clone_finalize(self):
+        """Commit a restore: firmware flushes deferred EEPROM writes, re-stamps
+        its boot magics and reboots ~0.5s after acknowledging (so every
+        subsystem reloads the restored data). Returns True when acked."""
+        try:
+            packet = self._create_hid_packet(HID_CMD_KEYBOARD_CLONE, 3, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            return (bool(data) and len(data) >= 5
+                    and data[3] == HID_CMD_KEYBOARD_CLONE and data[4] == 0x01)
         except Exception:
             return False
 

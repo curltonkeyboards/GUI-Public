@@ -1134,6 +1134,38 @@ these + Octave/Transpose/Channel up/down now trigger on RELEASE and, while held,
 apply their delta to a pressed loop/drum/step-seq slot (accumulating), plus the
 on-device encoder "Playing Style +/-" → "Articulation +/-". No HID/EEPROM changes.
 
+## Keyboard Clone — whole-EEPROM save/restore (2026-07) — GUI side
+
+File menu grew **"Save keyboard clone..." / "Load keyboard clone..."** next to
+the layout actions. A clone streams the ENTIRE 64KB config EEPROM over raw HID
+command **0x94** (sub 0=INFO, 1=READ, 2=WRITE, 3=FINALIZE — see
+HID_COMMAND_REFERENCE.md), capturing everything the keyboard persists (layout +
+MIDI settings, ThruLoop CCs, per-key actuations, articulations, presets, custom
+names, QB masters, ...), unlike a `.vil` layout file.
+
+- **Comm layer** (`protocol/keyboard_comm.py`, `HID_CMD_KEYBOARD_CLONE = 0x94`):
+  `get_clone_info()` (layout version / EEPROM size / chunk size / fw version;
+  returns None on pre-clone firmware, whose error ECHO never carries status
+  0x01 + a non-zero chunk size), `clone_read_chunk()` / `clone_write_chunk()`
+  (addr-echo validated so a stale packet can't corrupt the stream),
+  `clone_finalize()` (firmware flushes deferred writes, re-stamps its boot
+  magics and reboots ~0.5s after acking).
+- **File format**: JSON `{magic: "midiswitch-keyboard-clone", file_version: 1,
+  eeprom_layout_version, eeprom_size, firmware_version, data: base64}`,
+  extension `.kbclone`.
+- **Layout-version gate**: the firmware reports `EEPROM_LAYOUT_VERSION`
+  (bumped whenever its EEPROM map changes); `on_clone_load` refuses a clone
+  whose stored version (or size) differs from the connected keyboard's, so an
+  old clone can never scatter data over a rearranged EEPROM map.
+- **UX** (`main_window.py`): cancellable QProgressDialog for both directions;
+  live pollers paused via `set_hid_transfer_active`; per-chunk ×3 retry; a
+  confirm warning before restore (overwrites ALL settings, don't disconnect,
+  reboots at the end). A cancelled/failed restore does NOT finalize — the
+  device keeps running on its old RAM state and the user is told to re-load a
+  clone before power-cycling. The firmware never lets its boot-magic bytes be
+  overwritten, so a clone from a different build can't trigger a factory
+  reset at the next boot.
+
 ## Modifier gestures on QB masters + Rhythm Engine (2026-07) — firmware only
 
 Firmware-side follow-up (see vial-gui-custom CLAUDE.md, same section name) — **no
