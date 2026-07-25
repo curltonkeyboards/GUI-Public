@@ -1851,6 +1851,8 @@ class keycodes_v5:
 
         # Next Loop Rec: stop the recording loop + start recording the next empty loop
         "DM_NEXT_LOOP_REC": 0xCC58,
+        # Next ThruLoop Rec: finish the recording ThruLoop + start recording the next empty track
+        "DM_NEXT_THRULOOP_REC": 0xCC5E,
 
         # Individual clear/reset actions (mirror the Clear Menu options)
         "CLEAR_MODIFIERS": 0xCC59,     # Reset all modifiers
@@ -2261,6 +2263,10 @@ class keycodes_v5:
         # Toggle Key Slots (0xEF10-0xEF73) - 100 slots
         # NOTE: Moved from 0xEE00-0xEE63 to avoid conflict with Arpeggiator keycodes
         "TGL_00": 0xEF10,  # Base for Toggle slot selection
+
+        # Toggle bulk-reset actions (free block 0xF2F0+, after factory arps 0xF200-0xF2EF)
+        "TOGGLE_RESET_MULTI": 0xF2F0,  # All multi-toggles back to step 1 (no key events)
+        "TOGGLE_UNHOLD_ALL": 0xF2F1,   # Release every held non-multi (hold) toggle
 
         # MIDI Delay Navigation/Control (0xEF89-0xEF8F)
         "CLEAR_HOLD": 0xEF88,   # Hold: OLED shows "Press Loop/Seq to Clear", then press to clear

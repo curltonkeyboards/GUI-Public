@@ -2329,6 +2329,7 @@ KEYCODES_LOOP_BUTTONS = [
     K("DM_THRULOOP_6", "Thru\n6", "ThruLoop 6: record/play/stop timing + ThruLoop CCs (no MIDI notes). Hold for menu."),
     K("DM_THRULOOP_7", "Thru\n7", "ThruLoop 7: record/play/stop timing + ThruLoop CCs (no MIDI notes). Hold for menu."),
     K("DM_THRULOOP_8", "Thru\n8", "ThruLoop 8: record/play/stop timing + ThruLoop CCs (no MIDI notes). Hold for menu."),
+    K("DM_NEXT_THRULOOP_REC", "Next\nThru\nRec", "Starts recording the next empty ThruLoop (like pressing its button). If a ThruLoop is currently recording, starting the new one automatically finishes it (the quick record handoff, deferred to the musical boundary when the unit is running), so the new recording takes over seamlessly. If nothing is recording, starts recording the first empty ThruLoop."),
 
     # Core control buttons
     K("DM_MUTE", "Mute\nButton", "Global mute button"),
@@ -2762,6 +2763,12 @@ for x in range(100):
         K("TGL_{:02d}".format(x), "Toggle\n{}".format(x), "Toggle key slot {} - toggle keycode held/released".format(x))
     )
 
+# Toggle bulk-reset action keys (act on ALL toggle slots at once)
+KEYCODES_TOGGLE_ACTIONS = [
+    K("TOGGLE_RESET_MULTI", "Reset\nMulti-\nToggles", "Puts every multi-key toggle back on its first step (as after keyboard startup). Only rewinds the step position - no keycodes are pressed or released."),
+    K("TOGGLE_UNHOLD_ALL", "Reset\nToggles", "Releases (\"unholds\") every held hold-type toggle. Multi-key toggles are not affected - only standard toggles whose target key is currently held down."),
+]
+
 # MIDI Delay control keycodes (navigation + clear)
 KEYCODES_DELAY_CLEAR = [
     K("DELAY_PREV", "Delay\nPrev", "Cycle to previous delay slot"),
@@ -3102,7 +3109,7 @@ def recreate_keycodes():
                     KEYCODES_MIDI_CC_FIXED+KEYCODES_MIDI_CC+KEYCODES_MIDI_CC_DOWN+KEYCODES_MIDI_CC_UP+KEYCODES_MOD_PRESS+KEYCODES_MIDI_BANK+KEYCODES_Program_Change+KEYCODES_MIDI_SMARTCHORDBUTTONS+KEYCODES_VELOCITY_STEPSIZE+KEYCODES_VELOCITY_SHUFFLE + KEYCODES_CC_ENCODERVALUE+ KEYCODES_EXWHEEL +
                     KEYCODES_MIDI_VELOCITY+KEYCODES_CC_STEPSIZE+KEYCODES_MIDI_CHANNEL+KEYCODES_MIDI_UPDOWN+KEYCODES_MIDI_CHORD_0+KEYCODES_MIDI_CHORD_1+KEYCODES_MIDI_CHORD_2+KEYCODES_MIDI_CHORD_3+KEYCODES_MIDI_CHORD_4+KEYCODES_MIDI_CHORD_5+KEYCODES_MIDI_SPLIT+KEYCODES_MIDI_SPLIT2+
                     KEYCODES_HE_VELOCITY_CURVE+KEYCODES_HE_MACRO_CURVE+KEYCODES_HE_VELOCITY_RANGE+
-                    KEYCODES_ARPEGGIATOR+KEYCODES_ARPEGGIATOR_PRESETS+KEYCODES_STEP_SEQUENCER+KEYCODES_STEP_SEQUENCER_PRESETS+KEYCODES_DRUM_SLOTS+KEYCODES_OCTAVE_DOUBLER+KEYCODES_DKS+KEYCODES_TOGGLE+KEYCODES_DELAY_CLEAR+KEYCODES_DELAY+KEYCODES_DELAY_QB+KEYCODES_CHORD_QB+KEYCODES_SMARTCHORD_VL+KEYCODES_DYNCHORD_QB+KEYCODES_FADER_QB+KEYCODES_QB_MASTER+KEYCODES_EARTRAINER_QB+
+                    KEYCODES_ARPEGGIATOR+KEYCODES_ARPEGGIATOR_PRESETS+KEYCODES_STEP_SEQUENCER+KEYCODES_STEP_SEQUENCER_PRESETS+KEYCODES_DRUM_SLOTS+KEYCODES_OCTAVE_DOUBLER+KEYCODES_DKS+KEYCODES_TOGGLE+KEYCODES_TOGGLE_ACTIONS+KEYCODES_DELAY_CLEAR+KEYCODES_DELAY+KEYCODES_DELAY_QB+KEYCODES_CHORD_QB+KEYCODES_SMARTCHORD_VL+KEYCODES_DYNCHORD_QB+KEYCODES_FADER_QB+KEYCODES_QB_MASTER+KEYCODES_EARTRAINER_QB+
                     KEYCODES_CPROG_SLOTS + KEYCODES_LOOP_BUTTONS + KEYCODES_DRUMLIVE + KEYCODES_GAMING +
                     KEYCODES_MIDI_INVERSION+KEYCODES_MIDI_SCALES+KEYCODES_MIDI_OCTAVE+KEYCODES_MIDI_KEY+KEYCODES_Program_Change_UPDOWN+KEYCODES_MIDI_BANK_LSB+KEYCODES_MIDI_BANK_MSB+KEYCODES_MIDI_PEDAL+KEYCODES_MIDI_ADVANCED+KEYCODES_MIDI_INOUT+KEYCODES_MIDI_SPLIT_BUTTONS+KEYCODES_BASIC + KEYCODES_SHIFTED + KEYCODES_CHORD_PROG_CONTROLS +
                     KEYCODES_DAW)

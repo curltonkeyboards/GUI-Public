@@ -1166,6 +1166,23 @@ names, QB masters, ...), unlike a `.vil` layout file.
   overwritten, so a clone from a different build can't trigger a factory
   reset at the next boot.
 
+## Next ThruLoop Rec + Toggle bulk-reset keycodes (2026-07) — GUI side
+
+Three new keycodes (firmware handlers in vial-gui-custom; values mirrored in
+`keycodes_v5/v6.py`, labels in `keycodes.py`, picker rows in
+`tabbed_keycodes.py`; firmware keycode-search DB regenerated):
+
+- **`DM_NEXT_THRULOOP_REC` = 0xCC5E** ("Next Thru Rec"): starts recording the
+  next empty ThruLoop; a ThruLoop currently recording is automatically
+  finished (quick record handoff, deferred to the musical boundary when the
+  unit is running). Placed in the MIDIswitch extras row after Thru 8, in
+  `KEYCODES_LOOP_BUTTONS`.
+- **`TOGGLE_RESET_MULTI` = 0xF2F0** ("Reset Multi-Toggles"): every multi-key
+  toggle back to step 1, no key events. **`TOGGLE_UNHOLD_ALL` = 0xF2F1**
+  ("Reset Toggles"): releases every held non-multi hold-toggle. Both live in
+  the new `KEYCODES_TOGGLE_ACTIONS` list, appended to the Toggle picker
+  sections (always shown, independent of the dynamic slot count).
+
 ## Custom Lights: color/speed/brightness writes no longer switch the effect (2026-07)
 
 **Symptom:** picking a Background color on the Custom Lights tab switched the
