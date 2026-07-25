@@ -1186,7 +1186,9 @@ class VialRGBHandler(BasicHandler):
         h, s, v, a = color.getHsvF()
         if h < 0:
             h = 0
-        self.keyboard.set_vialrgb_color(int(255 * h), int(255 * s), self.keyboard.rgb_hsv[2])
+        # v=None keeps the brightness the device is actually showing (the comm
+        # layer re-reads mode/speed/val so only hue/sat change).
+        self.keyboard.set_vialrgb_color(int(255 * h), int(255 * s))
         self.update.emit()
 
     def current_color(self):
@@ -2678,7 +2680,9 @@ class CustomLightsHandler(BasicHandler):
         h = widgets.get('effect_hue', 0)
         s = widgets.get('effect_sat', 255)
         if hasattr(self, 'device') and hasattr(self.device, 'keyboard') and hasattr(self.device.keyboard, 'rgb_hsv'):
-            self.device.keyboard.set_vialrgb_color(h, s, self.device.keyboard.rgb_hsv[2])
+            # v=None: only hue/sat change — the comm layer re-reads the device's
+            # current mode/speed/brightness so this can't switch the effect.
+            self.device.keyboard.set_vialrgb_color(h, s)
         
     def get_current_slot_index(self):
         """Get the currently selected slot index across all groups"""
@@ -2924,7 +2928,9 @@ class CustomLightsHandler(BasicHandler):
             return
 
         if hasattr(self.device, 'keyboard') and hasattr(self.device.keyboard, 'rgb_hsv'):
-            self.device.keyboard.set_vialrgb_color(h, s, self.device.keyboard.rgb_hsv[2])
+            # v=None: only hue/sat change — the comm layer re-reads the device's
+            # current mode/speed/brightness so this can't switch the effect.
+            self.device.keyboard.set_vialrgb_color(h, s)
 
     def set_slot_defaults(self, slot):
         """Set default values for a slot"""
@@ -3141,9 +3147,12 @@ class CustomLightsHandler(BasicHandler):
         if current_slot in self.slot_widgets:
             self.slot_widgets[current_slot]['effect_hue'] = hue_val
             self.slot_widgets[current_slot]['effect_sat'] = sat_val
-        # Also set global RGB for live preview on the keyboard
+        # Also set global RGB for live preview on the keyboard. v=None: only
+        # hue/sat change — the comm layer re-reads the device's current mode/
+        # speed/brightness first, so picking a color can no longer knock the
+        # keyboard off the previewed slot effect onto a stale cached mode.
         if hasattr(self.device, 'keyboard'):
-            self.device.keyboard.set_vialrgb_color(hue_val, sat_val, self.device.keyboard.rgb_hsv[2])
+            self.device.keyboard.set_vialrgb_color(hue_val, sat_val)
         # Update swatch from per-slot values
         self._update_rgb_color_swatch(current_slot)
 

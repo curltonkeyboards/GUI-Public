@@ -31,7 +31,8 @@ from protocol.constants import CMD_VIA_GET_PROTOCOL_VERSION, CMD_VIA_GET_KEYBOAR
     CMD_VIAL_CUSTOM_ANIM_GET_ALL, CMD_VIAL_CUSTOM_ANIM_SAVE, CMD_VIAL_CUSTOM_ANIM_LOAD, \
     CMD_VIAL_CUSTOM_ANIM_RESET_SLOT, CMD_VIAL_CUSTOM_ANIM_GET_STATUS, CMD_VIAL_CUSTOM_ANIM_RESCAN_LEDS, \
     CMD_VIAL_CUSTOM_ANIM_ACTIVATE_SLOT, \
-    CMD_VIAL_KEYMAP_RAM_RESCAN
+    CMD_VIAL_KEYMAP_RAM_RESCAN, \
+    VIALRGB_EFFECT_RANDOMIZE_BASE, VIALRGB_EFFECT_CUSTOM_SLOT_BASE
 from protocol.dynamic import ProtocolDynamic
 from protocol.key_override import ProtocolKeyOverride
 from protocol.macro import ProtocolMacro
@@ -581,11 +582,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_BACKLIGHT_EFFECT), retries=20)[2]
 
         if self.lighting_vialrgb:
-            data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_LIGHTING_GET_VALUE, VIALRGB_GET_MODE),
-                                 retries=20)[2:]
-            self.rgb_mode = int.from_bytes(data[0:2], byteorder="little")
-            self.rgb_speed = data[2]
-            self.rgb_hsv = (data[3], data[4], data[5])
+            self._vialrgb_refresh_cache()
 
     def reload_settings(self):
         self.settings = dict()
@@ -1159,19 +1156,49 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                                             self.rgb_mode, self.rgb_speed,
                                             self.rgb_hsv[0], self.rgb_hsv[1], self.rgb_hsv[2]))
 
+    def _vialrgb_refresh_cache(self):
+        """Re-read the device's CURRENT mode/speed/hsv into the cache.
+
+        The vialrgb set-mode packet always carries mode+speed+hsv together, so
+        a stale cached mode silently switches the keyboard's effect on a write
+        that was only meant to change color/speed/brightness. The firmware
+        changes the mode behind the GUI's back (Custom Lights slot preview via
+        activate_custom_slot_preview, on-device lighting menus, RGB keycodes),
+        so every partial setter below refreshes first and only then overrides
+        the one field it owns. Returns True if the cache now reflects the
+        device; on a comm failure the old cache is kept (same as before)."""
+        try:
+            data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_LIGHTING_GET_VALUE, VIALRGB_GET_MODE),
+                                 retries=20)[2:]
+            self.rgb_mode = int.from_bytes(data[0:2], byteorder="little")
+            self.rgb_speed = data[2]
+            self.rgb_hsv = (data[3], data[4], data[5])
+            return True
+        except Exception:
+            return False
+
     def set_vialrgb_brightness(self, value):
+        self._vialrgb_refresh_cache()
         self.rgb_hsv = (self.rgb_hsv[0], self.rgb_hsv[1], value)
         self._vialrgb_set_mode()
 
     def set_vialrgb_speed(self, value):
+        self._vialrgb_refresh_cache()
         self.rgb_speed = value
         self._vialrgb_set_mode()
 
     def set_vialrgb_mode(self, value):
+        self._vialrgb_refresh_cache()
         self.rgb_mode = value
         self._vialrgb_set_mode()
 
-    def set_vialrgb_color(self, h, s, v):
+    def set_vialrgb_color(self, h, s, v=None):
+        """Set hue/sat (and optionally brightness) WITHOUT changing the active
+        effect: the current mode/speed are re-read from the device and replayed
+        as-is. v=None keeps the brightness the device is actually showing."""
+        self._vialrgb_refresh_cache()
+        if v is None:
+            v = self.rgb_hsv[2]
         self.rgb_hsv = (h, s, v)
         self._vialrgb_set_mode()
 
@@ -1263,7 +1290,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             if slot < 0 or slot >= 49:
                 return False
             data = self.usb_send(self.dev, struct.pack("BBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_CUSTOM_ANIM_ACTIVATE_SLOT, slot), retries=20)
-            return data and len(data) > 0 and data[0] == 0x01
+            ok = data and len(data) > 0 and data[0] == 0x01
+            if ok:
+                # The device just switched effects behind the vialrgb cache's
+                # back — keep the cached mode in sync so a later color/speed/
+                # brightness write can't replay a stale mode.
+                self.rgb_mode = VIALRGB_EFFECT_CUSTOM_SLOT_BASE + slot
+            return ok
         except Exception:
             return False
 
@@ -1387,10 +1420,12 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             if status is not None and len(status) > 1:
                 return status[1]
                 
+            # Fallback bands must match vialrgb_effects.inc: randomize scratch
+            # effects at 69-77 (slot 49), custom slots at 78+ (slot = mode-78).
             current_mode = self.rgb_mode
-            if 57 <= current_mode <= 105:
-                return current_mode - 57
-            if current_mode in [106, 107, 108, 109, 110, 111, 112, 113, 114]:
+            if VIALRGB_EFFECT_CUSTOM_SLOT_BASE <= current_mode < VIALRGB_EFFECT_CUSTOM_SLOT_BASE + 50:
+                return current_mode - VIALRGB_EFFECT_CUSTOM_SLOT_BASE
+            if VIALRGB_EFFECT_RANDOMIZE_BASE <= current_mode < VIALRGB_EFFECT_CUSTOM_SLOT_BASE:
                 return 49
             return 0
         except Exception as e:

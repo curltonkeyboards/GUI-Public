@@ -1166,6 +1166,41 @@ names, QB masters, ...), unlike a `.vil` layout file.
   overwritten, so a clone from a different build can't trigger a factory
   reset at the next boot.
 
+## Custom Lights: color/speed/brightness writes no longer switch the effect (2026-07)
+
+**Symptom:** picking a Background color on the Custom Lights tab switched the
+keyboard onto a stale effect (e.g. band pinwheel) in red instead of just
+recoloring the previewed slot.
+
+**Root cause:** the vialrgb SET_MODE packet always carries mode+speed+hsv
+together, and `set_vialrgb_color/speed/brightness` replayed the GUI's **cached**
+`rgb_mode`/`rgb_speed` — cached once at connect (`reload_rgb`). The firmware
+changes the mode behind that cache's back (`activate_custom_slot_preview`,
+on-device lighting menus, RGB keycodes), so a color write pushed the stale
+cached mode, knocking the device off the previewed slot effect; the status
+poller then saw the active slot change and pushed that slot's stored default
+color (hue 0/sat 255 = red) on top.
+
+**Fix (`protocol/keyboard_comm.py`):**
+- `_vialrgb_refresh_cache()` re-reads the device's current mode/speed/hsv
+  (VIALRGB_GET_MODE) into the cache. Every partial setter
+  (`set_vialrgb_brightness/speed/mode/color`) refreshes first and then
+  overrides ONLY the field it owns — a color write can never change the
+  effect, a mode pick can never drag along a stale color/speed.
+- `set_vialrgb_color(h, s, v=None)`: `v=None` keeps the brightness the device
+  is actually showing. All Custom Lights color paths
+  (`_apply_slot_rgb_to_keyboard`, `_on_rgb_bg_color_finished`,
+  `_sync_rgb_for_active_slot`) and the Basic-side color picker now omit `v`.
+- `activate_custom_slot_preview()` updates the cached `rgb_mode` to the slot's
+  effect id on success (belt & braces if a later refresh read fails).
+- `constants.py` gained the vialrgb effect-id bands
+  (`VIALRGB_EFFECT_PER_KEY_BASE` 57 / `_RANDOMIZE_BASE` 69 /
+  `_CUSTOM_SLOT_BASE` 78 — must match `vialrgb_effects.inc`);
+  `get_current_custom_slot()`'s fallback bands were corrected to them (the old
+  57..105→slot mapping predated the per-key-preset reorg).
+
+No firmware/HID change — GUI only.
+
 ## Modifier gestures on QB masters + Rhythm Engine (2026-07) — firmware only
 
 Firmware-side follow-up (see vial-gui-custom CLAUDE.md, same section name) — **no
