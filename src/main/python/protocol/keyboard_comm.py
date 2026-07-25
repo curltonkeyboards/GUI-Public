@@ -2613,6 +2613,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             flags |= 0x02  # AT/CC value mapped through this zone's velocity curve
         if zone.get('legato', False):
             flags |= 0x04  # Monophonic legato (last-note priority, overrides sustain)
+        if zone.get('velocity_as_at', False):
+            flags |= 0x08  # "Velocity as AT/CC": pre-load aftertouch from note-on velocity
         data.append(flags)
         data.append(int(zone.get('actuation_point', 20)) & 0xFF)
         # Repurposed byte: Trigger Minimum in 0.1mm steps (1-35 = 0.1-3.5mm)
@@ -2636,6 +2638,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                             actuation_override=False, actuation_point=20,
                             speed_peak_ratio=1, retrigger_distance=0,
                             at_uses_curve=False, legato=False,
+                            velocity_as_at=False,
                             **kwargs):
         """
         Set a velocity preset slot with curve points and all associated settings.
@@ -2685,7 +2688,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             'speed_peak_ratio': speed_peak_ratio,
             'retrigger_distance': retrigger_distance,
             'at_uses_curve': at_uses_curve,
-            'legato': legato
+            'legato': legato,
+            'velocity_as_at': velocity_as_at
         }
 
         # === Send Chunk 0: name ===
@@ -2744,6 +2748,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             'actuation_override': (data[offset + 19] & 0x01) != 0,
             'at_uses_curve': (data[offset + 19] & 0x02) != 0,
             'legato': (data[offset + 19] & 0x04) != 0,
+            'velocity_as_at': (data[offset + 19] & 0x08) != 0,
             'actuation_point': data[offset + 20],
             'speed_peak_ratio': data[offset + 21],
             # Dual-use byte: smoothness when aftertouch active, retrigger when off

@@ -1743,12 +1743,15 @@ class VelocityTab(BasicEditor):
         self.velocity_as_at_widget.setVisible(not is_off)
         self.at_uses_curve_widget.setVisible(not is_off)
         # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON (intrinsic cap).
+        # NOTE: no inner blockSignals pair here — the whole function runs with
+        # this checkbox blocked (see the blanket block above); the old inner
+        # blockSignals(False) UNBLOCKED it early, so the setChecked below fired
+        # the change handler and pushed param 50 to the device on every
+        # connect/settings load.
         is_post = (pair == 3)
-        self.velocity_as_at_checkbox.blockSignals(True)
         self.velocity_as_at_checkbox.setEnabled(not is_post)
         if is_post:
             self.velocity_as_at_checkbox.setChecked(True)
-        self.velocity_as_at_checkbox.blockSignals(False)
         self.aftertouch_style_widget.setVisible(False)  # retired: legato is now its own checkbox
         self.aftertouch_sustain_widget.setVisible(not is_off)
         self.smoothness_widget.setVisible(not is_off)
@@ -1773,9 +1776,10 @@ class VelocityTab(BasicEditor):
                 self.aftertouch_cc_combo.setCurrentIndex(i)
                 break
 
-        # Set velocity as aftertouch checkbox
-        velocity_as_at = settings.get('velocity_as_at', False)
-        self.velocity_as_at_checkbox.setChecked(velocity_as_at)
+        # Set velocity as aftertouch checkbox (post-actuation keeps the forced ON)
+        if not is_post:
+            velocity_as_at = settings.get('velocity_as_at', False)
+            self.velocity_as_at_checkbox.setChecked(velocity_as_at)
 
         # Set smoothness
         smoothness = settings.get('aftertouch_smoothness', 0)
@@ -1975,9 +1979,18 @@ class VelocityTab(BasicEditor):
                 controls['aftertouch_cc_combo'].setCurrentIndex(i)
                 break
 
-        # Update velocity as aftertouch checkbox
+        # Update velocity as aftertouch checkbox. Signals MUST be blocked: this
+        # checkbox's change handler pushes param 50 to the device, and before
+        # velocity_as_at rode the preset flags this refresh fired it with the
+        # dict's default False — every preset click silently reset the device's
+        # "Velocity as AT/CC" setting (the "sometimes doesn't save" bug). The
+        # firmware now applies the preset's own flag when the preset index is
+        # selected; the GUI refresh must only display it, never echo it back.
         velocity_as_at = zone_data.get('velocity_as_at', False)
-        controls['velocity_as_at_checkbox'].setChecked(velocity_as_at)
+        controls['velocity_as_at_checkbox'].blockSignals(True)
+        if not is_post:   # Post Actuation already forced it ON above
+            controls['velocity_as_at_checkbox'].setChecked(velocity_as_at)
+        controls['velocity_as_at_checkbox'].blockSignals(False)
 
         # Update AT/CC uses velocity curve checkbox
         controls['at_uses_curve_check'].setChecked(bool(zone_data.get('at_uses_curve', False)))
@@ -2658,6 +2671,7 @@ class VelocityTab(BasicEditor):
         self.global_midi_settings['retrigger_distance'] = zone_data['retrigger_distance']
         self.global_midi_settings['at_uses_curve'] = zone_data['at_uses_curve']
         self.global_midi_settings['legato'] = zone_data['legato']
+        self.global_midi_settings['velocity_as_at'] = zone_data.get('velocity_as_at', False)
 
     def _apply_factory_preset_settings(self, curve_index):
         """Apply per-factory-preset zone settings when selecting a factory curve.
@@ -2683,6 +2697,7 @@ class VelocityTab(BasicEditor):
         self.global_midi_settings['retrigger_distance'] = zone_data['retrigger_distance']
         self.global_midi_settings['at_uses_curve'] = zone_data.get('at_uses_curve', False)
         self.global_midi_settings['legato'] = zone_data.get('legato', False)
+        self.global_midi_settings['velocity_as_at'] = zone_data.get('velocity_as_at', False)
 
     def delete_user_preset(self, slot_index):
         """Delete a user preset (clear it on firmware and hide in list). Slot 0 cannot be deleted."""
@@ -2925,6 +2940,7 @@ class VelocityTab(BasicEditor):
                 self.global_midi_settings['retrigger_distance'] = base_zone.get('retrigger_distance', 0)
                 self.global_midi_settings['at_uses_curve'] = base_zone.get('at_uses_curve', False)
                 self.global_midi_settings['legato'] = base_zone.get('legato', False)
+                self.global_midi_settings['velocity_as_at'] = base_zone.get('velocity_as_at', False)
 
         except Exception as e:
             print(f"Error loading user curve {slot_index}: {e}")
@@ -2953,7 +2969,8 @@ class VelocityTab(BasicEditor):
             'speed_peak_ratio': controls['speed_peak_slider'].value(),
             'retrigger_distance': controls['retrigger_slider'].value() if controls['retrigger_checkbox'].isChecked() else 0,
             'at_uses_curve': controls['at_uses_curve_check'].isChecked(),
-            'legato': controls['legato_check'].isChecked()
+            'legato': controls['legato_check'].isChecked(),
+            'velocity_as_at': controls['velocity_as_at_checkbox'].isChecked()
         }
 
         # Get curve points from the zone's curve editor (or the main one for base)
@@ -3005,6 +3022,7 @@ class VelocityTab(BasicEditor):
                 retrigger_distance=settings.get('retrigger_distance', 0),
                 at_uses_curve=settings.get('at_uses_curve', False),
                 legato=settings.get('legato', False),
+                velocity_as_at=settings.get('velocity_as_at', False),
             )
 
             if success:
@@ -3307,6 +3325,7 @@ class VelocityTab(BasicEditor):
             "retrigger_distance: {}".format(s.get('retrigger_distance', 0)),
             "at_uses_curve: {}".format(1 if s.get('at_uses_curve', False) else 0),
             "legato: {}".format(1 if s.get('legato', False) else 0),
+            "velocity_as_at: {}".format(1 if s.get('velocity_as_at', False) else 0),
         ]
         return "\n".join(lines)
 

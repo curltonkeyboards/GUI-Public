@@ -1166,6 +1166,29 @@ names, QB masters, ...), unlike a `.vil` layout file.
   overwritten, so a clone from a different build can't trigger a factory
   reset at the next boot.
 
+## "Velocity as AT/CC" rides the articulation preset (2026-07) — GUI side
+
+The checkbox didn't reliably save with articulations because the preset wire
+format never carried it (it was only the global param-50 device setting), AND
+two GUI refresh paths set the checkbox with signals unblocked — firing its
+change handler, which pushed param 50 with the stale/default value:
+`update_zone_controls_from_settings` (every preset click reset the device to
+0), and `load_advanced_ui_from_settings` (an inner blockSignals(False)
+unblocked the checkbox early inside the blanket-blocked function, so every
+connect/settings load pushed it).
+
+- New preset flags bit **0x08 = velocity_as_at** (matches firmware
+  `ZONE_FLAG_VELOCITY_AS_AT`): packed in `_serialize_zone_settings`, parsed in
+  `_deserialize_zone_settings`, threaded through `set_velocity_preset`.
+- `on_save_to_user_curve` saves it; `on_user_curve_selected` restores it into
+  `global_midi_settings`; `get_zone_settings_from_controls` reads the checkbox;
+  factory/AT-CC preset applies set it (default False); the articulation export
+  text gained a `velocity_as_at:` line.
+- Both refresh paths now keep the checkbox signal-blocked while displaying a
+  loaded value (the firmware applies the preset's own flag when the preset
+  index is selected — the GUI must only display, never echo). Post-actuation
+  modes keep the forced-ON state.
+
 ## Next ThruLoop Rec + Toggle bulk-reset keycodes (2026-07) — GUI side
 
 Three new keycodes (firmware handlers in vial-gui-custom; values mirrored in
