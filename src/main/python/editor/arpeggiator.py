@@ -3499,7 +3499,7 @@ class Arpeggiator(BasicEditor):
         - note_index: 0-11 (4 bits)
         - octave_offset: -8 to +7 (4 bits signed)
         """
-        timing = note.get('timing_16ths', 0) & 0x7F
+        timing = note.get('timing_16ths', 0) & 0xFF  # bit 7 rides packed bit 15 (firmware NOTE_PACK)
         velocity = note.get('velocity', 200) // 2  # Convert 0-255 to 0-127
         velocity = max(0, min(127, velocity))
 
@@ -3523,7 +3523,8 @@ class Arpeggiator(BasicEditor):
         octave_offset = max(-8, min(7, octave_offset))
 
         # Pack timing_vel: bits 0-6=timing, 7-13=velocity, 14=sign/sustained, 15=timing high bit
-        packed_timing_vel = timing | (velocity << 7) | (sign_bit << 14)
+        # (mirrors firmware NOTE_PACK_TIMING_VEL: timing bit 7 rides packed bit 15)
+        packed_timing_vel = (timing & 0x7F) | (velocity << 7) | (sign_bit << 14) | ((timing & 0x80) << 8)
 
         # Pack note_octave: bits 0-3=note, 4-7=octave (as 4-bit signed)
         # Convert signed octave to 4-bit two's complement
@@ -3600,7 +3601,8 @@ class Arpeggiator(BasicEditor):
         """Unpack 3 bytes from firmware into a note dict (reverse of pack_note_data)"""
         packed_timing_vel = low_byte | (high_byte << 8)
 
-        timing = packed_timing_vel & 0x7F
+        # bits 0-6 + packed bit 15 = timing bit 7 (mirrors firmware NOTE_GET_TIMING)
+        timing = (packed_timing_vel & 0x7F) | ((packed_timing_vel >> 8) & 0x80)
         velocity_7bit = (packed_timing_vel >> 7) & 0x7F
         sign_bit = (packed_timing_vel >> 14) & 0x01
 

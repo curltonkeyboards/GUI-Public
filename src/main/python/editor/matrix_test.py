@@ -1271,7 +1271,19 @@ class ThruLoopConfigurator(BasicEditor):
             for i, combo in enumerate(self.nav_combos):
                 if i < len(nav_ccs):
                     self.set_cc_value(combo, nav_ccs[i])
-        
+
+        # Restore the "Sync Macros" checkbox from the device (read via the
+        # 0x95 macro-modes GET on connect; None on old firmware). Signals must
+        # be blocked — the change handler pushes param 51 and this is a load,
+        # not a user edit. Without this the checkbox showed its default and a
+        # subsequent Save wrote that default back to the device.
+        if self.device and isinstance(self.device, VialKeyboard):
+            dev_sync = getattr(self.device.keyboard, 'macro_sync_to_loop_device', None)
+            if dev_sync is not None:
+                self.macro_sync_to_loop.blockSignals(True)
+                self.macro_sync_to_loop.setChecked(bool(dev_sync))
+                self.macro_sync_to_loop.blockSignals(False)
+
         # Update UI state
         self.on_separate_loopchop_changed()
         
@@ -1325,7 +1337,7 @@ class ThruLoopConfigurator(BasicEditor):
             "masterCC": self.get_cc_value(self.master_cc),
             "restartCCs": self.get_restart_cc_values(),
             "mainCCs": self.get_combos_cc_values(self.main_combos[:5]),  # First 5 rows x 8 cols = 40 values
-            "overdubCCs": self.get_combos_cc_values(self.overdub_combos),  # All 6 rows x 8 cols = 48 values
+            "overdubCCs": self.get_combos_cc_values_banked(self.overdub_combos),  # banked order, matches apply_config
             "navCCs": [self.get_cc_value(combo) for combo in self.nav_combos]
         }
         return config
@@ -1622,9 +1634,12 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.global_transpose.setMaximumWidth(120)
         self.global_transpose.setMinimumHeight(25)
         self.global_transpose.setMaximumHeight(25)
-        for i in range(-64, 65):
+        # +/-60: the firmware caps main-zone transpose+octave at a combined 60
+        # semitones (TRANSPOSE_TOTAL_CAP); the old +/-64 range let the GUI push
+        # values the device's own controls can never reach.
+        for i in range(-60, 61):
             self.global_transpose.addItem(f"{'+' if i >= 0 else ''}{i}", i)
-        self.global_transpose.setCurrentIndex(64)
+        self.global_transpose.setCurrentIndex(60)
         self.global_transpose.setEditable(True)
         self.global_transpose.lineEdit().setReadOnly(True)
         self.global_transpose.lineEdit().setAlignment(Qt.AlignCenter)
@@ -1783,9 +1798,10 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.transpose_number2.setMaximumWidth(80)
         self.transpose_number2.setMinimumHeight(25)
         self.transpose_number2.setMaximumHeight(25)
-        for i in range(-64, 65):
+        # +/-24: matches the firmware's own zone-transpose clamp (TRANSPOSE_MAX)
+        for i in range(-24, 25):
             self.transpose_number2.addItem(f"{'+' if i >= 0 else ''}{i}", i)
-        self.transpose_number2.setCurrentIndex(64)
+        self.transpose_number2.setCurrentIndex(24)
         self.transpose_number2.setEditable(True)
         self.transpose_number2.lineEdit().setReadOnly(True)
         self.transpose_number2.lineEdit().setAlignment(Qt.AlignCenter)
@@ -1969,9 +1985,10 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.transpose_number3.setMaximumWidth(80)
         self.transpose_number3.setMinimumHeight(25)
         self.transpose_number3.setMaximumHeight(25)
-        for i in range(-64, 65):
+        # +/-24: matches the firmware's own zone-transpose clamp (TRANSPOSE_MAX)
+        for i in range(-24, 25):
             self.transpose_number3.addItem(f"{'+' if i >= 0 else ''}{i}", i)
-        self.transpose_number3.setCurrentIndex(64)
+        self.transpose_number3.setCurrentIndex(24)
         self.transpose_number3.setEditable(True)
         self.transpose_number3.lineEdit().setReadOnly(True)
         self.transpose_number3.lineEdit().setAlignment(Qt.AlignCenter)
@@ -2486,9 +2503,10 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         dynamic_range_label_layout.setContentsMargins(0, 0, 0, 0)
         dynamic_range_label_layout.setSpacing(5)
         dynamic_range_label_layout.addWidget(self.create_help_label(
-            "Random velocity variation amount (0-127).\n"
-            "Adds human-like variation to velocity values.\n"
-            "0 = No variation, higher = more randomness."
+            "Maximum allowed spread between Velocity Min and Velocity Max (0-127).\n"
+            "When the min/max controls are moved apart beyond this range,\n"
+            "the other end is dragged along to keep the spread within it.\n"
+            "127 = no restriction."
         ))
         dynamic_range_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Dynamic Range:")))
         dynamic_range_label.setLayout(dynamic_range_label_layout)

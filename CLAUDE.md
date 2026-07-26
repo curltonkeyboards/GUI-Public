@@ -1274,6 +1274,30 @@ color (hue 0/sat 255 = red) on top.
 
 No firmware/HID change — GUI only.
 
+## Deferred-audit-items implementation round (2026-07) — GUI side
+
+The audit's "deliberately not changed" items are now implemented (see
+vial-gui-custom CLAUDE.md, same section name, for the firmware half):
+
+- **Macro modes GET (0x95)**: `protocol/macro.py` gained `reload_macro_modes()`
+  (called at the end of `reload_macros_late`) — 4-chunk read of the packed
+  loop-mode/per-sync state + the global macro-sync bool
+  (`macro_sync_to_loop_device`). The GUI now displays the device's real
+  persisted state instead of seeding zeros; `matrix_test.py` `apply_config`
+  restores the ThruLoop-tab "Sync Macros" checkbox from it (signal-blocked).
+  Old firmware (no 0x95) → seeded defaults, unchanged.
+- **Arp/seq timing bit 15** (`editor/arpeggiator.py`): `pack_note_data` /
+  `unpack_note_data` now carry timing bit 7 in packed bit 15, mirroring the
+  firmware NOTE_PACK_TIMING_VEL / NOTE_GET_TIMING macros — seq step positions
+  128-255 round-trip correctly.
+- **Small fixes:** `bg_speed` slider minimum 0→1 (firmware rewrites stored
+  0→128); Dynamic Range help text corrected (max velocity min/max spread, not
+  random variation); drum 0xE9/0xEF + per-key 0xE1 GETs validate the response
+  command echo in `keyboard_comm.py`; ThruLoop `get_current_config` uses
+  `get_combos_cc_values_banked` for overdub CCs (matches apply_config);
+  main transpose combo ±60 (firmware combined cap), zone transpose combos ±24
+  (firmware zone clamp).
+
 ## Modifier gestures on QB masters + Rhythm Engine (2026-07) — firmware only
 
 Firmware-side follow-up (see vial-gui-custom CLAUDE.md, same section name) — **no

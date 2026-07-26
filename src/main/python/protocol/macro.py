@@ -225,6 +225,35 @@ class ProtocolMacro(BaseProtocol):
             # ensuring we only get macro_count strings after we split by NUL
             macros = self.macro.split(b"\x00") + [b""] * self.macro_count
             self.macro = b"\x00".join(macros[:self.macro_count]) + b"\x00"
+        # Read the persisted loop-mode/per-sync/global-sync state back from the
+        # device (0x95). Older firmware lacks the command — the seeded defaults
+        # above stay, exactly as before.
+        self.reload_macro_modes()
+
+    def reload_macro_modes(self):
+        """Read the device's persisted macro loop modes, per-macro sync flags,
+        and the global macro-sync bool via the 0x95 GET (4 chunks x 24 bytes of
+        the 2-bit/1-bit packed state). Returns False (keeping the local
+        defaults) on old firmware or comm failure."""
+        self.macro_sync_to_loop_device = None
+        try:
+            raw = bytearray()
+            for chunk in range(4):
+                packet = self._create_hid_packet(0x95, chunk, None)
+                resp = self.usb_send(self.dev, packet, retries=3)
+                if (not resp or len(resp) < 31 or resp[3] != 0x95 or
+                        resp[4] != 0x01 or resp[5] != chunk):
+                    return False
+                raw += bytes(resp[6:30])
+                if chunk == 3:
+                    self.macro_sync_to_loop_device = (resp[30] == 1)
+            self.macro_loop_modes = [(raw[m // 4] >> ((m % 4) * 2)) & 0x03
+                                     for m in range(self.macro_count)]
+            self.macro_sync_flags = [bool((raw[64 + m // 8] >> (m % 8)) & 1)
+                                     for m in range(self.macro_count)]
+            return True
+        except Exception:
+            return False
 
     def reload_macros(self):
         """ Loads macro information from the keyboard """

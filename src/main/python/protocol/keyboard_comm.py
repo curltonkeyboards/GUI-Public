@@ -1932,7 +1932,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             packet = self._create_hid_packet(HID_CMD_DRUM_KEYBINDS_GET, 0, None)
             response = self.usb_send(self.dev, packet, retries=5)
             if (response and len(response) >= 31 and
-                    response[0] == HID_MANUFACTURER_ID and response[4] == 0x01):
+                    response[0] == HID_MANUFACTURER_ID and
+                    response[3] == HID_CMD_DRUM_KEYBINDS_GET and response[4] == 0x01):
                 notes = list(response[6:6 + DRUM_KEYBIND_VOICE_COUNT])
                 vels = list(response[18:18 + DRUM_KEYBIND_VOICE_COUNT])
                 channel = response[30]
@@ -1996,7 +1997,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             packet = self._create_hid_packet(HID_CMD_DRUM_KEYBINDS_RESET, 0, None)
             response = self.usb_send(self.dev, packet, retries=5)
             if (response and len(response) >= 31 and
-                    response[0] == HID_MANUFACTURER_ID and response[4] == 0x01):
+                    response[0] == HID_MANUFACTURER_ID and
+                    response[3] == HID_CMD_DRUM_KEYBINDS_RESET and response[4] == 0x01):
                 notes = list(response[6:6 + DRUM_KEYBIND_VOICE_COUNT])
                 vels = list(response[18:18 + DRUM_KEYBIND_VOICE_COUNT])
                 channel = response[30]
@@ -2016,7 +2018,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                                               DRUM_KEYBINDS_SUBMODE_EXTRAS, None)
             response = self.usb_send(self.dev, packet, retries=5)
             if (response and len(response) >= 6 + DRUM_EXTRA_VOICE_COUNT and
-                    response[0] == HID_MANUFACTURER_ID and response[4] == 0x01):
+                    response[0] == HID_MANUFACTURER_ID and
+                    response[3] == HID_CMD_DRUM_KEYBINDS_GET and response[4] == 0x01):
                 return list(response[6:6 + DRUM_EXTRA_VOICE_COUNT])
             return None
         except Exception:
@@ -3100,8 +3103,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             # Reduced retries from 20 to 3 for faster loading
             response = self.usb_send(self.dev, packet, retries=3)
 
-            if response and len(response) >= 13:
+            if (response and len(response) >= 13 and
+                    response[3] == HID_CMD_GET_PER_KEY_ACTUATION and response[4] == 0x01):
                 # Response format: [header (4 bytes) + status (1 byte)] + [8 per-key fields at index 5]
+                # A stale packet from another command must not be parsed as key data,
+                # hence the command-echo + status validation above.
                 # Convert unsigned byte to signed for velocity mod
                 velocity_mod_byte = response[12]
                 velocity_mod = velocity_mod_byte if velocity_mod_byte < 128 else velocity_mod_byte - 256

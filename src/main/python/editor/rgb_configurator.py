@@ -2505,10 +2505,12 @@ class CustomLightsHandler(BasicHandler):
         bg_speed_label = QLabel(tr("RGBConfigurator", "Speed:"))
         layout.addWidget(bg_speed_label, row, 2)
         bg_speed = QSlider(QtCore.Qt.Horizontal)
-        bg_speed.setMinimum(0)
+        # Minimum 1: the firmware treats a stored 0 as "unset" and rewrites it
+        # to 128 on load, so offering 0 here silently round-trips to Normal.
+        bg_speed.setMinimum(1)
         bg_speed.setMaximum(255)
         bg_speed.setValue(128)
-        bg_speed.setToolTip("Background animation speed.\n0 = Slowest, 128 = Normal, 255 = Fastest")
+        bg_speed.setToolTip("Background animation speed.\n1 = Slowest, 128 = Normal, 255 = Fastest")
         self._connect_throttled(bg_speed, self.on_bg_speed_changed, slot)  # ~1 HID/sec while dragging + on release
         layout.addWidget(bg_speed, row, 3)
         row += 1
