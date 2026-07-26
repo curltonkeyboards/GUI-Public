@@ -718,7 +718,7 @@ class TriggerSettingsTab(BasicEditor):
                     'actuation': 127,                   # 0-255 = 0-4.0mm, default 2.0mm (127/255 of 4mm)
                     'deadzone_top': 6,                  # 0-51 = 0-0.8mm (20% of 4mm), default ~0.1mm - FROM RIGHT
                     'deadzone_bottom': 6,               # 0-51 = 0-0.8mm (20% of 4mm), default ~0.1mm - FROM LEFT
-                    'velocity_curve': 0,                # 0-16 (0-6: Factory curves, 7-16: User curves), default Linear
+                    'velocity_curve': 0,                # Articulation index: 0-22 factory, 23-72 user, 73-98 AT/CC
                     'flags': 0,                         # Bit 0: rapidfire_enabled, Bit 1: use_per_key_velocity_curve, Bit 2: continuous_rt
                     'rapidfire_press_sens': 6,          # 0-255 = 0-4.0mm, default ~0.1mm - FROM LEFT
                     'rapidfire_release_sens': 6,        # 0-255 = 0-4.0mm, default ~0.1mm - FROM RIGHT

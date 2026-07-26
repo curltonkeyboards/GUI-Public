@@ -1207,18 +1207,24 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.layer_rgb_supported = True
         
         try:
+            # Firmware writes its reply into msg[0..1] (status/enabled + layer
+            # count), like every other 0xFE-prefix custom command — the old
+            # data[2] read here was an unmodified echo of the request padding,
+            # so the enabled flag always read False.
             data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LAYER_RGB_GET_STATUS), retries=20)
-            self.layer_rgb_enabled = bool(data[2])
+            self.layer_rgb_enabled = bool(data[0])
             return True
         except:
             self.layer_rgb_enabled = False
             return True
 
     def get_layer_rgb_status(self):
-        """Get current per-layer RGB status"""
+        """Get current per-layer RGB status: [enabled, layer_count, ...]"""
         try:
             data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LAYER_RGB_GET_STATUS), retries=20)
-            return data[2:]
+            # Firmware reply starts at byte 0 (enabled@0, NUM_LAYERS@1) — the
+            # old data[2:] returned request-echo padding (always zeros).
+            return data
         except:
             # Comm failure: report "unknown" instead of a fabricated status the
             # caller would mistake for real device state.
@@ -1228,7 +1234,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         """Enable or disable per-layer RGB functionality"""
         try:
             data = self.usb_send(self.dev, struct.pack("BBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LAYER_RGB_ENABLE, int(enabled)), retries=20)
-            success = data[2] == 0x01
+            # Status is at byte 0. The old data[2] read was the echoed enable
+            # byte, so disabling always "failed" and never updated the cache.
+            success = data[0] == 0x01
             if success:
                 self.layer_rgb_enabled = enabled
             return success
@@ -1240,7 +1248,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         """Save current RGB settings to specified layer"""
         try:
             data = self.usb_send(self.dev, struct.pack("BBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LAYER_RGB_SAVE, layer), retries=20)
-            return data[2] == 0x01
+            # Status at byte 0 (old data[2] read the echoed layer number, so
+            # this only "succeeded" for layer 1).
+            return data[0] == 0x01
         except:
             # The write never reached the device — do not report success.
             return False
@@ -1249,7 +1259,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         """Load RGB settings from specified layer"""
         try:
             data = self.usb_send(self.dev, struct.pack("BBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LAYER_RGB_LOAD, layer), retries=20)
-            return data[2] == 0x01
+            return data[0] == 0x01
         except:
             return True
             
@@ -1274,7 +1284,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def set_custom_slot_parameter(self, slot, param_index, value):
         """Set a single parameter for a custom animation slot"""
         try:
-            if slot >= 50 or param_index >= 15:
+            if slot >= 50 or param_index > 15:  # params 0-15 (15 = effect_sat)
                 return False
                 
             data = self.usb_send(self.dev, struct.pack("BBBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_CUSTOM_ANIM_SET_PARAM, slot, param_index, value), retries=20)
@@ -1606,7 +1616,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
         Returns dict {'enabled': bool, 'map': [16 ints], 'articulation_cc': int,
         'articulation_cc_supported': bool} where each map entry is a
-        velocity-preset index (0-94) or 255 (=None). None on failure / unsupported
+        velocity-preset index (0-98) or 255 (=None). None on failure / unsupported
         firmware. Response: status@4, enable@5, map@6..21, 0x80|cc@22 (bit 7 =
         firmware supports the Articulation CC byte; clear on older firmware,
         whose unhandled echo leaves the byte 0).
@@ -1631,7 +1641,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def set_channel_articulations(self, enabled, artic_map, articulation_cc=1):
         """Set the global Channel Articulations map + enable + Articulation CC.
 
-        artic_map: list of 16 velocity-preset indices (0-94) or 255 (=None).
+        artic_map: list of 16 velocity-preset indices (0-98) or 255 (=None).
         articulation_cc: global CC# (0-127) used by "CC Default" articulations.
         Payload: [enable, map0..map15, 0x80|articulation_cc] — bit 7 is the
         validity marker the firmware requires before it will store the CC
@@ -2283,7 +2293,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         try:
             packet = self._create_hid_packet(HID_CMD_SET_LAYER_ACTUATION, 0, data)
             response = self.usb_send(self.dev, packet, retries=3)
-            return response and len(response) > 0 and response[5] == 0x01
+            # The 0xEB-0xEE family puts its status at byte 4 (byte 5 is only
+            # written by the GET record) — the old response[5] check made every
+            # successful SET report failure and raise an error dialog.
+            return response and len(response) > 4 and response[4] == 0x01
         except Exception as e:
             return False
 
@@ -2416,7 +2429,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         try:
             packet = self._create_hid_packet(HID_CMD_RESET_LAYER_ACTUATIONS, 0, None)
             response = self.usb_send(self.dev, packet, retries=3)
-            return response and len(response) > 0 and response[5] == 0x01
+            # Status at byte 4 for this family (see set_layer_actuation).
+            return response and len(response) > 4 and response[4] == 0x01
         except Exception as e:
             return False
             

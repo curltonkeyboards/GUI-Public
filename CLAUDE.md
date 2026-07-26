@@ -1166,6 +1166,39 @@ names, QB masters, ...), unlike a `.vil` layout file.
   overwritten, so a clone from a different build can't trigger a factory
   reset at the next boot.
 
+## GUI↔firmware wire-format audit round (2026-07) — GUI side
+
+Full parallel audit of every saveable feature (see vial-gui-custom CLAUDE.md,
+same section name, for the firmware half + the verified-OK list). GUI fixes:
+
+- **Layer RGB (0xBC-0xBF) status offset**: the firmware replies at byte 0, the
+  GUI read byte 2 (request-echo padding) — the per-layer enable always loaded
+  unchecked, disabling always "failed", and save/load only "succeeded" for
+  layer 1. All four methods now read byte 0 (`keyboard_comm.py`).
+- **`set_layer_actuation` / `reset_layer_actuations` status byte** 5→4 (the
+  0xEB-0xEE family), so every successful actuation save no longer raises a
+  "Failed to set actuation" error dialog.
+- **Custom Lights**: param 15 (`effect_sat`) no longer rejected client-side;
+  effect clamps 171→173 + the two missing "Collapsing Star Massive (Solo)"
+  entries added; background clamp 121→120; the bogus "Per Key Layers"
+  background group removed (its indices 57-68 were VialRGB effect ids, which
+  collide with real background modes); `on_save_slot` preserves flag bits it
+  doesn't own (bit 0 = influence) instead of clearing them each save.
+- **Macro loop modes / sync flags send only CHANGED entries**: no GET exists,
+  so the old full-list push on every macro Save wiped device-persisted modes
+  (incl. on-device edits) and cost ~510 HID round-trips of EEPROM writes.
+- **BPM-delay repeat round-trips**: the 5-byte `SS_BPM_DELAY_REPEAT` opcode
+  (authored by the on-device configurator, e.g. "Wait 1/4 x8") is preserved
+  invisibly on `ActionBPMDelay` and re-emitted on save — the old "convert to
+  plain delay" downgrade destroyed the repeat.
+- **Multi-toggle step compaction** (`toggle_protocol.set_slot`): a multi slot
+  with an empty step 1 is compacted before sending — the firmware treats
+  target_keycode 0 as "clear the slot" and would silently destroy the cycle.
+- Preset name inputs `setMaxLength(15)` (firmware stores 15 chars + NUL);
+  channel-artic map indices for unconfigured user slots get a synthesized row
+  instead of being displayed (and re-saved) as None; stale 0-94 / "0-16 curve"
+  doc comments corrected to the real 0-98 articulation space.
+
 ## "Velocity as AT/CC" rides the articulation preset (2026-07) — GUI side
 
 The checkbox didn't reliably save with articulations because the preset wire

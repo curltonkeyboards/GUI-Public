@@ -3242,6 +3242,27 @@ class VelocityTab(BasicEditor):
         except Exception:
             return False
 
+    def _artic_combo_select_index(self, combo, idx):
+        """Select preset index `idx` in a channel-artic combo, ADDING a row for
+        it when the option list omits it (an unconfigured/deleted user slot).
+        The old findData->else-0 fallback silently displayed "None" for such an
+        index, and the tab's next Save then wrote 255 back to the device —
+        quietly erasing the stored mapping."""
+        if idx is None:
+            idx = 255
+        pos = combo.findData(idx)
+        if pos < 0 and idx != 255:
+            names = getattr(self, 'user_curve_names', [])
+            slot = idx - FACTORY_COUNT
+            if 0 <= slot < 50:
+                base = names[slot] if slot < len(names) else "User {}".format(slot + 1)
+                label = "{} (empty)".format(base)
+            else:
+                label = "Preset {}".format(idx)
+            combo.addItem(label, idx)
+            pos = combo.findData(idx)
+        combo.setCurrentIndex(pos if pos >= 0 else 0)
+
     def _refresh_channel_artic_combos(self):
         """Rebuild dropdown items (e.g. after user preset names load), preserving
         each row's selected preset index."""
@@ -3251,8 +3272,7 @@ class VelocityTab(BasicEditor):
             combo.blockSignals(True)
             combo.clear()
             self._fill_artic_combo(combo, opts)
-            pos = combo.findData(cur if cur is not None else 255)
-            combo.setCurrentIndex(pos if pos >= 0 else 0)
+            self._artic_combo_select_index(combo, cur)
             combo.blockSignals(False)
 
     def load_channel_articulations(self):
@@ -3278,8 +3298,10 @@ class VelocityTab(BasicEditor):
             self._refresh_channel_artic_combos()
             for ch, combo in enumerate(self.channel_artic_combos):
                 combo.blockSignals(True)
-                pos = combo.findData(self.channel_artic_map[ch])
-                combo.setCurrentIndex(pos if pos >= 0 else 0)
+                # Adds a row for an index the list omits (unconfigured user
+                # slot) instead of resetting the display — and the next Save —
+                # to "None".
+                self._artic_combo_select_index(combo, self.channel_artic_map[ch])
                 combo.blockSignals(False)
             self._update_channel_artic_enabled_state()
         finally:
@@ -3426,7 +3448,7 @@ class SaveAsPresetDialog(QDialog):
         name_layout = QHBoxLayout()
         name_layout.addWidget(QLabel("Name:"))
         self.name_edit = QLineEdit()
-        self.name_edit.setMaxLength(16)
+        self.name_edit.setMaxLength(15)  # firmware stores 15 chars + NUL (name[15] forced to 0)
         self.name_edit.setPlaceholderText("Preset name")
         name_layout.addWidget(self.name_edit)
         layout.addLayout(name_layout)

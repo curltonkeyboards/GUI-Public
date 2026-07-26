@@ -181,15 +181,27 @@ class ActionBPMDelay(BasicAction):
         super().__init__()
         self.note_value = note_value      # 0=1/1, 1=1/2, 2=1/4, 3=1/8, 4=1/16, 5=2/1, 6=4/1, 7=8/1, 8=16/1
         self.timing_mode = timing_mode    # Always 0 (straight)
+        # Repeat count carried invisibly: the on-device macro configurator
+        # authors the 5-byte SS_BPM_DELAY_REPEAT opcode (Wait 1/4 x8). The GUI
+        # has no repeat editor, but it must ROUND-TRIP the opcode — the old
+        # "convert to plain BPM delay" downgrade silently rewrote a x8 wait to
+        # x1 on every GUI save of a device-authored macro.
+        self.repeat = 1
 
     def serialize(self, vial_protocol):
         if vial_protocol < VIAL_PROTOCOL_ADVANCED_MACROS:
             raise RuntimeError("ActionBPMDelay can only be used with vial_protocol>=2")
+        if getattr(self, 'repeat', 1) > 1:
+            return struct.pack("BBBBB", SS_QMK_PREFIX, SS_BPM_DELAY_REPEAT_CODE,
+                               self.note_value + 1, self.timing_mode + 1, self.repeat + 1)
         return struct.pack("BBBB", SS_QMK_PREFIX, SS_BPM_DELAY_CODE,
                            self.note_value + 1, self.timing_mode + 1)
 
     def save(self):
-        return super().save() + [self.note_value, self.timing_mode]
+        out = super().save() + [self.note_value, self.timing_mode]
+        if getattr(self, 'repeat', 1) > 1:
+            out.append(self.repeat)
+        return out
 
     def restore(self, act):
         # Accept both "bpm_delay" and "bpm_delay_repeat" tags for backward compat
@@ -197,10 +209,12 @@ class ActionBPMDelay(BasicAction):
             raise RuntimeError("cannot restore {}: expected tag=bpm_delay got tag={}".format(self, act[0]))
         self.note_value = act[1]
         self.timing_mode = act[2] if len(act) > 2 else 0
+        self.repeat = act[3] if len(act) > 3 else 1
 
     def __eq__(self, other):
         return (isinstance(other, ActionBPMDelay) and self.note_value == other.note_value
-                and self.timing_mode == other.timing_mode)
+                and self.timing_mode == other.timing_mode
+                and getattr(self, 'repeat', 1) == getattr(other, 'repeat', 1))
 
 
 class ActionBPMDelayRepeat(BasicAction):

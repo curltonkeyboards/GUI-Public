@@ -588,7 +588,7 @@ class SaveToUserDialog(QDialog):
         # Name input field
         name_layout = QFormLayout()
         self.name_input = QLineEdit()
-        self.name_input.setMaxLength(16)
+        self.name_input.setMaxLength(15)  # firmware stores 15 chars + NUL (name[15] forced to 0)
         self.name_input.setPlaceholderText(tr("SaveToUserDialog", "Enter articulation name (max 16 chars)"))
         # Default to the first configured slot's name
         if self._slot_map:

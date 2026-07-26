@@ -395,7 +395,9 @@ LIVE_EFFECTS_HIERARCHY = {
         {"name": "Collapsing Star Med", "index": 168},
         {"name": "Collapsing Star Med Solo", "index": 169},
         {"name": "Collapsing Star Large", "index": 170},
-        {"name": "Collapsing Star Large Solo", "index": 171}
+        {"name": "Collapsing Star Large Solo", "index": 171},
+        {"name": "Collapsing Star Massive", "index": 172},
+        {"name": "Collapsing Star Massive Solo", "index": 173}
     ],
     "Volume Bars": [
         {"name": "Volume Bars Small", "index": 66},
@@ -607,20 +609,11 @@ BACKGROUNDS_HIERARCHY = {
         {"name": "BPM All Autolight 2", "index": 57},
         {"name": "BPM All Autolight Disco", "index": 58},
     ],
-    "Per Key Layers": [
-        {"name": "Per Key 1", "index": 57},
-        {"name": "Per Key 2", "index": 58},
-        {"name": "Per Key 3", "index": 59},
-        {"name": "Per Key 4", "index": 60},
-        {"name": "Per Key 5", "index": 61},
-        {"name": "Per Key 6", "index": 62},
-        {"name": "Per Key 7", "index": 63},
-        {"name": "Per Key 8", "index": 64},
-        {"name": "Per Key 9", "index": 65},
-        {"name": "Per Key 10", "index": 66},
-        {"name": "Per Key 11", "index": 67},
-        {"name": "Per Key 12", "index": 68},
-    ]
+    # NOTE: the old "Per Key Layers" group (indices 57-68) was WRONG here: those
+    # numbers are VialRGB effect ids for the per-key presets, not background_mode
+    # values. In the background namespace 57-68 are BPM/cycle/wave modes already
+    # listed above, so the group both duplicated real entries and made readback
+    # ambiguous. Per-key presets are selected from the Basic RGB effect list.
 }
 
 # Hierarchical structure for live positioning styles
@@ -1447,7 +1440,7 @@ class LayerRGBHandler(BasicHandler):
                 try:
                     status = self.device.keyboard.get_layer_rgb_status()
                     if status is not None:
-                        # status is get_layer_rgb_status() -> data[2:]; byte 0 is the enable flag.
+                        # status[0] is the enable flag (firmware reply byte 0).
                         # Test the flag byte, not truthiness of the whole buffer.
                         keyboard_state = bool(status[0]) if len(status) > 0 else False
                         self.per_layer_enabled = keyboard_state
@@ -2812,11 +2805,15 @@ class CustomLightsHandler(BasicHandler):
             return
             
         widgets = self.slot_widgets[slot]
-        widgets['live_effect'].setCurrentIndex(min(config[2], 171))
+        # Clamps mirror the firmware setter limits: effects < 174, live pos < 34,
+        # macro pos < 47, backgrounds < 121 (0-120). The old 171/121 clamps
+        # displayed the last two effects and background 120 as a DIFFERENT entry
+        # and then saved that wrong value back.
+        widgets['live_effect'].setCurrentIndex(min(config[2], 173))
         widgets['live_style'].setCurrentIndex(min(config[0], 33))
-        widgets['macro_effect'].setCurrentIndex(min(config[3], 171))
+        widgets['macro_effect'].setCurrentIndex(min(config[3], 173))
         widgets['macro_style'].setCurrentIndex(min(config[1], 46))
-        widgets['background'].setCurrentIndex(min(config[5], 121))
+        widgets['background'].setCurrentIndex(min(config[5], 120))
         widgets['bg_speed'].setValue(config[14] if len(config) > 14 else 128)
         widgets['color_type'].setCurrentIndex(min(config[7], 84))
         widgets['background_brightness'].setValue(config[9] if len(config) > 9 else 30)
@@ -3167,7 +3164,16 @@ class CustomLightsHandler(BasicHandler):
             macro_pos = widgets['macro_style'].currentIndex()
             live_anim = widgets['live_effect'].currentIndex()
             macro_anim = widgets['macro_effect'].currentIndex()
+            # Preserve flag bits this tab doesn't own (bit 0 = influence mode,
+            # set firmware-side) — rebuilding from 0 silently cleared them on
+            # every save.
             flags = 0
+            try:
+                cur = self.device.keyboard.get_custom_slot_config(slot, from_eeprom=False)
+                if cur and len(cur) > 4:
+                    flags = cur[4] & ~0x06
+            except Exception:
+                pass
             if widgets['vel_brightness_live'].isChecked():
                 flags |= 0x02
             if widgets['vel_brightness_macro'].isChecked():
