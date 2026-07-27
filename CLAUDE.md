@@ -1357,3 +1357,26 @@ primary recorder and adds per-slot "aux" recorders beside it; the free loop
 pool is split fairly between simultaneous starters. Also: async note producers
 (MIDI-delay echoes, sustain flushes) are now zone-classified by CHANNEL against
 the base/keysplit/triplesplit channels for the note-record gate.
+
+## Per-zone "Auto-Notes" gate + terminology rename (2026-07)
+
+Firmware repurposed the per-zone smartchord allow/ignore flags into a general
+**Auto-Notes** gate (see vial-gui-custom CLAUDE.md, same section name): a zone
+with auto-notes ignored plays ONLY its plain pressed note — no smartchord, no
+MIDI-delay echoes, no dynamic chords, no arp participation, no octave doubler.
+Looping is NOT gated. Storage/HID/EEPROM unchanged (same `*_smartchord_ignore`
+bytes), so the GUI protocol is untouched. A split zone's flag applies only
+while that split is effectively enabled; otherwise its keys follow the base
+zone's flag. Base keys always use the base flag.
+
+GUI changes (this repo, label/text only):
+- `matrix_test.py`: the three per-zone "SmartChord:" rows are now
+  **"Auto-Notes:"** (same combos/variables), with help text describing the
+  full gate (smartchord/delay/dynamic-chord/arpeggiator/doubler; looping
+  unaffected; split zones follow base while their split is off).
+- `rgb_configurator.py`: machine-played-note lighting labels renamed
+  "Macro" → "Auto Note": color-scheme names ("Macro Sat/Desat/Distance/
+  Distance Sat/Distance Desat" → "Auto Note …"), section header "Macro
+  Animation:" → "Auto Note Animation:", checkbox "Enable Macro Dynamic
+  Brightness" → "Enable Auto Note Dynamic Brightness". Loop/VIA-macro labels
+  ("Loop" scheme, "Vial Macros" LED category) keep their names.

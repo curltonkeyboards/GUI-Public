@@ -1713,11 +1713,11 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         sc_ignore_label_layout.setContentsMargins(0, 0, 0, 0)
         sc_ignore_label_layout.setSpacing(5)
         sc_ignore_label_layout.addWidget(self.create_help_label(
-            "SmartChord behavior for base zone keys:\n"
-            "Allow: SmartChord adds harmony notes\n"
-            "Ignore: SmartChord has no effect on these keys"
+            "Auto-notes behavior for base zone keys:\n"
+            "Allow: smartchord/delay/dynamic-chord/arpeggiator/doubler apply\n"
+            "Ignore: these keys play ONLY their plain note (looping unaffected)"
         ))
-        sc_ignore_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "SmartChord:")))
+        sc_ignore_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Auto-Notes:")))
         sc_ignore_label_layout.addStretch()
         sc_ignore_label_container.setLayout(sc_ignore_label_layout)
         base_layout.addWidget(sc_ignore_label_container, row, 0)
@@ -1900,11 +1900,12 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ks_sc_label_layout.setContentsMargins(0, 0, 0, 0)
         ks_sc_label_layout.setSpacing(3)
         ks_sc_label_layout.addWidget(self.create_help_label(
-            "SmartChord behavior for KeySplit keys:\n"
-            "Allow: SmartChord adds harmony notes\n"
-            "Ignore: SmartChord has no effect on these keys"
+            "Auto-notes behavior for KeySplit keys (applies while KeySplit is enabled;\n"
+            "otherwise these keys follow the base zone setting):\n"
+            "Allow: smartchord/delay/dynamic-chord/arpeggiator/doubler apply\n"
+            "Ignore: these keys play ONLY their plain note (looping unaffected)"
         ))
-        ks_sc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "SmartChord:")))
+        ks_sc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Auto-Notes:")))
         ks_sc_label_layout.addStretch()
         ks_sc_label.setLayout(ks_sc_label_layout)
         keysplit_layout.addWidget(ks_sc_label, ks_row, 0)
@@ -2087,11 +2088,12 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ts_sc_label_layout.setContentsMargins(0, 0, 0, 0)
         ts_sc_label_layout.setSpacing(3)
         ts_sc_label_layout.addWidget(self.create_help_label(
-            "SmartChord behavior for TripleSplit keys:\n"
-            "Allow: SmartChord adds harmony notes\n"
-            "Ignore: SmartChord has no effect on these keys"
+            "Auto-notes behavior for TripleSplit keys (applies while TripleSplit is enabled;\n"
+            "otherwise these keys follow the base zone setting):\n"
+            "Allow: smartchord/delay/dynamic-chord/arpeggiator/doubler apply\n"
+            "Ignore: these keys play ONLY their plain note (looping unaffected)"
         ))
-        ts_sc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "SmartChord:")))
+        ts_sc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Auto-Notes:")))
         ts_sc_label_layout.addStretch()
         ts_sc_label.setLayout(ts_sc_label_layout)
         triplesplit_layout.addWidget(ts_sc_label, ts_row, 0)

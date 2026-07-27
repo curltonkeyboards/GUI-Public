@@ -773,7 +773,7 @@ CUSTOM_LIGHT_COLOR_TYPES_HIERARCHY = {
     "Modular Sat": [
         {"name": "Base Sat", "index": 6},
         {"name": "Channel Sat", "index": 7},
-        {"name": "Macro Sat", "index": 8},
+        {"name": "Auto Note Sat", "index": 8},
         {"name": "Rainbow Sat", "index": 9},
         {"name": "Pitch 1 Sat", "index": 10},
         {"name": "Pitch 2 Sat", "index": 11},
@@ -781,7 +781,7 @@ CUSTOM_LIGHT_COLOR_TYPES_HIERARCHY = {
     "Modular Desat": [
         {"name": "Base Desat", "index": 12},
         {"name": "Channel Desat", "index": 13},
-        {"name": "Macro Desat", "index": 14},
+        {"name": "Auto Note Desat", "index": 14},
         {"name": "Rainbow Desat", "index": 15},
         {"name": "Pitch 1 Desat", "index": 16},
         {"name": "Pitch 2 Desat", "index": 17},
@@ -789,7 +789,7 @@ CUSTOM_LIGHT_COLOR_TYPES_HIERARCHY = {
     "Modular Distance": [
         {"name": "Base Distance", "index": 18},
         {"name": "Channel Distance", "index": 19},
-        {"name": "Macro Distance", "index": 20},
+        {"name": "Auto Note Distance", "index": 20},
         {"name": "Rainbow Distance", "index": 21},
         {"name": "Pitch 1 Distance", "index": 22},
         {"name": "Pitch 2 Distance", "index": 23},
@@ -797,7 +797,7 @@ CUSTOM_LIGHT_COLOR_TYPES_HIERARCHY = {
     "Modular Distance + Sat": [
         {"name": "Base Distance Sat", "index": 24},
         {"name": "Channel Distance Sat", "index": 25},
-        {"name": "Macro Distance Sat", "index": 26},
+        {"name": "Auto Note Distance Sat", "index": 26},
         {"name": "Rainbow Distance Sat", "index": 27},
         {"name": "Pitch 1 Distance Sat", "index": 28},
         {"name": "Pitch 2 Distance Sat", "index": 29},
@@ -805,7 +805,7 @@ CUSTOM_LIGHT_COLOR_TYPES_HIERARCHY = {
     "Modular Distance + Desat": [
         {"name": "Base Distance Desat", "index": 30},
         {"name": "Channel Distance Desat", "index": 31},
-        {"name": "Macro Distance Desat", "index": 32},
+        {"name": "Auto Note Distance Desat", "index": 32},
         {"name": "Rainbow Distance Desat", "index": 33},
         {"name": "Pitch 1 Distance Desat", "index": 34},
         {"name": "Pitch 2 Distance Desat", "index": 35},
@@ -2421,9 +2421,9 @@ class CustomLightsHandler(BasicHandler):
 
         # Macro Animation section header
         macro_header = QHBoxLayout()
-        macro_label = QLabel(tr("RGBConfigurator", "Macro Animation:"))
+        macro_label = QLabel(tr("RGBConfigurator", "Auto Note Animation:"))
         macro_label.setStyleSheet("font-weight: bold;")
-        macro_header.addWidget(self.create_help_label("Animation triggered on key press from macro playback."))
+        macro_header.addWidget(self.create_help_label("Animation for auto-played notes (loop/macro playback)."))
         macro_header.addWidget(macro_label)
         macro_header.addStretch()
         layout.addLayout(macro_header, row, 0, 1, 4)
@@ -2467,8 +2467,8 @@ class CustomLightsHandler(BasicHandler):
         row += 1
 
         # Enable Macro Dynamic Brightness checkbox
-        vel_brightness_macro = QCheckBox(tr("RGBConfigurator", "Enable Macro Dynamic Brightness"))
-        vel_brightness_macro.setToolTip("When enabled, macro animation brightness scales with\nkeypress velocity. Soft press = dim, hard press = bright.")
+        vel_brightness_macro = QCheckBox(tr("RGBConfigurator", "Enable Auto Note Dynamic Brightness"))
+        vel_brightness_macro.setToolTip("When enabled, auto-note animation brightness scales with\nkeypress velocity. Soft press = dim, hard press = bright.")
         vel_brightness_macro.setChecked(False)
         vel_brightness_macro.stateChanged.connect(lambda state, s=slot: self.on_vel_brightness_macro_changed(s, state))
         layout.addWidget(vel_brightness_macro, row, 0, 1, 4)
