@@ -1344,3 +1344,16 @@ Stored in a new firmware mini-region at EEPROM 37150 inside the existing
 loop-settings reservation (37000-37199); the 0xB0-0xB5 loop-settings HID family
 is untouched, so this GUI needs no update. Known limitation: async producers
 (MIDI-delay echoes, sustain-pedal flushes) record as base zone.
+
+## Simultaneous loop recording — aux recorders (2026-07) — firmware only
+
+Firmware-side feature (see vial-gui-custom CLAUDE.md, same section name) — **no
+GUI/HID/EEPROM change, nothing to mirror here.** Several loops can now record
+at once: loops primed or armed TOGETHER record in parallel (each with its own
+"Rec Notes" zone gate — e.g. one loop capturing keysplit notes while another
+captures triplesplit), while pressing a new loop during an ACTIVE recording
+still performs the classic handoff. The recording front-end keeps the single
+primary recorder and adds per-slot "aux" recorders beside it; the free loop
+pool is split fairly between simultaneous starters. Also: async note producers
+(MIDI-delay echoes, sustain flushes) are now zone-classified by CHANNEL against
+the base/keysplit/triplesplit channels for the note-record gate.
