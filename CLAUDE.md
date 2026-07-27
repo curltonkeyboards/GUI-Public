@@ -1332,3 +1332,15 @@ note-doubler button — now also apply when a loop / step-seq / Rhythm-Engine
 master press bypassed the modifier capture), and the **Rhythm Engine** was added
 as a target for transpose/octave/channel/articulation (channel absolute, no
 note-doubler — its transpose is octave-based). ThruLoop and arp remain excluded.
+
+## Per-loop note-record gate ("Rec Notes", 2026-07) — firmware only
+
+Firmware-side feature (see vial-gui-custom CLAUDE.md, same section name) — **no
+GUI/HID/EEPROM-protocol change, nothing to mirror here.** Each of the 8 loops
+gained a persisted 3-bit zone mask ("Rec Notes" row in the per-loop hold menu:
+All / Normal / Keysplit / Triple / combos) selecting which key zones that loop
+records — note-ons only are gated (offs/CC/AT always record, so no stuck notes).
+Stored in a new firmware mini-region at EEPROM 37150 inside the existing
+loop-settings reservation (37000-37199); the 0xB0-0xB5 loop-settings HID family
+is untouched, so this GUI needs no update. Known limitation: async producers
+(MIDI-delay echoes, sustain-pedal flushes) record as base zone.
