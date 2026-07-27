@@ -30,6 +30,7 @@ from protocol.keyboard_comm import (
     PARAM_KEYSPLIT_HE_VELOCITY_CURVE, PARAM_KEYSPLIT_HE_VELOCITY_MIN, PARAM_KEYSPLIT_HE_VELOCITY_MAX,
     PARAM_TRIPLESPLIT_HE_VELOCITY_CURVE, PARAM_TRIPLESPLIT_HE_VELOCITY_MIN, PARAM_TRIPLESPLIT_HE_VELOCITY_MAX,
     PARAM_BASE_SUSTAIN, PARAM_KEYSPLIT_SUSTAIN, PARAM_TRIPLESPLIT_SUSTAIN,
+    PARAM_KEYSPLIT_SMARTCHORD_IGNORE, PARAM_TRIPLESPLIT_SMARTCHORD_IGNORE,
     PARAM_KEYSPLITCHANNEL, PARAM_KEYSPLIT2CHANNEL, PARAM_KEYSPLITSTATUS, PARAM_KEYSPLITTRANSPOSESTATUS, PARAM_KEYSPLITVELOCITYSTATUS,
     PARAM_VELOCITY_SENSITIVITY, PARAM_CC_SENSITIVITY
 )
@@ -786,6 +787,37 @@ class QuickActuationWidget(QWidget):
         sustain_row.addStretch()
         layout.addLayout(sustain_row)
 
+        # Auto-Notes (smartchord/delay/dynamic-chord/arpeggiator/octave-doubler gate)
+        autonotes_row = QHBoxLayout()
+        autonotes_row.setContentsMargins(0, 0, 0, 0)
+        autonotes_row.setSpacing(6)
+
+        autonotes_label = QLabel(tr("QuickActuationWidget", "Auto-Notes:"))
+        autonotes_label.setStyleSheet("QLabel { font-size: 14px; }")
+        autonotes_label.setMinimumWidth(100)
+        autonotes_label.setMaximumWidth(100)
+        autonotes_row.addWidget(autonotes_label)
+
+        self.keysplit_autonotes_combo = ArrowComboBox()
+        self.keysplit_autonotes_combo.setMaximumWidth(120)
+        self.keysplit_autonotes_combo.setMaximumHeight(30)
+        self.keysplit_autonotes_combo.setStyleSheet("QComboBox { padding: 0px; font-size: 14px; text-align: center; }")
+        self.keysplit_autonotes_combo.setEditable(True)
+        self.keysplit_autonotes_combo.lineEdit().setReadOnly(True)
+        self.keysplit_autonotes_combo.lineEdit().setAlignment(Qt.AlignCenter)
+        self.keysplit_autonotes_combo.addItem("Allow", 0)
+        self.keysplit_autonotes_combo.addItem("Ignore", 1)
+        self.keysplit_autonotes_combo.setCurrentIndex(0)
+        self.keysplit_autonotes_combo.setToolTip(
+            "Ignore = keysplit keys play ONLY their plain pressed note - no smartchord harmony,\n"
+            "MIDI-delay echoes, dynamic chords, arpeggiator participation or octave-doubler note.\n"
+            "Looping is unaffected. Applies only while the keysplit zone is enabled; while it is\n"
+            "off, keysplit keys follow the base zone's Auto-Notes setting.")
+        self.keysplit_autonotes_combo.currentIndexChanged.connect(self.on_keysplit_autonotes_changed)
+        autonotes_row.addWidget(self.keysplit_autonotes_combo)
+        autonotes_row.addStretch()
+        layout.addLayout(autonotes_row)
+
         return widget
 
     def create_triplesplit_midi_controls(self):
@@ -908,6 +940,37 @@ class QuickActuationWidget(QWidget):
         sustain_row.addWidget(self.triplesplit_sustain_combo)
         sustain_row.addStretch()
         layout.addLayout(sustain_row)
+
+        # Auto-Notes (smartchord/delay/dynamic-chord/arpeggiator/octave-doubler gate)
+        autonotes_row = QHBoxLayout()
+        autonotes_row.setContentsMargins(0, 0, 0, 0)
+        autonotes_row.setSpacing(6)
+
+        autonotes_label = QLabel(tr("QuickActuationWidget", "Auto-Notes:"))
+        autonotes_label.setStyleSheet("QLabel { font-size: 14px; }")
+        autonotes_label.setMinimumWidth(100)
+        autonotes_label.setMaximumWidth(100)
+        autonotes_row.addWidget(autonotes_label)
+
+        self.triplesplit_autonotes_combo = ArrowComboBox()
+        self.triplesplit_autonotes_combo.setMaximumWidth(120)
+        self.triplesplit_autonotes_combo.setMaximumHeight(30)
+        self.triplesplit_autonotes_combo.setStyleSheet("QComboBox { padding: 0px; font-size: 14px; text-align: center; }")
+        self.triplesplit_autonotes_combo.setEditable(True)
+        self.triplesplit_autonotes_combo.lineEdit().setReadOnly(True)
+        self.triplesplit_autonotes_combo.lineEdit().setAlignment(Qt.AlignCenter)
+        self.triplesplit_autonotes_combo.addItem("Allow", 0)
+        self.triplesplit_autonotes_combo.addItem("Ignore", 1)
+        self.triplesplit_autonotes_combo.setCurrentIndex(0)
+        self.triplesplit_autonotes_combo.setToolTip(
+            "Ignore = triplesplit keys play ONLY their plain pressed note - no smartchord harmony,\n"
+            "MIDI-delay echoes, dynamic chords, arpeggiator participation or octave-doubler note.\n"
+            "Looping is unaffected. Applies only while the triplesplit zone is enabled; while it is\n"
+            "off, triplesplit keys follow the base zone's Auto-Notes setting.")
+        self.triplesplit_autonotes_combo.currentIndexChanged.connect(self.on_triplesplit_autonotes_changed)
+        autonotes_row.addWidget(self.triplesplit_autonotes_combo)
+        autonotes_row.addStretch()
+        layout.addLayout(autonotes_row)
 
         return widget
         
@@ -1264,6 +1327,22 @@ class QuickActuationWidget(QWidget):
                 self.save_midi_ui_to_memory()
                 self.send_param(PARAM_TRIPLESPLIT_SUSTAIN, sustain_val)
 
+    def on_keysplit_autonotes_changed(self):
+        """Handle keysplit Auto-Notes allow/ignore changes - send live"""
+        if not self.syncing:
+            val = self.keysplit_autonotes_combo.currentData()
+            if val is not None:
+                self.save_midi_ui_to_memory()
+                self.send_param(PARAM_KEYSPLIT_SMARTCHORD_IGNORE, val)
+
+    def on_triplesplit_autonotes_changed(self):
+        """Handle triplesplit Auto-Notes allow/ignore changes - send live"""
+        if not self.syncing:
+            val = self.triplesplit_autonotes_combo.currentData()
+            if val is not None:
+                self.save_midi_ui_to_memory()
+                self.send_param(PARAM_TRIPLESPLIT_SMARTCHORD_IGNORE, val)
+
     def on_velocity_preset_changed(self):
         """Handle velocity preset changes - update curve index and send live with vel_min/vel_max"""
         if self.syncing:
@@ -1593,6 +1672,7 @@ class QuickActuationWidget(QWidget):
         self.midi_settings['keysplit_channel'] = self.keysplit_channel_slider.value()
         self.midi_settings['keysplit_transpose'] = self.keysplit_transpose_slider.value()
         self.midi_settings['keysplit_sustain'] = self.keysplit_sustain_combo.currentData()
+        self.midi_settings['keysplit_autonotes_ignore'] = self.keysplit_autonotes_combo.currentData()
         self.midi_settings['keysplit_velocity_curve'] = self.keysplit_velocity_curve.currentData()
         self.midi_settings['keysplit_velocity_min'] = self.keysplit_velocity_min.value()
         self.midi_settings['keysplit_velocity_max'] = self.keysplit_velocity_max.value()
@@ -1601,6 +1681,7 @@ class QuickActuationWidget(QWidget):
         self.midi_settings['triplesplit_channel'] = self.triplesplit_channel_slider.value()
         self.midi_settings['triplesplit_transpose'] = self.triplesplit_transpose_slider.value()
         self.midi_settings['triplesplit_sustain'] = self.triplesplit_sustain_combo.currentData()
+        self.midi_settings['triplesplit_autonotes_ignore'] = self.triplesplit_autonotes_combo.currentData()
         self.midi_settings['triplesplit_velocity_curve'] = self.triplesplit_velocity_curve.currentData()
         self.midi_settings['triplesplit_velocity_min'] = self.triplesplit_velocity_min.value()
         self.midi_settings['triplesplit_velocity_max'] = self.triplesplit_velocity_max.value()

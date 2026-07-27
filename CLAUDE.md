@@ -839,7 +839,8 @@ Audited + de-overlapped 2026-06 (see "EEPROM de-overlap" below).
 | 65406-65407 | 2 bytes | LCD theme (magic 0x7C + index, `LCD_THEME_EEPROM_BASE`) |
 | 65408-65426 | 19 bytes | Channel Articulations (`CHANNEL_ARTIC_EEPROM_BASE`: magic 0xCB + enable + 16-ch map + Articulation CC) |
 | 65428-65429 | 2 bytes | Curve-index migration marker (`CURVE_MIGRATION_MAGIC_ADDR`, word 0xCA11; moved from 65410 — it overlapped the channel-artic map there) |
-| 65430-65527 | 98 bytes | Free |
+| 65430-65441 | 12 bytes | Keysplit/Triplesplit QB toggle-button configs (`KSQB_EEPROM_BASE`: magic 0x4B51 + 2 x 4) |
+| 65442-65527 | 86 bytes | Free |
 | 65528-65535 | 8 bytes | Boot-magic shadow (`EECONFIG_MAGIC_SHADOW_ADDR`) |
 
 ### EEPROM de-overlap (2026-06)
@@ -1380,3 +1381,25 @@ GUI changes (this repo, label/text only):
   Animation:" → "Auto Note Animation:", checkbox "Enable Macro Dynamic
   Brightness" → "Enable Auto Note Dynamic Brightness". Loop/VIA-macro labels
   ("Loop" scheme, "Vial Macros" LED category) keep their names.
+
+## Keysplit/Triplesplit toggle buttons + keymap-tab Auto-Notes rows (2026-07)
+
+Firmware feature (see vial-gui-custom CLAUDE.md, same section name) + GUI
+mirrors in this repo:
+
+- **New keycodes** `KS_QB_TOGGLE` = 0xF2F2 / `TS_QB_TOGGLE` = 0xF2F3
+  (keycodes_v5/v6; labels "Keysplit On/Off" / "Triplesplit On/Off" at the top
+  of `KEYCODES_KEYSPLIT_BUTTONS` in keycodes.py, so they show in the existing
+  keysplit picker section). On the device: **tap** = zone on/off using the
+  button's stored config (Channel / Transpose / Articulation, each defaulting
+  to "Device Master" = follow the base zone; once any is set, Auto Notes +
+  Sustain Allow/Ignore ride along), **hold** = on-device config menu. The QB
+  Basics picker's Keysplit/Triplesplit rows now bind these; LEDs show on/off
+  with the toggle-key colors. Config persists in a firmware-only EEPROM
+  mini-region (65430) — no GUI/HID protocol change.
+- **Keymap tab** (`keymap_editor.py`): the advanced keysplit and triplesplit
+  sections gained an **"Auto-Notes:" Allow/Ignore** ArrowComboBox row under
+  Sustain, live-sending `PARAM_KEYSPLIT_SMARTCHORD_IGNORE` (48) /
+  `PARAM_TRIPLESPLIT_SMARTCHORD_IGNORE` (49) — same idiom as the Sustain
+  combos (guarded by `self.syncing`; stored as `*_autonotes_ignore` in
+  `save_midi_ui_to_memory`).

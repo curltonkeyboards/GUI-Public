@@ -2304,6 +2304,10 @@ class keycodes_v6:
         # Toggle bulk-reset actions (free block 0xF2F0+, after factory arps 0xF200-0xF2EF)
         "TOGGLE_RESET_MULTI": 0xF2F0,  # All multi-toggles back to step 1 (no key events)
         "TOGGLE_UNHOLD_ALL": 0xF2F1,   # Release every held non-multi (hold) toggle
+        # Keysplit/Triplesplit QuickBuild toggle buttons (tap = zone on/off per
+        # the button's stored config, hold = on-device config menu)
+        "KS_QB_TOGGLE": 0xF2F2,
+        "TS_QB_TOGGLE": 0xF2F3,
 
         # MIDI Delay Navigation/Control (0xEF89-0xEF8F)
         "CLEAR_HOLD": 0xEF88,   # Hold: OLED shows "Press Loop/Seq to Clear", then press to clear

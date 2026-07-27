@@ -1729,6 +1729,8 @@ KEYCODES_MIDI_CHANNEL_KEYSPLIT = [
 ]
 
 KEYCODES_KEYSPLIT_BUTTONS = [
+    K("KS_QB_TOGGLE", "Keysplit\nOn/Off", "Tap: turn keysplit on/off using the button's configured options. Hold: configure Channel, Transpose and Articulation (each defaults to 'Device Master' = follow the base zone); once any option is set, Auto Notes and Sustain Allow/Ignore appear too. LED shows on/off like a toggle key."),
+    K("TS_QB_TOGGLE", "Triplesplit\nOn/Off", "Tap: turn triplesplit on/off using the button's configured options. Hold: configure Channel, Transpose and Articulation (each defaults to 'Device Master' = follow the base zone); once any option is set, Auto Notes and Sustain Allow/Ignore appear too. LED shows on/off like a toggle key."),
     K("KS_TOGGLE", "Channel\nSplit\nToggle", "Toggle keysplit mode"),
     K("KS_TRANSPOSE_TOGGLE", "Transpose\nSplit\nToggle", "Toggle keysplit mode"),
     K("KS_VELOCITY_TOGGLE", "Velocity\nSplit\nToggle", "Toggle keysplit mode"),
