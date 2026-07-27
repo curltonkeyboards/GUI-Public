@@ -1222,6 +1222,18 @@ connect/settings load pushed it).
   index is selected — the GUI must only display, never echo). Post-actuation
   modes keep the forced-ON state.
 
+## Articulation Import button (2026-07)
+
+**Import...** next to Export in the Preset Settings row (`velocity_tab.py`
+`on_import_articulation` + `_parse_articulation_import`): paste the text block
+produced by Export (pre-filled from the clipboard when it holds one) to load
+the articulation into the editor — curve points + every bundled zone setting,
+same keys/shape as the device preset-load path. Unknown keys are ignored,
+numeric fields clamped, end-point x forced to 0/255. Import only populates the
+panel + `global_midi_settings`; nothing reaches the keyboard or EEPROM until
+Save / Save As (articulation edits in general are local-until-Save — the only
+immediate-persist control is the AT/CC band Enable toggle, by design).
+
 ## Next ThruLoop Rec + Toggle bulk-reset keycodes (2026-07) — GUI side
 
 Three new keycodes (firmware handlers in vial-gui-custom; values mirrored in

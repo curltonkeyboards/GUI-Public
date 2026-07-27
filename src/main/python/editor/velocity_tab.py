@@ -1496,6 +1496,13 @@ class VelocityTab(BasicEditor):
         self.export_btn.clicked.connect(self.on_export_articulation)
         buttons_layout.addWidget(self.export_btn)
 
+        self.import_btn = QPushButton(tr("VelocityTab", "Import..."))
+        self.import_btn.setMinimumHeight(35)
+        self.import_btn.setToolTip("Paste an exported articulation text block to load "
+                                   "its settings into the editor (press Save to persist)")
+        self.import_btn.clicked.connect(self.on_import_articulation)
+        buttons_layout.addWidget(self.import_btn)
+
         # Inside the Preset Settings tab (NOT the group layout) so the Channel
         # Articulations tab doesn't inherit the preset New/Save/Save As/Export
         # row — that tab has its own single Save button.
@@ -3397,6 +3404,151 @@ class VelocityTab(BasicEditor):
         btn_row.addWidget(close_btn)
         layout.addLayout(btn_row)
 
+        dlg.exec_()
+
+    @staticmethod
+    def _parse_articulation_import(text):
+        """Parse the text block produced by _build_articulation_export_text back
+        into (name, points, zone_data). zone_data uses the same keys/shape the
+        preset-load path (on_user_curve_selected) consumes. Raises ValueError
+        with a readable message on malformed input. Unknown keys are ignored so
+        newer exports still load on older GUIs."""
+        import re
+
+        fields = {}
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("==="):
+                continue
+            if ":" not in line:
+                continue
+            key, _, value = line.partition(":")
+            fields[key.strip().lower()] = value.strip()
+
+        if "points" not in fields:
+            raise ValueError("No 'points:' line found — is this an articulation export?")
+
+        pairs = re.findall(r"\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]", fields["points"])
+        if len(pairs) != 4:
+            raise ValueError(f"Expected 4 curve points, found {len(pairs)}.")
+        points = [[max(0, min(255, int(x))), max(0, min(255, int(y)))] for x, y in pairs]
+        # The curve editor x-constrains the end points; enforce here so a
+        # hand-edited export can't produce an invalid curve.
+        points[0][0] = 0
+        points[3][0] = 255
+
+        def num(key, default, lo, hi):
+            try:
+                return max(lo, min(hi, int(fields[key])))
+            except (KeyError, ValueError):
+                return default
+
+        def flag(key):
+            return fields.get(key, "0").strip() in ("1", "true", "True")
+
+        zone_data = {
+            'velocity_min': num('velocity_min', 1, 1, 127),
+            'velocity_max': num('velocity_max', 127, 1, 127),
+            'slow_press_time': num('slow_press_time', 200, 2, 1000),
+            'fast_press_time': num('fast_press_time', 20, 2, 1000),
+            'aftertouch_mode': num('aftertouch_mode', 0, 0, 16),
+            'aftertouch_cc': num('aftertouch_cc', 255, 0, 255),
+            'aftertouch_smoothness': num('aftertouch_smoothness', 0, 0, 100),
+            'vibrato_sensitivity': num('vibrato_sensitivity', 50, 0, 100),
+            'vibrato_decay': num('vibrato_decay', 10, 0, 1000),
+            'actuation_override': flag('actuation_override'),
+            'actuation_point': num('actuation_point', 20, 1, 40),
+            'speed_peak_ratio': num('trigger_minimum', 1, 1, 35),
+            'retrigger_distance': num('retrigger_distance', 0, 0, 20),
+            'at_uses_curve': flag('at_uses_curve'),
+            'legato': flag('legato'),
+            'velocity_as_at': flag('velocity_as_at'),
+            'points': points,
+        }
+        name = fields.get('name', 'Imported')[:15]
+        return name, points, zone_data
+
+    def on_import_articulation(self):
+        """Paste an exported articulation text block and load it into the editor.
+        Import only populates the panel + local settings — nothing touches the
+        keyboard or EEPROM until the user presses Save / Save As."""
+        dlg = QDialog()
+        dlg.setWindowTitle(tr("VelocityTab", "Import Articulation"))
+        dlg.setMinimumWidth(360)
+        layout = QVBoxLayout(dlg)
+
+        info = QLabel(tr("VelocityTab",
+                         "Paste an articulation export below (the text produced by "
+                         "Export...). Importing loads the settings into the editor; "
+                         "press Save / Save As afterwards to store it on the keyboard."))
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        text_box = QTextEdit()
+        text_box.setLineWrapMode(QTextEdit.NoWrap)
+        text_box.setMinimumHeight(320)
+        # Pre-fill from the clipboard when it already holds an export block.
+        try:
+            clip = QApplication.clipboard().text()
+            if clip and "=== Articulation Export ===" in clip:
+                text_box.setPlainText(clip)
+        except Exception:
+            pass
+        layout.addWidget(text_box)
+
+        btn_row = QHBoxLayout()
+        import_btn = QPushButton(tr("VelocityTab", "Import"))
+        btn_row.addWidget(import_btn)
+        cancel_btn = QPushButton(tr("VelocityTab", "Cancel"))
+        cancel_btn.clicked.connect(dlg.reject)
+        btn_row.addWidget(cancel_btn)
+        layout.addLayout(btn_row)
+
+        def do_import():
+            try:
+                name, points, zone_data = self._parse_articulation_import(
+                    text_box.toPlainText())
+            except Exception as e:
+                QMessageBox.warning(
+                    dlg,
+                    tr("VelocityTab", "Import Failed"),
+                    tr("VelocityTab", f"Could not parse the pasted text: {e}")
+                )
+                return
+
+            # Apply to the editor — same shape/order as loading a user preset
+            # from the device (on_user_curve_selected), device untouched.
+            self.curve_editor.set_points(points)
+            self.update_zone_controls_from_settings('base', zone_data)
+            s = self.global_midi_settings
+            s['velocity_min'] = zone_data['velocity_min']
+            s['velocity_max'] = zone_data['velocity_max']
+            s['min_press_time'] = zone_data['slow_press_time']
+            s['max_press_time'] = zone_data['fast_press_time']
+            s['aftertouch_mode'] = zone_data['aftertouch_mode']
+            s['aftertouch_smoothness'] = zone_data['aftertouch_smoothness']
+            s['aftertouch_cc'] = zone_data['aftertouch_cc']
+            s['vibrato_sensitivity'] = zone_data['vibrato_sensitivity']
+            s['vibrato_decay_time'] = zone_data['vibrato_decay']
+            s['actuation_override'] = zone_data['actuation_override']
+            s['actuation_point'] = zone_data['actuation_point']
+            s['speed_peak_ratio'] = zone_data['speed_peak_ratio']
+            s['retrigger_distance'] = zone_data['retrigger_distance']
+            s['at_uses_curve'] = zone_data['at_uses_curve']
+            s['legato'] = zone_data['legato']
+            s['velocity_as_at'] = zone_data['velocity_as_at']
+
+            self._imported_articulation_name = name
+            dlg.accept()
+            QMessageBox.information(
+                None,
+                tr("VelocityTab", "Articulation Imported"),
+                tr("VelocityTab", f"'{name}' loaded into the editor.\n\n"
+                   "Press Save / Save As to store it to a user preset slot on "
+                   "the keyboard.")
+            )
+
+        import_btn.clicked.connect(do_import)
         dlg.exec_()
 
     def on_save_curve(self):
