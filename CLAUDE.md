@@ -1222,6 +1222,18 @@ connect/settings load pushed it).
   index is selected — the GUI must only display, never echo). Post-actuation
   modes keep the forced-ON state.
 
+## Threaded keyboard-clone transfer (2026-07) — GUI side
+
+The clone save/load chunk loops in `main_window.py` now run on a background
+`threading.Thread` (HID access is serialized by `hid_lock_for`) while the GUI
+thread only pumps events and updates the progress dialog. Previously the
+whole transfer ran synchronously on the GUI thread — each chunk's HID read
+can block 500 ms × retries, so the app went "Not Responding" for the
+duration, and a frozen app stops draining the keyboard's USB endpoints
+(which, before the firmware's bounded-send fix in vial-gui-custom
+usb_main.c, hard-froze the keyboard when keys were pressed mid-transfer).
+Cancel/fail/finalize semantics are unchanged.
+
 ## Articulation Import button (2026-07)
 
 **Import...** next to Export in the Preset Settings row (`velocity_tab.py`

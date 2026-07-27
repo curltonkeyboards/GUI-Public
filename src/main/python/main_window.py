@@ -440,30 +440,65 @@ class MainWindow(QMainWindow):
 
         # The live pollers (matrix/velocity) share the HID handle; make them
         # stand down for the duration of the bulk transfer.
+        #
+        # The chunk loop runs on a BACKGROUND thread (HID access is serialized
+        # by hid_lock_for) while the GUI thread only pumps events and updates
+        # the progress bar. Running the transfer synchronously on the GUI
+        # thread froze the whole app for its duration — each chunk's HID read
+        # can block up to 500 ms × retries — and a frozen app stops draining
+        # the keyboard's USB endpoints, which (before the firmware's bounded-
+        # send fix) wedged the keyboard itself when keys were pressed
+        # mid-transfer.
+        import threading
+        import time
+        state = {"addr": 0, "done": False, "canceled": False, "failed_addr": None}
+
+        def read_worker():
+            try:
+                addr = 0
+                while addr < size:
+                    if state["canceled"]:
+                        return
+                    length = min(chunk_size, size - addr)
+                    data = None
+                    for _ in range(3):  # per-chunk retry on top of the HID-level retries
+                        data = keyboard.clone_read_chunk(addr, length)
+                        if data is not None:
+                            break
+                    if data is None:
+                        state["failed_addr"] = addr
+                        return
+                    blob.extend(data)
+                    addr += length
+                    state["addr"] = addr
+            except Exception:
+                logging.exception("Clone read worker failed")
+                state["failed_addr"] = state["addr"]
+            finally:
+                state["done"] = True
+
         set_hid_transfer_active(True)
         try:
-            addr = 0
-            while addr < size:
+            worker = threading.Thread(target=read_worker, daemon=True)
+            worker.start()
+            while not state["done"]:
                 if progress.wasCanceled():
-                    return  # nothing was written to the device or to disk
-                length = min(chunk_size, size - addr)
-                data = None
-                for _ in range(3):  # per-chunk retry on top of the HID-level retries
-                    data = keyboard.clone_read_chunk(addr, length)
-                    if data is not None:
-                        break
-                if data is None:
-                    QMessageBox.critical(self, "Save failed",
-                                         tr("MainWindow", "Failed to read keyboard memory at address {}.\n"
-                                                          "No file was written.").format(addr))
-                    return
-                blob += data
-                addr += length
-                progress.setValue(addr)
+                    state["canceled"] = True
+                progress.setValue(state["addr"])
                 QApplication.processEvents()
+                time.sleep(0.01)
+            worker.join()
         finally:
             set_hid_transfer_active(False)
             progress.close()
+
+        if state["canceled"]:
+            return  # nothing was written to the device or to disk
+        if state["failed_addr"] is not None:
+            QMessageBox.critical(self, "Save failed",
+                                 tr("MainWindow", "Failed to read keyboard memory at address {}.\n"
+                                                  "No file was written.").format(state["failed_addr"]))
+            return
 
         clone = {
             "magic": self.CLONE_FILE_MAGIC,
@@ -548,32 +583,54 @@ class MainWindow(QMainWindow):
         progress.setWindowModality(Qt.WindowModal)
         progress.setMinimumDuration(0)
 
-        ok = True
-        canceled = False
-        failed_addr = None
+        # Chunk loop on a background thread, GUI thread pumps — same rationale
+        # as the save path (a synchronous transfer froze the app, and a frozen
+        # app used to wedge the keyboard when keys were pressed mid-transfer).
+        import threading
+        import time
+        state = {"addr": 0, "done": False, "canceled": False, "failed_addr": None}
+
+        def write_worker():
+            try:
+                addr = 0
+                while addr < size:
+                    if state["canceled"]:
+                        return
+                    length = min(chunk_size, size - addr)
+                    written = False
+                    for _ in range(3):  # per-chunk retry on top of the HID-level retries
+                        if keyboard.clone_write_chunk(addr, blob[addr:addr + length]):
+                            written = True
+                            break
+                    if not written:
+                        state["failed_addr"] = addr
+                        return
+                    addr += length
+                    state["addr"] = addr
+            except Exception:
+                logging.exception("Clone write worker failed")
+                state["failed_addr"] = state["addr"]
+            finally:
+                state["done"] = True
+
         set_hid_transfer_active(True)
         try:
-            addr = 0
-            while addr < size:
+            worker = threading.Thread(target=write_worker, daemon=True)
+            worker.start()
+            while not state["done"]:
                 if progress.wasCanceled():
-                    canceled = True
-                    break
-                length = min(chunk_size, size - addr)
-                written = False
-                for _ in range(3):  # per-chunk retry on top of the HID-level retries
-                    if keyboard.clone_write_chunk(addr, blob[addr:addr + length]):
-                        written = True
-                        break
-                if not written:
-                    ok = False
-                    failed_addr = addr
-                    break
-                addr += length
-                progress.setValue(addr)
+                    state["canceled"] = True
+                progress.setValue(state["addr"])
                 QApplication.processEvents()
+                time.sleep(0.01)
+            worker.join()
         finally:
             set_hid_transfer_active(False)
             progress.close()
+
+        canceled = state["canceled"]
+        failed_addr = state["failed_addr"]
+        ok = failed_addr is None
 
         if canceled or not ok:
             # A partial restore leaves the EEPROM as a mix of old and new data.
