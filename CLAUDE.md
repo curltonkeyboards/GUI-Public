@@ -1176,8 +1176,9 @@ names, QB masters, ...), unlike a `.vil` layout file.
     new entries take firmware defaults) and every ear-trainer slot (re-laid for
     the wider 7-byte interval mask — same "semitone + 24" bit numbering, so the
     old bits copy verbatim). The three regions that are new in v2 (loop note
-    gate, Keysplit/Triplesplit button config, Multichannel) have their magic
-    zeroed so the firmware seeds proper defaults.
+    gate, Keysplit/Triplesplit button config, Multichannel) are wiped to zero
+    in full — magic AND body — so the firmware seeds proper defaults and none
+    of the junk that sat at those addresses in v1 rides along.
   - **Adding a migration:** write `_migrate_vN_to_vN1(blob, notes)`, register it
     under key N, and append a user-facing note for anything preserved or reset.
     Addresses inside a migration describe a HISTORICAL layout — hardcode them,

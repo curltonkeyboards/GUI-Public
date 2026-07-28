@@ -6,7 +6,7 @@ from protocol.clone_migrations import (
     V1_FLED_BASE, V1_FLED_STATE_COUNT, V1_FLED_MAGIC_ADDR, V1_FLED_MAGIC,
     V2_FLED_MAGIC_ADDR, V2_FLED_MAGIC, V2_FLED_NEW_STATE_DEFAULTS,
     ET_BASE, ET_SLOTS_ADDR, ET_SLOT_SIZE, ET_SLOT_COUNT,
-    V1_ET_MAGIC, V2_ET_MAGIC, V2_NEW_REGION_MAGICS,
+    V1_ET_MAGIC, V2_ET_MAGIC, V2_NEW_REGIONS,
 )
 
 EEPROM_SIZE = 65536
@@ -83,8 +83,8 @@ class TestCloneMigrationV1ToV2(unittest.TestCase):
     def test_only_the_affected_regions_change(self):
         allowed = set(range(ET_BASE, ET_BASE + 2 + ET_SLOT_COUNT * ET_SLOT_SIZE))
         allowed |= set(range(V1_FLED_MAGIC_ADDR, V2_FLED_MAGIC_ADDR + 2))
-        for addr, _name in V2_NEW_REGION_MAGICS:
-            allowed |= {addr, addr + 1}
+        for addr, size, _name in V2_NEW_REGIONS:
+            allowed |= set(range(addr, addr + size))
         changed = {i for i in range(EEPROM_SIZE) if self.v1[i] != self.v2[i]}
         self.assertTrue(changed.issubset(allowed),
                         "migration touched bytes outside the regions it owns: "
@@ -137,11 +137,22 @@ class TestCloneMigrationV1ToV2(unittest.TestCase):
 
     # ---- regions introduced in v2 ----
 
-    def test_new_regions_invalidated(self):
-        for addr, name in V2_NEW_REGION_MAGICS:
-            self.assertEqual(struct.unpack_from("<H", self.v2, addr)[0], 0,
-                             "{} magic at {} must be zeroed so the firmware "
-                             "seeds defaults".format(name, addr))
+    def test_new_regions_fully_cleared(self):
+        # Zeroing the magic is what makes the firmware reseed; zeroing the body
+        # too means the image carries no junk from whatever used to live at
+        # these addresses when they were free space in v1.
+        for addr, size, name in V2_NEW_REGIONS:
+            region = bytes(self.v2[addr:addr + size])
+            self.assertEqual(region, bytes(size),
+                             "{} at {}..{} must be fully cleared, got {!r}".format(
+                                 name, addr, addr + size - 1, region))
+
+    def test_new_regions_were_actually_dirty_before(self):
+        # Guards the test above against silently passing on an image that
+        # happened to be zero there already.
+        for addr, size, name in V2_NEW_REGIONS:
+            self.assertNotEqual(bytes(self.v1[addr:addr + size]), bytes(size),
+                                "{} should hold junk in the v1 fixture".format(name))
 
 
 class TestCloneMigrationUninitialisedSource(unittest.TestCase):
@@ -151,11 +162,17 @@ class TestCloneMigrationUninitialisedSource(unittest.TestCase):
         blank = b"\xFF" * EEPROM_SIZE     # no valid v1 magic anywhere
         self.out, self.notes = migrate_clone(blank, 1, 2)
 
-    def test_fled_magic_invalidated_not_garbage(self):
-        self.assertEqual(struct.unpack_from("<H", self.out, V2_FLED_MAGIC_ADDR)[0], 0)
+    def test_fled_region_cleared_not_garbage(self):
+        end = V2_FLED_MAGIC_ADDR + 2
+        self.assertEqual(bytes(self.out[V1_FLED_BASE:end]), bytes(end - V1_FLED_BASE))
 
-    def test_et_magic_invalidated_not_garbage(self):
-        self.assertEqual(struct.unpack_from("<H", self.out, ET_BASE)[0], 0)
+    def test_et_region_cleared_not_garbage(self):
+        size = 2 + ET_SLOT_COUNT * ET_SLOT_SIZE
+        self.assertEqual(bytes(self.out[ET_BASE:ET_BASE + size]), bytes(size))
+
+    def test_new_regions_cleared(self):
+        for addr, size, name in V2_NEW_REGIONS:
+            self.assertEqual(bytes(self.out[addr:addr + size]), bytes(size), name)
 
     def test_notes_still_produced(self):
         self.assertTrue(self.notes)

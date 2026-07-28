@@ -105,11 +105,20 @@ ET_SLOTS_ADDR = ET_BASE + 2
 V1_ET_MAGIC = 0xE701
 V2_ET_MAGIC = 0xE702
 
-# --- regions introduced in v2 (magic word address only) ---
-V2_NEW_REGION_MAGICS = [
-    (37150, "per-loop Rec Notes gate"),
-    (65430, "Keysplit/Triplesplit button config"),
-    (65444, "Multichannel echo presets"),
+# --- regions introduced in v2: (address, total size incl. magic, name) ---
+# These addresses were FREE in the v1 layout, so a v1 image carries whatever
+# junk the old firmware happened to leave there. Zero the WHOLE region, not
+# just the magic: the firmware would reseed the data anyway (magic mismatch →
+# defaults → save), but leaving live-looking bytes sitting under a region that
+# is only one magic word away from being read is exactly the kind of thing that
+# turns into a mystery bug later. Sizes are magic(2) + the firmware's data:
+#   note gate  2 + MAX_MACROS(8)          = 10
+#   KSQB       2 + 2 zones * 4            = 10
+#   MC         2 + MC_PRESET_COUNT(16) * 4 = 66
+V2_NEW_REGIONS = [
+    (37150, 10, "per-loop Rec Notes gate"),
+    (65430, 10, "Keysplit/Triplesplit button config"),
+    (65444, 66, "Multichannel echo presets"),
 ]
 
 
@@ -141,10 +150,12 @@ def _migrate_v1_to_v2(blob, notes):
         notes.append("Functional LED colours: kept (2 new Multi Channel states "
                      "set to their defaults).")
     else:
-        # Never initialised on the source keyboard — let the firmware seed it.
-        _set_u16le(blob, V2_FLED_MAGIC_ADDR, 0)
-        notes.append("Functional LED colours: not configured in the clone, will "
-                     "use defaults.")
+        # Never initialised on the source keyboard — clear the whole region so
+        # no stale bytes ride along, and let the firmware seed it.
+        blob[V1_FLED_BASE:V2_FLED_MAGIC_ADDR + 2] = bytes(
+            V2_FLED_MAGIC_ADDR + 2 - V1_FLED_BASE)
+        notes.append("Functional LED colours: not configured in the clone, "
+                     "cleared and will use defaults.")
 
     # ---- 2. ear trainer slots ----
     if _u16le(blob, ET_BASE) == V1_ET_MAGIC:
@@ -156,15 +167,19 @@ def _migrate_v1_to_v2(blob, notes):
         notes.append("Ear trainer slots: kept (converted to the wider "
                      "-24..+24 interval range).")
     else:
-        _set_u16le(blob, ET_BASE, 0)
-        notes.append("Ear trainer slots: not configured in the clone, will use "
-                     "defaults.")
+        et_size = 2 + ET_SLOT_COUNT * ET_SLOT_SIZE
+        blob[ET_BASE:ET_BASE + et_size] = bytes(et_size)
+        notes.append("Ear trainer slots: not configured in the clone, cleared "
+                     "and will use defaults.")
 
     # ---- 3. regions that did not exist in v1 ----
-    for addr, _name in V2_NEW_REGION_MAGICS:
-        _set_u16le(blob, addr, 0)
-    notes.append("New in this firmware (will start at defaults): "
-                 + ", ".join(name for _addr, name in V2_NEW_REGION_MAGICS) + ".")
+    # Wipe each region to zero, magic included. The zeroed magic is what makes
+    # the firmware seed proper defaults on the next boot; zeroing the data too
+    # just means no stale bytes ride along in the meantime.
+    for addr, size, _name in V2_NEW_REGIONS:
+        blob[addr:addr + size] = bytes(size)
+    notes.append("New in this firmware, cleared and started at defaults: "
+                 + ", ".join(name for _addr, _size, name in V2_NEW_REGIONS) + ".")
 
 
 # Registry: key = source version, value = function converting it to key + 1.
