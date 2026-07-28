@@ -1157,17 +1157,31 @@ names, QB masters, ...), unlike a `.vil` layout file.
   eeprom_layout_version, eeprom_size, firmware_version, data: base64}`,
   extension `.kbclone`.
 - **Layout-version gate**: the firmware reports `EEPROM_LAYOUT_VERSION`
-  (bumped whenever its EEPROM map changes); `on_clone_load` refuses a clone
-  whose stored version (or size) differs from the connected keyboard's, so an
-  old clone can never scatter data over a rearranged EEPROM map. The GUI reads
-  the version from the device at INFO time and never hardcodes it, so firmware
-  bumps need **no GUI change** — a v1 `.kbclone` simply stops loading onto v2+
-  firmware with the "Incompatible clone" dialog. **Firmware is now at v2**
-  (2026-07: the func-LED config grew and relocated its magic; the ear-trainer
-  slot struct changed field meaning in place). Restoring a v1 clone onto v2
-  would not corrupt anything, but it WOULD silently reseed the functional-LED
-  colours and every ear-trainer slot — which is exactly what the gate is for.
-  Tell users to re-save their clones after a firmware update that bumps this.
+  (bumped whenever its EEPROM map changes); `on_clone_load` compares it with
+  the version stamped in the file. The GUI reads the device's version at INFO
+  time and never hardcodes it. **Firmware is at v2** (2026-07: the func-LED
+  config grew and relocated its magic; the ear-trainer slot struct changed
+  field meaning in place).
+- **Clone migration** (`protocol/clone_migrations.py`): an OLDER clone is
+  converted forward instead of refused. `migrate_clone(image, from_v, to_v)`
+  chains a registry of one-step migrations (`_MIGRATIONS[N]`: vN → vN+1), each
+  mutating the whole 64 KB image in place, so a v1 file walks 1→2→3→… up to the
+  firmware's version. The user sees a confirm dialog listing exactly what is
+  carried across and what resets; the `.kbclone` on disk is never modified.
+  **Still refused, never guessed:** a clone NEWER than the firmware (no
+  downgrade path) and any version gap with a missing migration.
+  - **v1 → v2** preserves both regions that would otherwise have been silently
+    reseeded: functional-LED colours (the 2 new Multichannel states were
+    APPENDED, so states 0-89 keep their addresses; only the magic moves and the
+    new entries take firmware defaults) and every ear-trainer slot (re-laid for
+    the wider 7-byte interval mask — same "semitone + 24" bit numbering, so the
+    old bits copy verbatim). The three regions that are new in v2 (loop note
+    gate, Keysplit/Triplesplit button config, Multichannel) have their magic
+    zeroed so the firmware seeds proper defaults.
+  - **Adding a migration:** write `_migrate_vN_to_vN1(blob, notes)`, register it
+    under key N, and append a user-facing note for anything preserved or reset.
+    Addresses inside a migration describe a HISTORICAL layout — hardcode them,
+    never reference "current" constants.
 - **UX** (`main_window.py`): cancellable QProgressDialog for both directions;
   live pollers paused via `set_hid_transfer_active`; per-chunk ×3 retry; a
   confirm warning before restore (overwrites ALL settings, don't disconnect,

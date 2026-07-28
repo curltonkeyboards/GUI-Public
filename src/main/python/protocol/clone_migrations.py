@@ -1,0 +1,211 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""Keyboard-clone EEPROM layout migrations.
+
+A `.kbclone` file is a byte-for-byte image of the keyboard's 64 KB config
+EEPROM, stamped with the `EEPROM_LAYOUT_VERSION` of the firmware that produced
+it. When that version doesn't match the connected keyboard's, the image can't
+be written as-is — regions may have moved, resized, or changed meaning.
+
+Rather than refusing outright, this module converts an older image forward one
+version at a time, so a clone taken before a firmware update still restores
+with its data intact.
+
+HOW TO ADD A MIGRATION
+----------------------
+When you bump `EEPROM_LAYOUT_VERSION` in the firmware's config.h, add a
+`_migrate_vN_to_vN1(blob, notes)` function here and register it in
+`_MIGRATIONS` under key N. `migrate_clone()` chains them, so a v1 image will
+walk 1 -> 2 -> 3 -> ... up to whatever the connected firmware reports.
+
+Each migration:
+  * receives a `bytearray` of the WHOLE EEPROM image and mutates it in place;
+  * appends a human-readable line to `notes` for anything a user would care
+    about (data carried across, data reset to defaults);
+  * must be safe when the source region was never initialised — check the old
+    magic first, and if it doesn't match, just invalidate the new magic so the
+    firmware reseeds that region on the next boot.
+
+RULES OF THUMB
+--------------
+  * Region addresses below are the values of the firmware `#define`s AT THE
+    TIME OF THAT MIGRATION. Never replace them with "current" constants — a
+    migration describes a historical layout and must stay frozen even when the
+    live layout moves again.
+  * Magic words are stored little-endian (the firmware writes the raw bytes of
+    a uint16 on a little-endian MCU).
+  * Regions that are NEW in the target version hold whatever junk occupied that
+    address in the old layout. Zero their magic so the firmware's own
+    magic-mismatch path seeds proper defaults, instead of leaving a 1-in-65536
+    chance of stale bytes being read as a valid config.
+  * The QMK magic (0-1), the VIA/Vial magic and the boot-magic shadow are
+    deliberately NOT touched here — the firmware's clone WRITE path already
+    overlays the chip's current bytes over those (kb_clone_protect_chunk), so a
+    clone can never plant a foreign magic and trigger a factory reset.
+"""
+
+import struct
+
+
+class CloneMigrationError(Exception):
+    """Raised when an image cannot be converted to the target layout."""
+
+
+def _u16le(blob, addr):
+    return struct.unpack_from("<H", blob, addr)[0]
+
+
+def _set_u16le(blob, addr, value):
+    struct.pack_into("<H", blob, addr, value)
+
+
+# =============================================================================
+# v1 -> v2   (2026-07)
+# =============================================================================
+# Three things changed between layout v1 and v2:
+#
+#   1. Functional LED config (base 64320) grew 90 -> 92 states, 360 -> 368
+#      bytes. States 0-89 keep their exact indices and addresses (the two new
+#      Multichannel states were APPENDED), so the user's colours survive
+#      untouched — only the magic moves (64680 -> 64688) and its value bumps
+#      (0xF1F1 -> 0xF1F2), and the two new entries need their defaults.
+#
+#   2. Ear-trainer slots (base 60812, 10 x 24 bytes) changed field layout IN
+#      PLACE: interval_mask grew 5 -> 7 bytes, absorbing the two trailing pad
+#      bytes. sizeof stayed 24, so the region did not move, but every field
+#      after the mask shifted by 2. Bit numbering inside the mask is unchanged
+#      ("semitone + 24" in both), so the old 5 bytes copy over verbatim and the
+#      2 new bytes (intervals +13..+24, which v1 could not express) are zero.
+#
+#   3. Three mini-regions are NEW: the per-loop note gate (37150), the
+#      Keysplit/Triplesplit button config (65430) and Multichannel (65444).
+#      Nothing to carry across — invalidate so the firmware seeds defaults.
+
+# --- v1 functional LED region ---
+V1_FLED_BASE = 64320
+V1_FLED_STATE_COUNT = 90
+V1_FLED_MAGIC_ADDR = V1_FLED_BASE + V1_FLED_STATE_COUNT * 4     # 64680
+V1_FLED_MAGIC = 0xF1F1
+
+# --- v2 functional LED region ---
+V2_FLED_STATE_COUNT = 92
+V2_FLED_MAGIC_ADDR = V1_FLED_BASE + V2_FLED_STATE_COUNT * 4     # 64688
+V2_FLED_MAGIC = 0xF1F2
+# Defaults for the two appended states, mirroring func_led_defaults[] in the
+# firmware's led/functional_led_config.c: {h, s, v, blink}.
+V2_FLED_NEW_STATE_DEFAULTS = [
+    (190, 255, 220, 0),   # FLED_MULTICHANNEL_ON  — blue-violet (echoing)
+    (0,     0,  40, 0),   # FLED_MULTICHANNEL_OFF — dim white (idle)
+]
+
+# --- ear trainer (region address and slot size identical in v1 and v2) ---
+ET_BASE = 60812
+ET_SLOT_COUNT = 10
+ET_SLOT_SIZE = 24
+ET_SLOTS_ADDR = ET_BASE + 2
+V1_ET_MAGIC = 0xE701
+V2_ET_MAGIC = 0xE702
+
+# --- regions introduced in v2 (magic word address only) ---
+V2_NEW_REGION_MAGICS = [
+    (37150, "per-loop Rec Notes gate"),
+    (65430, "Keysplit/Triplesplit button config"),
+    (65444, "Multichannel echo presets"),
+]
+
+
+def _migrate_et_slot_v1_to_v2(old):
+    """Re-lay one 24-byte ear-trainer slot from the v1 field order to v2.
+
+    v1: mode preset diff inv | mask[5] | 3n(4) 4n(4) 5n(4) | valid | pad[2]
+    v2: mode preset diff inv | mask[7] | 3n(4) 4n(4) 5n(4) | valid
+    """
+    new = bytearray(ET_SLOT_SIZE)
+    new[0:4] = old[0:4]           # mode / preset / difficulty / inversions
+    new[4:9] = old[4:9]           # interval_mask low 5 bytes (same bit numbering)
+    new[9:11] = b"\x00\x00"       # new mask bytes: intervals +13..+24, none set
+    new[11:23] = old[9:21]        # the three uint32 chord masks, shifted +2
+    new[23] = old[21]             # valid
+    return new
+
+
+def _migrate_v1_to_v2(blob, notes):
+    # ---- 1. functional LED config ----
+    if _u16le(blob, V1_FLED_MAGIC_ADDR) == V1_FLED_MAGIC:
+        # States 0-89 are already at the right addresses. Append the two new
+        # entries (they land on top of the old magic word, which is correct)
+        # and stamp the new magic past them.
+        for i, (h, s, v, blink) in enumerate(V2_FLED_NEW_STATE_DEFAULTS):
+            off = V1_FLED_BASE + (V1_FLED_STATE_COUNT + i) * 4
+            blob[off:off + 4] = bytes((h, s, v, blink))
+        _set_u16le(blob, V2_FLED_MAGIC_ADDR, V2_FLED_MAGIC)
+        notes.append("Functional LED colours: kept (2 new Multi Channel states "
+                     "set to their defaults).")
+    else:
+        # Never initialised on the source keyboard — let the firmware seed it.
+        _set_u16le(blob, V2_FLED_MAGIC_ADDR, 0)
+        notes.append("Functional LED colours: not configured in the clone, will "
+                     "use defaults.")
+
+    # ---- 2. ear trainer slots ----
+    if _u16le(blob, ET_BASE) == V1_ET_MAGIC:
+        for slot in range(ET_SLOT_COUNT):
+            off = ET_SLOTS_ADDR + slot * ET_SLOT_SIZE
+            blob[off:off + ET_SLOT_SIZE] = _migrate_et_slot_v1_to_v2(
+                blob[off:off + ET_SLOT_SIZE])
+        _set_u16le(blob, ET_BASE, V2_ET_MAGIC)
+        notes.append("Ear trainer slots: kept (converted to the wider "
+                     "-24..+24 interval range).")
+    else:
+        _set_u16le(blob, ET_BASE, 0)
+        notes.append("Ear trainer slots: not configured in the clone, will use "
+                     "defaults.")
+
+    # ---- 3. regions that did not exist in v1 ----
+    for addr, _name in V2_NEW_REGION_MAGICS:
+        _set_u16le(blob, addr, 0)
+    notes.append("New in this firmware (will start at defaults): "
+                 + ", ".join(name for _addr, name in V2_NEW_REGION_MAGICS) + ".")
+
+
+# Registry: key = source version, value = function converting it to key + 1.
+_MIGRATIONS = {
+    1: _migrate_v1_to_v2,
+}
+
+
+def can_migrate(from_version, to_version):
+    """True if a complete chain of migrations exists for this upgrade."""
+    if from_version == to_version:
+        return True
+    if from_version > to_version:
+        return False   # clone is NEWER than the firmware — we can't downgrade
+    return all(v in _MIGRATIONS for v in range(from_version, to_version))
+
+
+def migrate_clone(data, from_version, to_version):
+    """Convert a whole-EEPROM clone image from one layout version to another.
+
+    Args:
+        data: the clone's EEPROM image (bytes or bytearray).
+        from_version: the `eeprom_layout_version` stamped in the clone file.
+        to_version: the layout version the connected firmware reports.
+
+    Returns:
+        (migrated_bytes, notes) — notes is a list of human-readable strings
+        describing what was carried across and what will reset to defaults.
+
+    Raises:
+        CloneMigrationError if no chain of migrations covers the gap.
+    """
+    if from_version == to_version:
+        return bytes(data), []
+    if not can_migrate(from_version, to_version):
+        raise CloneMigrationError(
+            "No conversion path from EEPROM layout v{} to v{}.".format(
+                from_version, to_version))
+
+    blob = bytearray(data)
+    notes = []
+    for version in range(from_version, to_version):
+        _MIGRATIONS[version](blob, notes)
+    return bytes(blob), notes

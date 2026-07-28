@@ -33,6 +33,7 @@ from widgets.editor_container import EditorContainer
 from editor.firmware_flasher import FirmwareFlasher
 from editor.key_override import KeyOverride
 from protocol.keyboard_comm import ProtocolError
+from protocol.clone_migrations import CloneMigrationError, can_migrate, migrate_clone
 from editor.keymap_editor import KeymapEditor
 from editor.trigger_settings import TriggerSettingsTab
 from editor.dks_settings import DKSSettingsTab
@@ -547,18 +548,61 @@ class MainWindow(QMainWindow):
                                  tr("MainWindow", "Could not load this keyboard clone file:\n{}").format(e))
             return
 
-        # EEPROM-layout compatibility gate: refuse to restore a clone whose
-        # firmware stored its EEPROM regions at different addresses — writing
-        # it would scatter old data over the new layout and corrupt settings.
-        if file_layout != info["layout_version"] or len(blob) != info["eeprom_size"]:
+        # EEPROM-layout compatibility gate. A clone whose firmware stored its
+        # regions at different addresses can't be written as-is — it would
+        # scatter old data over the new layout. An OLDER clone is converted
+        # forward (see protocol/clone_migrations.py); anything we have no
+        # conversion path for is still refused.
+        device_layout = info["layout_version"]
+        if len(blob) != info["eeprom_size"]:
             QMessageBox.critical(
                 self, "Incompatible clone",
-                tr("MainWindow", "This clone was saved from a firmware with a different EEPROM "
-                                 "layout (clone layout v{}, keyboard layout v{}), so restoring it "
-                                 "could corrupt the keyboard's settings.\n\n"
-                                 "Loading has been blocked. Save a new clone with the current "
-                                 "firmware version.").format(file_layout, info["layout_version"]))
+                tr("MainWindow", "This clone holds {} bytes of keyboard memory but this keyboard "
+                                 "has {}, so it cannot be restored.").format(
+                                     len(blob), info["eeprom_size"]))
             return
+
+        if file_layout != device_layout:
+            if not can_migrate(file_layout, device_layout):
+                # Newer-than-firmware clone, or a version gap we have no
+                # migration for. Never guess — a wrong guess corrupts settings.
+                if file_layout > device_layout:
+                    detail = tr("MainWindow", "The clone is NEWER than the keyboard's firmware. "
+                                              "Update the keyboard's firmware and try again.")
+                else:
+                    detail = tr("MainWindow", "This version of the app has no conversion path "
+                                              "between those two layouts.")
+                QMessageBox.critical(
+                    self, "Incompatible clone",
+                    tr("MainWindow", "This clone was saved from a firmware with a different EEPROM "
+                                     "layout (clone layout v{}, keyboard layout v{}), so restoring "
+                                     "it could corrupt the keyboard's settings.\n\n{}").format(
+                                         file_layout, device_layout, detail))
+                return
+
+            try:
+                blob, notes = migrate_clone(blob, file_layout, device_layout)
+            except CloneMigrationError as e:
+                logging.exception("Clone migration failed")
+                QMessageBox.critical(
+                    self, "Incompatible clone",
+                    tr("MainWindow", "This clone could not be converted to the keyboard's EEPROM "
+                                     "layout:\n{}").format(e))
+                return
+
+            summary = "\n".join("  • " + n for n in notes)
+            ret = QMessageBox.question(
+                self, "Convert older clone",
+                tr("MainWindow", "This clone was saved from an older firmware (EEPROM layout v{}; "
+                                 "this keyboard uses v{}).\n\n"
+                                 "It can be converted automatically. What that means for your "
+                                 "settings:\n\n{}\n\n"
+                                 "Everything else is carried across unchanged. The clone file "
+                                 "itself is not modified.\n\n"
+                                 "Convert and restore?").format(file_layout, device_layout, summary),
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+            if ret != QMessageBox.Yes:
+                return
 
         ret = QMessageBox.warning(
             self, "Load keyboard clone",
