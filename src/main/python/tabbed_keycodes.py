@@ -18,7 +18,7 @@ from keycodes.keycodes import KEYCODES_BASIC, KEYCODES_ISO, KEYCODES_MACRO, KEYC
     KEYCODES_MIDI_CC, KEYCODES_MIDI_BANK, KEYCODES_Program_Change, KEYCODES_CC_STEPSIZE, KEYCODES_MIDI_VELOCITY, KEYCODES_Program_Change_UPDOWN, KEYCODES_MIDI_BANK, KEYCODES_MIDI_BANK_LSB, KEYCODES_MIDI_BANK_MSB, KEYCODES_MIDI_CC_FIXED, KEYCODES_OLED, KEYCODES_EARTRAINER, KEYCODES_SAVE, KEYCODES_CHORDTRAINER, \
     KEYCODES_MIDI_OCTAVE2, KEYCODES_MIDI_OCTAVE3, KEYCODES_MIDI_KEY2, KEYCODES_MIDI_KEY3, KEYCODES_MIDI_VELOCITY2, KEYCODES_MIDI_VELOCITY3, KEYCODES_MIDI_ADVANCED, KEYCODES_MIDI_SMARTCHORDBUTTONS, KEYCODES_VELOCITY_STEPSIZE, KEYCODES_MIDI_CHANNEL_OS, KEYCODES_MIDI_CHANNEL_HOLD, \
     KEYCODES_HE_VELOCITY_CURVE, KEYCODES_HE_VELOCITY_RANGE, \
-    KEYCODES_MIDI_CHANNEL, KEYCODES_MIDI_UPDOWN, KEYCODES_MIDI_CHORD_0, KEYCODES_MIDI_CHORD_1, KEYCODES_MIDI_CHORD_2, KEYCODES_MIDI_CHORD_3, KEYCODES_MIDI_CHORD_4, KEYCODES_MIDI_CHORD_5, KEYCODES_MIDI_INVERSION, KEYCODES_MIDI_SCALES, KEYCODES_MIDI_OCTAVE, KEYCODES_MIDI_KEY, KEYCODES_MIDI_CC_UP, KEYCODES_MIDI_CC_DOWN, KEYCODES_MIDI_PEDAL, KEYCODES_MIDI_INOUT, \
+    KEYCODES_MIDI_CHANNEL, KEYCODES_MIDI_UPDOWN, KEYCODES_MIDI_CHORD_0, KEYCODES_MIDI_CHORD_1, KEYCODES_MIDI_CHORD_2, KEYCODES_MIDI_CHORD_3, KEYCODES_MIDI_CHORD_4, KEYCODES_MIDI_CHORD_5, KEYCODES_MIDI_INVERSION, KEYCODES_MIDI_SCALES, KEYCODES_MIDI_TRANSPOSE_SELECT, KEYCODES_MIDI_CC_UP, KEYCODES_MIDI_CC_DOWN, KEYCODES_MIDI_PEDAL, KEYCODES_MIDI_INOUT, \
     KEYCODES_OCTAVE_DOUBLER, KEYCODES
 from widgets.square_button import SquareButton
 from widgets.big_square_button import BigSquareButton
@@ -1100,8 +1100,8 @@ class midiadvancedTab(QScrollArea):
             KEYCODES_QB_MASTER, KEYCODES_DRUM_SLOTS,
             KEYCODES_MIDI_CHANNEL, KEYCODES_MIDI_CHANNEL_OS, KEYCODES_MIDI_CHANNEL_HOLD,
             KEYCODES_MIDI_VELOCITY, KEYCODES_VELOCITY_STEPSIZE, KEYCODES_VELOCITY_SHUFFLE,
-            KEYCODES_CC_ENCODERVALUE, KEYCODES_MIDI_KEY, KEYCODES_MIDI_KEY2, KEYCODES_MIDI_KEY3,
-            KEYCODES_MIDI_OCTAVE, KEYCODES_MIDI_OCTAVE2, KEYCODES_MIDI_OCTAVE3,
+            KEYCODES_CC_ENCODERVALUE, KEYCODES_MIDI_TRANSPOSE_SELECT, KEYCODES_MIDI_KEY2, KEYCODES_MIDI_KEY3,
+            KEYCODES_MIDI_OCTAVE2, KEYCODES_MIDI_OCTAVE3,
             KEYCODES_MIDI_CHANNEL_KEYSPLIT, KEYCODES_MIDI_CHANNEL_KEYSPLIT2,
             KEYCODES_MIDI_BANK_LSB, KEYCODES_MIDI_BANK_MSB,
             KEYCODES_Program_Change,
@@ -1137,10 +1137,9 @@ class midiadvancedTab(QScrollArea):
             ("Velocity Increment", KEYCODES_VELOCITY_STEPSIZE, "velocity increment stepsize step size", "dropdown", None),
             ("Dynamic Velocity Range", KEYCODES_VELOCITY_SHUFFLE, "dynamic range velocity shuffle", "dropdown", None),
             ("CC Increment", KEYCODES_CC_STEPSIZE, "cc increment stepsize step size", "dropdown", None),
-            ("Set Key (Main)", KEYCODES_MIDI_KEY, "key transposition set main", "dropdown", None),
+            ("Set Transpose (Main)", KEYCODES_MIDI_TRANSPOSE_SELECT, "transpose transposition set main key octave semitone", "dropdown", None),
             ("Set Key (KeySplit)", KEYCODES_MIDI_KEY2, "key transposition keysplit ks", "dropdown", None),
             ("Set Key (TripleSplit)", KEYCODES_MIDI_KEY3, "key transposition triplesplit ts", "dropdown", None),
-            ("Set Octave (Main)", KEYCODES_MIDI_OCTAVE, "octave set main", "dropdown", None),
             ("Set Octave (KeySplit)", KEYCODES_MIDI_OCTAVE2, "octave keysplit ks", "dropdown", None),
             ("Set Octave (TripleSplit)", KEYCODES_MIDI_OCTAVE3, "octave triplesplit ts", "dropdown", None),
             ("Arpeggiator Presets", KEYCODES_ARPEGGIATOR_PRESETS, "arpeggiator arp preset", "dropdown", None),
@@ -1653,9 +1652,10 @@ class midiadvancedTab(QScrollArea):
         row_layout = QHBoxLayout()
         row_layout.addStretch(1)  # Left spacer
 
-        # Create and add dropdowns with fixed width of 200 pixels
-        self.add_header_dropdown("Octave Selector", self.smartchord_octave_1, row_layout, 200)
-        self.add_header_dropdown("Key Selector", self.smartchord_key, row_layout, 200)
+        # One combined Transpose selector (-64..+64) — replaces the old separate
+        # Octave and Key selector dropdowns (Octave/Transpose up-down keys remain
+        # in the Up/Down section).
+        self.add_header_dropdown("Transpose Selector", self.smartchord_octave_1, row_layout, 200)
 
         row_layout.addStretch(1)  # Right spacer
         layout.addLayout(row_layout)
@@ -5178,7 +5178,7 @@ class MIDITab(midiadvancedTab):
                         KEYCODES_MIDI_CC_FIXED, KEYCODES_MIDI_CC_UP, KEYCODES_MIDI_CC_DOWN,
                         KEYCODES_VELOCITY_STEPSIZE, KEYCODES_CC_STEPSIZE, KEYCODES_MIDI_CHANNEL,
                         KEYCODES_MIDI_VELOCITY, KEYCODES_MIDI_CHANNEL_OS, KEYCODES_MIDI_CHANNEL_HOLD,
-                        KEYCODES_MIDI_OCTAVE, KEYCODES_MIDI_KEY, KEYCODES_MIDI_VELOCITY2,
+                        KEYCODES_MIDI_TRANSPOSE_SELECT, [], KEYCODES_MIDI_VELOCITY2,
                         KEYCODES_MIDI_VELOCITY3, KEYCODES_MIDI_KEY2, KEYCODES_MIDI_KEY3,
                         KEYCODES_MIDI_OCTAVE2, KEYCODES_MIDI_OCTAVE3, KEYCODES_MIDI_CHANNEL_KEYSPLIT,
                         KEYCODES_MIDI_CHANNEL_KEYSPLIT2, KEYCODES_MIDI_SPLIT_BUTTONS,

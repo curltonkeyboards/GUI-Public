@@ -1634,12 +1634,11 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.global_transpose.setMaximumWidth(120)
         self.global_transpose.setMinimumHeight(25)
         self.global_transpose.setMaximumHeight(25)
-        # +/-60: the firmware caps main-zone transpose+octave at a combined 60
-        # semitones (TRANSPOSE_TOTAL_CAP); the old +/-64 range let the GUI push
-        # values the device's own controls can never reach.
-        for i in range(-60, 61):
+        # +/-64: matches the firmware's combined main-zone transpose+octave cap
+        # (TRANSPOSE_TOTAL_CAP = 64, raised from 60 with the Transpose selector).
+        for i in range(-64, 65):
             self.global_transpose.addItem(f"{'+' if i >= 0 else ''}{i}", i)
-        self.global_transpose.setCurrentIndex(60)
+        self.global_transpose.setCurrentIndex(64)
         self.global_transpose.setEditable(True)
         self.global_transpose.lineEdit().setReadOnly(True)
         self.global_transpose.lineEdit().setAlignment(Qt.AlignCenter)

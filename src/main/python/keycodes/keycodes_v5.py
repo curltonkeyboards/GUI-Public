@@ -2461,6 +2461,13 @@ for v in range(12):      # 12 individual voices
     for m in range(3):
         keycodes_v5.kc["DRUMLIVE_VOICE_{}_{}".format(v, m)] = keycodes_v5.kc["DRUMLIVE_VOICE_BASE"] + v * 3 + m
 
+# Transpose selector band (-64..+64 semitones): MI_TRNS_SET_N64..MI_TRNS_SET_64
+# -> 0xF380..0xF400. One combined-transposition jump band replacing the separate
+# Key (MI_TRNS_*) and Octave (MI_OCT_*) selector pickers; the firmware splits the
+# value into whole octaves + a -11..+11 key remainder (set_transpose_total).
+for t in range(-64, 65):
+    keycodes_v5.kc["MI_TRNS_SET_N{}".format(-t) if t < 0 else "MI_TRNS_SET_{}".format(t)] = 0xF380 + (t + 64)
+
 for name, val in keycodes_v5.kc.items():
     if name.endswith("(kc)"):
         keycodes_v5.masked.add(val)

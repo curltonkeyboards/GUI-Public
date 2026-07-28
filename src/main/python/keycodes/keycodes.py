@@ -1592,6 +1592,10 @@ KEYCODES_MIDI_INOUT = [
     K("MI_CC_LOOP_TOG", "CC Loop\nRec", "Toggle CC loop recording"),
 ]
 
+# LEGACY (no longer shown in the picker): the main-zone Octave selector was
+# condensed, together with the Key selector, into the single -64..+64
+# KEYCODES_MIDI_TRANSPOSE_SELECT band below. The K() entries stay registered
+# so saved layouts using the old keycodes still load and display.
 KEYCODES_MIDI_OCTAVE = [
     K("MI_OCT_N2", "Octave\n-2", "Midi set octave to -2"),
     K("MI_OCT_N1", "Octave\n-1", "Midi set octave to -1"),
@@ -1645,6 +1649,7 @@ KEYCODES_MIDI_UPDOWN = [
 
 ]    
 
+# LEGACY (no longer shown in the picker) — see KEYCODES_MIDI_TRANSPOSE_SELECT.
 KEYCODES_MIDI_KEY = [
     K("MI_TRNS_0", "Key\nC Major\nA minor", "Midi set no transposition"),
     K("MI_TRNS_1", "Key\nC# Major\nA# minor", "Midi set transposition to +1 semitones"),
@@ -1688,6 +1693,18 @@ KEYCODES_MIDI_KEY3 = [
     K("MI_TRNS3_N3", "TS\nA Major\nF# minor", "Midi set transposition to -3 semitones"),
     K("MI_TRNS3_N2", "TS\nA# Major\nG minor", "Midi set transposition to -2 semitones"),
     K("MI_TRNS3_N1", "TS B Major\n G# Minor", "Midi set transposition to -1 semitones"),
+]
+
+# Transpose selector: ONE -64..+64 semitone band that replaces the separate
+# main-zone Key (MI_TRNS_N6..MI_TRNS_6) and Octave (MI_OCT_N2..MI_OCT_7)
+# selector pickers. The firmware clamps the combined transposition to the value
+# and re-splits it into whole octaves (octave_number) + a -11..+11 key
+# remainder (transpose_number). KS/TS selector lists above are unchanged.
+KEYCODES_MIDI_TRANSPOSE_SELECT = [
+    K("MI_TRNS_SET_N{}".format(-v) if v < 0 else "MI_TRNS_SET_{}".format(v),
+      "Transpose\n 0" if v == 0 else "Transpose\n{:+d}".format(v),
+      "Set combined transposition (octave + key) to {:+d} semitones".format(v))
+    for v in range(-64, 65)
 ]
 
 KEYCODES_MIDI_CHANNEL = [

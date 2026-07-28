@@ -1403,3 +1403,42 @@ mirrors in this repo:
   `PARAM_TRIPLESPLIT_SMARTCHORD_IGNORE` (49) — same idiom as the Sustain
   combos (guarded by `self.syncing`; stored as `*_autonotes_ignore` in
   `save_midi_ui_to_memory`).
+
+## Transpose selector (-64..+64) replaces Key/Octave selectors (2026-07)
+
+Firmware raised the main-zone combined transpose+octave cap 60 → **64**
+(`TRANSPOSE_TOTAL_CAP`) and now keeps the pair normalized as ONE combined
+transposition (whole octaves in `octave_number` + a -11..+11 key remainder in
+`transpose_number`) — transpose up/down CARRY into the octave at key
+boundaries, so they keep working to the +/-64 total. A new **Transpose
+selector** keycode band (`MI_TRNS_SET_N64..MI_TRNS_SET_64` → **0xF380-0xF400**,
+value -64..+64) jumps the combined transposition absolutely and REPLACES the
+separate main-zone Key (`MI_TRNS_N6..6`) and Octave (`MI_OCT_N2..7`) selector
+pickers. GUI changes (both repos, kept in lockstep):
+
+- `keycodes_v5/v6.py`: generated `MI_TRNS_SET_*` band (129 codes) appended
+  before the masked-keycode loop.
+- `keycodes.py`: new `KEYCODES_MIDI_TRANSPOSE_SELECT` (129 K() entries,
+  "Transpose +N" labels). The legacy `KEYCODES_MIDI_OCTAVE` /
+  `KEYCODES_MIDI_KEY` lists are KEPT (registry/back-compat so old layouts
+  still load + display) but marked legacy and no longer shown in the picker.
+  KS/TS selector lists are untouched.
+- `tabbed_keycodes.py`: the Transposition Settings section shows ONE
+  "Transpose Selector" dropdown (was Octave Selector + Key Selector; the
+  MIDITab now receives `KEYCODES_MIDI_TRANSPOSE_SELECT` as its transposition
+  list and an empty `smartchord_key`); the Advanced-Keys dropdown categories
+  carry one "Set Transpose (Main)" row instead of "Set Key (Main)" + "Set
+  Octave (Main)" (KeySplit/TripleSplit rows unchanged). Octave/Transpose
+  up/down keycodes are unchanged and still offered.
+- `matrix_test.py`: main transpose combo widened to +/-64 (matches the new
+  firmware cap; supersedes the earlier "+/-60" note above).
+- Firmware keycode-search DB (`keycode_search_table.h`) regenerated from the
+  updated tables.
+
+## ThruLoop stop/mute now resolves at the unit boundary (2026-07) — firmware only
+
+Firmware-side fix (see vial-gui-custom CLAUDE.md, ThruLoop section) — no
+GUI/HID change. A ThruLoop's deferred pause/mute used to resolve at the
+track's OWN cycle end (an 8 s ThruLoop stopped against a 1 s loop paused
+seconds late); all ThruLoop pending actions now resolve at the next UNIT
+boundary (`thruloop_on_loop_boundary`), exactly like loop stops/mutes.
