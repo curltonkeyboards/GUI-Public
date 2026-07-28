@@ -1523,3 +1523,17 @@ GUI/HID change. A ThruLoop's deferred pause/mute used to resolve at the
 track's OWN cycle end (an 8 s ThruLoop stopped against a 1 s loop paused
 seconds late); all ThruLoop pending actions now resolve at the next UNIT
 boundary (`thruloop_on_loop_boundary`), exactly like loop stops/mutes.
+
+## LCD half-brightness rules: erase fix + CH/TR boxes (2026-07) — firmware only
+
+Firmware-side fix (see vial-gui-custom CLAUDE.md, same section name) — **no
+GUI/HID/EEPROM change, nothing to mirror here.** The main page's quiet
+(half-theme-brightness) rules are painted straight to the LCD, not through the
+1-bit OLED text buffer, so the delta blit had no record of them and could never
+erase them: the keysplit/triplesplit zone dividers stayed burned on screen after
+the split was toggled back off (and under menus). A painter-owned snapshot of
+what is currently drawn now invalidates the dropped lines' pixels in the blit
+snapshot before the drain, so the same frame repaints them away (text sharing
+the row is restored). The dotted container boxes around the big **channel** and
+**transpose** numbers are back too, as solid half-brightness rules over the same
+area, on both the no-split page and the velocity-only-split page.
