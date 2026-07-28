@@ -1379,7 +1379,15 @@ GUI/HID/EEPROM change, nothing to mirror here.** Several loops can now record
 at once: loops primed or armed TOGETHER record in parallel (each with its own
 "Rec Notes" zone gate — e.g. one loop capturing keysplit notes while another
 captures triplesplit), while pressing a new loop during an ACTIVE recording
-still performs the classic handoff. The recording front-end keeps the single
+still performs the classic handoff. **Simultaneous recording requires a sync
+master** (2026-07): a playing loop / running step-seq / drum / rhythm engine /
+ThruLoop master, or the BPM grid in sync modes 1/3 — so both takes are
+quantized to the same cycle. With nothing running there is no master, so a
+second record press is a HANDOFF instead (it cancels the first loop's priming
+and re-primes the new one, which still starts on its first note). Unsynced
+sync modes (2/5) never quantize, so they never allow it either. Starting a
+THIRD recording while two are running finishes both in-flight takes at the
+boundary the new record starts on. The recording front-end keeps the single
 primary recorder and adds per-slot "aux" recorders beside it; the free loop
 pool is split fairly between simultaneous starters. Also: async note producers
 (MIDI-delay echoes, sustain flushes) are now zone-classified by CHANNEL against
