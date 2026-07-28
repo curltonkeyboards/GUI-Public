@@ -1541,3 +1541,62 @@ don't cancel out and ghost. The dotted container boxes around the big
 rules over the same area, on both the no-split page and the
 velocity-only-split page: an inner vertical from the top of the screen plus a
 bottom rule out to that value's screen edge (no top rule).
+
+## Per-zone transpose homogenization + Keysplit presets (2026-07)
+
+Firmware feature (see vial-gui-custom CLAUDE.md, same section name, for the
+full map) with GUI mirrors in this repo.
+
+**Firmware headlines.** The keysplit / triplesplit zones now use the SAME
+combined-transposition model as the base zone (one `-64..+64` value re-split
+into whole octaves + a `-11..+11` key remainder, with octave carry) via shared
+`set/get/step_transpose_total_zone()` helpers that every writer goes through.
+The main-LCD split table now shows each zone's **effective** channel and
+transpose — it used to print the zone's own values even when that zone's split
+was off, while the notes correctly fell back to the base zone, which is where
+the phantom "+12 / -12 keysplit transpose nobody set" came from (the stale
+`octave_numberN` behind it was settable only by keycode, persisted, and
+invisible to the GUI). Two new selector keycode bands give the KS/TS zones the
+same absolute transpose jump the main zone got. And the two Keysplit /
+Triplesplit toggle buttons are replaced by **10 unified Keysplit presets**
+(keycodes 0xF420-0xF429): each preset carries its own Channel / Transpose /
+Articulation / Auto-Notes / Sustain settings for the **Normal (base), Keysplit
+AND Triplesplit** zones, every field defaulting to "Device Master" (leave it
+alone). Tapping it on applies exactly the non-Master fields; tapping it off
+restores what was there before — unless the user changed that setting
+themselves in the meantime, which retires the stale restore value. Config is
+on-device only (hold 1 s), in a new firmware EEPROM region at 60380.
+
+GUI changes (this repo, kept in lockstep with vial-gui-custom):
+
+- **Keycodes** `keycodes_v5/v6.py`: generated `MI_KS_TRNS_SET_N64..64`
+  (**0xC4F0-0xC570**) and `MI_TS_TRNS_SET_N64..64` (**0xC578-0xC5F8**) bands,
+  plus `KEYSPLIT_PRESET_1..10` (**0xF420-0xF429**).
+- **Labels** `keycodes.py`: `KEYCODES_MIDI_KS_TRANSPOSE_SELECT`,
+  `KEYCODES_MIDI_TS_TRANSPOSE_SELECT`, `KEYCODES_KEYSPLIT_PRESETS`.
+  **`KEYCODES_MIDI_TRANSPOSE_SELECT` had never been added to the
+  `recreate_keycodes()` chain**, so the main Transpose selector keys rendered
+  as raw `MI_TRNS_SET_xx` in the keymap editor — it is registered now, together
+  with the three new lists. `KEYCODES_MIDI_KEY2/KEY3/OCTAVE2/OCTAVE3` are
+  marked LEGACY (still registered so saved layouts load and display).
+- **Picker** `tabbed_keycodes.py`: the four "Set Key (KeySplit)" / "Set Key
+  (TripleSplit)" / "Set Octave (KeySplit)" / "Set Octave (TripleSplit)"
+  Advanced-Keys dropdown rows collapse into **"Set Transpose (KeySplit)"** +
+  **"Set Transpose (TripleSplit)"**, and a **"Keysplit Presets"** row is added;
+  the KeySplit Options section also gained a "Keysplit Presets" dropdown.
+- **Wire semantics**: the keyboard-config packet's transpose bytes (9/11/13)
+  and HID params 1/2/3 now carry the **combined** transposition per zone —
+  still one signed byte (+/-64 fits), so nothing about the encoding changed,
+  but the value is now the whole transposition instead of the key remainder.
+  The GUI needed no change for this (its combos are already +/-64 and it always
+  sent 0 in the octave bytes, which the firmware ignores); it is what makes the
+  MIDI-settings transpose combos finally agree with the LCD, and the first way
+  to clear a stuck zone octave from the GUI. `editor/matrix_test.py` help text
+  updated to say "combined transposition (octave + key)" and to note that a
+  zone follows the main transposition while its split is off.
+- **Clone migration** `protocol/clone_migrations.py`: `_migrate_v2_to_v3` —
+  firmware `EEPROM_LAYOUT_VERSION` is now **3**. The migration zeroes the new
+  Keysplit-preset region (60380, magic + body) so the firmware seeds defaults,
+  and deliberately LEAVES the retired Keysplit/Triplesplit button region
+  (65430) intact, because the firmware reads it once to carry those two buttons
+  over into Keysplit presets 1 and 2.

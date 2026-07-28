@@ -2487,6 +2487,21 @@ for v in range(12):      # 12 individual voices
 for t in range(-64, 65):
     keycodes_v5.kc["MI_TRNS_SET_N{}".format(-t) if t < 0 else "MI_TRNS_SET_{}".format(t)] = 0xF380 + (t + 64)
 
+# Per-zone transpose selector bands, same -64..+64 combined-transposition jump
+# for the keysplit and triplesplit zones (they replace the separate KS/TS Key
+# and Octave selector pickers). The block above the Transpose selector is too
+# small for two more 129-code bands, so these live in the free block between the
+# last SmartChord keycode (0xC4E8) and MI_SPLIT (0xC600).
+for t in range(-64, 65):
+    keycodes_v5.kc["MI_KS_TRNS_SET_N{}".format(-t) if t < 0 else "MI_KS_TRNS_SET_{}".format(t)] = 0xC4F0 + (t + 64)
+    keycodes_v5.kc["MI_TS_TRNS_SET_N{}".format(-t) if t < 0 else "MI_TS_TRNS_SET_{}".format(t)] = 0xC578 + (t + 64)
+
+# Keysplit presets (10): tap = preset on/off (apply its Normal / Keysplit /
+# Triplesplit settings, restore the previous ones when turned off), hold =
+# on-device config menu.
+for n in range(1, 11):
+    keycodes_v5.kc["KEYSPLIT_PRESET_{}".format(n)] = 0xF420 + (n - 1)
+
 for name, val in keycodes_v5.kc.items():
     if name.endswith("(kc)"):
         keycodes_v5.masked.add(val)

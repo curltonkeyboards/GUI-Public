@@ -182,9 +182,38 @@ def _migrate_v1_to_v2(blob, notes):
                  + ", ".join(name for _addr, _size, name in V2_NEW_REGIONS) + ".")
 
 
+# ---------------------------------------------------------------------------
+# v2 -> v3 (2026-07): the two-button Keysplit/Triplesplit config (KSQB) was
+# retired and replaced by 10 unified Keysplit presets, each carrying the
+# Normal + Keysplit + Triplesplit sections, in a NEW region. Nothing else
+# moved. The firmware seeds the new region from the old KSQB bytes itself when
+# it finds no new magic — but only if the old region is still intact — so the
+# migration must NOT clear the retired region, just the new one.
+V3_KSP_BASE = 60380                 # magic word + 10 x 14 = 142 bytes
+V3_KSP_SIZE = 2 + 10 * 14
+V2_KSQB_BASE = 65430                # retired region (magic 0x4B51 + 2 x 4)
+V2_KSQB_MAGIC = 0x4B51
+
+
+def _migrate_v2_to_v3(blob, notes):
+    # The new region held whatever occupied 60380 in v2 (free space): zero it
+    # magic-first so the firmware's magic-mismatch path seeds it, and no stale
+    # bytes ride along.
+    blob[V3_KSP_BASE:V3_KSP_BASE + V3_KSP_SIZE] = bytes(V3_KSP_SIZE)
+    if _u16le(blob, V2_KSQB_BASE) == V2_KSQB_MAGIC:
+        # Left in place on purpose: the firmware reads it once, on the first
+        # boot after the update, to seed presets 1 and 2 from the old buttons.
+        notes.append("Keysplit / Triplesplit button settings: carried over "
+                     "into Keysplit presets 1 and 2.")
+    else:
+        notes.append("Keysplit presets: new in this firmware, started at "
+                     "defaults.")
+
+
 # Registry: key = source version, value = function converting it to key + 1.
 _MIGRATIONS = {
     1: _migrate_v1_to_v2,
+    2: _migrate_v2_to_v3,
 }
 
 

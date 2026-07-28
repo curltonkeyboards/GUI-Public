@@ -1609,6 +1609,7 @@ KEYCODES_MIDI_OCTAVE = [
     K("MI_OCT_7", "Octave\n+7", "Midi set octave to 7"),
 ] 
 
+# LEGACY (no longer shown in the picker) — see KEYCODES_MIDI_KS_TRANSPOSE_SELECT.
 KEYCODES_MIDI_OCTAVE2 = [
     K("MI_OCTAVE2_N2", "KS\nOctave\n-2", "Midi set octave to -2"),
     K("MI_OCTAVE2_N1", "KS\nOctave\n-1", "Midi set octave to -1"),
@@ -1622,6 +1623,7 @@ KEYCODES_MIDI_OCTAVE2 = [
     K("MI_OCTAVE2_7", "KS\nOctave\n+7", "Midi set octave to 7"),
 ] 
 
+# LEGACY (no longer shown in the picker) — see KEYCODES_MIDI_TS_TRANSPOSE_SELECT.
 KEYCODES_MIDI_OCTAVE3 = [
     K("MI_OCTAVE3_N2", "TS\nOctave\n-2", "Midi set octave to -2"),
     K("MI_OCTAVE3_N1", "TS\nOctave\n-1", "Midi set octave to -1"),
@@ -1665,6 +1667,7 @@ KEYCODES_MIDI_KEY = [
     K("MI_TRNS_N1", "Key B Major\n G# Minor", "Midi set transposition to -1 semitones"),
 ]
 
+# LEGACY (no longer shown in the picker) — see KEYCODES_MIDI_KS_TRANSPOSE_SELECT.
 KEYCODES_MIDI_KEY2 = [
     K("MI_TRNS2_0", "KS\nC Major\nA minor", "Midi set no transposition"),
     K("MI_TRNS2_1", "KS\nC# Major\nA# minor", "Midi set transposition to +1 semitones"),
@@ -1680,6 +1683,7 @@ KEYCODES_MIDI_KEY2 = [
     K("MI_TRNS2_N1", "KS B Major\n G# Minor", "Midi set transposition to -1 semitones"),
 ]
 
+# LEGACY (no longer shown in the picker) — see KEYCODES_MIDI_TS_TRANSPOSE_SELECT.
 KEYCODES_MIDI_KEY3 = [
     K("MI_TRNS3_0", "TS\nC Major\nA minor", "Midi set no transposition"),
     K("MI_TRNS3_1", "TS\nC# Major\nA# minor", "Midi set transposition to +1 semitones"),
@@ -1705,6 +1709,40 @@ KEYCODES_MIDI_TRANSPOSE_SELECT = [
       "Transpose\n 0" if v == 0 else "Transpose\n{:+d}".format(v),
       "Set combined transposition (octave + key) to {:+d} semitones".format(v))
     for v in range(-64, 65)
+]
+
+# Per-zone transpose selectors: the same -64..+64 combined-transposition jump
+# for the keysplit / triplesplit zones. These REPLACE the separate KS/TS Key
+# (KEYCODES_MIDI_KEY2/KEY3) and Octave (KEYCODES_MIDI_OCTAVE2/OCTAVE3) selector
+# lists in the picker; those stay registered so old layouts still load.
+KEYCODES_MIDI_KS_TRANSPOSE_SELECT = [
+    K("MI_KS_TRNS_SET_N{}".format(-v) if v < 0 else "MI_KS_TRNS_SET_{}".format(v),
+      "KS\nTranspose\n 0" if v == 0 else "KS\nTranspose\n{:+d}".format(v),
+      "Set the KeySplit zone's combined transposition (octave + key) to {:+d} semitones "
+      "(also enables the keysplit transpose zone)".format(v))
+    for v in range(-64, 65)
+]
+
+KEYCODES_MIDI_TS_TRANSPOSE_SELECT = [
+    K("MI_TS_TRNS_SET_N{}".format(-v) if v < 0 else "MI_TS_TRNS_SET_{}".format(v),
+      "TS\nTranspose\n 0" if v == 0 else "TS\nTranspose\n{:+d}".format(v),
+      "Set the TripleSplit zone's combined transposition (octave + key) to {:+d} semitones "
+      "(also enables the triplesplit transpose zone)".format(v))
+    for v in range(-64, 65)
+]
+
+# Keysplit presets (10). Each preset carries its own settings for the NORMAL
+# (base), KEYSPLIT and TRIPLESPLIT zones — Channel / Transpose / Articulation /
+# Auto Notes / Sustain — every field either "Device Master" (leave it alone) or
+# a forced value. Tap applies them; tap again puts the previous values back.
+KEYCODES_KEYSPLIT_PRESETS = [
+    K("KEYSPLIT_PRESET_{}".format(n), "Keysplit\nPreset {}".format(n),
+      "Keysplit preset {}: tap = on/off. Turning it on applies the preset's Channel, "
+      "Transpose, Articulation, Auto-Notes and Sustain settings for whichever of the "
+      "Normal / Keysplit / Triplesplit sections it has enabled (fields left on "
+      "\"Device Master\" are not touched); turning it off restores what was there before, "
+      "unless you changed that setting yourself in the meantime. Hold 1s to configure.".format(n))
+    for n in range(1, 11)
 ]
 
 KEYCODES_MIDI_CHANNEL = [
@@ -3133,7 +3171,7 @@ def recreate_keycodes():
     KEYCODES.clear()
     KEYCODES.extend(KEYCODES_SPECIAL + KEYCODES_BASIC + KEYCODES_SHIFTED + KEYCODES_ISO + KEYCODES_LAYERS + KEYCODES_LAYERS_DF + KEYCODES_LAYERS_MO + KEYCODES_LAYERS_TG + KEYCODES_LAYERS_TT + KEYCODES_LAYERS_OSL + KEYCODES_LAYERS_TO + KEYCODES_LAYERS_LT +
                     KEYCODES_BOOT + KEYCODES_MODIFIERS + KEYCODES_QUANTUM + KEYCODES_BACKLIGHT + KEYCODES_MEDIA + KEYCODES_OLED + KEYCODES_CLEAR + KEYCODES_RGB_KC_COLOR + KEYCODES_MIDI_OCTAVE2 + KEYCODES_MIDI_OCTAVE3 + KEYCODES_MIDI_KEY2 + KEYCODES_MIDI_KEY3 + KEYCODES_MIDI_VELOCITY2 + KEYCODES_MIDI_VELOCITY3 +
-                    KEYCODES_TAP_DANCE + KEYCODES_MACRO + KEYCODES_MACRO_BASE + KEYCODES_EARTRAINER + KEYCODES_SAVE + KEYCODES_SETTINGS1 + KEYCODES_SETTINGS2 + KEYCODES_SETTINGS3 + KEYCODES_CHORDTRAINER + KEYCODES_USER + KEYCODES_HIDDEN + KEYCODES_MIDI+ KEYCODES_MIDI_CHANNEL_OS + KEYCODES_MIDI_CHANNEL_HOLD + KEYCODES_RGB_KC_CUSTOM + KEYCODES_RGB_KC_CUSTOM2 + KEYCODES_RGBSAVE + KEYCODES_MIDI_CHANNEL_KEYSPLIT + KEYCODES_MIDI_CHANNEL_KEYSPLIT2 + KEYCODES_KEYSPLIT_BUTTONS +
+                    KEYCODES_TAP_DANCE + KEYCODES_MACRO + KEYCODES_MACRO_BASE + KEYCODES_EARTRAINER + KEYCODES_SAVE + KEYCODES_SETTINGS1 + KEYCODES_SETTINGS2 + KEYCODES_SETTINGS3 + KEYCODES_CHORDTRAINER + KEYCODES_USER + KEYCODES_HIDDEN + KEYCODES_MIDI+ KEYCODES_MIDI_CHANNEL_OS + KEYCODES_MIDI_CHANNEL_HOLD + KEYCODES_RGB_KC_CUSTOM + KEYCODES_RGB_KC_CUSTOM2 + KEYCODES_RGBSAVE + KEYCODES_MIDI_CHANNEL_KEYSPLIT + KEYCODES_MIDI_CHANNEL_KEYSPLIT2 + KEYCODES_KEYSPLIT_BUTTONS + KEYCODES_KEYSPLIT_PRESETS + KEYCODES_MIDI_TRANSPOSE_SELECT + KEYCODES_MIDI_KS_TRANSPOSE_SELECT + KEYCODES_MIDI_TS_TRANSPOSE_SELECT +
                     KEYCODES_MIDI_CC_FIXED+KEYCODES_MIDI_CC+KEYCODES_MIDI_CC_DOWN+KEYCODES_MIDI_CC_UP+KEYCODES_MOD_PRESS+KEYCODES_MIDI_BANK+KEYCODES_Program_Change+KEYCODES_MIDI_SMARTCHORDBUTTONS+KEYCODES_VELOCITY_STEPSIZE+KEYCODES_VELOCITY_SHUFFLE + KEYCODES_CC_ENCODERVALUE+ KEYCODES_EXWHEEL +
                     KEYCODES_MIDI_VELOCITY+KEYCODES_CC_STEPSIZE+KEYCODES_MIDI_CHANNEL+KEYCODES_MULTICHANNEL+KEYCODES_MIDI_UPDOWN+KEYCODES_MIDI_CHORD_0+KEYCODES_MIDI_CHORD_1+KEYCODES_MIDI_CHORD_2+KEYCODES_MIDI_CHORD_3+KEYCODES_MIDI_CHORD_4+KEYCODES_MIDI_CHORD_5+KEYCODES_MIDI_SPLIT+KEYCODES_MIDI_SPLIT2+
                     KEYCODES_HE_VELOCITY_CURVE+KEYCODES_HE_MACRO_CURVE+KEYCODES_HE_VELOCITY_RANGE+
