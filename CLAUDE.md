@@ -1364,8 +1364,12 @@ note-doubler — its transpose is octave-based). ThruLoop and arp remain exclude
 Firmware-side feature (see vial-gui-custom CLAUDE.md, same section name) — **no
 GUI/HID/EEPROM-protocol change, nothing to mirror here.** Each of the 8 loops
 gained a persisted 3-bit zone mask ("Rec Notes" row in the per-loop hold menu:
-All / Normal / Keysplit / Triple / combos) selecting which key zones that loop
-records — note-ons only are gated (offs/CC/AT always record, so no stuck notes).
+All Notes / Non KS/TS / Keysplit / Triple / combos) selecting which key zones
+that loop records — note-ons only are gated (offs/CC/AT always record, so no
+stuck notes). The base pick is labelled "Non KS/TS" because a keysplit or
+triplesplit KEY whose split is switched off behaves as a normal key and records
+under it; and a gate naming only splits that are all currently off is dropped
+entirely (it would otherwise record silence).
 Stored in a new firmware mini-region at EEPROM 37150 inside the existing
 loop-settings reservation (37000-37199); the 0xB0-0xB5 loop-settings HID family
 is untouched, so this GUI needs no update. The mask applies live on edit and is
