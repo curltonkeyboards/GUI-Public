@@ -1931,9 +1931,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         """Get one Multichannel echo preset.
 
         Returns:
-            (target, echoes, active) where target is 0-15, echoes is a
-            3-element list (0-15 or MULTICHANNEL_CH_OFF) and active is a
-            bool (volatile on-device state); or None on failure (e.g.
+            (target, echoes, active, octaves) where target is 0-15, echoes
+            is a 3-element list (0-15 or MULTICHANNEL_CH_OFF), active is a
+            bool (volatile on-device state) and octaves is a 3-element list
+            of per-slot octave offsets (-3..+3); or None on failure (e.g.
             pre-multichannel firmware).
         """
         try:
@@ -1946,12 +1947,19 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                     response[4] == 0x01 and response[5] == preset):
                 target = response[6] & 0x0F
                 echoes = [response[7 + e] for e in range(MULTICHANNEL_ECHO_SLOTS)]
-                return target, echoes, bool(response[10])
+                # Octaves ride bytes 11-13 as the firmware's signed 3-bit field
+                # (0 = none, 1..3 = +1..+3, 7,6,5 = -1,-2,-3). Pre-octave
+                # firmware leaves them zero, which decodes as "no transpose".
+                octaves = []
+                for e in range(MULTICHANNEL_ECHO_SLOTS):
+                    raw = response[11 + e] & 0x07 if len(response) >= 14 else 0
+                    octaves.append(raw - 8 if raw & 0x04 else raw)
+                return target, echoes, bool(response[10]), octaves
             return None
         except Exception:
             return None
 
-    def set_multichannel_preset(self, preset, target, echoes):
+    def set_multichannel_preset(self, preset, target, echoes, octaves=None):
         """Set one Multichannel echo preset (persists to device EEPROM).
 
         Args:
@@ -1959,17 +1967,25 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             target: target channel 0-15
             echoes: 3-element list of echo channels (0-15, or
                 MULTICHANNEL_CH_OFF / None = slot off)
+            octaves: optional 3-element list of per-slot octave offsets
+                (-3..+3); omitted or None means no transpose
 
         Returns:
             bool: True on success.
         """
         try:
-            data = bytearray(4)
+            data = bytearray(7)
             data[0] = int(target) & 0x0F
             for e in range(MULTICHANNEL_ECHO_SLOTS):
                 ch = echoes[e] if e < len(echoes) else None
                 data[1 + e] = MULTICHANNEL_CH_OFF if ch is None or ch > 15 else int(ch) & 0x0F
-            # Payload starts at byte 6: [preset, target, echo1, echo2, echo3]
+                oct_v = 0
+                if octaves is not None and e < len(octaves) and octaves[e] is not None:
+                    oct_v = max(-3, min(3, int(octaves[e])))
+                # Same signed 3-bit field the firmware stores (5,6,7 = -3,-2,-1).
+                data[4 + e] = oct_v & 0x07
+            # Payload starts at byte 6:
+            #   [preset, target, echo1-3, oct1-3]
             packet = self._create_hid_packet(HID_CMD_MULTICHANNEL, 1,
                                              bytearray([int(preset) & 0xFF]) + data)
             response = self.usb_send(self.dev, packet, retries=5)

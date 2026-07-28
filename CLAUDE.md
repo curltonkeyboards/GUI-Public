@@ -1419,10 +1419,16 @@ GUI changes (this repo, label/text only):
 ## Multichannel — per-channel output echo (2026-07)
 
 Firmware feature (see vial-gui-custom CLAUDE.md, same section name, for the
-full map): 16 presets, each with a TARGET channel + up to 3 MULTI channels.
-While a preset is ON, everything the device outputs on the target channel
-(live keys, loops, step seq, arp, rhythm engine, delay) is duplicated onto the
-multi channels. Tap the preset's keycode (or QuickBuild master) = on/off with a
+full map): 16 presets, each with a TARGET channel + up to 3 MULTI channels,
+**each with its own octave transpose (-3..+3)**. While a preset is ON,
+everything the device outputs on the target channel (live keys, loops, step
+seq, arp, rhythm engine, delay) is duplicated onto the multi channels,
+transposed per echo slot. Only note-carrying messages are transposed (note
+on/off + poly aftertouch); an echo whose note would leave 0-127 is dropped —
+note-off included, so it can never strand a voice. The octave costs no EEPROM:
+it is packed into the spare high bits of each echo byte as a SIGNED 3-bit
+field, so pre-octave configs load as "no transpose" and no layout version
+moves. Tap the preset's keycode (or QuickBuild master) = on/off with a
 "MULTI CHx" action-bar box; hold = on-device config menu. Config persists in a
 firmware EEPROM mini-region (65444); ON/OFF is volatile. On-device menu edits
 apply live per encoder detent but reach EEPROM once at menu close; the GUI's
@@ -1440,7 +1446,14 @@ in this repo:
   `keyboard_comm.get_multichannel_preset` (returns None on pre-multichannel
   firmware → defaults kept); every combo change saves immediately via
   `set_multichannel_preset` (HID **0x96**: sub 0 GET / 1 SET, preset@6,
-  target@7, echo1-3@8-10, 0xFF = off).
+  target@7, echo1-3@8-10, 0xFF = off, **echo octaves@11-13** as the firmware's
+  raw signed 3-bit field: 0 = none, 1..3 = +1..+3, 7,6,5 = -1,-2,-3). The
+  octaves ride their own bytes rather than the packed echo byte so both
+  mismatches stay safe — an old GUI's zeroed 11-13 mean "no transpose", and a
+  new GUI's plain channel bytes still pass old firmware's `ch <= 15` check.
+  `get_multichannel_preset` returns `(target, echoes, active, octaves)`;
+  `set_multichannel_preset` takes an optional `octaves` list. The tab has an
+  **Oct** combo beside each Multi combo, greyed while that Multi is Off.
 - **Advanced Key Lighting**: new "Multi Channel" group — firmware FLED indices
   **90 On / 91 Off**; `FUNC_LED_STATE_COUNT` 90→**92** in
   `protocol/constants.py`; `FUNC_LED_STATES`/`FUNC_LED_GROUPS`/descriptions in

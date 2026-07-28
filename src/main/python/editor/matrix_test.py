@@ -3176,7 +3176,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         desc = QLabel(tr("MIDIswitchSettingsConfigurator",
             "16 channel-echo presets. While a preset is ON, everything the keyboard outputs "
             "on its Target channel (live keys, loops, step sequencer, arpeggiator, rhythm "
-            "engine...) is duplicated onto its Multi channels. Toggle a preset with its "
+            "engine...) is duplicated onto its Multi channels, each with its own optional "
+            "octave transpose (-3..+3; an echoed note that would fall outside 0-127 is "
+            "skipped). Toggle a preset with its "
             "'Multi CH' keycode or a QuickBuild master button (hold the key to edit these "
             "same settings on the device). Changes save to the keyboard immediately."))
         desc.setWordWrap(True)
@@ -3191,13 +3193,14 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         grid_group.setLayout(grid)
         grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Preset")), 0, 0)
         grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Target")), 0, 1)
-        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Multi 1")), 0, 2)
-        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Multi 2")), 0, 3)
-        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Multi 3")), 0, 4)
-        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "State")), 0, 5)
+        for e in range(3):
+            grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Multi {}").format(e + 1)), 0, 2 + e * 2)
+            grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Oct")), 0, 3 + e * 2)
+        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "State")), 0, 8)
 
         self.multichannel_target_combos = []
         self.multichannel_echo_combos = []
+        self.multichannel_oct_combos = []
         self.multichannel_state_labels = []
         for p in range(self.MULTICHANNEL_COUNT):
             grid.addWidget(QLabel("Multi CH{}".format(p + 1)), p + 1, 0)
@@ -3212,6 +3215,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             self.multichannel_target_combos.append(target_combo)
 
             echo_row = []
+            oct_row = []
             for e in range(3):
                 echo_combo = QComboBox()
                 echo_combo.addItem("Off", None)
@@ -3220,19 +3224,30 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                 echo_combo.setCurrentIndex(0)
                 echo_combo.currentIndexChanged.connect(
                     lambda _idx, preset=p: self.on_multichannel_changed(preset))
-                grid.addWidget(echo_combo, p + 1, 2 + e)
+                grid.addWidget(echo_combo, p + 1, 2 + e * 2)
                 echo_row.append(echo_combo)
+
+                oct_combo = QComboBox()
+                for val in (-3, -2, -1, 0, 1, 2, 3):
+                    oct_combo.addItem("None" if val == 0 else "{:+d} oct".format(val), val)
+                oct_combo.setCurrentIndex(3)   # None
+                oct_combo.setEnabled(False)    # enabled once its Multi channel is set
+                oct_combo.currentIndexChanged.connect(
+                    lambda _idx, preset=p: self.on_multichannel_changed(preset))
+                grid.addWidget(oct_combo, p + 1, 3 + e * 2)
+                oct_row.append(oct_combo)
             self.multichannel_echo_combos.append(echo_row)
+            self.multichannel_oct_combos.append(oct_row)
 
             state_label = QLabel("-")
             state_label.setStyleSheet("color: #888;")
-            grid.addWidget(state_label, p + 1, 5)
+            grid.addWidget(state_label, p + 1, 8)
             self.multichannel_state_labels.append(state_label)
 
         layout.addWidget(grid_group)
         layout.addStretch()
 
-    def _set_multichannel_row_ui(self, preset, target, echoes, active):
+    def _set_multichannel_row_ui(self, preset, target, echoes, active, octaves=None):
         self._multichannel_loading = True
         try:
             self.multichannel_target_combos[preset].setCurrentIndex(target & 0x0F)
@@ -3240,9 +3255,20 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                 ch = echoes[e] if e < len(echoes) else None
                 idx = 0 if ch is None or ch > 15 else ch + 1
                 self.multichannel_echo_combos[preset][e].setCurrentIndex(idx)
+                oct_v = 0
+                if octaves is not None and e < len(octaves) and octaves[e] is not None:
+                    oct_v = max(-3, min(3, int(octaves[e])))
+                self.multichannel_oct_combos[preset][e].setCurrentIndex(oct_v + 3)
             self.multichannel_state_labels[preset].setText("ON" if active else "off")
+            self._sync_multichannel_oct_enabled(preset)
         finally:
             self._multichannel_loading = False
+
+    def _sync_multichannel_oct_enabled(self, preset):
+        """An Off Multi slot has nothing to transpose — grey out its Oct combo."""
+        for e in range(3):
+            on = self.multichannel_echo_combos[preset][e].currentData() is not None
+            self.multichannel_oct_combos[preset][e].setEnabled(on)
 
     def on_multichannel_changed(self, preset):
         if getattr(self, '_multichannel_loading', False):
@@ -3251,11 +3277,14 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             return
         target = self.multichannel_target_combos[preset].currentData()
         echoes = []
+        octaves = []
         for e in range(3):
             data = self.multichannel_echo_combos[preset][e].currentData()
             echoes.append(data)
+            octaves.append(self.multichannel_oct_combos[preset][e].currentData())
+        self._sync_multichannel_oct_enabled(preset)
         try:
-            self.device.keyboard.set_multichannel_preset(preset, target, echoes)
+            self.device.keyboard.set_multichannel_preset(preset, target, echoes, octaves)
         except Exception:
             pass
 
@@ -3267,8 +3296,8 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                 result = self.device.keyboard.get_multichannel_preset(p)
                 if result is None:
                     return   # pre-multichannel firmware — leave defaults
-                target, echoes, active = result
-                self._set_multichannel_row_ui(p, target, echoes, active)
+                target, echoes, active, octaves = result
+                self._set_multichannel_row_ui(p, target, echoes, active, octaves)
         except Exception:
             pass
 
