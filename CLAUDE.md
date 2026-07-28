@@ -831,7 +831,7 @@ Audited + de-overlapped 2026-06 (see "EEPROM de-overlap" below).
 | 61600-63969 | 2,370 bytes | DrumLIVE QB-master configs (magic 0xDB07 + 64×37) |
 | 64000-64017 | 18 bytes | DrumLIVE extra-voicing notes (magic 0xDB06 + 16 notes) |
 | 64018-64319 | 302 bytes | CC QB-master configs (magic 0xCC01 + 100×3) |
-| 64320-64721 | 402 bytes | Functional LED config (`FUNC_LED_EEPROM_ADDR`, moved from 60274) |
+| 64320-64721 | 402 bytes reserved | Functional LED config (`FUNC_LED_EEPROM_ADDR`, moved from 60274). Actually uses 64320-64689 (92 states x 4 + 2 magic); only 8 more FLED states fit before QB master at 64722 — build-asserted |
 | 64722-65023 | 302 bytes | QB master slot assignments (magic 0xDB04 + 100×3, moved from 60524) |
 | 65024-65247 | 224 bytes | Chord progression slots (`CPROG_EEPROM_ADDR`, moved from 60800) |
 | 65248-65263 | 16 bytes | Voice leading config (`VL_EEPROM_BASE`, moved from 60900) |
@@ -839,8 +839,10 @@ Audited + de-overlapped 2026-06 (see "EEPROM de-overlap" below).
 | 65406-65407 | 2 bytes | LCD theme (magic 0x7C + index, `LCD_THEME_EEPROM_BASE`) |
 | 65408-65426 | 19 bytes | Channel Articulations (`CHANNEL_ARTIC_EEPROM_BASE`: magic 0xCB + enable + 16-ch map + Articulation CC) |
 | 65428-65429 | 2 bytes | Curve-index migration marker (`CURVE_MIGRATION_MAGIC_ADDR`, word 0xCA11; moved from 65410 — it overlapped the channel-artic map there) |
-| 65430-65441 | 12 bytes | Keysplit/Triplesplit QB toggle-button configs (`KSQB_EEPROM_BASE`: magic 0x4B51 + 2 x 4) |
-| 65442-65527 | 86 bytes | Free |
+| 65430-65439 | 10 bytes | Keysplit/Triplesplit QB toggle-button configs (`KSQB_EEPROM_BASE`: magic 0x4B51 + 2 x 4) |
+| 65440-65443 | 4 bytes | Free |
+| 65444-65509 | 66 bytes | Multichannel echo presets (`MC_EEPROM_BASE`: magic 0x4D43 + 16 x 4) |
+| 65510-65527 | 18 bytes | Free (the top block is nearly full — new mini-regions should use the 439 B gap at 60373-60811) |
 | 65528-65535 | 8 bytes | Boot-magic shadow (`EECONFIG_MAGIC_SHADOW_ADDR`) |
 
 ### EEPROM de-overlap (2026-06)
@@ -1157,7 +1159,15 @@ names, QB masters, ...), unlike a `.vil` layout file.
 - **Layout-version gate**: the firmware reports `EEPROM_LAYOUT_VERSION`
   (bumped whenever its EEPROM map changes); `on_clone_load` refuses a clone
   whose stored version (or size) differs from the connected keyboard's, so an
-  old clone can never scatter data over a rearranged EEPROM map.
+  old clone can never scatter data over a rearranged EEPROM map. The GUI reads
+  the version from the device at INFO time and never hardcodes it, so firmware
+  bumps need **no GUI change** — a v1 `.kbclone` simply stops loading onto v2+
+  firmware with the "Incompatible clone" dialog. **Firmware is now at v2**
+  (2026-07: the func-LED config grew and relocated its magic; the ear-trainer
+  slot struct changed field meaning in place). Restoring a v1 clone onto v2
+  would not corrupt anything, but it WOULD silently reseed the functional-LED
+  colours and every ear-trainer slot — which is exactly what the gate is for.
+  Tell users to re-save their clones after a firmware update that bumps this.
 - **UX** (`main_window.py`): cancellable QProgressDialog for both directions;
   live pollers paused via `set_hid_transfer_active`; per-chunk ×3 retry; a
   confirm warning before restore (overwrites ALL settings, don't disconnect,
@@ -1343,8 +1353,9 @@ All / Normal / Keysplit / Triple / combos) selecting which key zones that loop
 records — note-ons only are gated (offs/CC/AT always record, so no stuck notes).
 Stored in a new firmware mini-region at EEPROM 37150 inside the existing
 loop-settings reservation (37000-37199); the 0xB0-0xB5 loop-settings HID family
-is untouched, so this GUI needs no update. Known limitation: async producers
-(MIDI-delay echoes, sustain-pedal flushes) record as base zone.
+is untouched, so this GUI needs no update. The mask applies live on edit and is
+written to EEPROM once when the hold menu closes. Known limitation: async
+producers (MIDI-delay echoes, sustain-pedal flushes) record as base zone.
 
 ## Simultaneous loop recording — aux recorders (2026-07) — firmware only
 
@@ -1390,8 +1401,10 @@ While a preset is ON, everything the device outputs on the target channel
 (live keys, loops, step seq, arp, rhythm engine, delay) is duplicated onto the
 multi channels. Tap the preset's keycode (or QuickBuild master) = on/off with a
 "MULTI CHx" action-bar box; hold = on-device config menu. Config persists in a
-firmware EEPROM mini-region (65444); ON/OFF is volatile. GUI mirrors in this
-repo:
+firmware EEPROM mini-region (65444); ON/OFF is volatile. On-device menu edits
+apply live per encoder detent but reach EEPROM once at menu close; the GUI's
+own HID 0x96 SET still saves immediately (it is an explicit save). GUI mirrors
+in this repo:
 
 - **Keycodes** `MULTICHANNEL_1-16` = **0xF410-0xF41F** (keycodes_v5/v6;
   `KEYCODES_MULTICHANNEL` in keycodes.py, in the recreate_keycodes chain).
