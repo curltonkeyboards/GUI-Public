@@ -3375,6 +3375,9 @@ FUNC_LED_STATES = [
     # Ear Trainer On/Off [88-89]
     (88, "On", "Ear Trainer"),
     (89, "Off", "Ear Trainer"),
+    # Multichannel echo On/Off [90-91]
+    (90, "On", "Multi Channel"),
+    (91, "Off", "Multi Channel"),
     # Other [42-47]
     (42, "Caps Lock", "Other Indicators"),
     (43, "Gaming Mode", "Other Indicators"),
@@ -3391,7 +3394,7 @@ FUNC_LED_GROUPS = [
     "Arpeggiator", "Step Sequencer", "Chord Progression", "Vial Macros",
     "Loop Pedal", "Toggle Keys", "Delay Slots", "SmartChord", "AutoFader",
     "Dynamic Chord", "DrumLIVE", "Drum Machine", "Ear Trainer",
-    "Other Indicators"
+    "Multi Channel", "Other Indicators"
 ]
 
 # Descriptions shown at top of each group section
@@ -3414,6 +3417,7 @@ FUNC_LED_GROUP_DESCRIPTIONS = {
     "DrumLIVE": "On/Off colors for DrumLIVE keys (On while the live drum filter is active).",
     "Drum Machine": "On/Off colors for Drum Machine slot keys (On while a slot is playing).",
     "Ear Trainer": "On/Off colors for Ear Trainer keys (On while a session is running).",
+    "Multi Channel": "On/Off colors for Multichannel preset keys (On while the preset is echoing its target channel onto its multi channels).",
     "Other Indicators": "Colors for caps lock, gaming mode, and tap tempo indicators.",
 }
 

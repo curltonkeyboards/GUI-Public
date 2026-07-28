@@ -18,7 +18,7 @@ from keycodes.keycodes import KEYCODES_BASIC, KEYCODES_ISO, KEYCODES_MACRO, KEYC
     KEYCODES_MIDI_CC, KEYCODES_MIDI_BANK, KEYCODES_Program_Change, KEYCODES_CC_STEPSIZE, KEYCODES_MIDI_VELOCITY, KEYCODES_Program_Change_UPDOWN, KEYCODES_MIDI_BANK, KEYCODES_MIDI_BANK_LSB, KEYCODES_MIDI_BANK_MSB, KEYCODES_MIDI_CC_FIXED, KEYCODES_OLED, KEYCODES_EARTRAINER, KEYCODES_SAVE, KEYCODES_CHORDTRAINER, \
     KEYCODES_MIDI_OCTAVE2, KEYCODES_MIDI_OCTAVE3, KEYCODES_MIDI_KEY2, KEYCODES_MIDI_KEY3, KEYCODES_MIDI_VELOCITY2, KEYCODES_MIDI_VELOCITY3, KEYCODES_MIDI_ADVANCED, KEYCODES_MIDI_SMARTCHORDBUTTONS, KEYCODES_VELOCITY_STEPSIZE, KEYCODES_MIDI_CHANNEL_OS, KEYCODES_MIDI_CHANNEL_HOLD, \
     KEYCODES_HE_VELOCITY_CURVE, KEYCODES_HE_VELOCITY_RANGE, \
-    KEYCODES_MIDI_CHANNEL, KEYCODES_MIDI_UPDOWN, KEYCODES_MIDI_CHORD_0, KEYCODES_MIDI_CHORD_1, KEYCODES_MIDI_CHORD_2, KEYCODES_MIDI_CHORD_3, KEYCODES_MIDI_CHORD_4, KEYCODES_MIDI_CHORD_5, KEYCODES_MIDI_INVERSION, KEYCODES_MIDI_SCALES, KEYCODES_MIDI_TRANSPOSE_SELECT, KEYCODES_MIDI_CC_UP, KEYCODES_MIDI_CC_DOWN, KEYCODES_MIDI_PEDAL, KEYCODES_MIDI_INOUT, \
+    KEYCODES_MIDI_CHANNEL, KEYCODES_MULTICHANNEL, KEYCODES_MIDI_UPDOWN, KEYCODES_MIDI_CHORD_0, KEYCODES_MIDI_CHORD_1, KEYCODES_MIDI_CHORD_2, KEYCODES_MIDI_CHORD_3, KEYCODES_MIDI_CHORD_4, KEYCODES_MIDI_CHORD_5, KEYCODES_MIDI_INVERSION, KEYCODES_MIDI_SCALES, KEYCODES_MIDI_TRANSPOSE_SELECT, KEYCODES_MIDI_CC_UP, KEYCODES_MIDI_CC_DOWN, KEYCODES_MIDI_PEDAL, KEYCODES_MIDI_INOUT, \
     KEYCODES_OCTAVE_DOUBLER, KEYCODES
 from widgets.square_button import SquareButton
 from widgets.big_square_button import BigSquareButton
@@ -1130,6 +1130,7 @@ class midiadvancedTab(QScrollArea):
             ("Set Dynamic Velocity Range", KEYCODES_HE_VELOCITY_RANGE, "dynamic velocity range he min max", "range", None),
             # Dropdowns (select from list)
             ("MIDI Channel", KEYCODES_MIDI_CHANNEL, "midi channel set", "dropdown", None),
+            ("Multi Channel", KEYCODES_MULTICHANNEL, "multi channel echo multichannel", "dropdown", None),
             ("Temporary MIDI Channel", KEYCODES_MIDI_CHANNEL_OS, "temporary channel oneshot", "dropdown", None),
             ("Hold MIDI Channel", KEYCODES_MIDI_CHANNEL_HOLD, "hold channel", "dropdown", None),
             ("KeySplit Channel", KEYCODES_MIDI_CHANNEL_KEYSPLIT, "keysplit channel ks", "dropdown", None),
@@ -1589,6 +1590,7 @@ class midiadvancedTab(QScrollArea):
         self.add_header_dropdown("MIDI Channel", self.channel_options, row_layout, 200)
         self.add_header_dropdown("Temporary MIDI Channel", self.channel_oneshot, row_layout, 200)
         self.add_header_dropdown("Hold MIDI Channel", self.channel_hold, row_layout, 200)
+        self.add_header_dropdown("Multi Channel", KEYCODES_MULTICHANNEL, row_layout, 200)
 
         row_layout.addStretch(1)  # Right spacer
         layout.addLayout(row_layout)

@@ -177,6 +177,12 @@ HID_CMD_DRUM_KEYBINDS_GET = 0xE9    # Get current global default bindings
 HID_CMD_DRUM_KEYBINDS_SET = 0xEA    # Set global default + link to uncustomized slots
 HID_CMD_DRUM_KEYBINDS_RESET = 0xEF  # Reset ALL slots + global default to GM factory
 
+# Multichannel echo presets (16 presets x target channel + 3 multi channels)
+HID_CMD_MULTICHANNEL = 0x96         # data[4]: 0 = GET preset, 1 = SET preset
+MULTICHANNEL_PRESET_COUNT = 16
+MULTICHANNEL_ECHO_SLOTS = 3
+MULTICHANNEL_CH_OFF = 0xFF          # echo slot disabled
+
 # Number of drum voice slots (must match firmware FACTORY_SEQ_VOICE_SLOTS)
 DRUM_KEYBIND_VOICE_COUNT = 12
 DRUM_EXTRA_VOICE_COUNT = 16          # extra DrumLIVE-only voicings (notes only)
@@ -1919,6 +1925,57 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             return False
 
         except Exception as e:
+            return False
+
+    def get_multichannel_preset(self, preset):
+        """Get one Multichannel echo preset.
+
+        Returns:
+            (target, echoes, active) where target is 0-15, echoes is a
+            3-element list (0-15 or MULTICHANNEL_CH_OFF) and active is a
+            bool (volatile on-device state); or None on failure (e.g.
+            pre-multichannel firmware).
+        """
+        try:
+            data = bytearray([0, int(preset) & 0xFF])
+            packet = self._create_hid_packet(HID_CMD_MULTICHANNEL, 0, data[1:2])
+            response = self.usb_send(self.dev, packet, retries=5)
+            if (response and len(response) >= 11 and
+                    response[0] == HID_MANUFACTURER_ID and
+                    response[3] == HID_CMD_MULTICHANNEL and
+                    response[4] == 0x01 and response[5] == preset):
+                target = response[6] & 0x0F
+                echoes = [response[7 + e] for e in range(MULTICHANNEL_ECHO_SLOTS)]
+                return target, echoes, bool(response[10])
+            return None
+        except Exception:
+            return None
+
+    def set_multichannel_preset(self, preset, target, echoes):
+        """Set one Multichannel echo preset (persists to device EEPROM).
+
+        Args:
+            preset: preset index 0-15
+            target: target channel 0-15
+            echoes: 3-element list of echo channels (0-15, or
+                MULTICHANNEL_CH_OFF / None = slot off)
+
+        Returns:
+            bool: True on success.
+        """
+        try:
+            data = bytearray(4)
+            data[0] = int(target) & 0x0F
+            for e in range(MULTICHANNEL_ECHO_SLOTS):
+                ch = echoes[e] if e < len(echoes) else None
+                data[1 + e] = MULTICHANNEL_CH_OFF if ch is None or ch > 15 else int(ch) & 0x0F
+            # Payload starts at byte 6: [preset, target, echo1, echo2, echo3]
+            packet = self._create_hid_packet(HID_CMD_MULTICHANNEL, 1,
+                                             bytearray([int(preset) & 0xFF]) + data)
+            response = self.usb_send(self.dev, packet, retries=5)
+            return bool(response and len(response) >= 5 and
+                        response[3] == HID_CMD_MULTICHANNEL and response[4] == 0x01)
+        except Exception:
             return False
 
     def get_drum_keybinds(self):

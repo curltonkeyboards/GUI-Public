@@ -2308,6 +2308,25 @@ class keycodes_v6:
         # the button's stored config, hold = on-device config menu)
         "KS_QB_TOGGLE": 0xF2F2,
         "TS_QB_TOGGLE": 0xF2F3,
+        # Multichannel echo presets (0xF410-0xF41F): tap = preset on/off
+        # (echo the target channel's output onto up to 3 multi channels),
+        # hold = on-device config menu (Target / Multi Ch 1-3).
+        "MULTICHANNEL_1": 0xF410,
+        "MULTICHANNEL_2": 0xF411,
+        "MULTICHANNEL_3": 0xF412,
+        "MULTICHANNEL_4": 0xF413,
+        "MULTICHANNEL_5": 0xF414,
+        "MULTICHANNEL_6": 0xF415,
+        "MULTICHANNEL_7": 0xF416,
+        "MULTICHANNEL_8": 0xF417,
+        "MULTICHANNEL_9": 0xF418,
+        "MULTICHANNEL_10": 0xF419,
+        "MULTICHANNEL_11": 0xF41A,
+        "MULTICHANNEL_12": 0xF41B,
+        "MULTICHANNEL_13": 0xF41C,
+        "MULTICHANNEL_14": 0xF41D,
+        "MULTICHANNEL_15": 0xF41E,
+        "MULTICHANNEL_16": 0xF41F,
 
         # MIDI Delay Navigation/Control (0xEF89-0xEF8F)
         "CLEAR_HOLD": 0xEF88,   # Hold: OLED shows "Press Loop/Seq to Clear", then press to clear

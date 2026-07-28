@@ -3122,6 +3122,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         # Drum Keybinds tab (global default drum-voice bindings for the drum machine)
         self.setup_drum_keybinds_tab()
 
+        # Multi Channel tab (16 channel-echo presets: target + 3 multi channels)
+        self.setup_multichannel_tab()
+
     # =====================================================================
     # DRUM SETTINGS (global default drum-machine channel + voice bindings)
     # =====================================================================
@@ -3145,6 +3148,129 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
     def _midi_note_label(note):
         names = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
         return "{}{} ({})".format(names[note % 12], (note // 12) - 1, note)
+
+
+    # =====================================================================
+    # MULTI CHANNEL (16 channel-echo presets)
+    # =====================================================================
+    # Each preset has a TARGET channel and up to 3 MULTI channels. While the
+    # preset is on (toggled by its Multichannel keycode / QuickBuild master),
+    # everything the keyboard outputs on the target channel is duplicated
+    # onto the multi channels. Edits here persist to the keyboard's EEPROM
+    # immediately; the on/off state itself is toggled on the device.
+    MULTICHANNEL_COUNT = 16
+
+    def setup_multichannel_tab(self):
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        container = QWidget()
+        layout = QVBoxLayout()
+        container.setLayout(layout)
+        scroll_area.setWidget(container)
+        self.tabs_widget.addTab(scroll_area, tr("MIDIswitchSettingsConfigurator", "Multi Channel"))
+
+        layout.addSpacing(8)
+        title = QLabel(tr("MIDIswitchSettingsConfigurator", "Multi Channel"))
+        title.setStyleSheet("font-weight: bold; font-size: 14pt;")
+        layout.addWidget(title)
+        desc = QLabel(tr("MIDIswitchSettingsConfigurator",
+            "16 channel-echo presets. While a preset is ON, everything the keyboard outputs "
+            "on its Target channel (live keys, loops, step sequencer, arpeggiator, rhythm "
+            "engine...) is duplicated onto its Multi channels. Toggle a preset with its "
+            "'Multi CH' keycode or a QuickBuild master button (hold the key to edit these "
+            "same settings on the device). Changes save to the keyboard immediately."))
+        desc.setWordWrap(True)
+        desc.setStyleSheet("color: #888;")
+        layout.addWidget(desc)
+        layout.addSpacing(6)
+
+        self._multichannel_loading = False
+
+        grid_group = QGroupBox(tr("MIDIswitchSettingsConfigurator", "Presets"))
+        grid = QGridLayout()
+        grid_group.setLayout(grid)
+        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Preset")), 0, 0)
+        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Target")), 0, 1)
+        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Multi 1")), 0, 2)
+        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Multi 2")), 0, 3)
+        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Multi 3")), 0, 4)
+        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "State")), 0, 5)
+
+        self.multichannel_target_combos = []
+        self.multichannel_echo_combos = []
+        self.multichannel_state_labels = []
+        for p in range(self.MULTICHANNEL_COUNT):
+            grid.addWidget(QLabel("Multi CH{}".format(p + 1)), p + 1, 0)
+
+            target_combo = QComboBox()
+            for ch in range(16):
+                target_combo.addItem("Ch {}".format(ch + 1), ch)
+            target_combo.setCurrentIndex(p if p < 16 else 0)
+            target_combo.currentIndexChanged.connect(
+                lambda _idx, preset=p: self.on_multichannel_changed(preset))
+            grid.addWidget(target_combo, p + 1, 1)
+            self.multichannel_target_combos.append(target_combo)
+
+            echo_row = []
+            for e in range(3):
+                echo_combo = QComboBox()
+                echo_combo.addItem("Off", None)
+                for ch in range(16):
+                    echo_combo.addItem("Ch {}".format(ch + 1), ch)
+                echo_combo.setCurrentIndex(0)
+                echo_combo.currentIndexChanged.connect(
+                    lambda _idx, preset=p: self.on_multichannel_changed(preset))
+                grid.addWidget(echo_combo, p + 1, 2 + e)
+                echo_row.append(echo_combo)
+            self.multichannel_echo_combos.append(echo_row)
+
+            state_label = QLabel("-")
+            state_label.setStyleSheet("color: #888;")
+            grid.addWidget(state_label, p + 1, 5)
+            self.multichannel_state_labels.append(state_label)
+
+        layout.addWidget(grid_group)
+        layout.addStretch()
+
+    def _set_multichannel_row_ui(self, preset, target, echoes, active):
+        self._multichannel_loading = True
+        try:
+            self.multichannel_target_combos[preset].setCurrentIndex(target & 0x0F)
+            for e in range(3):
+                ch = echoes[e] if e < len(echoes) else None
+                idx = 0 if ch is None or ch > 15 else ch + 1
+                self.multichannel_echo_combos[preset][e].setCurrentIndex(idx)
+            self.multichannel_state_labels[preset].setText("ON" if active else "off")
+        finally:
+            self._multichannel_loading = False
+
+    def on_multichannel_changed(self, preset):
+        if getattr(self, '_multichannel_loading', False):
+            return
+        if not (self.device and isinstance(self.device, VialKeyboard)):
+            return
+        target = self.multichannel_target_combos[preset].currentData()
+        echoes = []
+        for e in range(3):
+            data = self.multichannel_echo_combos[preset][e].currentData()
+            echoes.append(data)
+        try:
+            self.device.keyboard.set_multichannel_preset(preset, target, echoes)
+        except Exception:
+            pass
+
+    def load_multichannel_from_keyboard(self):
+        if not (self.device and isinstance(self.device, VialKeyboard)):
+            return
+        try:
+            for p in range(self.MULTICHANNEL_COUNT):
+                result = self.device.keyboard.get_multichannel_preset(p)
+                if result is None:
+                    return   # pre-multichannel firmware — leave defaults
+                target, echoes, active = result
+                self._set_multichannel_row_ui(p, target, echoes, active)
+        except Exception:
+            pass
 
     def setup_drum_keybinds_tab(self):
         scroll_area = QScrollArea()
@@ -4056,6 +4182,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
 
         # Load the global drum keybinds (drum machine voice bindings)
         self.load_drum_keybinds_from_keyboard()
+
+        # Load the Multichannel echo presets
+        self.load_multichannel_from_keyboard()
 
 # SPDX-License-Identifier: GPL-2.0-or-later
 

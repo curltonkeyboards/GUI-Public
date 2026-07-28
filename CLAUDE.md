@@ -1382,6 +1382,34 @@ GUI changes (this repo, label/text only):
   Brightness" → "Enable Auto Note Dynamic Brightness". Loop/VIA-macro labels
   ("Loop" scheme, "Vial Macros" LED category) keep their names.
 
+## Multichannel — per-channel output echo (2026-07)
+
+Firmware feature (see vial-gui-custom CLAUDE.md, same section name, for the
+full map): 16 presets, each with a TARGET channel + up to 3 MULTI channels.
+While a preset is ON, everything the device outputs on the target channel
+(live keys, loops, step seq, arp, rhythm engine, delay) is duplicated onto the
+multi channels. Tap the preset's keycode (or QuickBuild master) = on/off with a
+"MULTI CHx" action-bar box; hold = on-device config menu. Config persists in a
+firmware EEPROM mini-region (65444); ON/OFF is volatile. GUI mirrors in this
+repo:
+
+- **Keycodes** `MULTICHANNEL_1-16` = **0xF410-0xF41F** (keycodes_v5/v6;
+  `KEYCODES_MULTICHANNEL` in keycodes.py, in the recreate_keycodes chain).
+  Picker: "Multi Channel" dropdown in the Channel section
+  (`populate_channel_section`) + the Advanced-Keys dropdown categories
+  (`_get_dropdown_categories`) in `tabbed_keycodes.py`.
+- **MIDI Settings → "Multi Channel" tab** (`matrix_test.py`
+  `setup_multichannel_tab`): 16 rows of Target + Multi 1-3 combos + a live
+  ON/off state column. Loads on rebuild via
+  `keyboard_comm.get_multichannel_preset` (returns None on pre-multichannel
+  firmware → defaults kept); every combo change saves immediately via
+  `set_multichannel_preset` (HID **0x96**: sub 0 GET / 1 SET, preset@6,
+  target@7, echo1-3@8-10, 0xFF = off).
+- **Advanced Key Lighting**: new "Multi Channel" group — firmware FLED indices
+  **90 On / 91 Off**; `FUNC_LED_STATE_COUNT` 90→**92** in
+  `protocol/constants.py`; `FUNC_LED_STATES`/`FUNC_LED_GROUPS`/descriptions in
+  `rgb_configurator.py`.
+
 ## Keysplit/Triplesplit toggle buttons + keymap-tab Auto-Notes rows (2026-07)
 
 Firmware feature (see vial-gui-custom CLAUDE.md, same section name) + GUI

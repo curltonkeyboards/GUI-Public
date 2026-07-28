@@ -85,8 +85,9 @@ HID_CMD_FUNC_LED_SAVE = 0xEC
 # Functional LED state count — must match the firmware func_led_state enum
 # (FLED_STATE_COUNT). The 2026-07 rework dropped the hold-erase/just-cleared and
 # colorblind states, renamed Fader -> AutoFader, and added DrumLIVE / Drum
-# Machine / Ear Trainer On-Off pairs, bringing the total to 90.
-FUNC_LED_STATE_COUNT = 90
+# Machine / Ear Trainer On-Off pairs (90), then the Multichannel On/Off
+# pair brought the total to 92.
+FUNC_LED_STATE_COUNT = 92
 
 HID_MANUFACTURER_ID = 0x7D
 HID_SUB_ID = 0x00
