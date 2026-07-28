@@ -7,7 +7,9 @@ from protocol.clone_migrations import (
     V2_FLED_MAGIC_ADDR, V2_FLED_MAGIC, V2_FLED_NEW_STATE_DEFAULTS,
     ET_BASE, ET_SLOTS_ADDR, ET_SLOT_SIZE, ET_SLOT_COUNT,
     V1_ET_MAGIC, V2_ET_MAGIC, V2_NEW_REGIONS,
+    V3_KSP_BASE, V3_KSP_SIZE, V2_KSQB_BASE, V2_KSQB_MAGIC,
 )
+from protocol import clone_migrations
 
 EEPROM_SIZE = 65536
 
@@ -62,10 +64,26 @@ class TestCloneMigrationChain(unittest.TestCase):
             migrate_clone(b"\x00" * EEPROM_SIZE, 2, 1)
 
     def test_refuses_unknown_gap(self):
-        # No v2 -> v3 migration is registered yet, so a v1 image cannot reach v3.
-        self.assertFalse(can_migrate(1, 3))
+        # One past the highest registered migration: no chain can reach it.
+        unreachable = max(clone_migrations._MIGRATIONS) + 3
+        self.assertFalse(can_migrate(1, unreachable))
         with self.assertRaises(CloneMigrationError):
-            migrate_clone(b"\x00" * EEPROM_SIZE, 1, 3)
+            migrate_clone(b"\x00" * EEPROM_SIZE, 1, unreachable)
+
+    def test_every_registered_step_is_contiguous(self):
+        # can_migrate() walks range(from, to) and needs EVERY intermediate
+        # version present. A registry with a hole (e.g. 1 and 3 but not 2)
+        # would silently make older clones unloadable.
+        versions = sorted(clone_migrations._MIGRATIONS)
+        self.assertEqual(versions, list(range(1, len(versions) + 1)),
+                         "migration registry must be contiguous from v1")
+
+    def test_full_chain_from_oldest(self):
+        newest = max(clone_migrations._MIGRATIONS) + 1
+        self.assertTrue(can_migrate(1, newest))
+        out, notes = migrate_clone(build_v1_image(), 1, newest)
+        self.assertEqual(len(out), EEPROM_SIZE)
+        self.assertTrue(notes)
 
     def test_v1_to_v2_available(self):
         self.assertTrue(can_migrate(1, 2))
@@ -180,3 +198,85 @@ class TestCloneMigrationUninitialisedSource(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def build_v2_image(with_ksqb=True):
+    """A v2 image: like v1 but already migrated, optionally with KSQB configured."""
+    blob = bytearray(migrate_clone(build_v1_image(), 1, 2)[0])
+    if with_ksqb:
+        # The retired two-button config, as a v2 firmware would have left it:
+        # magic + 2 zones x {channel, transpose, curve, flags}.
+        struct.pack_into("<H", blob, V2_KSQB_BASE, V2_KSQB_MAGIC)
+        blob[V2_KSQB_BASE + 2:V2_KSQB_BASE + 10] = bytes(
+            (5, 12, 0xFF, 0x01, 9, 256 - 12, 3, 0x05))
+    return bytes(blob)
+
+
+class TestCloneMigrationV2ToV3(unittest.TestCase):
+    """KSQB retired; 10 unified Keysplit presets added in a new region."""
+
+    def test_new_ksp_region_fully_cleared(self):
+        v2 = bytearray(build_v2_image())
+        v2[V3_KSP_BASE:V3_KSP_BASE + V3_KSP_SIZE] = b"\x5A" * V3_KSP_SIZE   # junk
+        v3, _notes = migrate_clone(bytes(v2), 2, 3)
+        self.assertEqual(bytes(v3[V3_KSP_BASE:V3_KSP_BASE + V3_KSP_SIZE]),
+                         bytes(V3_KSP_SIZE),
+                         "the new Keysplit-preset region must be fully cleared "
+                         "so the firmware seeds it")
+
+    def test_retired_ksqb_region_left_intact(self):
+        # The firmware reads it ONCE to seed presets 1 and 2 from the old
+        # buttons. Clearing it here would silently drop the user's settings.
+        v2 = build_v2_image(with_ksqb=True)
+        v3, notes = migrate_clone(v2, 2, 3)
+        self.assertEqual(bytes(v3[V2_KSQB_BASE:V2_KSQB_BASE + 10]),
+                         bytes(v2[V2_KSQB_BASE:V2_KSQB_BASE + 10]))
+        self.assertTrue(any("carried over" in n for n in notes), notes)
+
+    def test_reports_defaults_when_no_ksqb(self):
+        v2 = build_v2_image(with_ksqb=False)
+        _v3, notes = migrate_clone(v2, 2, 3)
+        self.assertTrue(any("started at defaults" in n for n in notes), notes)
+
+    def test_only_the_ksp_region_changes(self):
+        v2 = build_v2_image()
+        v3, _notes = migrate_clone(v2, 2, 3)
+        changed = {i for i in range(EEPROM_SIZE) if v2[i] != v3[i]}
+        allowed = set(range(V3_KSP_BASE, V3_KSP_BASE + V3_KSP_SIZE))
+        self.assertTrue(changed.issubset(allowed),
+                        "v2->v3 touched bytes outside the Keysplit-preset "
+                        "region: {}".format(sorted(changed - allowed)[:16]))
+
+
+class TestCloneMigrationV1ToV3Chain(unittest.TestCase):
+    """A v1 clone must walk 1 -> 2 -> 3 and land coherent."""
+
+    def setUp(self):
+        self.v1 = build_v1_image()
+        self.v3, self.notes = migrate_clone(self.v1, 1, 3)
+
+    def test_v2_work_still_applied(self):
+        # The func-LED colours preserved by the v1->v2 step must survive the
+        # v2->v3 step untouched.
+        for i in range(V1_FLED_STATE_COUNT):
+            off = V1_FLED_BASE + i * 4
+            self.assertEqual(bytes(self.v3[off:off + 4]),
+                             bytes((i, 255 - i, (i * 2) & 0xFF, i % 3)))
+        self.assertEqual(struct.unpack_from("<H", self.v3, V2_FLED_MAGIC_ADDR)[0],
+                         V2_FLED_MAGIC)
+
+    def test_ksp_region_cleared(self):
+        self.assertEqual(bytes(self.v3[V3_KSP_BASE:V3_KSP_BASE + V3_KSP_SIZE]),
+                         bytes(V3_KSP_SIZE))
+
+    def test_ksqb_reports_defaults_not_carryover(self):
+        # v1 never had a KSQB region, and the v1->v2 step zeroes it, so the
+        # v2->v3 step must NOT claim it carried button settings over.
+        self.assertTrue(any("started at defaults" in n for n in self.notes),
+                        self.notes)
+
+    def test_notes_cover_both_steps(self):
+        joined = " ".join(self.notes)
+        self.assertIn("Functional LED", joined)
+        self.assertIn("Ear trainer", joined)
+        self.assertIn("Keysplit", joined)

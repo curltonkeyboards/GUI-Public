@@ -824,7 +824,10 @@ Audited + de-overlapped 2026-06 (see "EEPROM de-overlap" below).
 | 52000-53603 | 1,604 bytes | DKS configurations (`EEPROM_DKS_BASE`) |
 | 54000-55401 | 1,402 bytes | Toggle multi-key keycodes |
 | 56000-60273 | 4,274 bytes | Custom names (OLED display names for macros/arp/seq/delay/toggles/**layers**). Magic 0x4E41 @56000; macros 56002, arp 56402, seq 57042, delay 57682, toggle 58482, layer 60082. |
-| 60274-60811 | 538 bytes | Free (was Factory-seq chains, relocated to 39108) |
+| 60274-60372 | 99 bytes | Per-macro loop modes + sync flags + magic (`MACRO_MODES_EEPROM_ADDR`) |
+| 60373-60379 | 7 bytes | Free |
+| 60380-60521 | 142 bytes | Keysplit presets (`KSP_EEPROM_BASE`: magic 0x4B50 + 10 x 14). Replaces the retired two-button KSQB config at 65430, which is still READ ONCE to seed presets 1-2 |
+| 60522-60811 | 290 bytes | Free |
 | 60812-61051 | 240 bytes | Ear trainer (`ET_EEPROM_BASE`, moved from 60284) |
 | 61052-61055 | 4 bytes | DAW selection (magic 0xDA01 + index + os, `EEPROM_DAW_BASE`, moved from 60280) |
 | 61100-61541 | 442 bytes | QB fader configs (40 x 11B, magic 0xFA01) |
@@ -839,7 +842,7 @@ Audited + de-overlapped 2026-06 (see "EEPROM de-overlap" below).
 | 65406-65407 | 2 bytes | LCD theme (magic 0x7C + index, `LCD_THEME_EEPROM_BASE`) |
 | 65408-65426 | 19 bytes | Channel Articulations (`CHANNEL_ARTIC_EEPROM_BASE`: magic 0xCB + enable + 16-ch map + Articulation CC) |
 | 65428-65429 | 2 bytes | Curve-index migration marker (`CURVE_MIGRATION_MAGIC_ADDR`, word 0xCA11; moved from 65410 — it overlapped the channel-artic map there) |
-| 65430-65439 | 10 bytes | Keysplit/Triplesplit QB toggle-button configs (`KSQB_EEPROM_BASE`: magic 0x4B51 + 2 x 4) |
+| 65430-65439 | 10 bytes | **RETIRED** two-button Keysplit/Triplesplit configs (`KSQB_EEPROM_BASE`: magic 0x4B51 + 2 x 4). Superseded by the Keysplit presets at 60380; kept (not reused) because `ksp_seed_from_legacy_ksqb()` reads it once on the first boot after the update |
 | 65440-65443 | 4 bytes | Free |
 | 65444-65509 | 66 bytes | Multichannel echo presets (`MC_EEPROM_BASE`: magic 0x4D43 + 16 x 4) |
 | 65510-65527 | 18 bytes | Free (the top block is nearly full — new mini-regions should use the 439 B gap at 60373-60811) |
@@ -1183,6 +1186,17 @@ names, QB masters, ...), unlike a `.vil` layout file.
     under key N, and append a user-facing note for anything preserved or reset.
     Addresses inside a migration describe a HISTORICAL layout — hardcode them,
     never reference "current" constants.
+  - **v2 → v3** (firmware is now at **v3**): the two-button Keysplit/Triplesplit
+    config (KSQB, 65430) was retired for 10 unified **Keysplit presets** in a new
+    region at 60380 (142 B). The migration clears the NEW region only and
+    deliberately LEAVES the retired one intact — the firmware reads it once to
+    seed presets 1-2 from the old buttons, so clearing it would destroy the
+    settings it is about to carry over. A v1 clone chaining 1→2→3 stays
+    coherent: the 1→2 step zeroes KSQB (it never existed in v1), so the 2→3 step
+    reports "started at defaults" rather than a false carry-over.
+    Multichannel needed no bump — the new per-echo octave (-3..+3) packs into
+    the high nibble of the same echo byte, signed so a legacy byte's zero
+    nibble decodes as "no transpose".
 - **UX** (`main_window.py`): cancellable QProgressDialog for both directions;
   live pollers paused via `set_hid_transfer_active`; per-chunk ×3 retry; a
   confirm warning before restore (overwrites ALL settings, don't disconnect,
