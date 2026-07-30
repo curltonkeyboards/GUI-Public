@@ -1197,6 +1197,13 @@ names, QB masters, ...), unlike a `.vil` layout file.
     Multichannel needed no bump — the new per-echo octave (-3..+3) packs into
     the high nibble of the same echo byte, signed so a legacy byte's zero
     nibble decodes as "no transpose".
+  - **v3 → v4** (firmware is now at **v4**): the per-loop record gate region
+    (37150, magic + 8 bytes) changed MEANING in place — the old key-zone mask
+    ("Rec Notes") became a channel gate ("Rec Channel", 0 = All Channels,
+    1-16 = channel N only; firmware magic 0x4C47 → 0x4C48). An old zone mask
+    cannot map onto a single channel, so the migration clears the region and
+    the gate resets to All Channels. Covered in
+    `test/test_clone_migrations.py` (both repos).
 - **UX** (`main_window.py`): cancellable QProgressDialog for both directions;
   live pollers paused via `set_hid_transfer_active`; per-chunk ×3 retry; a
   confirm warning before restore (overwrites ALL settings, don't disconnect,
@@ -1373,30 +1380,35 @@ master press bypassed the modifier capture), and the **Rhythm Engine** was added
 as a target for transpose/octave/channel/articulation (channel absolute, no
 note-doubler — its transpose is octave-based). ThruLoop and arp remain excluded.
 
-## Per-loop note-record gate ("Rec Notes", 2026-07) — firmware only
+## Per-loop channel record gate ("Rec Channel", 2026-07 — replaced the zone "Rec Notes" gate)
 
 Firmware-side feature (see vial-gui-custom CLAUDE.md, same section name) — **no
-GUI/HID/EEPROM-protocol change, nothing to mirror here.** Each of the 8 loops
-gained a persisted 3-bit zone mask ("Rec Notes" row in the per-loop hold menu:
-All Notes / Non KS/TS / Keysplit / Triple / combos) selecting which key zones
-that loop records — note-ons only are gated (offs/CC/AT always record, so no
-stuck notes). The base pick is labelled "Non KS/TS" because a keysplit or
-triplesplit KEY whose split is switched off behaves as a normal key and records
-under it; and a gate naming only splits that are all currently off is dropped
-entirely (it would otherwise record silence).
-Stored in a new firmware mini-region at EEPROM 37150 inside the existing
-loop-settings reservation (37000-37199); the 0xB0-0xB5 loop-settings HID family
-is untouched, so this GUI needs no update. The mask applies live on edit and is
-written to EEPROM once when the hold menu closes. Known limitation: async
-producers (MIDI-delay echoes, sustain-pedal flushes) record as base zone.
+GUI/HID-protocol change**; the only GUI-side work is the clone migration below.
+Each of the 8 loops has a persisted channel gate ("Rec Channel" row in the
+per-loop hold menu: All Chan / Ch 1-16): 0 = record everything (default),
+1-16 = that loop records ONLY events on that MIDI channel — e.g. loop 2 gated
+to channel 4 records only channel-4 traffic. Note-ons, CC and aftertouch are
+gated; note-OFFS always record (so no stuck notes on a mid-note edit). This
+replaced the earlier zone-mask gate ("Rec Notes": base/keysplit/triplesplit) —
+gating now keys purely off each event's channel, so the old zone-latch /
+split-demotion machinery is gone and delay echoes / pedal flushes are gated
+exactly like live notes.
+Stored in the same firmware mini-region at EEPROM 37150 inside the
+loop-settings reservation (37000-37199), but the byte changed MEANING, so the
+region magic bumped 0x4C47 → 0x4C48 (in-place upgrades reseed All Channels)
+and `EEPROM_LAYOUT_VERSION` went **3 → 4** with a `_migrate_v3_to_v4` clone
+migration (`protocol/clone_migrations.py`, both repos) that clears the region
+and reports the reset. The 0xB0-0xB5 loop-settings HID family is untouched.
+The gate applies live on edit and is written to EEPROM once when the hold menu
+closes.
 
 ## Simultaneous loop recording — aux recorders (2026-07) — firmware only
 
 Firmware-side feature (see vial-gui-custom CLAUDE.md, same section name) — **no
 GUI/HID/EEPROM change, nothing to mirror here.** Several loops can now record
 at once: loops primed or armed TOGETHER record in parallel (each with its own
-"Rec Notes" zone gate — e.g. one loop capturing keysplit notes while another
-captures triplesplit), while pressing a new loop during an ACTIVE recording
+"Rec Channel" gate — e.g. one loop capturing channel-2 notes while another
+captures channel-5), while pressing a new loop during an ACTIVE recording
 still performs the classic handoff. **Simultaneous recording requires a sync
 master** (2026-07): a playing loop / running step-seq / drum / rhythm engine /
 ThruLoop master, or the BPM grid in sync modes 1/3 — so both takes are
@@ -1407,9 +1419,9 @@ sync modes (2/5) never quantize, so they never allow it either. Starting a
 THIRD recording while two are running finishes both in-flight takes at the
 boundary the new record starts on. The recording front-end keeps the single
 primary recorder and adds per-slot "aux" recorders beside it; the free loop
-pool is split fairly between simultaneous starters. Also: async note producers
-(MIDI-delay echoes, sustain flushes) are now zone-classified by CHANNEL against
-the base/keysplit/triplesplit channels for the note-record gate.
+pool is split fairly between simultaneous starters. Async note producers
+(MIDI-delay echoes, sustain flushes) carry their own channel, so the "Rec
+Channel" gate treats them exactly like live notes.
 
 ## Per-zone "Auto-Notes" gate + terminology rename (2026-07)
 

@@ -210,10 +210,31 @@ def _migrate_v2_to_v3(blob, notes):
                      "defaults.")
 
 
+# ---------------------------------------------------------------------------
+# v3 -> v4 (2026-07): the per-loop record gate (37150, magic + 8 bytes)
+# changed MEANING in place — the old key-zone mask (1-7, "Rec Notes") became a
+# channel gate (0 = All Channels, 1-16 = record only that channel, the
+# "Rec Channel" row). Same address and size; the firmware bumped the region's
+# magic 0x4C47 -> 0x4C48 so an in-place upgrade reseeds it. An old zone mask
+# cannot be mapped onto a single channel, so the migration clears the region
+# and the gate starts back at All Channels.
+V4_NOTE_GATE_BASE = 37150           # magic word + 8 gate bytes = 10 bytes
+V4_NOTE_GATE_SIZE = 2 + 8
+
+
+def _migrate_v3_to_v4(blob, notes):
+    blob[V4_NOTE_GATE_BASE:V4_NOTE_GATE_BASE + V4_NOTE_GATE_SIZE] = bytes(
+        V4_NOTE_GATE_SIZE)
+    notes.append("Per-loop record gate: the old key-zone 'Rec Notes' setting "
+                 "was replaced by a per-channel 'Rec Channel' gate and resets "
+                 "to All Channels.")
+
+
 # Registry: key = source version, value = function converting it to key + 1.
 _MIGRATIONS = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
+    3: _migrate_v3_to_v4,
 }
 
 

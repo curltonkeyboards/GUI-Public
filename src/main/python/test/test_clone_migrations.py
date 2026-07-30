@@ -8,6 +8,7 @@ from protocol.clone_migrations import (
     ET_BASE, ET_SLOTS_ADDR, ET_SLOT_SIZE, ET_SLOT_COUNT,
     V1_ET_MAGIC, V2_ET_MAGIC, V2_NEW_REGIONS,
     V3_KSP_BASE, V3_KSP_SIZE, V2_KSQB_BASE, V2_KSQB_MAGIC,
+    V4_NOTE_GATE_BASE, V4_NOTE_GATE_SIZE,
 )
 from protocol import clone_migrations
 
@@ -246,6 +247,44 @@ class TestCloneMigrationV2ToV3(unittest.TestCase):
         self.assertTrue(changed.issubset(allowed),
                         "v2->v3 touched bytes outside the Keysplit-preset "
                         "region: {}".format(sorted(changed - allowed)[:16]))
+
+
+def build_v3_image():
+    """A v3 image with the note-gate region as a v3 firmware left it:
+    old magic 0x4C47 + 8 zone masks (the retired 'Rec Notes' format)."""
+    blob = bytearray(migrate_clone(build_v2_image(), 2, 3)[0])
+    struct.pack_into("<H", blob, V4_NOTE_GATE_BASE, 0x4C47)
+    blob[V4_NOTE_GATE_BASE + 2:V4_NOTE_GATE_BASE + V4_NOTE_GATE_SIZE] = bytes(
+        (7, 1, 2, 4, 3, 5, 6, 7))
+    return bytes(blob)
+
+
+class TestCloneMigrationV3ToV4(unittest.TestCase):
+    """The note-gate region changed meaning zone-mask -> channel gate."""
+
+    def test_note_gate_region_fully_cleared(self):
+        # An old zone mask (1-7) would decode as "channel 1-7 only" under the
+        # new meaning — the region must be wiped so the firmware seeds
+        # All-Channels defaults, exactly like a brand-new region.
+        v3 = build_v3_image()
+        v4, _notes = migrate_clone(v3, 3, 4)
+        self.assertEqual(
+            bytes(v4[V4_NOTE_GATE_BASE:V4_NOTE_GATE_BASE + V4_NOTE_GATE_SIZE]),
+            bytes(V4_NOTE_GATE_SIZE))
+
+    def test_only_the_note_gate_region_changes(self):
+        v3 = build_v3_image()
+        v4, _notes = migrate_clone(v3, 3, 4)
+        changed = {i for i in range(EEPROM_SIZE) if v3[i] != v4[i]}
+        allowed = set(range(V4_NOTE_GATE_BASE,
+                            V4_NOTE_GATE_BASE + V4_NOTE_GATE_SIZE))
+        self.assertTrue(changed.issubset(allowed),
+                        "v3->v4 touched bytes outside the note-gate region: "
+                        "{}".format(sorted(changed - allowed)[:16]))
+
+    def test_reset_is_reported(self):
+        _v4, notes = migrate_clone(build_v3_image(), 3, 4)
+        self.assertTrue(any("All Channels" in n for n in notes), notes)
 
 
 class TestCloneMigrationV1ToV3Chain(unittest.TestCase):
