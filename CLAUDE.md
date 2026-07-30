@@ -1186,7 +1186,7 @@ names, QB masters, ...), unlike a `.vil` layout file.
     under key N, and append a user-facing note for anything preserved or reset.
     Addresses inside a migration describe a HISTORICAL layout — hardcode them,
     never reference "current" constants.
-  - **v2 → v3** (firmware is now at **v3**): the two-button Keysplit/Triplesplit
+  - **v2 → v3**: the two-button Keysplit/Triplesplit
     config (KSQB, 65430) was retired for 10 unified **Keysplit presets** in a new
     region at 60380 (142 B). The migration clears the NEW region only and
     deliberately LEAVES the retired one intact — the firmware reads it once to
