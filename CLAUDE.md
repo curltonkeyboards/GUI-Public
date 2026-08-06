@@ -1668,3 +1668,14 @@ in `pending_per_key_keys`, so the existing deferred batched save covers all
 layers). Turning per-layer OFF still shows the existing confirm and copies the
 current layer to all layers so they start uniform. Global (non-per-key) mode
 behavior is unchanged.
+
+## On-device Key Mapper (2026-08) — firmware only
+
+Firmware feature (see vial-gui-custom CLAUDE.md, same section name) — **no
+GUI/HID/EEPROM change, nothing to mirror here.** Settings > "Key Mapper" on the
+device: pick a layer, press a key to select its matrix position, choose its new
+keycode with the on-device keycode search, then "Set another key?" loops the
+flow. Writes go straight to the VIA dynamic keymap, so the GUI sees them like
+any other keymap edit. Rebinding an ESC key on the navigation ("master") layer
+raises an on-device warning (default No) since it can make menus unnavigable —
+recoverable from this app's keymap editor.
