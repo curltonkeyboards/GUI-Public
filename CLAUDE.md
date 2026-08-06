@@ -1679,3 +1679,15 @@ flow. Writes go straight to the VIA dynamic keymap, so the GUI sees them like
 any other keymap edit. Rebinding an ESC key on the navigation ("master") layer
 raises an on-device warning (default No) since it can make menus unnavigable —
 recoverable from this app's keymap editor.
+
+## DrumLIVE QB authoring rework (2026-08) — firmware only
+
+Firmware feature (see vial-gui-custom CLAUDE.md, same section name) — **no
+GUI/HID/EEPROM change, nothing to mirror here.** DrumLIVE master authoring
+moved into a QB-takeover chooser (Presets / Basic / Advanced / Toggles); ESC
+on the Basic/Advanced capture pages now SAVES the state as the button's
+snapshot; toggles are multi-category (one button cycles a whole group of
+categories, stored as a new config kind — legacy single-category toggles keep
+working); holding a configured master opens Change Drumlive / Rebind Key /
+Done. The Settings main-menu DrumLIVE row was removed earlier the same day —
+DrumLIVE is edited via QuickBuild (and the DRUMLIVE_MENU keycode).
