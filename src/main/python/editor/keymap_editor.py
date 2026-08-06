@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWid
                               QGroupBox, QSlider, QCheckBox, QPushButton, QComboBox, QFrame,
                               QSizePolicy, QScrollArea, QTabWidget, QDialog, QDialogButtonBox,
                               QSpinBox, QGridLayout, QMenu, QToolButton, QAction, QInputDialog)
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSettings
 
 from widgets.combo_box import ArrowComboBox
 from any_keycode_dialog import AnyKeycodeDialog
@@ -2472,6 +2472,52 @@ class KeymapEditor(BasicEditor):
         layout_labels_container = QHBoxLayout()
         layout_labels_container.addWidget(layer_label)
         layout_labels_container.addLayout(self.layout_layers)
+
+        # Navigation-layer control: shows whether the selected layer is the
+        # layer the keyboard's on-device menus read typed input from (naming /
+        # search letters, digits, arrow keys), and lets the user move it.
+        # State loads in rebuild() via keyboard.get_nav_layer(); disabled on
+        # firmware that predates the nav-layer HID command (0x97).
+        self.nav_layer = 0
+        self.nav_layer_supported = False
+        layout_labels_container.addSpacing(12)
+        self.nav_layer_checkbox = QCheckBox(tr("KeymapEditor", "Make Navigation Layer"))
+        self.nav_layer_checkbox.setFocusPolicy(Qt.NoFocus)
+        self.nav_layer_checkbox.clicked.connect(self.on_nav_layer_clicked)
+        layout_labels_container.addWidget(self.nav_layer_checkbox)
+        nav_help = QPushButton("?")
+        nav_help.setStyleSheet("""
+            QPushButton {
+                color: #888;
+                font-weight: bold;
+                font-size: 9pt;
+                border: 1px solid #888;
+                border-radius: 9px;
+                min-width: 16px;
+                max-width: 16px;
+                min-height: 16px;
+                max-height: 16px;
+                padding: 0px;
+                margin: 0px;
+                background: transparent;
+            }
+            QPushButton:hover {
+                color: #fff;
+                background-color: #555;
+                border-color: #fff;
+            }
+        """)
+        nav_help.setFocusPolicy(Qt.NoFocus)
+        nav_help.setToolTip(tr(
+            "KeymapEditor",
+            "The NAVIGATION LAYER is the layer the keyboard uses to navigate "
+            "its on-device menus: typing names and search text (A-Z, 0-9), "
+            "entering numbers, and nudging values with the arrow keys all read "
+            "this layer's keymap. It defaults to Layer 1. Tick the box to make "
+            "the currently selected layer the navigation layer. The navigation "
+            "layer should always keep a full A-Z alphabet, the arrow keys and "
+            "ESC, or menus on the device may become impossible to navigate."))
+        layout_labels_container.addWidget(nav_help)
         layout_labels_container.addStretch()
 
         # Preset menu button with nested submenus (applies on selection)
@@ -2874,6 +2920,19 @@ class KeymapEditor(BasicEditor):
             # Initialize encoder widget with keyboard data
             self.encoder_assign.set_layer(self.current_layer, self.keyboard)
 
+            # Load the device's navigation layer (None = firmware predates the
+            # nav-layer HID command; control shows layer 1 and stays disabled).
+            nl = None
+            if hasattr(self.keyboard, "get_nav_layer"):
+                nl = self.keyboard.get_nav_layer()
+            self.nav_layer_supported = nl is not None
+            self.nav_layer = nl if nl is not None else 0
+            self.nav_layer_checkbox.setEnabled(self.nav_layer_supported)
+            if not self.nav_layer_supported:
+                self.nav_layer_checkbox.setToolTip(tr(
+                    "KeymapEditor",
+                    "Changing the navigation layer requires a firmware update."))
+
             self.refresh_layer_display()
 
         # Set device for quick actuation widget (loads all layers once)
@@ -2942,7 +3001,11 @@ class KeymapEditor(BasicEditor):
             # Update tooltip with current layer name
             if self.keyboard and idx < self.keyboard.layers:
                 layer_name = mgr.get_name(FEATURE_LAYER, idx)
+                if idx == self.nav_layer:
+                    layer_name = "{} — NAVIGATION LAYER".format(layer_name)
                 btn.setToolTip(layer_name)
+
+        self._update_nav_layer_display()
 
         for widget in self.container.widgets:
             code = self.code_for_widget(widget)
@@ -2958,6 +3021,116 @@ class KeymapEditor(BasicEditor):
         # Update encoder widget layer (load from keyboard)
         self.encoder_assign.set_layer(idx, self.keyboard)
         self.refresh_layer_display()
+
+    # ------------------------------------------------------------------
+    # Navigation layer (the layer on-device menus read typed input from)
+    # ------------------------------------------------------------------
+
+    # Keys the on-device menus depend on: naming/search typing needs the full
+    # alphabet, number-page nudges need the arrows, and ESC backs out of menus.
+    NAV_REQUIRED_KEYS = frozenset(
+        ["KC_" + chr(ord("A") + i) for i in range(26)]
+        + ["KC_ESC", "KC_ESCAPE", "KC_UP", "KC_DOWN", "KC_LEFT", "KC_RIGHT"]
+    )
+
+    def _update_nav_layer_display(self):
+        """Sync the nav-layer checkbox with the currently selected layer:
+        a bold, bordered, ticked "NAVIGATION LAYER" when the selected layer IS
+        the navigation layer, a plain "Make Navigation Layer" otherwise."""
+        if not hasattr(self, "nav_layer_checkbox"):
+            return
+        is_nav = (self.current_layer == self.nav_layer)
+        self.nav_layer_checkbox.blockSignals(True)
+        self.nav_layer_checkbox.setChecked(is_nav)
+        if is_nav:
+            self.nav_layer_checkbox.setText(tr("KeymapEditor", "NAVIGATION LAYER"))
+            self.nav_layer_checkbox.setStyleSheet(
+                "QCheckBox { font-weight: bold; border: 2px solid palette(highlight); "
+                "border-radius: 4px; padding: 2px 6px; }")
+        else:
+            self.nav_layer_checkbox.setText(tr("KeymapEditor", "Make Navigation Layer"))
+            self.nav_layer_checkbox.setStyleSheet("QCheckBox { padding: 2px 6px; }")
+        self.nav_layer_checkbox.blockSignals(False)
+
+    def _nav_warning(self, suppress_key, text):
+        """Show a Yes/No navigation-layer warning with a "do not show again"
+        checkbox. Returns True when the action may proceed. The suppression is
+        only persisted when the user proceeds (Yes), so a suppressed dialog can
+        never block a later confirmation."""
+        settings = QSettings("Vial", "Vial")
+        if settings.value(suppress_key, False, type=bool):
+            return True
+        box = QMessageBox(self.widget())
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle(tr("KeymapEditor", "Navigation Layer Warning"))
+        box.setText(text)
+        box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        box.setDefaultButton(QMessageBox.No)
+        dont_show = QCheckBox(tr("KeymapEditor", "Do not show this message again"))
+        box.setCheckBox(dont_show)
+        ret = box.exec_()
+        if ret == QMessageBox.Yes and dont_show.isChecked():
+            settings.setValue(suppress_key, True)
+        return ret == QMessageBox.Yes
+
+    def on_nav_layer_clicked(self, checked):
+        """Handle the "Make Navigation Layer" checkbox click."""
+        if not checked:
+            # There must always be a navigation layer — unticking the current
+            # one is meaningless; pick a different layer and tick it there.
+            self._update_nav_layer_display()
+            return
+        if not self.nav_layer_supported or self.keyboard is None:
+            self._update_nav_layer_display()
+            return
+        if self.current_layer == self.nav_layer:
+            self._update_nav_layer_display()
+            return
+
+        proceed = self._nav_warning(
+            "nav_layer/suppress_change_warning",
+            tr("KeymapEditor",
+               "!WARNING: YOU ARE TRYING TO CHANGE THE NAVIGATION LAYER ON "
+               "THE DEVICE.\n\nTHE NAVIGATION LAYER IS USED TO NAVIGATE MENUS "
+               "ON THE DEVICE AND IF CHANGED MAY MAKE YOU UNABLE TO NAVIGATE "
+               "MENUS ON THE DEVICE.\n\nARE YOU SURE YOU WANT TO PROCEED?"))
+        if not proceed:
+            self._update_nav_layer_display()
+            return
+
+        if self.keyboard.set_nav_layer(self.current_layer):
+            self.nav_layer = self.current_layer
+        else:
+            QMessageBox.warning(
+                self.widget(),
+                tr("KeymapEditor", "Navigation Layer"),
+                tr("KeymapEditor", "Failed to set the navigation layer on the device."))
+        self.refresh_layer_display()
+
+    def _nav_layer_edit_allowed(self, layer, row, col, new_keycode):
+        """Gate a keymap edit on the NAVIGATION layer: if it would remove the
+        last A-Z / ESC / arrow key the on-device menus depend on, warn (with a
+        "do not show again" option) before proceeding."""
+        if layer != self.nav_layer or self.keyboard is None:
+            return True
+        old = self.keyboard.layout.get((layer, row, col), "KC_NO")
+        if old not in self.NAV_REQUIRED_KEYS or old == new_keycode:
+            return True
+        # Still available somewhere else on this layer's physical rows?
+        for r2 in range(5):
+            for c2 in range(14):
+                if (r2, c2) == (row, col):
+                    continue
+                if self.keyboard.layout.get((layer, r2, c2), "KC_NO") == old:
+                    return True
+        return self._nav_warning(
+            "nav_layer/suppress_required_key_warning",
+            tr("KeymapEditor",
+               "WARNING: A-Z, ESC AND ARROW KEYS ARE NECESSARY FOR THE "
+               "NAVIGATION LAYER.\n\nTHE NAVIGATION LAYER IS USED TO NAVIGATE "
+               "MENUS ON THE DEVICE AND IF CHANGED MAY MAKE YOU UNABLE TO "
+               "NAVIGATE MENUS ON THE DEVICE.\n\nARE YOU SURE YOU WANT TO "
+               "PROCEED?"))
 
     def set_key(self, keycode):
         """ Change currently selected key to provided keycode """
@@ -3037,6 +3210,11 @@ class KeymapEditor(BasicEditor):
                 if kc is None:
                     return
                 keycode = kc.qmk_id.replace("(kc)", "({})".format(keycode))
+
+            # Removing the last A-Z / ESC / arrow key from the NAVIGATION
+            # layer can make the on-device menus impossible to drive — warn.
+            if not self._nav_layer_edit_allowed(l, r, c, keycode):
+                return
 
             self.keyboard.set_key(l, r, c, keycode)
             self.refresh_layer_display()

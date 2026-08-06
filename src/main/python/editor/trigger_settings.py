@@ -2153,6 +2153,17 @@ class TriggerSettingsTab(BasicEditor):
         # Refresh display
         self.refresh_layer_display()
 
+    def _edit_layers(self):
+        """Layers a per-key edit applies to.
+
+        With per-layer mode ON, edits touch only the current layer. With
+        per-layer OFF, the same key position is updated on ALL 12 layers so
+        the layers stay uniform.
+        """
+        if self.per_layer_enabled:
+            return [self.current_layer]
+        return list(range(12))
+
     def on_key_actuation_changed(self, value):
         """Handle key actuation slider value change - applies to all selected keys"""
         self.actuation_value_label.setText(self.value_to_mm(value))
@@ -2165,8 +2176,6 @@ class TriggerSettingsTab(BasicEditor):
         if not selected_keys and self.container.active_key:
             selected_keys = [self.container.active_key]
 
-        layer = self.current_layer
-
         # Apply to all selected keys
         for key in selected_keys:
             if key.desc.row is not None:
@@ -2174,9 +2183,10 @@ class TriggerSettingsTab(BasicEditor):
                 key_index = row * 14 + col
 
                 if key_index < 70:
-                    self.per_key_values[layer][key_index]['actuation'] = value
-                    # Track for deferred save (no immediate HID)
-                    self.pending_per_key_keys.add((layer, key_index))
+                    for layer in self._edit_layers():
+                        self.per_key_values[layer][key_index]['actuation'] = value
+                        # Track for deferred save (no immediate HID)
+                        self.pending_per_key_keys.add((layer, key_index))
 
         # Mark as having unsaved changes
         self.has_unsaved_changes = True
@@ -2195,8 +2205,6 @@ class TriggerSettingsTab(BasicEditor):
         if not selected_keys and self.container.active_key:
             selected_keys = [self.container.active_key]
 
-        layer = self.current_layer
-
         # Apply to all selected keys
         for key in selected_keys:
             if key.desc.row is not None:
@@ -2204,9 +2212,10 @@ class TriggerSettingsTab(BasicEditor):
                 key_index = row * 14 + col
 
                 if key_index < 70:
-                    self.per_key_values[layer][key_index]['deadzone_top'] = value
-                    # Track for deferred save (no immediate HID)
-                    self.pending_per_key_keys.add((layer, key_index))
+                    for layer in self._edit_layers():
+                        self.per_key_values[layer][key_index]['deadzone_top'] = value
+                        # Track for deferred save (no immediate HID)
+                        self.pending_per_key_keys.add((layer, key_index))
 
         # Mark as having unsaved changes
         self.has_unsaved_changes = True
@@ -2227,8 +2236,6 @@ class TriggerSettingsTab(BasicEditor):
         if not selected_keys and self.container.active_key:
             selected_keys = [self.container.active_key]
 
-        layer = self.current_layer
-
         # Apply to all selected keys
         for key in selected_keys:
             if key.desc.row is not None:
@@ -2236,9 +2243,10 @@ class TriggerSettingsTab(BasicEditor):
                 key_index = row * 14 + col
 
                 if key_index < 70:
-                    self.per_key_values[layer][key_index]['deadzone_bottom'] = value
-                    # Track for deferred save (no immediate HID)
-                    self.pending_per_key_keys.add((layer, key_index))
+                    for layer in self._edit_layers():
+                        self.per_key_values[layer][key_index]['deadzone_bottom'] = value
+                        # Track for deferred save (no immediate HID)
+                        self.pending_per_key_keys.add((layer, key_index))
 
         # Mark as having unsaved changes
         self.has_unsaved_changes = True
@@ -2287,8 +2295,6 @@ class TriggerSettingsTab(BasicEditor):
             if not selected_keys and self.container.active_key:
                 selected_keys = [self.container.active_key]
 
-            layer = self.current_layer
-
             # Apply to all selected keys
             for key in selected_keys:
                 if key.desc.row is not None:
@@ -2298,14 +2304,15 @@ class TriggerSettingsTab(BasicEditor):
                     # Rapid Trigger has no effect on MIDI note keys in firmware,
                     # so don't set the (inert) flag on them.
                     if key_index < 70 and not self._key_index_is_midi(row, col):
-                        # Update flags field: set or clear bit 0
-                        if enabled:
-                            self.per_key_values[layer][key_index]['flags'] |= 0x01  # Set bit 0
-                        else:
-                            self.per_key_values[layer][key_index]['flags'] &= ~0x01  # Clear bit 0
+                        for layer in self._edit_layers():
+                            # Update flags field: set or clear bit 0
+                            if enabled:
+                                self.per_key_values[layer][key_index]['flags'] |= 0x01  # Set bit 0
+                            else:
+                                self.per_key_values[layer][key_index]['flags'] &= ~0x01  # Clear bit 0
 
-                        # Track for deferred save (no immediate HID)
-                        self.pending_per_key_keys.add((layer, key_index))
+                            # Track for deferred save (no immediate HID)
+                            self.pending_per_key_keys.add((layer, key_index))
 
             # Mark as having unsaved changes
             self.has_unsaved_changes = True
@@ -2325,8 +2332,6 @@ class TriggerSettingsTab(BasicEditor):
         if not selected_keys and self.container.active_key:
             selected_keys = [self.container.active_key]
 
-        layer = self.current_layer
-
         # Apply to all selected keys
         for key in selected_keys:
             if key.desc.row is not None:
@@ -2334,9 +2339,10 @@ class TriggerSettingsTab(BasicEditor):
                 key_index = row * 14 + col
 
                 if key_index < 70:
-                    self.per_key_values[layer][key_index]['rapidfire_press_sens'] = value
-                    # Track for deferred save (no immediate HID)
-                    self.pending_per_key_keys.add((layer, key_index))
+                    for layer in self._edit_layers():
+                        self.per_key_values[layer][key_index]['rapidfire_press_sens'] = value
+                        # Track for deferred save (no immediate HID)
+                        self.pending_per_key_keys.add((layer, key_index))
 
         # Mark as having unsaved changes
         self.has_unsaved_changes = True
@@ -2356,8 +2362,6 @@ class TriggerSettingsTab(BasicEditor):
         if not selected_keys and self.container.active_key:
             selected_keys = [self.container.active_key]
 
-        layer = self.current_layer
-
         # Apply to all selected keys
         for key in selected_keys:
             if key.desc.row is not None:
@@ -2365,9 +2369,10 @@ class TriggerSettingsTab(BasicEditor):
                 key_index = row * 14 + col
 
                 if key_index < 70:
-                    self.per_key_values[layer][key_index]['rapidfire_release_sens'] = value
-                    # Track for deferred save (no immediate HID)
-                    self.pending_per_key_keys.add((layer, key_index))
+                    for layer in self._edit_layers():
+                        self.per_key_values[layer][key_index]['rapidfire_release_sens'] = value
+                        # Track for deferred save (no immediate HID)
+                        self.pending_per_key_keys.add((layer, key_index))
 
         # Mark as having unsaved changes
         self.has_unsaved_changes = True
@@ -2422,8 +2427,6 @@ class TriggerSettingsTab(BasicEditor):
         if not selected_keys and self.container.active_key:
             selected_keys = [self.container.active_key]
 
-        layer = self.current_layer
-
         # Apply to all selected keys
         for key in selected_keys:
             if key.desc.row is not None:
@@ -2431,14 +2434,15 @@ class TriggerSettingsTab(BasicEditor):
                 key_index = row * 14 + col
 
                 if key_index < 70:
-                    # Update flags field: set or clear bit 2
-                    if enabled:
-                        self.per_key_values[layer][key_index]['flags'] |= 0x04  # Set bit 2
-                    else:
-                        self.per_key_values[layer][key_index]['flags'] &= ~0x04  # Clear bit 2
+                    for layer in self._edit_layers():
+                        # Update flags field: set or clear bit 2
+                        if enabled:
+                            self.per_key_values[layer][key_index]['flags'] |= 0x04  # Set bit 2
+                        else:
+                            self.per_key_values[layer][key_index]['flags'] &= ~0x04  # Clear bit 2
 
-                    # Track for deferred save (no immediate HID)
-                    self.pending_per_key_keys.add((layer, key_index))
+                        # Track for deferred save (no immediate HID)
+                        self.pending_per_key_keys.add((layer, key_index))
 
         # Mark as having unsaved changes
         self.has_unsaved_changes = True
@@ -2608,12 +2612,13 @@ class TriggerSettingsTab(BasicEditor):
         issues where the confirmation dialog's modal event loop would process
         queued stateChanged signals and desync the checkbox state.
 
-        NOTE: When per-key is enabled, per-layer is automatically enabled and
-        cannot be unchecked. Firmware ALWAYS uses per-key per-layer settings.
-        The checkboxes control how the GUI sends values:
+        NOTE: Firmware ALWAYS uses per-key per-layer settings. The checkboxes
+        only control how the GUI sends values:
         - Per-key OFF + Per-layer OFF: Same value to all keys × all layers
         - Per-key OFF + Per-layer ON: Same value to all keys, different per layer
-        - Per-key ON (+ Per-layer ON): Different values per key per layer
+        - Per-key ON + Per-layer OFF: Per-key values, each edit written to that
+          key position on ALL 12 layers
+        - Per-key ON + Per-layer ON: Different values per key per layer
         """
         if self.syncing:
             return
@@ -2643,9 +2648,8 @@ class TriggerSettingsTab(BasicEditor):
 
         self.mode_enabled = new_mode_enabled
 
-        # When per-key is enabled, per-layer MUST be enabled
-        if self.mode_enabled:
-            self.per_layer_enabled = True
+        # Per-layer stays independent of per-key: with per-layer OFF, per-key
+        # edits are written to that key position on ALL 12 layers.
 
         # Sync all tab checkboxes to reflect the new state
         self.sync_all_tab_checkboxes()
@@ -2687,10 +2691,6 @@ class TriggerSettingsTab(BasicEditor):
         # Toggle between global and per-key actuation sliders
         self.global_actuation_widget.setVisible(not self.mode_enabled)
         self.per_key_actuation_widget.setVisible(self.mode_enabled)
-
-        # When per-key is enabled, per-layer must be enabled
-        if self.mode_enabled:
-            self.per_layer_enabled = True
 
         # Sync all tab checkboxes to reflect current state
         self.sync_all_tab_checkboxes()
@@ -2735,29 +2735,24 @@ class TriggerSettingsTab(BasicEditor):
             cb.setChecked(self.per_layer_enabled)
             cb.blockSignals(False)
 
-        # Update enabled state of per-layer checkboxes (grayed out when per-key is enabled)
-        per_layer_enabled_state = not self.mode_enabled
-        self.per_layer_checkbox.setEnabled(per_layer_enabled_state)
-        self.rf_per_layer_checkbox.setEnabled(per_layer_enabled_state)
-        self.nb_per_layer_checkbox.setEnabled(per_layer_enabled_state)
+        # Per-layer stays user-toggleable in BOTH modes: with per-key ON and
+        # per-layer OFF, per-key edits apply to that key on ALL 12 layers.
+        self.per_layer_checkbox.setEnabled(True)
+        self.rf_per_layer_checkbox.setEnabled(True)
+        self.nb_per_layer_checkbox.setEnabled(True)
 
         self.syncing = False
 
     def on_per_layer_changed(self, checked):
         """Handle per-layer checkbox toggle (connected to clicked signal, not stateChanged).
 
-        NOTE: When per-layer is unchecked (and per-key is off), changes to actuation
-        settings should be written to ALL 12 layers so they stay uniform.
+        NOTE: When per-layer is unchecked, changes to actuation settings are
+        written to ALL 12 layers so they stay uniform — in global mode via the
+        keymap-based appliers, in per-key mode via each per-key edit handler
+        (the edited key position is updated on every layer).
         Firmware ALWAYS uses per-key per-layer - this checkbox controls GUI behavior.
-
-        When per-key is enabled, this checkbox cannot be unchecked (grayed out).
         """
         if self.syncing:
-            return
-
-        # If per-key is enabled, per-layer cannot be disabled (should be grayed out anyway)
-        if self.mode_enabled and not checked:
-            self.sync_all_tab_checkboxes()
             return
 
         new_per_layer_enabled = checked

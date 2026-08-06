@@ -69,6 +69,7 @@ HID_CMD_SET_KEYBOARD_CONFIG_ADVANCED = 0xBB
 HID_CMD_LCD_THEME = 0xFE  # Get/set global LCD colour theme (sub 0=GET, 1=SET)
 HID_CMD_CHANNEL_ARTIC = 0xFF  # Get/set channel->articulation map + enable (sub 0=GET, 1=SET)
 HID_CMD_KEYBOARD_CLONE = 0x94  # Whole-EEPROM clone (sub 0=INFO, 1=READ, 2=WRITE, 3=FINALIZE)
+HID_CMD_NAV_LAYER = 0x97  # Get/set the on-device menu navigation layer (sub 0=GET, 1=SET)
 HID_CMD_SET_KEYBOARD_PARAM_SINGLE = 0xE8  # Set individual parameter (changed from 0xBD collision)
 
 # Parameter IDs for HID_CMD_SET_KEYBOARD_PARAM_SINGLE
@@ -1536,6 +1537,35 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             packet = self._create_hid_packet(HID_CMD_LCD_THEME, 1, [theme_index & 0xFF])
             data = self.usb_send(self.dev, packet, retries=3)
             return bool(data) and len(data) > 4 and data[4] == 0
+        except Exception:
+            return False
+
+    def get_nav_layer(self):
+        """Get the keyboard's navigation layer (the layer on-device menus read
+        typed input from — naming/search letters, digits, arrows).
+
+        Returns the 0-based layer index, or None on failure / firmware that
+        predates the command. Response: status@4 (1 = ok), layer@5,
+        layer_count@6. Old firmware's error ECHO never carries status 0x01
+        with a non-zero layer count, so both are checked.
+        """
+        try:
+            packet = self._create_hid_packet(HID_CMD_NAV_LAYER, 0, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if (not data or len(data) < 7 or data[3] != HID_CMD_NAV_LAYER
+                    or data[4] != 0x01 or data[6] == 0):
+                return None
+            return data[5]
+        except Exception:
+            return None
+
+    def set_nav_layer(self, layer):
+        """Set the keyboard's navigation layer (persists immediately)."""
+        try:
+            packet = self._create_hid_packet(HID_CMD_NAV_LAYER, 1, [int(layer) & 0xFF])
+            data = self.usb_send(self.dev, packet, retries=3)
+            return (bool(data) and len(data) > 5 and data[3] == HID_CMD_NAV_LAYER
+                    and data[4] == 0x01 and data[5] == int(layer))
         except Exception:
             return False
 

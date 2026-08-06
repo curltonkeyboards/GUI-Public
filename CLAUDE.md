@@ -825,7 +825,8 @@ Audited + de-overlapped 2026-06 (see "EEPROM de-overlap" below).
 | 54000-55401 | 1,402 bytes | Toggle multi-key keycodes |
 | 56000-60273 | 4,274 bytes | Custom names (OLED display names for macros/arp/seq/delay/toggles/**layers**). Magic 0x4E41 @56000; macros 56002, arp 56402, seq 57042, delay 57682, toggle 58482, layer 60082. |
 | 60274-60372 | 99 bytes | Per-macro loop modes + sync flags + magic (`MACRO_MODES_EEPROM_ADDR`) |
-| 60373-60379 | 7 bytes | Free |
+| 60373-60375 | 3 bytes | Navigation layer (`NAV_LAYER_EEPROM_BASE`: magic 0x4E4C + layer byte) |
+| 60376-60379 | 4 bytes | Free |
 | 60380-60521 | 142 bytes | Keysplit presets (`KSP_EEPROM_BASE`: magic 0x4B50 + 10 x 14). Replaces the retired two-button KSQB config at 65430, which is still READ ONCE to seed presets 1-2 |
 | 60522-60811 | 290 bytes | Free |
 | 60812-61051 | 240 bytes | Ear trainer (`ET_EEPROM_BASE`, moved from 60284) |
@@ -1626,3 +1627,44 @@ GUI changes (this repo, kept in lockstep with vial-gui-custom):
   and deliberately LEAVES the retired Keysplit/Triplesplit button region
   (65430) intact, because the firmware reads it once to carry those two buttons
   over into Keysplit presets 1 and 2.
+
+## Navigation layer (2026-08) — GUI-selectable menu input layer
+
+Firmware feature (see vial-gui-custom CLAUDE.md, same section name): the
+on-device menus read typed input (naming/search letters + digits, wizard digit
+entry, arrow-key nudges) from ONE configurable **navigation layer** (default
+layer 0, shown as "Layer 1"), previously hardcoded to layer 0. ESC stays
+positional (row 0 col 0). Persisted in a firmware mini-region at 60373;
+`EEPROM_LAYOUT_VERSION` **4 → 5** with a `_migrate_v4_to_v5` clone migration
+(`protocol/clone_migrations.py`, both repos — wipes the new region; covered in
+`test/test_clone_migrations.py`). GUI mirrors in this repo:
+
+- **Comm** (`protocol/keyboard_comm.py`): `HID_CMD_NAV_LAYER = 0x97`,
+  `get_nav_layer()` (returns None on pre-nav firmware — the response's layer
+  count byte @6 is the feature detect) / `set_nav_layer(layer)` (persists
+  immediately on the device).
+- **Keymap editor** (`keymap_editor.py`): a checkbox next to the layer
+  buttons — plain **"Make Navigation Layer"** on other layers, a bold,
+  bordered, ticked **"NAVIGATION LAYER"** when the selected layer is it — plus
+  a "?" help button describing what the navigation layer does. Ticking it
+  shows a warning ("changing the navigation layer … may make you unable to
+  navigate menus on the device") before calling `set_nav_layer`; the nav
+  layer's button tooltip gains "— NAVIGATION LAYER". `set_key_matrix` warns
+  before an edit removes the LAST copy of a required key (A-Z, ESC, arrow
+  keys — `NAV_REQUIRED_KEYS`) from the navigation layer. Both warnings carry
+  a **"Do not show this message again"** checkbox (QSettings
+  `nav_layer/suppress_*`, persisted only when the user proceeds). On firmware
+  without 0x97 the control is disabled with a "requires a firmware update"
+  tooltip.
+
+## Per-layer actuation unlocked from per-key mode (2026-08)
+
+`trigger_settings.py`: enabling **per-key** actuation no longer forces/locks
+the **Enable Per-Layer Actuation** checkbox — the two are independent. With
+per-key ON and per-layer OFF, every per-key edit (actuation, both deadzones,
+rapidfire enable/sens, continuous RT) is written to that key position on **ALL
+12 layers** via the shared `_edit_layers()` helper (each `(layer, key)` lands
+in `pending_per_key_keys`, so the existing deferred batched save covers all
+layers). Turning per-layer OFF still shows the existing confirm and copies the
+current layer to all layers so they start uniform. Global (non-per-key) mode
+behavior is unchanged.

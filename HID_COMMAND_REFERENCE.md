@@ -1218,6 +1218,24 @@ next boot factory-reset the restored data. The GUI (`main_window.on_clone_save/l
 stamps `eeprom_layout_version` into every `.kbclone` file and refuses to restore onto
 a firmware whose layout version differs.
 
+#### Navigation Layer (0x97) — on-device menu input layer
+
+The navigation layer is the layer the on-device menus read typed input from
+(naming/search letters and digits, wizard digit entry, arrow-key nudges,
+Design-Curve arrows). Default: layer 0 (shown as "Layer 1" in the GUI).
+Sub-command in `data[4]`:
+
+| Sub | Name | Request | Response |
+|-----|------|---------|----------|
+| 0 | GET | (none) | status@4=0x01, layer @5, layer count (12) @6 |
+| 1 | SET | layer (0-11) @6 | status@4 (0x00 = out of range), layer @5, layer count @6 |
+
+SET persists immediately (own EEPROM mini-region at 60373, magic 0x4E4C +
+layer byte). GUI: `keyboard_comm.get_nav_layer()` / `set_nav_layer()`; the
+keymap editor's "Make Navigation Layer" checkbox. Old firmware's error ECHO
+never carries status 0x01 with a non-zero layer count at byte 6, which is how
+the GUI detects the command is unsupported.
+
 ---
 
 ## 6. Command ID Map

@@ -9,6 +9,7 @@ from protocol.clone_migrations import (
     V1_ET_MAGIC, V2_ET_MAGIC, V2_NEW_REGIONS,
     V3_KSP_BASE, V3_KSP_SIZE, V2_KSQB_BASE, V2_KSQB_MAGIC,
     V4_NOTE_GATE_BASE, V4_NOTE_GATE_SIZE,
+    V5_NAV_LAYER_BASE, V5_NAV_LAYER_SIZE,
 )
 from protocol import clone_migrations
 
@@ -319,3 +320,47 @@ class TestCloneMigrationV1ToV3Chain(unittest.TestCase):
         self.assertIn("Functional LED", joined)
         self.assertIn("Ear trainer", joined)
         self.assertIn("Keysplit", joined)
+
+
+def build_v4_image():
+    """A v4 image with junk where the nav-layer region will live (that gap was
+    free space in v4, so a real clone carries whatever was left there)."""
+    blob = bytearray(migrate_clone(build_v3_image(), 3, 4)[0])
+    blob[V5_NAV_LAYER_BASE:V5_NAV_LAYER_BASE + V5_NAV_LAYER_SIZE] = (
+        b"\x5A" * V5_NAV_LAYER_SIZE)
+    return bytes(blob)
+
+
+class TestCloneMigrationV4ToV5(unittest.TestCase):
+    """New navigation-layer mini-region at 60373."""
+
+    def test_nav_layer_region_fully_cleared(self):
+        # The region did not exist in v4 — junk there could decode as a valid
+        # magic + out-of-range layer, so wipe it and let the firmware seed the
+        # default (layer 1).
+        v4 = build_v4_image()
+        v5, _notes = migrate_clone(v4, 4, 5)
+        self.assertEqual(
+            bytes(v5[V5_NAV_LAYER_BASE:V5_NAV_LAYER_BASE + V5_NAV_LAYER_SIZE]),
+            bytes(V5_NAV_LAYER_SIZE))
+
+    def test_only_the_nav_layer_region_changes(self):
+        v4 = build_v4_image()
+        v5, _notes = migrate_clone(v4, 4, 5)
+        changed = {i for i in range(EEPROM_SIZE) if v4[i] != v5[i]}
+        allowed = set(range(V5_NAV_LAYER_BASE,
+                            V5_NAV_LAYER_BASE + V5_NAV_LAYER_SIZE))
+        self.assertTrue(changed.issubset(allowed),
+                        "v4->v5 touched bytes outside the nav-layer region: "
+                        "{}".format(sorted(changed - allowed)[:16]))
+
+    def test_default_is_reported(self):
+        _v5, notes = migrate_clone(build_v4_image(), 4, 5)
+        self.assertTrue(any("Navigation layer" in n for n in notes), notes)
+
+    def test_full_chain_from_v1_reaches_v5(self):
+        self.assertTrue(can_migrate(1, 5))
+        v5, _notes = migrate_clone(build_v1_image(), 1, 5)
+        self.assertEqual(
+            bytes(v5[V5_NAV_LAYER_BASE:V5_NAV_LAYER_BASE + V5_NAV_LAYER_SIZE]),
+            bytes(V5_NAV_LAYER_SIZE))

@@ -230,11 +230,30 @@ def _migrate_v3_to_v4(blob, notes):
                  "to All Channels.")
 
 
+# ---------------------------------------------------------------------------
+# v4 -> v5 (2026-08): new navigation-layer mini-region at 60373 (magic 2B +
+# layer 1B, ends 60375) in the free gap between the macro-modes block (ends
+# 60372) and the Keysplit presets (60380). The navigation layer is the layer
+# the on-device menus read typed input from (naming/search letters, digits,
+# arrow nudges); it did not exist before v5, so there is nothing to carry
+# across — wipe the region so the firmware seeds the default (layer 1).
+V5_NAV_LAYER_BASE = 60373           # magic word + 1 layer byte = 3 bytes
+V5_NAV_LAYER_SIZE = 2 + 1
+
+
+def _migrate_v4_to_v5(blob, notes):
+    blob[V5_NAV_LAYER_BASE:V5_NAV_LAYER_BASE + V5_NAV_LAYER_SIZE] = bytes(
+        V5_NAV_LAYER_SIZE)
+    notes.append("Navigation layer: new in this firmware, starts at the "
+                 "default (Layer 1).")
+
+
 # Registry: key = source version, value = function converting it to key + 1.
 _MIGRATIONS = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
     3: _migrate_v3_to_v4,
+    4: _migrate_v4_to_v5,
 }
 
 
