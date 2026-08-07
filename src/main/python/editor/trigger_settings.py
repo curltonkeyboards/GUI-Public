@@ -1727,7 +1727,8 @@ class TriggerSettingsTab(BasicEditor):
         self.refresh_layer_display()
         self.update_actuation_visualizer()
 
-        # Sync to QuickActuationWidget if reference exists
+        # Sync to QuickActuationWidget if reference exists (both this tab and
+        # the aw widget are on the shared 0-255 = 0-4.0mm scale).
         if self.actuation_widget_ref:
             aw = self.actuation_widget_ref
             aw.syncing = True
@@ -1776,7 +1777,8 @@ class TriggerSettingsTab(BasicEditor):
         self.refresh_layer_display()
         self.update_actuation_visualizer()
 
-        # Sync to QuickActuationWidget if reference exists
+        # Sync to QuickActuationWidget if reference exists (both this tab and
+        # the aw widget are on the shared 0-255 = 0-4.0mm scale).
         if self.actuation_widget_ref:
             aw = self.actuation_widget_ref
             aw.syncing = True
@@ -3079,14 +3081,22 @@ class TriggerSettingsTab(BasicEditor):
                 self.reset_btn.setEnabled(self.mode_enabled)
                 self.syncing = False
 
+            # Drop edits pending from BEFORE the reconnect: the cache is about
+            # to be reloaded from the device, and stale pending entries would
+            # re-write freshly-loaded (or worse, substituted) values on the
+            # next Save. Cleared BEFORE the load so any repair entries the
+            # load's sanitizer queues are kept.
+            self.pending_per_key_keys.clear()
+
             # Load per-key data immediately (optimized with bulk read + reduced retries)
             self._load_per_key_data()
             self._needs_loading = False
 
-            # Clear any unsaved changes when loading from device
-            self.has_unsaved_changes = False
+            # Clear any unsaved changes when loading from device (keep the
+            # sanitizer's repair queue, if it found zero-corrupted entries)
+            self.has_unsaved_changes = bool(self.pending_per_key_keys)
             self.pending_layer_data = None
-            self.save_btn.setEnabled(False)
+            self.save_btn.setEnabled(bool(self.pending_per_key_keys))
 
             # Update slider states
             self.update_slider_states()
@@ -3215,6 +3225,14 @@ class TriggerSettingsTab(BasicEditor):
                             'rapidfire_velocity_mod': 0         # No modifier
                         }
 
+        # Sanity-check what actually landed in the cache. A read that SUCCEEDS
+        # protocol-wise can still carry all-zero structs (historically: the
+        # firmware serving its not-yet-loaded, zero-initialized per-key array
+        # right after a replug, or zeros previously baked into EEPROM by that
+        # bug). An all-zero struct (actuation 0.00mm) is not producible by this
+        # GUI's controls, so treat it as corruption, never as user config.
+        self._sanitize_loaded_per_key_values()
+
         # Load layer actuation data from device (6 bytes per layer)
         try:
             for layer in range(12):
@@ -3235,6 +3253,67 @@ class TriggerSettingsTab(BasicEditor):
         self.load_layer_controls()
         self.refresh_layer_display()
         print("TriggerSettingsTab: Per-key data loading complete")
+
+    _PER_KEY_SAFE_DEFAULTS = {
+        'actuation': 127,                   # 2.0mm (127/255 of 4mm)
+        'deadzone_top': 6,                  # ~0.1mm from right
+        'deadzone_bottom': 6,               # ~0.1mm from left
+        'velocity_curve': 2,                # Basic
+        'flags': 0,                         # All disabled
+        'rapidfire_press_sens': 6,          # ~0.1mm from left
+        'rapidfire_release_sens': 6,        # ~0.1mm from right
+        'rapidfire_velocity_mod': 0         # No modifier
+    }
+
+    def _sanitize_loaded_per_key_values(self):
+        """Reject/repair implausible all-zero per-key structs after a device read.
+
+        Two cases:
+        - The WHOLE board read back all-zero: that is the signature of a
+          poisoned read (firmware served its unseeded per-key array during
+          boot). Substitute display defaults and mark the read failed so
+          on_save() refuses to write them back.
+        - SCATTERED all-zero structs: zeros already persisted on the device by
+          the historical write-back bug. Repair them to safe defaults in the
+          cache and queue them as pending so the next Save fixes the device.
+        """
+        def _is_all_zero(s):
+            return (s.get('actuation', 0) == 0 and
+                    s.get('deadzone_top', 0) == 0 and
+                    s.get('deadzone_bottom', 0) == 0 and
+                    s.get('velocity_curve', 0) == 0 and
+                    s.get('flags', 0) == 0 and
+                    s.get('rapidfire_press_sens', 0) == 0 and
+                    s.get('rapidfire_release_sens', 0) == 0 and
+                    s.get('rapidfire_velocity_mod', 0) == 0)
+
+        zero_keys = [(layer, key) for layer in range(12) for key in range(70)
+                     if _is_all_zero(self.per_key_values[layer][key])]
+        if not zero_keys:
+            return
+
+        if len(zero_keys) >= 12 * 70:
+            # Entire board zero — poisoned read, not real config.
+            print("TriggerSettingsTab: device returned ALL-ZERO per-key data; "
+                  "treating as failed read (showing defaults, save disabled)")
+            self._per_key_read_ok = False
+            for layer in range(12):
+                for key in range(70):
+                    self.per_key_values[layer][key] = dict(self._PER_KEY_SAFE_DEFAULTS)
+            return
+
+        # Scattered zeros — corruption stored on the device. Repair in cache
+        # and queue for write-back so the next Save heals the device.
+        print("TriggerSettingsTab: repairing {} all-zero per-key entrie(s) "
+              "to safe defaults (will be written on next Save)".format(len(zero_keys)))
+        for layer, key in zero_keys:
+            self.per_key_values[layer][key] = dict(self._PER_KEY_SAFE_DEFAULTS)
+            self.pending_per_key_keys.add((layer, key))
+        self.has_unsaved_changes = True
+        try:
+            self.save_btn.setEnabled(True)
+        except Exception:
+            pass
 
     def valid(self):
         """Check if device is valid"""

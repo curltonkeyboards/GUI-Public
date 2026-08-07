@@ -256,7 +256,9 @@ class QuickActuationWidget(QWidget):
         slider_layout.addWidget(label)
 
         self.normal_slider = QSlider(Qt.Horizontal)
-        self.normal_slider.setMinimum(0)
+        # Floor at 7 (0.11mm, same as the Trigger Settings slider) — actuation 0
+        # is not a valid setting; any wobble past the deadzone would fire.
+        self.normal_slider.setMinimum(7)
         self.normal_slider.setMaximum(255)
         self.normal_slider.setValue(127)
         slider_layout.addWidget(self.normal_slider, 1)
@@ -283,7 +285,8 @@ class QuickActuationWidget(QWidget):
         midi_slider_layout.addWidget(midi_label)
 
         self.midi_slider = QSlider(Qt.Horizontal)
-        self.midi_slider.setMinimum(0)
+        # Floor at 7 (0.11mm) — see normal_slider above.
+        self.midi_slider.setMinimum(7)
         self.midi_slider.setMaximum(255)
         self.midi_slider.setValue(127)
         midi_slider_layout.addWidget(self.midi_slider, 1)

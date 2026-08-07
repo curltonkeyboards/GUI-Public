@@ -1474,6 +1474,76 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             pass
         return None
 
+    def _drain_stale_packets(self, max_reads=40, timeout_ms=20):
+        """Drain any queued/in-flight response packets off the raw HID endpoint.
+
+        The custom protocol has no request/response correlation: hid_send()
+        returns whichever report is first in the endpoint queue. Multi-packet
+        bulk readers that abort early (missing packet, layer-echo mismatch,
+        exception) can leave up to ~23 unread packets queued, which then desync
+        EVERY subsequent command by one or more packets — the root of several
+        "stale packet parsed as data" corruption paths. Call this before a bulk
+        burst (clear leftovers from earlier failures) and on every bulk abort
+        path (consume this burst's stragglers).
+        """
+        try:
+            with hid_lock_for(self.dev):
+                for _ in range(max_reads):
+                    if hasattr(self.dev, 'read'):
+                        leftover = self.dev.read(32, timeout_ms=timeout_ms)
+                    else:
+                        # Feature-report transports have no queued stream to drain.
+                        return
+                    if not leftover:
+                        return
+        except Exception:
+            pass
+
+    def _hid_request_validated(self, command, macro_num=0, data=None, retries=3):
+        """Send a command and return the first response whose command echo
+        matches, discarding stale packets from earlier commands.
+
+        Unlike usb_send()/hid_send() — which return the FIRST queued report,
+        whatever it is — this validates response[0] (manufacturer id) and
+        response[3] (command echo) and keeps reading past mismatched packets,
+        so one straggler in the queue can neither be parsed as this command's
+        data nor make a genuinely successful request look failed.
+
+        Returns the 32-byte response bytes, or None if no matching response
+        arrived within the retry budget.
+        """
+        packet = self._create_hid_packet(command, macro_num, data)
+        with hid_lock_for(self.dev):
+            for attempt in range(max(1, retries)):
+                try:
+                    if attempt > 0:
+                        time.sleep(0.05)
+                    if hasattr(self.dev, 'write'):
+                        if self.dev.write(b"\x00" + packet) != len(packet) + 1:
+                            continue
+                    else:
+                        self.dev.send_feature_report(packet)
+
+                    # First read waits for the real response; subsequent reads
+                    # only sweep past stale packets already sitting in the queue.
+                    for read_n in range(8):
+                        if hasattr(self.dev, 'read'):
+                            response = bytes(self.dev.read(32, timeout_ms=500 if read_n == 0 else 100))
+                        else:
+                            response = bytes(self.dev.get_feature_report(0, 32))
+                        if not response:
+                            break
+                        if (len(response) >= 4 and
+                                response[0] == HID_MANUFACTURER_ID and
+                                response[3] == command):
+                            return response
+                        # Mismatch: a stale packet from another command —
+                        # discard and keep reading; the real response is still
+                        # behind it.
+                except Exception:
+                    continue
+        return None
+
     def _create_hid_packet(self, command, macro_num, data):
         """Create a properly formatted 32-byte HID packet"""
         packet = bytearray(HID_PACKET_SIZE)
@@ -1750,6 +1820,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def get_thruloop_config(self):
         """Get all ThruLoop configuration using multi-packet collection"""
         try:
+            # Clear stale packets from earlier commands before the burst.
+            self._drain_stale_packets()
+
             # Send request for all config
             packet = self._create_hid_packet(HID_CMD_GET_ALL_CONFIG, 0, None)
             response = self.usb_send(self.dev, packet, retries=20)
@@ -2236,6 +2309,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def get_midi_config(self):
         """Get MIDIswitch configuration using multi-packet collection"""
         try:
+            # Clear stale packets from earlier commands before the burst.
+            self._drain_stale_packets()
+
             # Send request for keyboard config
             packet = self._create_hid_packet(HID_CMD_GET_KEYBOARD_CONFIG, 0, None)
             response = self.usb_send(self.dev, packet, retries=20)
@@ -2397,12 +2473,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
               Uses new command 0xEC (moved from 0xCA to avoid arpeggiator conflict)
         """
         try:
-            packet = self._create_hid_packet(HID_CMD_SET_LAYER_ACTUATION, 0, data)
-            response = self.usb_send(self.dev, packet, retries=3)
+            # Validated request: stale packets from other commands are discarded
+            # instead of being misread as this command's ack.
             # The 0xEB-0xEE family puts its status at byte 4 (byte 5 is only
             # written by the GET record) — the old response[5] check made every
             # successful SET report failure and raise an error dialog.
-            return response and len(response) > 4 and response[4] == 0x01
+            response = self._hid_request_validated(HID_CMD_SET_LAYER_ACTUATION, 0, data, retries=3)
+            return bool(response and len(response) > 4 and response[4] == 0x01)
         except Exception as e:
             return False
 
@@ -2420,9 +2497,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
               Aftertouch settings are per-layer.
         """
         try:
-            # Use new command code 0xEB (moved from 0xCB to avoid arpeggiator conflict)
-            packet = self._create_hid_packet(HID_CMD_GET_LAYER_ACTUATION, 0, [layer])
-            response = self.usb_send(self.dev, packet, retries=3)
+            # Use new command code 0xEB (moved from 0xCB to avoid arpeggiator conflict).
+            # Validated request: a stale straggler no longer fails the read —
+            # it is discarded and the real response behind it is used.
+            response = self._hid_request_validated(HID_CMD_GET_LAYER_ACTUATION, 0, [layer], retries=3)
 
             if not response or len(response) < 16:  # 5 header + 11 data bytes
                 return None
@@ -2469,6 +2547,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
               Uses new command 0xED (moved from 0xCC to avoid arpeggiator conflict)
         """
         try:
+            # Clear stale packets from earlier commands before the burst.
+            self._drain_stale_packets()
+
             packet = self._create_hid_packet(HID_CMD_GET_ALL_LAYER_ACTUATIONS, 0, None)
 
             # Send request - use write directly to avoid waiting for response
@@ -2501,7 +2582,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                         total_packets = data[6]
 
                         if status != 0x01:
-                            return None  # Error response
+                            # Error response — drain the rest of the burst so
+                            # stragglers can't desync subsequent commands.
+                            self._drain_stale_packets()
+                            return None
 
                         if packet_num < EXPECTED_PACKETS and packet_num not in packets:
                             # Extract layer data (20 bytes at offset 7)
@@ -2514,12 +2598,14 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                     continue
 
             if len(packets) < EXPECTED_PACKETS:
+                self._drain_stale_packets()
                 return None
 
             # Sort packets and combine
             actuations = bytearray()
             for i in range(EXPECTED_PACKETS):
                 if i not in packets:
+                    self._drain_stale_packets()
                     return None  # Missing packet
                 actuations.extend(packets[i])
 
@@ -2533,10 +2619,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         Uses new command 0xEE (moved from 0xCD to avoid arpeggiator conflict)
         """
         try:
-            packet = self._create_hid_packet(HID_CMD_RESET_LAYER_ACTUATIONS, 0, None)
-            response = self.usb_send(self.dev, packet, retries=3)
+            response = self._hid_request_validated(HID_CMD_RESET_LAYER_ACTUATIONS, 0, None, retries=3)
             # Status at byte 4 for this family (see set_layer_actuation).
-            return response and len(response) > 4 and response[4] == 0x01
+            return bool(response and len(response) > 4 and response[4] == 0x01)
         except Exception as e:
             return False
             
@@ -2964,6 +3049,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             # Send single request to trigger bulk response
             packet = self._create_hid_packet(0xDB, 0, bytearray())  # HID_CMD_USER_CURVE_GET_ALL
 
+            # Clear stale packets from earlier commands before the burst.
+            self._drain_stale_packets()
+
             # Send request directly (firmware sends multiple response packets)
             if hasattr(self.dev, 'write'):
                 self.dev.write(b"\x00" + packet)
@@ -3180,9 +3268,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 settings.get('rapidfire_release_sens', 4),
                 velocity_mod_byte
             ])
-            packet = self._create_hid_packet(HID_CMD_SET_PER_KEY_ACTUATION, 0, data)
-            response = self.usb_send(self.dev, packet, retries=20)
-            return response and len(response) > 4 and response[4] == 0x01
+            # Validated request: the old check accepted ANY stale packet whose
+            # byte 4 happened to be 0x01 as a write ack (false success), and a
+            # single straggler in the queue failed genuinely successful writes.
+            response = self._hid_request_validated(HID_CMD_SET_PER_KEY_ACTUATION, 0, data, retries=10)
+            return bool(response and len(response) > 4 and response[4] == 0x01)
         except Exception as e:
             return False
 
@@ -3202,9 +3292,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         """
         try:
             data = [layer, key_index]
-            packet = self._create_hid_packet(HID_CMD_GET_PER_KEY_ACTUATION, 0, data)
-            # Reduced retries from 20 to 3 for faster loading
-            response = self.usb_send(self.dev, packet, retries=3)
+            # Validated request (retries kept low for load speed): discards
+            # stale packets instead of failing the whole read on one straggler.
+            response = self._hid_request_validated(HID_CMD_GET_PER_KEY_ACTUATION, 0, data, retries=3)
 
             if (response and len(response) >= 13 and
                     response[3] == HID_CMD_GET_PER_KEY_ACTUATION and response[4] == 0x01):
@@ -3250,6 +3340,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             list: List of 70 dicts with per-key settings, or None on error
         """
         try:
+            # Clear any stale packets from earlier (possibly aborted) commands
+            # so they can't be mixed into this burst.
+            self._drain_stale_packets()
+
             # Request all per-key actuations for this layer
             data = [layer]
             packet = self._create_hid_packet(HID_CMD_GET_ALL_PER_KEY_ACTUATIONS, 0, data)
@@ -3322,6 +3416,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             keys = []
             for pkt_num in range(EXPECTED_PACKETS):
                 if pkt_num not in packets:
+                    self._drain_stale_packets()
                     return None  # Missing packet
 
                 pkt_data = packets[pkt_num]
@@ -3376,9 +3471,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         # Still send the command for backward compatibility with older firmware
         try:
             data = [1 if mode_enabled else 0, 1 if per_layer_enabled else 0]
-            packet = self._create_hid_packet(HID_CMD_SET_PER_KEY_MODE, 0, data)
-            response = self.usb_send(self.dev, packet, retries=20)
-            return response and len(response) > 4 and response[4] == 0x01
+            response = self._hid_request_validated(HID_CMD_SET_PER_KEY_MODE, 0, data, retries=5)
+            return bool(response and len(response) > 4 and response[4] == 0x01)
         except Exception as e:
             return True  # Return success anyway - this is a no-op
 
@@ -3394,9 +3488,12 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         # Always return enabled - firmware always uses per-key per-layer
         # Still query firmware for backward compatibility
         try:
-            packet = self._create_hid_packet(HID_CMD_GET_PER_KEY_MODE, 0, None)
-            response = self.usb_send(self.dev, packet, retries=20)
-            if response and len(response) > 6:
+            # Validated request: the old unvalidated read parsed bytes 5/6 of
+            # ANY queued packet as the mode flags. A stale packet reporting
+            # per_layer_enabled=0 silently made every subsequent per-key edit
+            # fan out to all 12 layers.
+            response = self._hid_request_validated(HID_CMD_GET_PER_KEY_MODE, 0, None, retries=5)
+            if response and len(response) > 6 and response[4] == 0x01:
                 return {
                     'mode_enabled': response[5] != 0,
                     'per_layer_enabled': response[6] != 0
@@ -3413,9 +3510,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             bool: True if successful, False otherwise
         """
         try:
-            packet = self._create_hid_packet(HID_CMD_RESET_PER_KEY_ACTUATIONS, 0, None)
-            response = self.usb_send(self.dev, packet, retries=20)
-            return response and len(response) > 4 and response[4] == 0x01
+            response = self._hid_request_validated(HID_CMD_RESET_PER_KEY_ACTUATIONS, 0, None, retries=5)
+            return bool(response and len(response) > 4 and response[4] == 0x01)
         except Exception as e:
             return False
 
@@ -3431,8 +3527,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         """
         try:
             data = [source_layer, dest_layer]
-            packet = self._create_hid_packet(HID_CMD_COPY_LAYER_ACTUATIONS, 0, data)
-            response = self.usb_send(self.dev, packet, retries=20)
-            return response and len(response) > 4 and response[4] == 0x01
+            response = self._hid_request_validated(HID_CMD_COPY_LAYER_ACTUATIONS, 0, data, retries=10)
+            return bool(response and len(response) > 4 and response[4] == 0x01)
         except Exception as e:
             return False
