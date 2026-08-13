@@ -1657,6 +1657,39 @@ positional (row 0 col 0). Persisted in a firmware mini-region at 60373;
   without 0x97 the control is disabled with a "requires a firmware update"
   tooltip.
 
+## Per-key actuation zeroing fix (2026-08) — HID validation + zero-struct repair
+
+GUI half of the "all actuations become 0.00mm" fix (see vial-gui-custom
+CLAUDE.md, same section name, for the firmware root cause: unchecked I2C reads
+at boot served the zero-initialized `per_key_actuations[]` array to the GUI,
+which cached and wrote the zeros back). **No EEPROM/HID-layout change — the
+firmware stays at layout v5; the only protocol change is that 0xE1/0xE2/0xE6
+answer error status until the firmware's boot load completes.**
+
+- **`_hid_request_validated()`** (`protocol/keyboard_comm.py`): sends a
+  command and returns the first response whose command echo matches,
+  discarding stale packets — the raw HID protocol has no request/response
+  correlation, so one straggler in the endpoint queue desynced every
+  subsequent command. Converted the whole per-key/layer actuation family
+  (get/set_per_key_actuation, get/set_layer_actuation — status byte also
+  fixed 5 → 4 — get/set_per_key_mode, copy_layer_actuations, reset_*). A
+  stale `get_per_key_mode` read could silently flip per-layer off and fan
+  every later edit across all 12 layers; `get_layer_actuation` parsed ANY
+  packet as layer data.
+- **`_drain_stale_packets()`**: bulk readers (0xE2 per-key, 0xED layers, 0xDB
+  curve names, thruloop/midi config) pre-drain before each burst and drain on
+  abort paths, so an aborted 24-packet burst can't leave stragglers queued.
+  (This repo's `get_all_per_key_actuations` drains inline via a `failed` flag
+  + read-until-quiet loop — equivalent to vial-gui-custom's early-return +
+  helper-drain; accepted divergence.)
+- **`_sanitize_loaded_per_key_values()`** (`editor/trigger_settings.py`): an
+  all-zero 8-byte struct is not producible by the GUI. Whole board zero =
+  poisoned read → defaults shown, save refused (`_per_key_read_ok` guard with
+  a reload-first prompt so a Save can never overwrite the device's real
+  config with substituted defaults); scattered zeros = corruption already
+  persisted by the historical bug, repaired to safe defaults in the cache and
+  queued so the next Save heals the device.
+
 ## Per-layer actuation unlocked from per-key mode (2026-08)
 
 `trigger_settings.py`: enabling **per-key** actuation no longer forces/locks
