@@ -570,8 +570,14 @@ class MainWindow(QMainWindow):
                     detail = tr("MainWindow", "The clone is NEWER than the keyboard's firmware. "
                                               "Update the keyboard's firmware and try again.")
                 else:
+                    # The clone is OLDER but a migration link is missing.
+                    # Migrations ship with the app, so nine times out of ten
+                    # the fix is simply a newer app build — say so instead of
+                    # presenting a dead end.
                     detail = tr("MainWindow", "This version of the app has no conversion path "
-                                              "between those two layouts.")
+                                              "between those two layouts.\n\n"
+                                              "Newer versions of this app add conversions for "
+                                              "newer firmware — update the app and try again.")
                 QMessageBox.critical(
                     self, "Incompatible clone",
                     tr("MainWindow", "This clone was saved from a firmware with a different EEPROM "

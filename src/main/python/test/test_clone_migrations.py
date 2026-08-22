@@ -364,3 +364,54 @@ class TestCloneMigrationV4ToV5(unittest.TestCase):
         self.assertEqual(
             bytes(v5[V5_NAV_LAYER_BASE:V5_NAV_LAYER_BASE + V5_NAV_LAYER_SIZE]),
             bytes(V5_NAV_LAYER_SIZE))
+
+
+class TestCloneMigrationV3ToV5DataSurvival(unittest.TestCase):
+    """The exact upgrade a real user hits: a v3 clone (Keysplit presets
+    configured) restored onto v5 firmware. The chain must carry the user's
+    data through untouched while resetting only what genuinely changed."""
+
+    KSP_MAGIC = 0x4B50
+
+    def setUp(self):
+        v3 = bytearray(build_v3_image())
+        # The user configured Keysplit presets on their v3 firmware: region at
+        # 60380 holds magic 0x4B50 + 10 x 14 bytes of real data.
+        struct.pack_into("<H", v3, V3_KSP_BASE, self.KSP_MAGIC)
+        self.ksp_payload = bytes((i * 7 + 3) & 0xFF for i in range(V3_KSP_SIZE - 2))
+        v3[V3_KSP_BASE + 2:V3_KSP_BASE + V3_KSP_SIZE] = self.ksp_payload
+        self.v3 = bytes(v3)
+        self.v5, self.notes = migrate_clone(self.v3, 3, 5)
+
+    def test_ksp_presets_survive_byte_for_byte(self):
+        # Neither the v3->v4 note-gate wipe (37150) nor the v4->v5 nav-layer
+        # wipe (60373-60375, ending 4 bytes BELOW the KSP base) may touch the
+        # presets. This is the adjacency that would clip first if a future
+        # migration miscomputed its size.
+        self.assertEqual(struct.unpack_from("<H", self.v5, V3_KSP_BASE)[0],
+                         self.KSP_MAGIC)
+        self.assertEqual(bytes(self.v5[V3_KSP_BASE + 2:V3_KSP_BASE + V3_KSP_SIZE]),
+                         self.ksp_payload)
+
+    def test_note_gate_and_nav_region_cleared(self):
+        self.assertEqual(
+            bytes(self.v5[V4_NOTE_GATE_BASE:V4_NOTE_GATE_BASE + V4_NOTE_GATE_SIZE]),
+            bytes(V4_NOTE_GATE_SIZE))
+        self.assertEqual(
+            bytes(self.v5[V5_NAV_LAYER_BASE:V5_NAV_LAYER_BASE + V5_NAV_LAYER_SIZE]),
+            bytes(V5_NAV_LAYER_SIZE))
+
+    def test_blast_radius_is_13_bytes(self):
+        changed = {i for i in range(EEPROM_SIZE) if self.v3[i] != self.v5[i]}
+        allowed = set(range(V4_NOTE_GATE_BASE, V4_NOTE_GATE_BASE + V4_NOTE_GATE_SIZE))
+        allowed |= set(range(V5_NAV_LAYER_BASE, V5_NAV_LAYER_BASE + V5_NAV_LAYER_SIZE))
+        self.assertTrue(changed.issubset(allowed),
+                        "v3->v5 touched bytes outside the two regions it owns: "
+                        "{}".format(sorted(changed - allowed)[:16]))
+
+    def test_chain_is_available(self):
+        # can_migrate(3, 5) going False is how "no conversion path" dialogs
+        # reach users whose app predates a migration — this test pins the
+        # current app's ability to convert every clone back to v3.
+        self.assertTrue(can_migrate(3, 5))
+        self.assertTrue(can_migrate(1, 5))
