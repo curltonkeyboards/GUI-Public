@@ -1716,6 +1716,30 @@ layers). Turning per-layer OFF still shows the existing confirm and copies the
 current layer to all layers so they start uniform. Global (non-per-key) mode
 behavior is unchanged.
 
+## SmartChord keycode-map audit (2026-08) — GUI side
+
+Three-way audit of every smartchord keycode across this repo's label tables,
+the firmware's three name tables, and the firmware's interval switch (the only
+one that decides what actually sounds). Full findings in vial-gui-custom
+CLAUDE.md, same section name. Firmware carried the bulk of the fixes (Tritone /
+Perfect Fourth swapped in every name table; the 16 scales sitting one keycode
+too high, which made "Major Scale (Ionian)" play nothing and every other scale
+play the one below its label; the QB slot picker showing empty "Slot 13/14…"
+rows and scales inside the chord lists). GUI-side changes here:
+
+- **`keycodes.py`:** `MI_INV_1` / `MI_INV_2` long labels were swapped — the
+  1-semitone keycode was labelled "Major 2nd" and the 2-semitone one "Minor
+  2nd", while their SHORT labels were correct. The picker grid shows the short
+  label, so the grid looked right but tooltips, the Search tab, and the
+  firmware's generated on-device search DB were wrong.
+- **`keycode_search_table.h`** regenerated in the firmware repo from these
+  labels (`gen_keycode_search.py`) — regenerate it whenever these tables change.
+
+The authoritative keycode layout, for reference when touching these tables:
+89 intervals/chords at **0xC38B-0xC3E3**, a reserved hole at **0xC3E4-0xC3F8**
+(no chord behind it), **0xC3F9** = "Smart Chord" (plays the dial's selection),
+and 16 scales/modes at **0xC3FA-0xC409**.
+
 ## SmartChord custom-chord latch + "Chord" ESC fix (2026-08) — firmware only
 
 Firmware fixes (see vial-gui-custom CLAUDE.md, same section name) — **no

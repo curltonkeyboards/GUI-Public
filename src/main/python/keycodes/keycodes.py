@@ -2058,8 +2058,8 @@ KEYCODES_MIDI_CHANNEL_OS = [
 ]
 
 KEYCODES_MIDI_CHORD_0 = [
-K("MI_INV_1", "Major 2nd", "Minor\n2nd"),
-K("MI_INV_2", "Minor 2nd", "Major\n2nd"), 
+K("MI_INV_1", "Minor 2nd", "Minor\n2nd"),
+K("MI_INV_2", "Major 2nd", "Major\n2nd"), 
 K("MI_INV_3", "Minor 3rd", "Minor\n3rd"),
 K("MI_INV_4", "Major 3rd", "Major\n3rd"),
 K("MI_INV_5", "Perfect Fourth", "Perfect\nFourth"),
