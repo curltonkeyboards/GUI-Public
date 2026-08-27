@@ -1716,6 +1716,17 @@ layers). Turning per-layer OFF still shows the existing confirm and copies the
 current layer to all layers so they start uniform. Global (non-per-key) mode
 behavior is unchanged.
 
+## Voice leading: two-way ladder + reset on silence (2026-08) — firmware only
+
+Firmware follow-up (see vial-gui-custom CLAUDE.md, same section name) — **no
+GUI/HID/EEPROM change, nothing to mirror here.** (1) The inversion ladder now
+runs BOTH ways from the base voicing (upward lifts 1-8, downward drops 9-16 as
+an encoded index), so Descending gets the mirror of the Ascending fix; total
+rule violations across a 5-progression x 4-rule test go 24 -> 1. (2) VL chord
+memory is dropped once nothing is playing — no live notes and nothing held by
+the sustain pedal — so legato playing keeps the line going while lifting
+everything starts the next press fresh.
+
 ## Voice leading: Ascending stopped ascending (2026-08) — firmware only
 
 Firmware fix (see vial-gui-custom CLAUDE.md, same section name) — **no
