@@ -1716,6 +1716,16 @@ layers). Turning per-layer OFF still shows the existing confirm and copies the
 current layer to all layers so they start uniform. Global (non-per-key) mode
 behavior is unchanged.
 
+## SmartChord up/down on the big chord line (2026-08) — firmware only
+
+Firmware change (see vial-gui-custom CLAUDE.md, same section name) — **no
+GUI/HID/EEPROM change, nothing to mirror here.** Cycling SmartChords with the
+up/down keycodes wrote the name into the small keylog row (where note names
+go), decorated with `< ` / ` >` arrows. It now goes to the chord line, which
+auto-scales to the 2x font for names of 10 chars or fewer, with no arrows — via
+a new case-preserving `set_chord_display_exact()` (SmartChord names are
+case-sensitive: `m7` is not `M7`).
+
 ## Arrow-key menu navigation (2026-08) — firmware only
 
 Firmware feature (see vial-gui-custom CLAUDE.md, same section name) — **no
