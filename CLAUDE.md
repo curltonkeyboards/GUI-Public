@@ -1716,6 +1716,21 @@ layers). Turning per-layer OFF still shows the existing confirm and copies the
 current layer to all layers so they start uniform. Global (non-per-key) mode
 behavior is unchanged.
 
+## Voice leading: Ascending stopped ascending (2026-08) — firmware only
+
+Firmware fix (see vial-gui-custom CLAUDE.md, same section name) — **no
+GUI/HID/EEPROM change, nothing to mirror here.** With the Highest-voice rule
+set to Ascending, a progression climbed a few chords then audibly fell back
+down. `vl_apply_inversion()` clamped the inversion to `count-1`, so a chord
+could never be voiced higher than one octave above its own root position; once
+the previous chord's top note was out of that reach no candidate satisfied the
+rule, and the scorer's fallback picked the highest *reachable* voicing — which
+was still lower than the previous one. Inversions now wrap past `count-1` into
+whole-octave lifts (`VL_MAX_INVERSION` = 8, ~3 octaves of climb for a triad).
+Descending / Alternating / Tight are unchanged. The mirror case (Descending
+running out of room downward, since inversion 0 is the floor) is a known
+remaining limit.
+
 ## SmartChord keycode-map audit (2026-08) — GUI side
 
 Three-way audit of every smartchord keycode across this repo's label tables,
