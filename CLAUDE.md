@@ -1716,6 +1716,23 @@ layers). Turning per-layer OFF still shows the existing confirm and copies the
 current layer to all layers so they start uniform. Global (non-per-key) mode
 behavior is unchanged.
 
+## Arrow-key menu navigation (2026-08) — firmware only
+
+Firmware feature (see vial-gui-custom CLAUDE.md, same section name) — **no
+GUI/HID/EEPROM change, nothing to mirror here.** The NAVIGATION layer's arrow
+keys now drive every on-device menu alongside the rotary encoder: **Up** =
+encoder CCW, **Down** = encoder CW, **Right** = encoder click, **Left** = ESC.
+The arrow press synthesizes the encoder/ESC key event and re-enters
+`process_record_user`, so every existing menu handler runs unchanged. Not
+applied where the arrows already mean something else or the matrix is a
+text/number pad (naming, keycode search, Design Curve, Key Mapper capture,
+quick-build note entry).
+
+The only GUI-side relevance: the keymap editor's navigation-layer warning
+already lists the arrow keys in `NAV_REQUIRED_KEYS`, so removing the last copy
+of an arrow from the navigation layer is warned about — that warning now also
+protects menu navigation, not just number-page nudges.
+
 ## On-device Key Mapper (2026-08) — firmware only
 
 Firmware feature (see vial-gui-custom CLAUDE.md, same section name) — **no
