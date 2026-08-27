@@ -1551,6 +1551,20 @@ track's OWN cycle end (an 8 s ThruLoop stopped against a 1 s loop paused
 seconds late); all ThruLoop pending actions now resolve at the next UNIT
 boundary (`thruloop_on_loop_boundary`), exactly like loop stops/mutes.
 
+## A cycling ThruLoop is a sync source, master or not (2026-08) — firmware only
+
+Firmware-side fix (see vial-gui-custom CLAUDE.md, same section name, under the
+`unit_is_running` reference) — **no GUI/HID/EEPROM change, nothing to mirror
+here.** Symptom: record a loop, record a ThruLoop against it, pause the loop —
+playing the loop again started unsynced instead of slaving to the still-cycling
+ThruLoop (the stop was fine). Cause: `unit_is_running_except()` counted a
+ThruLoop only via `thruloop_is_clock_master()`, and a ThruLoop recorded AFTER a
+loop never owns the BPM, so once that loop paused every defer gate saw "nothing
+running". Fixed with a new `thruloop_is_running()` (any cycling track) behind
+`UNIT_SRC_THRULOOP`, a `tl_grid_leader()` that lets a slaved ThruLoop drive the
+boundary trigger / length snap, and a ThruLoop fallback in the loop's phase
+anchor so the resumed loop lands in phase.
+
 ## LCD half-brightness rules: erase fix + CH/TR boxes (2026-07) — firmware only
 
 Firmware-side fix (see vial-gui-custom CLAUDE.md, same section name) — **no
