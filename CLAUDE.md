@@ -1716,6 +1716,20 @@ layers). Turning per-layer OFF still shows the existing confirm and copies the
 current layer to all layers so they start uniform. Global (non-per-key) mode
 behavior is unchanged.
 
+## SmartChord custom-chord latch + "Chord" ESC fix (2026-08) — firmware only
+
+Firmware fixes (see vial-gui-custom CLAUDE.md, same section name) — **no
+GUI/HID/EEPROM change, nothing to mirror here.** (1) Swapping a QB master
+between a default smartchord and a custom (QuickBuild) chord left BOTH latched —
+the two families tracked "what is on" in different variables and neither cleared
+the other's; each now releases the other, and `qb_master_stop_action()` clears
+both. (2) A custom chord now takes the shared smartchord latch, so it
+participates in voice leading and its QB master's Inversion setting actually
+applies — the menu was always reachable, its VL rows were just inert. (3) ESC
+out of the SmartChord menu's "Chord" chooser reopens that master's own menu
+(one level up) instead of dropping into the top-level master picker, mirroring
+the existing "Change Arp" pattern.
+
 ## SmartChord up/down on the big chord line (2026-08) — firmware only
 
 Firmware change (see vial-gui-custom CLAUDE.md, same section name) — **no
