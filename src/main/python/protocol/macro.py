@@ -172,8 +172,13 @@ def macro_deserialize_v2(data):
             if s[0] == SS_BPM_DELAY_CODE:
                 out.append(ActionBPMDelay(s[1], s[2]))
             elif s[0] == SS_BPM_DELAY_REPEAT_CODE:
-                # Convert old repeat actions to plain BPM delay (repeat feature removed)
-                out.append(ActionBPMDelay(s[1], s[2]))
+                # Preserve the repeat count invisibly on the plain BPM-delay
+                # action so a GUI round-trip re-emits the same 5-byte opcode
+                # (the on-device configurator authors these; converting to a
+                # plain delay silently destroyed the repeat).
+                a = ActionBPMDelay(s[1], s[2])
+                a.repeat = s[3]
+                out.append(a)
             elif s[0] == SS_MIXING_CONTROL_CODE:
                 out.append(ActionMixingControl(s[1], s[2], s[3], s[4], s[5], s[6]))
             else:
@@ -220,6 +225,35 @@ class ProtocolMacro(BaseProtocol):
             # ensuring we only get macro_count strings after we split by NUL
             macros = self.macro.split(b"\x00") + [b""] * self.macro_count
             self.macro = b"\x00".join(macros[:self.macro_count]) + b"\x00"
+        # Read the persisted loop-mode/per-sync/global-sync state back from the
+        # device (0x95). Older firmware lacks the command — the seeded defaults
+        # above stay, exactly as before.
+        self.reload_macro_modes()
+
+    def reload_macro_modes(self):
+        """Read the device's persisted macro loop modes, per-macro sync flags,
+        and the global macro-sync bool via the 0x95 GET (4 chunks x 24 bytes of
+        the 2-bit/1-bit packed state). Returns False (keeping the local
+        defaults) on old firmware or comm failure."""
+        self.macro_sync_to_loop_device = None
+        try:
+            raw = bytearray()
+            for chunk in range(4):
+                packet = self._create_hid_packet(0x95, chunk, None)
+                resp = self.usb_send(self.dev, packet, retries=3)
+                if (not resp or len(resp) < 31 or resp[3] != 0x95 or
+                        resp[4] != 0x01 or resp[5] != chunk):
+                    return False
+                raw += bytes(resp[6:30])
+                if chunk == 3:
+                    self.macro_sync_to_loop_device = (resp[30] == 1)
+            self.macro_loop_modes = [(raw[m // 4] >> ((m % 4) * 2)) & 0x03
+                                     for m in range(self.macro_count)]
+            self.macro_sync_flags = [bool((raw[64 + m // 8] >> (m % 8)) & 1)
+                                     for m in range(self.macro_count)]
+            return True
+        except Exception:
+            return False
 
     def reload_macros(self):
         """ Loads macro information from the keyboard """
@@ -317,12 +351,20 @@ class ProtocolMacro(BaseProtocol):
     def set_macro_loop_modes(self, modes):
         """
         Store and send loop modes (list of int 0-3, one per macro) to firmware.
+
+        Only CHANGED entries are sent. There is no GET for these, so the local
+        cache seeds to all-zero on connect — pushing the full list on every
+        macro Save wiped whatever the device had persisted (including modes set
+        from the on-device Options page), and cost ~255 HID round-trips each
+        doing a full EEPROM region write.
         """
+        prev = self.get_macro_loop_modes()
         self.macro_loop_modes = modes[:self.macro_count]
-        # Send each loop mode to firmware via HID param
         try:
             from protocol.keyboard_comm import PARAM_MACRO_LOOP_MODE
             for macro_id, mode in enumerate(self.macro_loop_modes):
+                if macro_id < len(prev) and prev[macro_id] == mode:
+                    continue
                 self.set_keyboard_param_single(PARAM_MACRO_LOOP_MODE,
                                                (macro_id & 0xFF) | ((mode & 0x03) << 8))
         except Exception:
@@ -339,12 +381,17 @@ class ProtocolMacro(BaseProtocol):
     def set_macro_sync_flags(self, flags):
         """
         Store and send per-macro sync-to-BPM flags to firmware.
+
+        Only CHANGED entries are sent (see set_macro_loop_modes — no GET
+        exists, so a full-list push clobbered on-device state).
         """
+        prev = self.get_macro_sync_flags()
         self.macro_sync_flags = [bool(f) for f in flags[:self.macro_count]]
-        # Send each sync flag to firmware via HID param
         try:
             from protocol.keyboard_comm import PARAM_MACRO_PER_SYNC
             for macro_id, sync in enumerate(self.macro_sync_flags):
+                if macro_id < len(prev) and bool(prev[macro_id]) == sync:
+                    continue
                 self.set_keyboard_param_single(PARAM_MACRO_PER_SYNC,
                                                (macro_id & 0xFF) | ((1 if sync else 0) << 8))
         except Exception:

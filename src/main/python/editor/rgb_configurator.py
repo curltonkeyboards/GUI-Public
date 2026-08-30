@@ -395,7 +395,9 @@ LIVE_EFFECTS_HIERARCHY = {
         {"name": "Collapsing Star Med", "index": 168},
         {"name": "Collapsing Star Med Solo", "index": 169},
         {"name": "Collapsing Star Large", "index": 170},
-        {"name": "Collapsing Star Large Solo", "index": 171}
+        {"name": "Collapsing Star Large Solo", "index": 171},
+        {"name": "Collapsing Star Massive", "index": 172},
+        {"name": "Collapsing Star Massive Solo", "index": 173}
     ],
     "Volume Bars": [
         {"name": "Volume Bars Small", "index": 66},
@@ -607,20 +609,11 @@ BACKGROUNDS_HIERARCHY = {
         {"name": "BPM All Autolight 2", "index": 57},
         {"name": "BPM All Autolight Disco", "index": 58},
     ],
-    "Per Key Layers": [
-        {"name": "Per Key 1", "index": 57},
-        {"name": "Per Key 2", "index": 58},
-        {"name": "Per Key 3", "index": 59},
-        {"name": "Per Key 4", "index": 60},
-        {"name": "Per Key 5", "index": 61},
-        {"name": "Per Key 6", "index": 62},
-        {"name": "Per Key 7", "index": 63},
-        {"name": "Per Key 8", "index": 64},
-        {"name": "Per Key 9", "index": 65},
-        {"name": "Per Key 10", "index": 66},
-        {"name": "Per Key 11", "index": 67},
-        {"name": "Per Key 12", "index": 68},
-    ]
+    # NOTE: the old "Per Key Layers" group (indices 57-68) was WRONG here: those
+    # numbers are VialRGB effect ids for the per-key presets, not background_mode
+    # values. In the background namespace 57-68 are BPM/cycle/wave modes already
+    # listed above, so the group both duplicated real entries and made readback
+    # ambiguous. Per-key presets are selected from the Basic RGB effect list.
 }
 
 # Hierarchical structure for live positioning styles
@@ -780,7 +773,7 @@ CUSTOM_LIGHT_COLOR_TYPES_HIERARCHY = {
     "Modular Sat": [
         {"name": "Base Sat", "index": 6},
         {"name": "Channel Sat", "index": 7},
-        {"name": "Macro Sat", "index": 8},
+        {"name": "Auto Note Sat", "index": 8},
         {"name": "Rainbow Sat", "index": 9},
         {"name": "Pitch 1 Sat", "index": 10},
         {"name": "Pitch 2 Sat", "index": 11},
@@ -788,7 +781,7 @@ CUSTOM_LIGHT_COLOR_TYPES_HIERARCHY = {
     "Modular Desat": [
         {"name": "Base Desat", "index": 12},
         {"name": "Channel Desat", "index": 13},
-        {"name": "Macro Desat", "index": 14},
+        {"name": "Auto Note Desat", "index": 14},
         {"name": "Rainbow Desat", "index": 15},
         {"name": "Pitch 1 Desat", "index": 16},
         {"name": "Pitch 2 Desat", "index": 17},
@@ -796,7 +789,7 @@ CUSTOM_LIGHT_COLOR_TYPES_HIERARCHY = {
     "Modular Distance": [
         {"name": "Base Distance", "index": 18},
         {"name": "Channel Distance", "index": 19},
-        {"name": "Macro Distance", "index": 20},
+        {"name": "Auto Note Distance", "index": 20},
         {"name": "Rainbow Distance", "index": 21},
         {"name": "Pitch 1 Distance", "index": 22},
         {"name": "Pitch 2 Distance", "index": 23},
@@ -804,7 +797,7 @@ CUSTOM_LIGHT_COLOR_TYPES_HIERARCHY = {
     "Modular Distance + Sat": [
         {"name": "Base Distance Sat", "index": 24},
         {"name": "Channel Distance Sat", "index": 25},
-        {"name": "Macro Distance Sat", "index": 26},
+        {"name": "Auto Note Distance Sat", "index": 26},
         {"name": "Rainbow Distance Sat", "index": 27},
         {"name": "Pitch 1 Distance Sat", "index": 28},
         {"name": "Pitch 2 Distance Sat", "index": 29},
@@ -812,7 +805,7 @@ CUSTOM_LIGHT_COLOR_TYPES_HIERARCHY = {
     "Modular Distance + Desat": [
         {"name": "Base Distance Desat", "index": 30},
         {"name": "Channel Distance Desat", "index": 31},
-        {"name": "Macro Distance Desat", "index": 32},
+        {"name": "Auto Note Distance Desat", "index": 32},
         {"name": "Rainbow Distance Desat", "index": 33},
         {"name": "Pitch 1 Distance Desat", "index": 34},
         {"name": "Pitch 2 Distance Desat", "index": 35},
@@ -1186,7 +1179,9 @@ class VialRGBHandler(BasicHandler):
         h, s, v, a = color.getHsvF()
         if h < 0:
             h = 0
-        self.keyboard.set_vialrgb_color(int(255 * h), int(255 * s), self.keyboard.rgb_hsv[2])
+        # v=None keeps the brightness the device is actually showing (the comm
+        # layer re-reads mode/speed/val so only hue/sat change).
+        self.keyboard.set_vialrgb_color(int(255 * h), int(255 * s))
         self.update.emit()
 
     def current_color(self):
@@ -1445,7 +1440,7 @@ class LayerRGBHandler(BasicHandler):
                 try:
                     status = self.device.keyboard.get_layer_rgb_status()
                     if status is not None:
-                        # status is get_layer_rgb_status() -> data[2:]; byte 0 is the enable flag.
+                        # status[0] is the enable flag (firmware reply byte 0).
                         # Test the flag byte, not truthiness of the whole buffer.
                         keyboard_state = bool(status[0]) if len(status) > 0 else False
                         self.per_layer_enabled = keyboard_state
@@ -2426,9 +2421,9 @@ class CustomLightsHandler(BasicHandler):
 
         # Macro Animation section header
         macro_header = QHBoxLayout()
-        macro_label = QLabel(tr("RGBConfigurator", "Macro Animation:"))
+        macro_label = QLabel(tr("RGBConfigurator", "Auto Note Animation:"))
         macro_label.setStyleSheet("font-weight: bold;")
-        macro_header.addWidget(self.create_help_label("Animation triggered on key press from macro playback."))
+        macro_header.addWidget(self.create_help_label("Animation for auto-played notes (loop/macro playback)."))
         macro_header.addWidget(macro_label)
         macro_header.addStretch()
         layout.addLayout(macro_header, row, 0, 1, 4)
@@ -2472,8 +2467,8 @@ class CustomLightsHandler(BasicHandler):
         row += 1
 
         # Enable Macro Dynamic Brightness checkbox
-        vel_brightness_macro = QCheckBox(tr("RGBConfigurator", "Enable Macro Dynamic Brightness"))
-        vel_brightness_macro.setToolTip("When enabled, macro animation brightness scales with\nkeypress velocity. Soft press = dim, hard press = bright.")
+        vel_brightness_macro = QCheckBox(tr("RGBConfigurator", "Enable Auto Note Dynamic Brightness"))
+        vel_brightness_macro.setToolTip("When enabled, auto-note animation brightness scales with\nkeypress velocity. Soft press = dim, hard press = bright.")
         vel_brightness_macro.setChecked(False)
         vel_brightness_macro.stateChanged.connect(lambda state, s=slot: self.on_vel_brightness_macro_changed(s, state))
         layout.addWidget(vel_brightness_macro, row, 0, 1, 4)
@@ -2510,10 +2505,12 @@ class CustomLightsHandler(BasicHandler):
         bg_speed_label = QLabel(tr("RGBConfigurator", "Speed:"))
         layout.addWidget(bg_speed_label, row, 2)
         bg_speed = QSlider(QtCore.Qt.Horizontal)
-        bg_speed.setMinimum(0)
+        # Minimum 1: the firmware treats a stored 0 as "unset" and rewrites it
+        # to 128 on load, so offering 0 here silently round-trips to Normal.
+        bg_speed.setMinimum(1)
         bg_speed.setMaximum(255)
         bg_speed.setValue(128)
-        bg_speed.setToolTip("Background animation speed.\n0 = Slowest, 128 = Normal, 255 = Fastest")
+        bg_speed.setToolTip("Background animation speed.\n1 = Slowest, 128 = Normal, 255 = Fastest")
         self._connect_throttled(bg_speed, self.on_bg_speed_changed, slot)  # ~1 HID/sec while dragging + on release
         layout.addWidget(bg_speed, row, 3)
         row += 1
@@ -2678,7 +2675,9 @@ class CustomLightsHandler(BasicHandler):
         h = widgets.get('effect_hue', 0)
         s = widgets.get('effect_sat', 255)
         if hasattr(self, 'device') and hasattr(self.device, 'keyboard') and hasattr(self.device.keyboard, 'rgb_hsv'):
-            self.device.keyboard.set_vialrgb_color(h, s, self.device.keyboard.rgb_hsv[2])
+            # v=None: only hue/sat change — the comm layer re-reads the device's
+            # current mode/speed/brightness so this can't switch the effect.
+            self.device.keyboard.set_vialrgb_color(h, s)
         
     def get_current_slot_index(self):
         """Get the currently selected slot index across all groups"""
@@ -2808,11 +2807,15 @@ class CustomLightsHandler(BasicHandler):
             return
             
         widgets = self.slot_widgets[slot]
-        widgets['live_effect'].setCurrentIndex(min(config[2], 171))
+        # Clamps mirror the firmware setter limits: effects < 174, live pos < 34,
+        # macro pos < 47, backgrounds < 121 (0-120). The old 171/121 clamps
+        # displayed the last two effects and background 120 as a DIFFERENT entry
+        # and then saved that wrong value back.
+        widgets['live_effect'].setCurrentIndex(min(config[2], 173))
         widgets['live_style'].setCurrentIndex(min(config[0], 33))
-        widgets['macro_effect'].setCurrentIndex(min(config[3], 171))
+        widgets['macro_effect'].setCurrentIndex(min(config[3], 173))
         widgets['macro_style'].setCurrentIndex(min(config[1], 46))
-        widgets['background'].setCurrentIndex(min(config[5], 121))
+        widgets['background'].setCurrentIndex(min(config[5], 120))
         widgets['bg_speed'].setValue(config[14] if len(config) > 14 else 128)
         widgets['color_type'].setCurrentIndex(min(config[7], 84))
         widgets['background_brightness'].setValue(config[9] if len(config) > 9 else 30)
@@ -2924,7 +2927,9 @@ class CustomLightsHandler(BasicHandler):
             return
 
         if hasattr(self.device, 'keyboard') and hasattr(self.device.keyboard, 'rgb_hsv'):
-            self.device.keyboard.set_vialrgb_color(h, s, self.device.keyboard.rgb_hsv[2])
+            # v=None: only hue/sat change — the comm layer re-reads the device's
+            # current mode/speed/brightness so this can't switch the effect.
+            self.device.keyboard.set_vialrgb_color(h, s)
 
     def set_slot_defaults(self, slot):
         """Set default values for a slot"""
@@ -3141,9 +3146,12 @@ class CustomLightsHandler(BasicHandler):
         if current_slot in self.slot_widgets:
             self.slot_widgets[current_slot]['effect_hue'] = hue_val
             self.slot_widgets[current_slot]['effect_sat'] = sat_val
-        # Also set global RGB for live preview on the keyboard
+        # Also set global RGB for live preview on the keyboard. v=None: only
+        # hue/sat change — the comm layer re-reads the device's current mode/
+        # speed/brightness first, so picking a color can no longer knock the
+        # keyboard off the previewed slot effect onto a stale cached mode.
         if hasattr(self.device, 'keyboard'):
-            self.device.keyboard.set_vialrgb_color(hue_val, sat_val, self.device.keyboard.rgb_hsv[2])
+            self.device.keyboard.set_vialrgb_color(hue_val, sat_val)
         # Update swatch from per-slot values
         self._update_rgb_color_swatch(current_slot)
 
@@ -3158,7 +3166,16 @@ class CustomLightsHandler(BasicHandler):
             macro_pos = widgets['macro_style'].currentIndex()
             live_anim = widgets['live_effect'].currentIndex()
             macro_anim = widgets['macro_effect'].currentIndex()
+            # Preserve flag bits this tab doesn't own (bit 0 = influence mode,
+            # set firmware-side) — rebuilding from 0 silently cleared them on
+            # every save.
             flags = 0
+            try:
+                cur = self.device.keyboard.get_custom_slot_config(slot, from_eeprom=False)
+                if cur and len(cur) > 4:
+                    flags = cur[4] & ~0x06
+            except Exception:
+                pass
             if widgets['vel_brightness_live'].isChecked():
                 flags |= 0x02
             if widgets['vel_brightness_macro'].isChecked():
@@ -3358,6 +3375,9 @@ FUNC_LED_STATES = [
     # Ear Trainer On/Off [88-89]
     (88, "On", "Ear Trainer"),
     (89, "Off", "Ear Trainer"),
+    # Multichannel echo On/Off [90-91]
+    (90, "On", "Multi Channel"),
+    (91, "Off", "Multi Channel"),
     # Other [42-47]
     (42, "Caps Lock", "Other Indicators"),
     (43, "Gaming Mode", "Other Indicators"),
@@ -3374,7 +3394,7 @@ FUNC_LED_GROUPS = [
     "Arpeggiator", "Step Sequencer", "Chord Progression", "Vial Macros",
     "Loop Pedal", "Toggle Keys", "Delay Slots", "SmartChord", "AutoFader",
     "Dynamic Chord", "DrumLIVE", "Drum Machine", "Ear Trainer",
-    "Other Indicators"
+    "Multi Channel", "Other Indicators"
 ]
 
 # Descriptions shown at top of each group section
@@ -3397,6 +3417,7 @@ FUNC_LED_GROUP_DESCRIPTIONS = {
     "DrumLIVE": "On/Off colors for DrumLIVE keys (On while the live drum filter is active).",
     "Drum Machine": "On/Off colors for Drum Machine slot keys (On while a slot is playing).",
     "Ear Trainer": "On/Off colors for Ear Trainer keys (On while a session is running).",
+    "Multi Channel": "On/Off colors for Multichannel preset keys (On while the preset is echoing its target channel onto its multi channels).",
     "Other Indicators": "Colors for caps lock, gaming mode, and tap tempo indicators.",
 }
 

@@ -1271,7 +1271,19 @@ class ThruLoopConfigurator(BasicEditor):
             for i, combo in enumerate(self.nav_combos):
                 if i < len(nav_ccs):
                     self.set_cc_value(combo, nav_ccs[i])
-        
+
+        # Restore the "Sync Macros" checkbox from the device (read via the
+        # 0x95 macro-modes GET on connect; None on old firmware). Signals must
+        # be blocked — the change handler pushes param 51 and this is a load,
+        # not a user edit. Without this the checkbox showed its default and a
+        # subsequent Save wrote that default back to the device.
+        if self.device and isinstance(self.device, VialKeyboard):
+            dev_sync = getattr(self.device.keyboard, 'macro_sync_to_loop_device', None)
+            if dev_sync is not None:
+                self.macro_sync_to_loop.blockSignals(True)
+                self.macro_sync_to_loop.setChecked(bool(dev_sync))
+                self.macro_sync_to_loop.blockSignals(False)
+
         # Update UI state
         self.on_separate_loopchop_changed()
         
@@ -1325,7 +1337,7 @@ class ThruLoopConfigurator(BasicEditor):
             "masterCC": self.get_cc_value(self.master_cc),
             "restartCCs": self.get_restart_cc_values(),
             "mainCCs": self.get_combos_cc_values(self.main_combos[:5]),  # First 5 rows x 8 cols = 40 values
-            "overdubCCs": self.get_combos_cc_values(self.overdub_combos),  # All 6 rows x 8 cols = 48 values
+            "overdubCCs": self.get_combos_cc_values_banked(self.overdub_combos),  # banked order, matches apply_config
             "navCCs": [self.get_cc_value(combo) for combo in self.nav_combos]
         }
         return config
@@ -1622,6 +1634,8 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.global_transpose.setMaximumWidth(120)
         self.global_transpose.setMinimumHeight(25)
         self.global_transpose.setMaximumHeight(25)
+        # +/-64: matches the firmware's combined main-zone transpose+octave cap
+        # (TRANSPOSE_TOTAL_CAP = 64, raised from 60 with the Transpose selector).
         for i in range(-64, 65):
             self.global_transpose.addItem(f"{'+' if i >= 0 else ''}{i}", i)
         self.global_transpose.setCurrentIndex(64)
@@ -1698,11 +1712,11 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         sc_ignore_label_layout.setContentsMargins(0, 0, 0, 0)
         sc_ignore_label_layout.setSpacing(5)
         sc_ignore_label_layout.addWidget(self.create_help_label(
-            "SmartChord behavior for base zone keys:\n"
-            "Allow: SmartChord adds harmony notes\n"
-            "Ignore: SmartChord has no effect on these keys"
+            "Auto-notes behavior for base zone keys:\n"
+            "Allow: smartchord/delay/dynamic-chord/arpeggiator/doubler apply\n"
+            "Ignore: these keys play ONLY their plain note (looping unaffected)"
         ))
-        sc_ignore_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "SmartChord:")))
+        sc_ignore_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Auto-Notes:")))
         sc_ignore_label_layout.addStretch()
         sc_ignore_label_container.setLayout(sc_ignore_label_layout)
         base_layout.addWidget(sc_ignore_label_container, row, 0)
@@ -1772,7 +1786,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         tr_label_layout = QHBoxLayout()
         tr_label_layout.setContentsMargins(0, 0, 0, 0)
         tr_label_layout.setSpacing(3)
-        tr_label_layout.addWidget(self.create_help_label("Semitone offset (-64 to +64) for KeySplit keys"))
+        tr_label_layout.addWidget(self.create_help_label("Combined transposition (octave + key, -64 to +64) for KeySplit keys. Only applies while KeySplit transpose is enabled below; otherwise these keys follow the main transposition."))
         tr_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Transpose:")))
         tr_label_layout.addStretch()
         tr_label.setLayout(tr_label_layout)
@@ -1783,9 +1797,10 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.transpose_number2.setMaximumWidth(80)
         self.transpose_number2.setMinimumHeight(25)
         self.transpose_number2.setMaximumHeight(25)
-        for i in range(-64, 65):
+        # +/-24: matches the firmware's own zone-transpose clamp (TRANSPOSE_MAX)
+        for i in range(-24, 25):
             self.transpose_number2.addItem(f"{'+' if i >= 0 else ''}{i}", i)
-        self.transpose_number2.setCurrentIndex(64)
+        self.transpose_number2.setCurrentIndex(24)
         self.transpose_number2.setEditable(True)
         self.transpose_number2.lineEdit().setReadOnly(True)
         self.transpose_number2.lineEdit().setAlignment(Qt.AlignCenter)
@@ -1884,11 +1899,12 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ks_sc_label_layout.setContentsMargins(0, 0, 0, 0)
         ks_sc_label_layout.setSpacing(3)
         ks_sc_label_layout.addWidget(self.create_help_label(
-            "SmartChord behavior for KeySplit keys:\n"
-            "Allow: SmartChord adds harmony notes\n"
-            "Ignore: SmartChord has no effect on these keys"
+            "Auto-notes behavior for KeySplit keys (applies while KeySplit is enabled;\n"
+            "otherwise these keys follow the base zone setting):\n"
+            "Allow: smartchord/delay/dynamic-chord/arpeggiator/doubler apply\n"
+            "Ignore: these keys play ONLY their plain note (looping unaffected)"
         ))
-        ks_sc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "SmartChord:")))
+        ks_sc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Auto-Notes:")))
         ks_sc_label_layout.addStretch()
         ks_sc_label.setLayout(ks_sc_label_layout)
         keysplit_layout.addWidget(ks_sc_label, ks_row, 0)
@@ -1958,7 +1974,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ts_tr_label_layout = QHBoxLayout()
         ts_tr_label_layout.setContentsMargins(0, 0, 0, 0)
         ts_tr_label_layout.setSpacing(3)
-        ts_tr_label_layout.addWidget(self.create_help_label("Semitone offset (-64 to +64) for TripleSplit keys"))
+        ts_tr_label_layout.addWidget(self.create_help_label("Combined transposition (octave + key, -64 to +64) for TripleSplit keys. Only applies while TripleSplit transpose is enabled below; otherwise these keys follow the main transposition."))
         ts_tr_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Transpose:")))
         ts_tr_label_layout.addStretch()
         ts_tr_label.setLayout(ts_tr_label_layout)
@@ -1969,9 +1985,10 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.transpose_number3.setMaximumWidth(80)
         self.transpose_number3.setMinimumHeight(25)
         self.transpose_number3.setMaximumHeight(25)
-        for i in range(-64, 65):
+        # +/-24: matches the firmware's own zone-transpose clamp (TRANSPOSE_MAX)
+        for i in range(-24, 25):
             self.transpose_number3.addItem(f"{'+' if i >= 0 else ''}{i}", i)
-        self.transpose_number3.setCurrentIndex(64)
+        self.transpose_number3.setCurrentIndex(24)
         self.transpose_number3.setEditable(True)
         self.transpose_number3.lineEdit().setReadOnly(True)
         self.transpose_number3.lineEdit().setAlignment(Qt.AlignCenter)
@@ -2070,11 +2087,12 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ts_sc_label_layout.setContentsMargins(0, 0, 0, 0)
         ts_sc_label_layout.setSpacing(3)
         ts_sc_label_layout.addWidget(self.create_help_label(
-            "SmartChord behavior for TripleSplit keys:\n"
-            "Allow: SmartChord adds harmony notes\n"
-            "Ignore: SmartChord has no effect on these keys"
+            "Auto-notes behavior for TripleSplit keys (applies while TripleSplit is enabled;\n"
+            "otherwise these keys follow the base zone setting):\n"
+            "Allow: smartchord/delay/dynamic-chord/arpeggiator/doubler apply\n"
+            "Ignore: these keys play ONLY their plain note (looping unaffected)"
         ))
-        ts_sc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "SmartChord:")))
+        ts_sc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Auto-Notes:")))
         ts_sc_label_layout.addStretch()
         ts_sc_label.setLayout(ts_sc_label_layout)
         triplesplit_layout.addWidget(ts_sc_label, ts_row, 0)
@@ -2486,9 +2504,10 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         dynamic_range_label_layout.setContentsMargins(0, 0, 0, 0)
         dynamic_range_label_layout.setSpacing(5)
         dynamic_range_label_layout.addWidget(self.create_help_label(
-            "Random velocity variation amount (0-127).\n"
-            "Adds human-like variation to velocity values.\n"
-            "0 = No variation, higher = more randomness."
+            "Maximum allowed spread between Velocity Min and Velocity Max (0-127).\n"
+            "When the min/max controls are moved apart beyond this range,\n"
+            "the other end is dragged along to keep the spread within it.\n"
+            "127 = no restriction."
         ))
         dynamic_range_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Dynamic Range:")))
         dynamic_range_label.setLayout(dynamic_range_label_layout)
@@ -3103,6 +3122,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         # Drum Keybinds tab (global default drum-voice bindings for the drum machine)
         self.setup_drum_keybinds_tab()
 
+        # Multi Channel tab (16 channel-echo presets: target + 3 multi channels)
+        self.setup_multichannel_tab()
+
     # =====================================================================
     # DRUM SETTINGS (global default drum-machine channel + voice bindings)
     # =====================================================================
@@ -3126,6 +3148,158 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
     def _midi_note_label(note):
         names = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
         return "{}{} ({})".format(names[note % 12], (note // 12) - 1, note)
+
+
+    # =====================================================================
+    # MULTI CHANNEL (16 channel-echo presets)
+    # =====================================================================
+    # Each preset has a TARGET channel and up to 3 MULTI channels. While the
+    # preset is on (toggled by its Multichannel keycode / QuickBuild master),
+    # everything the keyboard outputs on the target channel is duplicated
+    # onto the multi channels. Edits here persist to the keyboard's EEPROM
+    # immediately; the on/off state itself is toggled on the device.
+    MULTICHANNEL_COUNT = 16
+
+    def setup_multichannel_tab(self):
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        container = QWidget()
+        layout = QVBoxLayout()
+        container.setLayout(layout)
+        scroll_area.setWidget(container)
+        self.tabs_widget.addTab(scroll_area, tr("MIDIswitchSettingsConfigurator", "Multi Channel"))
+
+        layout.addSpacing(8)
+        title = QLabel(tr("MIDIswitchSettingsConfigurator", "Multi Channel"))
+        title.setStyleSheet("font-weight: bold; font-size: 14pt;")
+        layout.addWidget(title)
+        desc = QLabel(tr("MIDIswitchSettingsConfigurator",
+            "16 channel-echo presets. While a preset is ON, everything the keyboard outputs "
+            "on its Target channel (live keys, loops, step sequencer, arpeggiator, rhythm "
+            "engine...) is duplicated onto its Multi channels, each with its own optional "
+            "octave transpose (-3..+3; an echoed note that would fall outside 0-127 is "
+            "skipped). Toggle a preset with its "
+            "'Multi CH' keycode or a QuickBuild master button (hold the key to edit these "
+            "same settings on the device). Changes save to the keyboard immediately."))
+        desc.setWordWrap(True)
+        desc.setStyleSheet("color: #888;")
+        layout.addWidget(desc)
+        layout.addSpacing(6)
+
+        self._multichannel_loading = False
+
+        grid_group = QGroupBox(tr("MIDIswitchSettingsConfigurator", "Presets"))
+        grid = QGridLayout()
+        grid_group.setLayout(grid)
+        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Preset")), 0, 0)
+        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Target")), 0, 1)
+        for e in range(3):
+            grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Multi {}").format(e + 1)), 0, 2 + e * 2)
+            grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Oct")), 0, 3 + e * 2)
+        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "State")), 0, 8)
+
+        self.multichannel_target_combos = []
+        self.multichannel_echo_combos = []
+        self.multichannel_oct_combos = []
+        self.multichannel_state_labels = []
+        for p in range(self.MULTICHANNEL_COUNT):
+            grid.addWidget(QLabel("Multi CH{}".format(p + 1)), p + 1, 0)
+
+            target_combo = QComboBox()
+            for ch in range(16):
+                target_combo.addItem("Ch {}".format(ch + 1), ch)
+            target_combo.setCurrentIndex(p if p < 16 else 0)
+            target_combo.currentIndexChanged.connect(
+                lambda _idx, preset=p: self.on_multichannel_changed(preset))
+            grid.addWidget(target_combo, p + 1, 1)
+            self.multichannel_target_combos.append(target_combo)
+
+            echo_row = []
+            oct_row = []
+            for e in range(3):
+                echo_combo = QComboBox()
+                echo_combo.addItem("Off", None)
+                for ch in range(16):
+                    echo_combo.addItem("Ch {}".format(ch + 1), ch)
+                echo_combo.setCurrentIndex(0)
+                echo_combo.currentIndexChanged.connect(
+                    lambda _idx, preset=p: self.on_multichannel_changed(preset))
+                grid.addWidget(echo_combo, p + 1, 2 + e * 2)
+                echo_row.append(echo_combo)
+
+                oct_combo = QComboBox()
+                for val in (-3, -2, -1, 0, 1, 2, 3):
+                    oct_combo.addItem("None" if val == 0 else "{:+d} oct".format(val), val)
+                oct_combo.setCurrentIndex(3)   # None
+                oct_combo.setEnabled(False)    # enabled once its Multi channel is set
+                oct_combo.currentIndexChanged.connect(
+                    lambda _idx, preset=p: self.on_multichannel_changed(preset))
+                grid.addWidget(oct_combo, p + 1, 3 + e * 2)
+                oct_row.append(oct_combo)
+            self.multichannel_echo_combos.append(echo_row)
+            self.multichannel_oct_combos.append(oct_row)
+
+            state_label = QLabel("-")
+            state_label.setStyleSheet("color: #888;")
+            grid.addWidget(state_label, p + 1, 8)
+            self.multichannel_state_labels.append(state_label)
+
+        layout.addWidget(grid_group)
+        layout.addStretch()
+
+    def _set_multichannel_row_ui(self, preset, target, echoes, active, octaves=None):
+        self._multichannel_loading = True
+        try:
+            self.multichannel_target_combos[preset].setCurrentIndex(target & 0x0F)
+            for e in range(3):
+                ch = echoes[e] if e < len(echoes) else None
+                idx = 0 if ch is None or ch > 15 else ch + 1
+                self.multichannel_echo_combos[preset][e].setCurrentIndex(idx)
+                oct_v = 0
+                if octaves is not None and e < len(octaves) and octaves[e] is not None:
+                    oct_v = max(-3, min(3, int(octaves[e])))
+                self.multichannel_oct_combos[preset][e].setCurrentIndex(oct_v + 3)
+            self.multichannel_state_labels[preset].setText("ON" if active else "off")
+            self._sync_multichannel_oct_enabled(preset)
+        finally:
+            self._multichannel_loading = False
+
+    def _sync_multichannel_oct_enabled(self, preset):
+        """An Off Multi slot has nothing to transpose — grey out its Oct combo."""
+        for e in range(3):
+            on = self.multichannel_echo_combos[preset][e].currentData() is not None
+            self.multichannel_oct_combos[preset][e].setEnabled(on)
+
+    def on_multichannel_changed(self, preset):
+        if getattr(self, '_multichannel_loading', False):
+            return
+        if not (self.device and isinstance(self.device, VialKeyboard)):
+            return
+        target = self.multichannel_target_combos[preset].currentData()
+        echoes = []
+        octaves = []
+        for e in range(3):
+            data = self.multichannel_echo_combos[preset][e].currentData()
+            echoes.append(data)
+            octaves.append(self.multichannel_oct_combos[preset][e].currentData())
+        self._sync_multichannel_oct_enabled(preset)
+        try:
+            self.device.keyboard.set_multichannel_preset(preset, target, echoes, octaves)
+        except Exception:
+            pass
+
+    def load_multichannel_from_keyboard(self):
+        if not (self.device and isinstance(self.device, VialKeyboard)):
+            return
+        try:
+            for p in range(self.MULTICHANNEL_COUNT):
+                result = self.device.keyboard.get_multichannel_preset(p)
+                if result is None:
+                    return   # pre-multichannel firmware — leave defaults
+                target, echoes, active, octaves = result
+                self._set_multichannel_row_ui(p, target, echoes, active, octaves)
+        except Exception:
+            pass
 
     def setup_drum_keybinds_tab(self):
         scroll_area = QScrollArea()
@@ -4037,6 +4211,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
 
         # Load the global drum keybinds (drum machine voice bindings)
         self.load_drum_keybinds_from_keyboard()
+
+        # Load the Multichannel echo presets
+        self.load_multichannel_from_keyboard()
 
 # SPDX-License-Identifier: GPL-2.0-or-later
 

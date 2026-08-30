@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
+import base64
+import json
 import logging
 import platform
 import time
@@ -31,6 +33,7 @@ from widgets.editor_container import EditorContainer
 from editor.firmware_flasher import FirmwareFlasher
 from editor.key_override import KeyOverride
 from protocol.keyboard_comm import ProtocolError
+from protocol.clone_migrations import CloneMigrationError, can_migrate, migrate_clone
 from editor.keymap_editor import KeymapEditor
 from editor.trigger_settings import TriggerSettingsTab
 from editor.dks_settings import DKSSettingsTab
@@ -278,6 +281,12 @@ class MainWindow(QMainWindow):
         layout_save_act.setShortcut("Ctrl+S")
         layout_save_act.triggered.connect(self.on_layout_save)
 
+        clone_load_act = QAction(tr("MenuFile", "Load keyboard clone..."), self)
+        clone_load_act.triggered.connect(self.on_clone_load)
+
+        clone_save_act = QAction(tr("MenuFile", "Save keyboard clone..."), self)
+        clone_save_act.triggered.connect(self.on_clone_save)
+
         exit_act = QAction(tr("MenuFile", "Exit"), self)
         exit_act.setShortcut("Ctrl+Q")
         exit_act.triggered.connect(self.close)
@@ -286,6 +295,9 @@ class MainWindow(QMainWindow):
             file_menu = self.menuBar().addMenu(tr("Menu", "File"))
             file_menu.addAction(layout_load_act)
             file_menu.addAction(layout_save_act)
+            file_menu.addSeparator()
+            file_menu.addAction(clone_load_act)
+            file_menu.addAction(clone_save_act)
 
         keyboard_unlock_act = QAction(tr("MenuSecurity", "Unlock"), self)
         keyboard_unlock_act.setShortcut("Ctrl+U")
@@ -370,6 +382,328 @@ class MainWindow(QMainWindow):
         if dialog.exec_() == QDialog.Accepted:
             with open(dialog.selectedFiles()[0], "wb") as outf:
                 outf.write(self.keymap_editor.save_layout())
+
+    # ------------------------------------------------------------------
+    # Keyboard clone (whole-EEPROM save/restore)
+    #
+    # A clone captures the keyboard's ENTIRE persistent state — layout plus
+    # every MIDI/ThruLoop/actuation/articulation setting, presets, names, QB
+    # masters, everything — by streaming the 64KB config EEPROM over raw HID
+    # (command 0x94). The firmware reports an EEPROM layout version; it is
+    # stamped into the clone file and checked before a restore, so a clone
+    # saved on a firmware whose EEPROM regions live at different addresses
+    # can never be written over an incompatible layout and corrupt it.
+    # ------------------------------------------------------------------
+
+    CLONE_FILE_MAGIC = "midiswitch-keyboard-clone"
+
+    def _clone_get_keyboard_or_warn(self):
+        """Return (keyboard, clone_info) for a connected clone-capable
+        keyboard, or (None, None) after showing the appropriate warning."""
+        if not isinstance(self.autorefresh.current_device, VialKeyboard):
+            QMessageBox.warning(self, "No keyboard",
+                                tr("MainWindow", "Connect a keyboard before using keyboard clones."))
+            return None, None
+        keyboard = self.autorefresh.current_device.keyboard
+        info = keyboard.get_clone_info()
+        if not info:
+            QMessageBox.warning(self, "Not supported",
+                                tr("MainWindow", "The connected keyboard's firmware does not support "
+                                                 "keyboard clones. Update the firmware and try again."))
+            return None, None
+        return keyboard, info
+
+    def on_clone_save(self):
+        keyboard, info = self._clone_get_keyboard_or_warn()
+        if keyboard is None:
+            return
+
+        dialog = QFileDialog()
+        dialog.setDefaultSuffix("kbclone")
+        dialog.setAcceptMode(QFileDialog.AcceptSave)
+        dialog.setNameFilters(["Keyboard clone (*.kbclone)"])
+        if dialog.exec_() != QDialog.Accepted:
+            return
+        path = dialog.selectedFiles()[0]
+
+        from PyQt5.QtWidgets import QApplication, QProgressDialog
+        from util import set_hid_transfer_active
+
+        size = info["eeprom_size"]
+        chunk_size = info["chunk_size"]
+        blob = bytearray()
+
+        progress = QProgressDialog(tr("MainWindow", "Reading keyboard memory..."),
+                                   tr("MainWindow", "Cancel"), 0, size, self)
+        progress.setWindowTitle(tr("MainWindow", "Save Keyboard Clone"))
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+
+        # The live pollers (matrix/velocity) share the HID handle; make them
+        # stand down for the duration of the bulk transfer.
+        #
+        # The chunk loop runs on a BACKGROUND thread (HID access is serialized
+        # by hid_lock_for) while the GUI thread only pumps events and updates
+        # the progress bar. Running the transfer synchronously on the GUI
+        # thread froze the whole app for its duration — each chunk's HID read
+        # can block up to 500 ms × retries — and a frozen app stops draining
+        # the keyboard's USB endpoints, which (before the firmware's bounded-
+        # send fix) wedged the keyboard itself when keys were pressed
+        # mid-transfer.
+        import threading
+        import time
+        state = {"addr": 0, "done": False, "canceled": False, "failed_addr": None}
+
+        def read_worker():
+            try:
+                addr = 0
+                while addr < size:
+                    if state["canceled"]:
+                        return
+                    length = min(chunk_size, size - addr)
+                    data = None
+                    for _ in range(3):  # per-chunk retry on top of the HID-level retries
+                        data = keyboard.clone_read_chunk(addr, length)
+                        if data is not None:
+                            break
+                    if data is None:
+                        state["failed_addr"] = addr
+                        return
+                    blob.extend(data)
+                    addr += length
+                    state["addr"] = addr
+            except Exception:
+                logging.exception("Clone read worker failed")
+                state["failed_addr"] = state["addr"]
+            finally:
+                state["done"] = True
+
+        set_hid_transfer_active(True)
+        try:
+            worker = threading.Thread(target=read_worker, daemon=True)
+            worker.start()
+            while not state["done"]:
+                if progress.wasCanceled():
+                    state["canceled"] = True
+                progress.setValue(state["addr"])
+                QApplication.processEvents()
+                time.sleep(0.01)
+            worker.join()
+        finally:
+            set_hid_transfer_active(False)
+            progress.close()
+
+        if state["canceled"]:
+            return  # nothing was written to the device or to disk
+        if state["failed_addr"] is not None:
+            QMessageBox.critical(self, "Save failed",
+                                 tr("MainWindow", "Failed to read keyboard memory at address {}.\n"
+                                                  "No file was written.").format(state["failed_addr"]))
+            return
+
+        clone = {
+            "magic": self.CLONE_FILE_MAGIC,
+            "file_version": 1,
+            "eeprom_layout_version": info["layout_version"],
+            "eeprom_size": size,
+            "firmware_version": list(info["fw_version"]),
+            "data": base64.b64encode(bytes(blob)).decode("ascii"),
+        }
+        try:
+            with open(path, "w", encoding="utf-8") as outf:
+                json.dump(clone, outf)
+        except OSError as e:
+            logging.exception("Failed to write keyboard clone")
+            QMessageBox.critical(self, "Save failed",
+                                 tr("MainWindow", "Could not write the clone file:\n{}").format(e))
+            return
+
+        QMessageBox.information(self, "Clone saved",
+                                tr("MainWindow", "Keyboard clone saved successfully."))
+
+    def on_clone_load(self):
+        keyboard, info = self._clone_get_keyboard_or_warn()
+        if keyboard is None:
+            return
+
+        dialog = QFileDialog()
+        dialog.setDefaultSuffix("kbclone")
+        dialog.setAcceptMode(QFileDialog.AcceptOpen)
+        dialog.setNameFilters(["Keyboard clone (*.kbclone)"])
+        if dialog.exec_() != QDialog.Accepted:
+            return
+
+        try:
+            with open(dialog.selectedFiles()[0], "r", encoding="utf-8") as inf:
+                clone = json.load(inf)
+            if clone.get("magic") != self.CLONE_FILE_MAGIC:
+                raise ValueError("not a keyboard clone file")
+            blob = base64.b64decode(clone["data"])
+            file_layout = int(clone["eeprom_layout_version"])
+            if len(blob) != int(clone["eeprom_size"]):
+                raise ValueError("clone data size does not match its header")
+        except Exception as e:
+            logging.exception("Failed to parse keyboard clone")
+            QMessageBox.critical(self, "Load failed",
+                                 tr("MainWindow", "Could not load this keyboard clone file:\n{}").format(e))
+            return
+
+        # EEPROM-layout compatibility gate. A clone whose firmware stored its
+        # regions at different addresses can't be written as-is — it would
+        # scatter old data over the new layout. An OLDER clone is converted
+        # forward (see protocol/clone_migrations.py); anything we have no
+        # conversion path for is still refused.
+        device_layout = info["layout_version"]
+        if len(blob) != info["eeprom_size"]:
+            QMessageBox.critical(
+                self, "Incompatible clone",
+                tr("MainWindow", "This clone holds {} bytes of keyboard memory but this keyboard "
+                                 "has {}, so it cannot be restored.").format(
+                                     len(blob), info["eeprom_size"]))
+            return
+
+        if file_layout != device_layout:
+            if not can_migrate(file_layout, device_layout):
+                # Newer-than-firmware clone, or a version gap we have no
+                # migration for. Never guess — a wrong guess corrupts settings.
+                if file_layout > device_layout:
+                    detail = tr("MainWindow", "The clone is NEWER than the keyboard's firmware. "
+                                              "Update the keyboard's firmware and try again.")
+                else:
+                    # The clone is OLDER but a migration link is missing.
+                    # Migrations ship with the app, so nine times out of ten
+                    # the fix is simply a newer app build — say so instead of
+                    # presenting a dead end.
+                    detail = tr("MainWindow", "This version of the app has no conversion path "
+                                              "between those two layouts.\n\n"
+                                              "Newer versions of this app add conversions for "
+                                              "newer firmware — update the app and try again.")
+                QMessageBox.critical(
+                    self, "Incompatible clone",
+                    tr("MainWindow", "This clone was saved from a firmware with a different EEPROM "
+                                     "layout (clone layout v{}, keyboard layout v{}), so restoring "
+                                     "it could corrupt the keyboard's settings.\n\n{}").format(
+                                         file_layout, device_layout, detail))
+                return
+
+            try:
+                blob, notes = migrate_clone(blob, file_layout, device_layout)
+            except CloneMigrationError as e:
+                logging.exception("Clone migration failed")
+                QMessageBox.critical(
+                    self, "Incompatible clone",
+                    tr("MainWindow", "This clone could not be converted to the keyboard's EEPROM "
+                                     "layout:\n{}").format(e))
+                return
+
+            summary = "\n".join("  • " + n for n in notes)
+            ret = QMessageBox.question(
+                self, "Convert older clone",
+                tr("MainWindow", "This clone was saved from an older firmware (EEPROM layout v{}; "
+                                 "this keyboard uses v{}).\n\n"
+                                 "It can be converted automatically. What that means for your "
+                                 "settings:\n\n{}\n\n"
+                                 "Everything else is carried across unchanged. The clone file "
+                                 "itself is not modified.\n\n"
+                                 "Convert and restore?").format(file_layout, device_layout, summary),
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+            if ret != QMessageBox.Yes:
+                return
+
+        ret = QMessageBox.warning(
+            self, "Load keyboard clone",
+            tr("MainWindow", "This will overwrite ALL settings stored on the keyboard — layout, "
+                             "MIDI settings, ThruLoop settings, per-key actuations, presets, "
+                             "names, everything — with the contents of the clone file.\n\n"
+                             "Do not disconnect the keyboard while the restore is running. "
+                             "The keyboard will reboot when it finishes.\n\nContinue?"),
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if ret != QMessageBox.Yes:
+            return
+
+        from PyQt5.QtWidgets import QApplication, QProgressDialog
+        from util import set_hid_transfer_active
+
+        size = info["eeprom_size"]
+        chunk_size = info["chunk_size"]
+
+        progress = QProgressDialog(tr("MainWindow", "Writing keyboard memory..."),
+                                   tr("MainWindow", "Cancel"), 0, size, self)
+        progress.setWindowTitle(tr("MainWindow", "Load Keyboard Clone"))
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+
+        # Chunk loop on a background thread, GUI thread pumps — same rationale
+        # as the save path (a synchronous transfer froze the app, and a frozen
+        # app used to wedge the keyboard when keys were pressed mid-transfer).
+        import threading
+        import time
+        state = {"addr": 0, "done": False, "canceled": False, "failed_addr": None}
+
+        def write_worker():
+            try:
+                addr = 0
+                while addr < size:
+                    if state["canceled"]:
+                        return
+                    length = min(chunk_size, size - addr)
+                    written = False
+                    for _ in range(3):  # per-chunk retry on top of the HID-level retries
+                        if keyboard.clone_write_chunk(addr, blob[addr:addr + length]):
+                            written = True
+                            break
+                    if not written:
+                        state["failed_addr"] = addr
+                        return
+                    addr += length
+                    state["addr"] = addr
+            except Exception:
+                logging.exception("Clone write worker failed")
+                state["failed_addr"] = state["addr"]
+            finally:
+                state["done"] = True
+
+        set_hid_transfer_active(True)
+        try:
+            worker = threading.Thread(target=write_worker, daemon=True)
+            worker.start()
+            while not state["done"]:
+                if progress.wasCanceled():
+                    state["canceled"] = True
+                progress.setValue(state["addr"])
+                QApplication.processEvents()
+                time.sleep(0.01)
+            worker.join()
+        finally:
+            set_hid_transfer_active(False)
+            progress.close()
+
+        canceled = state["canceled"]
+        failed_addr = state["failed_addr"]
+        ok = failed_addr is None
+
+        if canceled or not ok:
+            # A partial restore leaves the EEPROM as a mix of old and new data.
+            # The device was NOT rebooted (no finalize), so it is still running
+            # on its old RAM state — loading the clone again (or a fresh one)
+            # fully recovers it.
+            detail = tr("MainWindow", "The restore was cancelled.") if canceled else \
+                tr("MainWindow", "Writing failed at address {}.").format(failed_addr)
+            QMessageBox.warning(
+                self, "Restore incomplete",
+                detail + tr("MainWindow", "\n\nThe keyboard's stored settings are now a mix of old "
+                                          "and new data. Load a clone again to complete the restore "
+                                          "before power-cycling the keyboard."))
+            return
+
+        keyboard.clone_finalize()
+        QMessageBox.information(
+            self, "Clone loaded",
+            tr("MainWindow", "Keyboard clone restored successfully.\n\n"
+                             "The keyboard is rebooting to apply the restored settings; "
+                             "it will reconnect automatically in a few seconds."))
+        # Pick the device back up once it has re-enumerated.
+        QTimer.singleShot(4000, lambda: self.autorefresh.update(quiet=True, hard=True))
 
     def on_click_refresh(self):
         self.autorefresh.update(quiet=False, hard=True)

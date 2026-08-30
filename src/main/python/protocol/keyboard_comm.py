@@ -31,7 +31,8 @@ from protocol.constants import CMD_VIA_GET_PROTOCOL_VERSION, CMD_VIA_GET_KEYBOAR
     CMD_VIAL_CUSTOM_ANIM_GET_ALL, CMD_VIAL_CUSTOM_ANIM_SAVE, CMD_VIAL_CUSTOM_ANIM_LOAD, \
     CMD_VIAL_CUSTOM_ANIM_RESET_SLOT, CMD_VIAL_CUSTOM_ANIM_GET_STATUS, CMD_VIAL_CUSTOM_ANIM_RESCAN_LEDS, \
     CMD_VIAL_CUSTOM_ANIM_ACTIVATE_SLOT, \
-    CMD_VIAL_KEYMAP_RAM_RESCAN
+    CMD_VIAL_KEYMAP_RAM_RESCAN, \
+    VIALRGB_EFFECT_RANDOMIZE_BASE, VIALRGB_EFFECT_CUSTOM_SLOT_BASE
 from protocol.dynamic import ProtocolDynamic
 from protocol.key_override import ProtocolKeyOverride
 from protocol.macro import ProtocolMacro
@@ -67,6 +68,8 @@ HID_CMD_LOAD_KEYBOARD_SLOT = 0xBA
 HID_CMD_SET_KEYBOARD_CONFIG_ADVANCED = 0xBB
 HID_CMD_LCD_THEME = 0xFE  # Get/set global LCD colour theme (sub 0=GET, 1=SET)
 HID_CMD_CHANNEL_ARTIC = 0xFF  # Get/set channel->articulation map + enable (sub 0=GET, 1=SET)
+HID_CMD_KEYBOARD_CLONE = 0x94  # Whole-EEPROM clone (sub 0=INFO, 1=READ, 2=WRITE, 3=FINALIZE)
+HID_CMD_NAV_LAYER = 0x97  # Get/set the on-device menu navigation layer (sub 0=GET, 1=SET)
 HID_CMD_SET_KEYBOARD_PARAM_SINGLE = 0xE8  # Set individual parameter (changed from 0xBD collision)
 
 # Parameter IDs for HID_CMD_SET_KEYBOARD_PARAM_SINGLE
@@ -174,6 +177,12 @@ HID_CMD_CUSTOM_NAMES = 0xCD
 HID_CMD_DRUM_KEYBINDS_GET = 0xE9    # Get current global default bindings
 HID_CMD_DRUM_KEYBINDS_SET = 0xEA    # Set global default + link to uncustomized slots
 HID_CMD_DRUM_KEYBINDS_RESET = 0xEF  # Reset ALL slots + global default to GM factory
+
+# Multichannel echo presets (16 presets x target channel + 3 multi channels)
+HID_CMD_MULTICHANNEL = 0x96         # data[4]: 0 = GET preset, 1 = SET preset
+MULTICHANNEL_PRESET_COUNT = 16
+MULTICHANNEL_ECHO_SLOTS = 3
+MULTICHANNEL_CH_OFF = 0xFF          # echo slot disabled
 
 # Number of drum voice slots (must match firmware FACTORY_SEQ_VOICE_SLOTS)
 DRUM_KEYBIND_VOICE_COUNT = 12
@@ -580,11 +589,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_BACKLIGHT_EFFECT), retries=20)[2]
 
         if self.lighting_vialrgb:
-            data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_LIGHTING_GET_VALUE, VIALRGB_GET_MODE),
-                                 retries=20)[2:]
-            self.rgb_mode = int.from_bytes(data[0:2], byteorder="little")
-            self.rgb_speed = data[2]
-            self.rgb_hsv = (data[3], data[4], data[5])
+            self._vialrgb_refresh_cache()
 
     def reload_settings(self):
         self.settings = dict()
@@ -1158,19 +1163,49 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                                             self.rgb_mode, self.rgb_speed,
                                             self.rgb_hsv[0], self.rgb_hsv[1], self.rgb_hsv[2]))
 
+    def _vialrgb_refresh_cache(self):
+        """Re-read the device's CURRENT mode/speed/hsv into the cache.
+
+        The vialrgb set-mode packet always carries mode+speed+hsv together, so
+        a stale cached mode silently switches the keyboard's effect on a write
+        that was only meant to change color/speed/brightness. The firmware
+        changes the mode behind the GUI's back (Custom Lights slot preview via
+        activate_custom_slot_preview, on-device lighting menus, RGB keycodes),
+        so every partial setter below refreshes first and only then overrides
+        the one field it owns. Returns True if the cache now reflects the
+        device; on a comm failure the old cache is kept (same as before)."""
+        try:
+            data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_LIGHTING_GET_VALUE, VIALRGB_GET_MODE),
+                                 retries=20)[2:]
+            self.rgb_mode = int.from_bytes(data[0:2], byteorder="little")
+            self.rgb_speed = data[2]
+            self.rgb_hsv = (data[3], data[4], data[5])
+            return True
+        except Exception:
+            return False
+
     def set_vialrgb_brightness(self, value):
+        self._vialrgb_refresh_cache()
         self.rgb_hsv = (self.rgb_hsv[0], self.rgb_hsv[1], value)
         self._vialrgb_set_mode()
 
     def set_vialrgb_speed(self, value):
+        self._vialrgb_refresh_cache()
         self.rgb_speed = value
         self._vialrgb_set_mode()
 
     def set_vialrgb_mode(self, value):
+        self._vialrgb_refresh_cache()
         self.rgb_mode = value
         self._vialrgb_set_mode()
 
-    def set_vialrgb_color(self, h, s, v):
+    def set_vialrgb_color(self, h, s, v=None):
+        """Set hue/sat (and optionally brightness) WITHOUT changing the active
+        effect: the current mode/speed are re-read from the device and replayed
+        as-is. v=None keeps the brightness the device is actually showing."""
+        self._vialrgb_refresh_cache()
+        if v is None:
+            v = self.rgb_hsv[2]
         self.rgb_hsv = (h, s, v)
         self._vialrgb_set_mode()
 
@@ -1179,18 +1214,24 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.layer_rgb_supported = True
         
         try:
+            # Firmware writes its reply into msg[0..1] (status/enabled + layer
+            # count), like every other 0xFE-prefix custom command — the old
+            # data[2] read here was an unmodified echo of the request padding,
+            # so the enabled flag always read False.
             data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LAYER_RGB_GET_STATUS), retries=20)
-            self.layer_rgb_enabled = bool(data[2])
+            self.layer_rgb_enabled = bool(data[0])
             return True
         except:
             self.layer_rgb_enabled = False
             return True
 
     def get_layer_rgb_status(self):
-        """Get current per-layer RGB status"""
+        """Get current per-layer RGB status: [enabled, layer_count, ...]"""
         try:
             data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LAYER_RGB_GET_STATUS), retries=20)
-            return data[2:]
+            # Firmware reply starts at byte 0 (enabled@0, NUM_LAYERS@1) — the
+            # old data[2:] returned request-echo padding (always zeros).
+            return data
         except:
             # Comm failure: report "unknown" instead of a fabricated status the
             # caller would mistake for real device state.
@@ -1200,7 +1241,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         """Enable or disable per-layer RGB functionality"""
         try:
             data = self.usb_send(self.dev, struct.pack("BBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LAYER_RGB_ENABLE, int(enabled)), retries=20)
-            success = data[2] == 0x01
+            # Status is at byte 0. The old data[2] read was the echoed enable
+            # byte, so disabling always "failed" and never updated the cache.
+            success = data[0] == 0x01
             if success:
                 self.layer_rgb_enabled = enabled
             return success
@@ -1212,7 +1255,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         """Save current RGB settings to specified layer"""
         try:
             data = self.usb_send(self.dev, struct.pack("BBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LAYER_RGB_SAVE, layer), retries=20)
-            return data[2] == 0x01
+            # Status at byte 0 (old data[2] read the echoed layer number, so
+            # this only "succeeded" for layer 1).
+            return data[0] == 0x01
         except:
             # The write never reached the device — do not report success.
             return False
@@ -1221,7 +1266,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         """Load RGB settings from specified layer"""
         try:
             data = self.usb_send(self.dev, struct.pack("BBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LAYER_RGB_LOAD, layer), retries=20)
-            return data[2] == 0x01
+            return data[0] == 0x01
         except:
             return True
             
@@ -1246,7 +1291,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def set_custom_slot_parameter(self, slot, param_index, value):
         """Set a single parameter for a custom animation slot"""
         try:
-            if slot >= 50 or param_index >= 15:
+            if slot >= 50 or param_index > 15:  # params 0-15 (15 = effect_sat)
                 return False
                 
             data = self.usb_send(self.dev, struct.pack("BBBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_CUSTOM_ANIM_SET_PARAM, slot, param_index, value), retries=20)
@@ -1262,7 +1307,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             if slot < 0 or slot >= 49:
                 return False
             data = self.usb_send(self.dev, struct.pack("BBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_CUSTOM_ANIM_ACTIVATE_SLOT, slot), retries=20)
-            return data and len(data) > 0 and data[0] == 0x01
+            ok = data and len(data) > 0 and data[0] == 0x01
+            if ok:
+                # The device just switched effects behind the vialrgb cache's
+                # back — keep the cached mode in sync so a later color/speed/
+                # brightness write can't replay a stale mode.
+                self.rgb_mode = VIALRGB_EFFECT_CUSTOM_SLOT_BASE + slot
+            return ok
         except Exception:
             return False
 
@@ -1386,10 +1437,12 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             if status is not None and len(status) > 1:
                 return status[1]
                 
+            # Fallback bands must match vialrgb_effects.inc: randomize scratch
+            # effects at 69-77 (slot 49), custom slots at 78+ (slot = mode-78).
             current_mode = self.rgb_mode
-            if 57 <= current_mode <= 105:
-                return current_mode - 57
-            if current_mode in [106, 107, 108, 109, 110, 111, 112, 113, 114]:
+            if VIALRGB_EFFECT_CUSTOM_SLOT_BASE <= current_mode < VIALRGB_EFFECT_CUSTOM_SLOT_BASE + 50:
+                return current_mode - VIALRGB_EFFECT_CUSTOM_SLOT_BASE
+            if VIALRGB_EFFECT_RANDOMIZE_BASE <= current_mode < VIALRGB_EFFECT_CUSTOM_SLOT_BASE:
                 return 49
             return 0
         except Exception as e:
@@ -1419,6 +1472,76 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 return (response[5], response[6], response[7])
         except Exception:
             pass
+        return None
+
+    def _drain_stale_packets(self, max_reads=40, timeout_ms=20):
+        """Drain any queued/in-flight response packets off the raw HID endpoint.
+
+        The custom protocol has no request/response correlation: hid_send()
+        returns whichever report is first in the endpoint queue. Multi-packet
+        bulk readers that abort early (missing packet, layer-echo mismatch,
+        exception) can leave up to ~23 unread packets queued, which then desync
+        EVERY subsequent command by one or more packets — the root of several
+        "stale packet parsed as data" corruption paths. Call this before a bulk
+        burst (clear leftovers from earlier failures) and on every bulk abort
+        path (consume this burst's stragglers).
+        """
+        try:
+            with hid_lock_for(self.dev):
+                for _ in range(max_reads):
+                    if hasattr(self.dev, 'read'):
+                        leftover = self.dev.read(32, timeout_ms=timeout_ms)
+                    else:
+                        # Feature-report transports have no queued stream to drain.
+                        return
+                    if not leftover:
+                        return
+        except Exception:
+            pass
+
+    def _hid_request_validated(self, command, macro_num=0, data=None, retries=3):
+        """Send a command and return the first response whose command echo
+        matches, discarding stale packets from earlier commands.
+
+        Unlike usb_send()/hid_send() — which return the FIRST queued report,
+        whatever it is — this validates response[0] (manufacturer id) and
+        response[3] (command echo) and keeps reading past mismatched packets,
+        so one straggler in the queue can neither be parsed as this command's
+        data nor make a genuinely successful request look failed.
+
+        Returns the 32-byte response bytes, or None if no matching response
+        arrived within the retry budget.
+        """
+        packet = self._create_hid_packet(command, macro_num, data)
+        with hid_lock_for(self.dev):
+            for attempt in range(max(1, retries)):
+                try:
+                    if attempt > 0:
+                        time.sleep(0.05)
+                    if hasattr(self.dev, 'write'):
+                        if self.dev.write(b"\x00" + packet) != len(packet) + 1:
+                            continue
+                    else:
+                        self.dev.send_feature_report(packet)
+
+                    # First read waits for the real response; subsequent reads
+                    # only sweep past stale packets already sitting in the queue.
+                    for read_n in range(8):
+                        if hasattr(self.dev, 'read'):
+                            response = bytes(self.dev.read(32, timeout_ms=500 if read_n == 0 else 100))
+                        else:
+                            response = bytes(self.dev.get_feature_report(0, 32))
+                        if not response:
+                            break
+                        if (len(response) >= 4 and
+                                response[0] == HID_MANUFACTURER_ID and
+                                response[3] == command):
+                            return response
+                        # Mismatch: a stale packet from another command —
+                        # discard and keep reading; the real response is still
+                        # behind it.
+                except Exception:
+                    continue
         return None
 
     def _create_hid_packet(self, command, macro_num, data):
@@ -1487,12 +1610,119 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception:
             return False
 
+    def get_nav_layer(self):
+        """Get the keyboard's navigation layer (the layer on-device menus read
+        typed input from — naming/search letters, digits, arrows).
+
+        Returns the 0-based layer index, or None on failure / firmware that
+        predates the command. Response: status@4 (1 = ok), layer@5,
+        layer_count@6. Old firmware's error ECHO never carries status 0x01
+        with a non-zero layer count, so both are checked.
+        """
+        try:
+            packet = self._create_hid_packet(HID_CMD_NAV_LAYER, 0, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if (not data or len(data) < 7 or data[3] != HID_CMD_NAV_LAYER
+                    or data[4] != 0x01 or data[6] == 0):
+                return None
+            return data[5]
+        except Exception:
+            return None
+
+    def set_nav_layer(self, layer):
+        """Set the keyboard's navigation layer (persists immediately)."""
+        try:
+            packet = self._create_hid_packet(HID_CMD_NAV_LAYER, 1, [int(layer) & 0xFF])
+            data = self.usb_send(self.dev, packet, retries=3)
+            return (bool(data) and len(data) > 5 and data[3] == HID_CMD_NAV_LAYER
+                    and data[4] == 0x01 and data[5] == int(layer))
+        except Exception:
+            return False
+
+    # ------------------------------------------------------------------
+    # Keyboard Clone (whole-EEPROM save/restore, HID command 0x94)
+    # ------------------------------------------------------------------
+
+    def get_clone_info(self):
+        """Query the firmware's keyboard-clone (whole-EEPROM) capabilities.
+
+        Returns {'layout_version', 'eeprom_size', 'chunk_size',
+        'fw_version': (major, minor, patch)} or None when the firmware
+        predates the clone command. Old firmware ECHOes the request with an
+        error flag instead of answering: its echo never carries status 0x01
+        at byte 4 nor a non-zero chunk size at byte 11, so both are checked.
+        Response: status@4, layout_ver u16 LE @5-6, eeprom size u32 LE @7-10,
+        chunk @11, fw version @12-14."""
+        try:
+            packet = self._create_hid_packet(HID_CMD_KEYBOARD_CLONE, 0, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if (not data or len(data) < 15 or data[3] != HID_CMD_KEYBOARD_CLONE
+                    or data[4] != 0x01):
+                return None
+            size = data[7] | (data[8] << 8) | (data[9] << 16) | (data[10] << 24)
+            chunk = data[11]
+            if size == 0 or chunk == 0:
+                return None
+            return {
+                'layout_version': data[5] | (data[6] << 8),
+                'eeprom_size': size,
+                'chunk_size': chunk,
+                'fw_version': (data[12], data[13], data[14]),
+            }
+        except Exception:
+            return None
+
+    def clone_read_chunk(self, addr, length):
+        """Read `length` EEPROM bytes at `addr` (one HID round-trip).
+
+        Returns bytes or None. The response echoes addr+length so a stale
+        packet from an earlier request can't be mistaken for this chunk."""
+        try:
+            payload = [addr & 0xFF, (addr >> 8) & 0xFF, length & 0xFF]
+            packet = self._create_hid_packet(HID_CMD_KEYBOARD_CLONE, 1, payload)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if (not data or len(data) < 8 + length
+                    or data[3] != HID_CMD_KEYBOARD_CLONE or data[4] != 0x01
+                    or data[5] != (addr & 0xFF) or data[6] != ((addr >> 8) & 0xFF)
+                    or data[7] != length):
+                return None
+            return bytes(data[8:8 + length])
+        except Exception:
+            return None
+
+    def clone_write_chunk(self, addr, chunk):
+        """Write a chunk of EEPROM bytes at `addr` (one HID round-trip).
+
+        The firmware only burns bytes that actually differ, and silently
+        preserves its own boot-magic bytes. Returns True on success."""
+        try:
+            payload = [addr & 0xFF, (addr >> 8) & 0xFF, len(chunk) & 0xFF] + list(chunk)
+            packet = self._create_hid_packet(HID_CMD_KEYBOARD_CLONE, 2, payload)
+            data = self.usb_send(self.dev, packet, retries=3)
+            return (bool(data) and len(data) >= 7
+                    and data[3] == HID_CMD_KEYBOARD_CLONE and data[4] == 0x01
+                    and data[5] == (addr & 0xFF) and data[6] == ((addr >> 8) & 0xFF))
+        except Exception:
+            return False
+
+    def clone_finalize(self):
+        """Commit a restore: firmware flushes deferred EEPROM writes, re-stamps
+        its boot magics and reboots ~0.5s after acknowledging (so every
+        subsystem reloads the restored data). Returns True when acked."""
+        try:
+            packet = self._create_hid_packet(HID_CMD_KEYBOARD_CLONE, 3, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            return (bool(data) and len(data) >= 5
+                    and data[3] == HID_CMD_KEYBOARD_CLONE and data[4] == 0x01)
+        except Exception:
+            return False
+
     def get_channel_articulations(self):
         """Get the global Channel Articulations map + enable flag.
 
         Returns dict {'enabled': bool, 'map': [16 ints], 'articulation_cc': int,
         'articulation_cc_supported': bool} where each map entry is a
-        velocity-preset index (0-94) or 255 (=None). None on failure / unsupported
+        velocity-preset index (0-98) or 255 (=None). None on failure / unsupported
         firmware. Response: status@4, enable@5, map@6..21, 0x80|cc@22 (bit 7 =
         firmware supports the Articulation CC byte; clear on older firmware,
         whose unhandled echo leaves the byte 0).
@@ -1517,7 +1747,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def set_channel_articulations(self, enabled, artic_map, articulation_cc=1):
         """Set the global Channel Articulations map + enable + Articulation CC.
 
-        artic_map: list of 16 velocity-preset indices (0-94) or 255 (=None).
+        artic_map: list of 16 velocity-preset indices (0-98) or 255 (=None).
         articulation_cc: global CC# (0-127) used by "CC Default" articulations.
         Payload: [enable, map0..map15, 0x80|articulation_cc] — bit 7 is the
         validity marker the firmware requires before it will store the CC
@@ -1590,6 +1820,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def get_thruloop_config(self):
         """Get all ThruLoop configuration using multi-packet collection"""
         try:
+            # Clear stale packets from earlier commands before the burst.
+            self._drain_stale_packets()
+
             # Send request for all config
             packet = self._create_hid_packet(HID_CMD_GET_ALL_CONFIG, 0, None)
             response = self.usb_send(self.dev, packet, retries=20)
@@ -1797,6 +2030,73 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception as e:
             return False
 
+    def get_multichannel_preset(self, preset):
+        """Get one Multichannel echo preset.
+
+        Returns:
+            (target, echoes, active, octaves) where target is 0-15, echoes
+            is a 3-element list (0-15 or MULTICHANNEL_CH_OFF), active is a
+            bool (volatile on-device state) and octaves is a 3-element list
+            of per-slot octave offsets (-3..+3); or None on failure (e.g.
+            pre-multichannel firmware).
+        """
+        try:
+            data = bytearray([0, int(preset) & 0xFF])
+            packet = self._create_hid_packet(HID_CMD_MULTICHANNEL, 0, data[1:2])
+            response = self.usb_send(self.dev, packet, retries=5)
+            if (response and len(response) >= 11 and
+                    response[0] == HID_MANUFACTURER_ID and
+                    response[3] == HID_CMD_MULTICHANNEL and
+                    response[4] == 0x01 and response[5] == preset):
+                target = response[6] & 0x0F
+                echoes = [response[7 + e] for e in range(MULTICHANNEL_ECHO_SLOTS)]
+                # Octaves ride bytes 11-13 as the firmware's signed 3-bit field
+                # (0 = none, 1..3 = +1..+3, 7,6,5 = -1,-2,-3). Pre-octave
+                # firmware leaves them zero, which decodes as "no transpose".
+                octaves = []
+                for e in range(MULTICHANNEL_ECHO_SLOTS):
+                    raw = response[11 + e] & 0x07 if len(response) >= 14 else 0
+                    octaves.append(raw - 8 if raw & 0x04 else raw)
+                return target, echoes, bool(response[10]), octaves
+            return None
+        except Exception:
+            return None
+
+    def set_multichannel_preset(self, preset, target, echoes, octaves=None):
+        """Set one Multichannel echo preset (persists to device EEPROM).
+
+        Args:
+            preset: preset index 0-15
+            target: target channel 0-15
+            echoes: 3-element list of echo channels (0-15, or
+                MULTICHANNEL_CH_OFF / None = slot off)
+            octaves: optional 3-element list of per-slot octave offsets
+                (-3..+3); omitted or None means no transpose
+
+        Returns:
+            bool: True on success.
+        """
+        try:
+            data = bytearray(7)
+            data[0] = int(target) & 0x0F
+            for e in range(MULTICHANNEL_ECHO_SLOTS):
+                ch = echoes[e] if e < len(echoes) else None
+                data[1 + e] = MULTICHANNEL_CH_OFF if ch is None or ch > 15 else int(ch) & 0x0F
+                oct_v = 0
+                if octaves is not None and e < len(octaves) and octaves[e] is not None:
+                    oct_v = max(-3, min(3, int(octaves[e])))
+                # Same signed 3-bit field the firmware stores (5,6,7 = -3,-2,-1).
+                data[4 + e] = oct_v & 0x07
+            # Payload starts at byte 6:
+            #   [preset, target, echo1-3, oct1-3]
+            packet = self._create_hid_packet(HID_CMD_MULTICHANNEL, 1,
+                                             bytearray([int(preset) & 0xFF]) + data)
+            response = self.usb_send(self.dev, packet, retries=5)
+            return bool(response and len(response) >= 5 and
+                        response[3] == HID_CMD_MULTICHANNEL and response[4] == 0x01)
+        except Exception:
+            return False
+
     def get_drum_keybinds(self):
         """Get the global default drum settings (drum machine voice bindings).
 
@@ -1808,7 +2108,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             packet = self._create_hid_packet(HID_CMD_DRUM_KEYBINDS_GET, 0, None)
             response = self.usb_send(self.dev, packet, retries=5)
             if (response and len(response) >= 31 and
-                    response[0] == HID_MANUFACTURER_ID and response[4] == 0x01):
+                    response[0] == HID_MANUFACTURER_ID and
+                    response[3] == HID_CMD_DRUM_KEYBINDS_GET and response[4] == 0x01):
                 notes = list(response[6:6 + DRUM_KEYBIND_VOICE_COUNT])
                 vels = list(response[18:18 + DRUM_KEYBIND_VOICE_COUNT])
                 channel = response[30]
@@ -1872,7 +2173,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             packet = self._create_hid_packet(HID_CMD_DRUM_KEYBINDS_RESET, 0, None)
             response = self.usb_send(self.dev, packet, retries=5)
             if (response and len(response) >= 31 and
-                    response[0] == HID_MANUFACTURER_ID and response[4] == 0x01):
+                    response[0] == HID_MANUFACTURER_ID and
+                    response[3] == HID_CMD_DRUM_KEYBINDS_RESET and response[4] == 0x01):
                 notes = list(response[6:6 + DRUM_KEYBIND_VOICE_COUNT])
                 vels = list(response[18:18 + DRUM_KEYBIND_VOICE_COUNT])
                 channel = response[30]
@@ -1892,7 +2194,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                                               DRUM_KEYBINDS_SUBMODE_EXTRAS, None)
             response = self.usb_send(self.dev, packet, retries=5)
             if (response and len(response) >= 6 + DRUM_EXTRA_VOICE_COUNT and
-                    response[0] == HID_MANUFACTURER_ID and response[4] == 0x01):
+                    response[0] == HID_MANUFACTURER_ID and
+                    response[3] == HID_CMD_DRUM_KEYBINDS_GET and response[4] == 0x01):
                 return list(response[6:6 + DRUM_EXTRA_VOICE_COUNT])
             return None
         except Exception:
@@ -2006,6 +2309,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def get_midi_config(self):
         """Get MIDIswitch configuration using multi-packet collection"""
         try:
+            # Clear stale packets from earlier commands before the burst.
+            self._drain_stale_packets()
+
             # Send request for keyboard config
             packet = self._create_hid_packet(HID_CMD_GET_KEYBOARD_CONFIG, 0, None)
             response = self.usb_send(self.dev, packet, retries=20)
@@ -2167,9 +2473,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
               Uses new command 0xEC (moved from 0xCA to avoid arpeggiator conflict)
         """
         try:
-            packet = self._create_hid_packet(HID_CMD_SET_LAYER_ACTUATION, 0, data)
-            response = self.usb_send(self.dev, packet, retries=3)
-            return response and len(response) > 0 and response[5] == 0x01
+            # Validated request: stale packets from other commands are discarded
+            # instead of being misread as this command's ack.
+            # The 0xEB-0xEE family puts its status at byte 4 (byte 5 is only
+            # written by the GET record) — the old response[5] check made every
+            # successful SET report failure and raise an error dialog.
+            response = self._hid_request_validated(HID_CMD_SET_LAYER_ACTUATION, 0, data, retries=3)
+            return bool(response and len(response) > 4 and response[4] == 0x01)
         except Exception as e:
             return False
 
@@ -2187,9 +2497,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
               Aftertouch settings are per-layer.
         """
         try:
-            # Use new command code 0xEB (moved from 0xCB to avoid arpeggiator conflict)
-            packet = self._create_hid_packet(HID_CMD_GET_LAYER_ACTUATION, 0, [layer])
-            response = self.usb_send(self.dev, packet, retries=3)
+            # Use new command code 0xEB (moved from 0xCB to avoid arpeggiator conflict).
+            # Validated request: a stale straggler no longer fails the read —
+            # it is discarded and the real response behind it is used.
+            response = self._hid_request_validated(HID_CMD_GET_LAYER_ACTUATION, 0, [layer], retries=3)
 
             if not response or len(response) < 16:  # 5 header + 11 data bytes
                 return None
@@ -2236,6 +2547,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
               Uses new command 0xED (moved from 0xCC to avoid arpeggiator conflict)
         """
         try:
+            # Clear stale packets from earlier commands before the burst.
+            self._drain_stale_packets()
+
             packet = self._create_hid_packet(HID_CMD_GET_ALL_LAYER_ACTUATIONS, 0, None)
 
             # Send request - use write directly to avoid waiting for response
@@ -2268,7 +2582,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                         total_packets = data[6]
 
                         if status != 0x01:
-                            return None  # Error response
+                            # Error response — drain the rest of the burst so
+                            # stragglers can't desync subsequent commands.
+                            self._drain_stale_packets()
+                            return None
 
                         if packet_num < EXPECTED_PACKETS and packet_num not in packets:
                             # Extract layer data (20 bytes at offset 7)
@@ -2281,12 +2598,14 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                     continue
 
             if len(packets) < EXPECTED_PACKETS:
+                self._drain_stale_packets()
                 return None
 
             # Sort packets and combine
             actuations = bytearray()
             for i in range(EXPECTED_PACKETS):
                 if i not in packets:
+                    self._drain_stale_packets()
                     return None  # Missing packet
                 actuations.extend(packets[i])
 
@@ -2300,9 +2619,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         Uses new command 0xEE (moved from 0xCD to avoid arpeggiator conflict)
         """
         try:
-            packet = self._create_hid_packet(HID_CMD_RESET_LAYER_ACTUATIONS, 0, None)
-            response = self.usb_send(self.dev, packet, retries=3)
-            return response and len(response) > 0 and response[5] == 0x01
+            response = self._hid_request_validated(HID_CMD_RESET_LAYER_ACTUATIONS, 0, None, retries=3)
+            # Status at byte 4 for this family (see set_layer_actuation).
+            return bool(response and len(response) > 4 and response[4] == 0x01)
         except Exception as e:
             return False
             
@@ -2499,6 +2818,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             flags |= 0x02  # AT/CC value mapped through this zone's velocity curve
         if zone.get('legato', False):
             flags |= 0x04  # Monophonic legato (last-note priority, overrides sustain)
+        if zone.get('velocity_as_at', False):
+            flags |= 0x08  # "Velocity as AT/CC": pre-load aftertouch from note-on velocity
         data.append(flags)
         data.append(int(zone.get('actuation_point', 20)) & 0xFF)
         # Repurposed byte: Trigger Minimum in 0.1mm steps (1-35 = 0.1-3.5mm)
@@ -2522,6 +2843,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                             actuation_override=False, actuation_point=20,
                             speed_peak_ratio=1, retrigger_distance=0,
                             at_uses_curve=False, legato=False,
+                            velocity_as_at=False,
                             **kwargs):
         """
         Set a velocity preset slot with curve points and all associated settings.
@@ -2571,7 +2893,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             'speed_peak_ratio': speed_peak_ratio,
             'retrigger_distance': retrigger_distance,
             'at_uses_curve': at_uses_curve,
-            'legato': legato
+            'legato': legato,
+            'velocity_as_at': velocity_as_at
         }
 
         # === Send Chunk 0: name ===
@@ -2630,6 +2953,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             'actuation_override': (data[offset + 19] & 0x01) != 0,
             'at_uses_curve': (data[offset + 19] & 0x02) != 0,
             'legato': (data[offset + 19] & 0x04) != 0,
+            'velocity_as_at': (data[offset + 19] & 0x08) != 0,
             'actuation_point': data[offset + 20],
             'speed_peak_ratio': data[offset + 21],
             # Dual-use byte: smoothness when aftertouch active, retrigger when off
@@ -2724,6 +3048,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         try:
             # Send single request to trigger bulk response
             packet = self._create_hid_packet(0xDB, 0, bytearray())  # HID_CMD_USER_CURVE_GET_ALL
+
+            # Clear stale packets from earlier commands before the burst.
+            self._drain_stale_packets()
 
             # Send request directly (firmware sends multiple response packets)
             if hasattr(self.dev, 'write'):
@@ -2941,9 +3268,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 settings.get('rapidfire_release_sens', 4),
                 velocity_mod_byte
             ])
-            packet = self._create_hid_packet(HID_CMD_SET_PER_KEY_ACTUATION, 0, data)
-            response = self.usb_send(self.dev, packet, retries=20)
-            return response and len(response) > 4 and response[4] == 0x01
+            # Validated request: the old check accepted ANY stale packet whose
+            # byte 4 happened to be 0x01 as a write ack (false success), and a
+            # single straggler in the queue failed genuinely successful writes.
+            response = self._hid_request_validated(HID_CMD_SET_PER_KEY_ACTUATION, 0, data, retries=10)
+            return bool(response and len(response) > 4 and response[4] == 0x01)
         except Exception as e:
             return False
 
@@ -2963,12 +3292,15 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         """
         try:
             data = [layer, key_index]
-            packet = self._create_hid_packet(HID_CMD_GET_PER_KEY_ACTUATION, 0, data)
-            # Reduced retries from 20 to 3 for faster loading
-            response = self.usb_send(self.dev, packet, retries=3)
+            # Validated request (retries kept low for load speed): discards
+            # stale packets instead of failing the whole read on one straggler.
+            response = self._hid_request_validated(HID_CMD_GET_PER_KEY_ACTUATION, 0, data, retries=3)
 
-            if response and len(response) >= 13:
+            if (response and len(response) >= 13 and
+                    response[3] == HID_CMD_GET_PER_KEY_ACTUATION and response[4] == 0x01):
                 # Response format: [header (4 bytes) + status (1 byte)] + [8 per-key fields at index 5]
+                # A stale packet from another command must not be parsed as key data,
+                # hence the command-echo + status validation above.
                 # Convert unsigned byte to signed for velocity mod
                 velocity_mod_byte = response[12]
                 velocity_mod = velocity_mod_byte if velocity_mod_byte < 128 else velocity_mod_byte - 256
@@ -3008,6 +3340,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             list: List of 70 dicts with per-key settings, or None on error
         """
         try:
+            # Clear any stale packets from earlier (possibly aborted) commands
+            # so they can't be mixed into this burst.
+            self._drain_stale_packets()
+
             # Request all per-key actuations for this layer
             data = [layer]
             packet = self._create_hid_packet(HID_CMD_GET_ALL_PER_KEY_ACTUATIONS, 0, data)
@@ -3080,6 +3416,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             keys = []
             for pkt_num in range(EXPECTED_PACKETS):
                 if pkt_num not in packets:
+                    self._drain_stale_packets()
                     return None  # Missing packet
 
                 pkt_data = packets[pkt_num]
@@ -3134,9 +3471,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         # Still send the command for backward compatibility with older firmware
         try:
             data = [1 if mode_enabled else 0, 1 if per_layer_enabled else 0]
-            packet = self._create_hid_packet(HID_CMD_SET_PER_KEY_MODE, 0, data)
-            response = self.usb_send(self.dev, packet, retries=20)
-            return response and len(response) > 4 and response[4] == 0x01
+            response = self._hid_request_validated(HID_CMD_SET_PER_KEY_MODE, 0, data, retries=5)
+            return bool(response and len(response) > 4 and response[4] == 0x01)
         except Exception as e:
             return True  # Return success anyway - this is a no-op
 
@@ -3152,9 +3488,12 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         # Always return enabled - firmware always uses per-key per-layer
         # Still query firmware for backward compatibility
         try:
-            packet = self._create_hid_packet(HID_CMD_GET_PER_KEY_MODE, 0, None)
-            response = self.usb_send(self.dev, packet, retries=20)
-            if response and len(response) > 6:
+            # Validated request: the old unvalidated read parsed bytes 5/6 of
+            # ANY queued packet as the mode flags. A stale packet reporting
+            # per_layer_enabled=0 silently made every subsequent per-key edit
+            # fan out to all 12 layers.
+            response = self._hid_request_validated(HID_CMD_GET_PER_KEY_MODE, 0, None, retries=5)
+            if response and len(response) > 6 and response[4] == 0x01:
                 return {
                     'mode_enabled': response[5] != 0,
                     'per_layer_enabled': response[6] != 0
@@ -3171,9 +3510,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             bool: True if successful, False otherwise
         """
         try:
-            packet = self._create_hid_packet(HID_CMD_RESET_PER_KEY_ACTUATIONS, 0, None)
-            response = self.usb_send(self.dev, packet, retries=20)
-            return response and len(response) > 4 and response[4] == 0x01
+            response = self._hid_request_validated(HID_CMD_RESET_PER_KEY_ACTUATIONS, 0, None, retries=5)
+            return bool(response and len(response) > 4 and response[4] == 0x01)
         except Exception as e:
             return False
 
@@ -3189,8 +3527,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         """
         try:
             data = [source_layer, dest_layer]
-            packet = self._create_hid_packet(HID_CMD_COPY_LAYER_ACTUATIONS, 0, data)
-            response = self.usb_send(self.dev, packet, retries=20)
-            return response and len(response) > 4 and response[4] == 0x01
+            response = self._hid_request_validated(HID_CMD_COPY_LAYER_ACTUATIONS, 0, data, retries=10)
+            return bool(response and len(response) > 4 and response[4] == 0x01)
         except Exception as e:
             return False

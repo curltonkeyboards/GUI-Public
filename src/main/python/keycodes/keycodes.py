@@ -1592,6 +1592,10 @@ KEYCODES_MIDI_INOUT = [
     K("MI_CC_LOOP_TOG", "CC Loop\nRec", "Toggle CC loop recording"),
 ]
 
+# LEGACY (no longer shown in the picker): the main-zone Octave selector was
+# condensed, together with the Key selector, into the single -64..+64
+# KEYCODES_MIDI_TRANSPOSE_SELECT band below. The K() entries stay registered
+# so saved layouts using the old keycodes still load and display.
 KEYCODES_MIDI_OCTAVE = [
     K("MI_OCT_N2", "Octave\n-2", "Midi set octave to -2"),
     K("MI_OCT_N1", "Octave\n-1", "Midi set octave to -1"),
@@ -1605,6 +1609,7 @@ KEYCODES_MIDI_OCTAVE = [
     K("MI_OCT_7", "Octave\n+7", "Midi set octave to 7"),
 ] 
 
+# LEGACY (no longer shown in the picker) — see KEYCODES_MIDI_KS_TRANSPOSE_SELECT.
 KEYCODES_MIDI_OCTAVE2 = [
     K("MI_OCTAVE2_N2", "KS\nOctave\n-2", "Midi set octave to -2"),
     K("MI_OCTAVE2_N1", "KS\nOctave\n-1", "Midi set octave to -1"),
@@ -1618,6 +1623,7 @@ KEYCODES_MIDI_OCTAVE2 = [
     K("MI_OCTAVE2_7", "KS\nOctave\n+7", "Midi set octave to 7"),
 ] 
 
+# LEGACY (no longer shown in the picker) — see KEYCODES_MIDI_TS_TRANSPOSE_SELECT.
 KEYCODES_MIDI_OCTAVE3 = [
     K("MI_OCTAVE3_N2", "TS\nOctave\n-2", "Midi set octave to -2"),
     K("MI_OCTAVE3_N1", "TS\nOctave\n-1", "Midi set octave to -1"),
@@ -1645,6 +1651,7 @@ KEYCODES_MIDI_UPDOWN = [
 
 ]    
 
+# LEGACY (no longer shown in the picker) — see KEYCODES_MIDI_TRANSPOSE_SELECT.
 KEYCODES_MIDI_KEY = [
     K("MI_TRNS_0", "Key\nC Major\nA minor", "Midi set no transposition"),
     K("MI_TRNS_1", "Key\nC# Major\nA# minor", "Midi set transposition to +1 semitones"),
@@ -1660,6 +1667,7 @@ KEYCODES_MIDI_KEY = [
     K("MI_TRNS_N1", "Key B Major\n G# Minor", "Midi set transposition to -1 semitones"),
 ]
 
+# LEGACY (no longer shown in the picker) — see KEYCODES_MIDI_KS_TRANSPOSE_SELECT.
 KEYCODES_MIDI_KEY2 = [
     K("MI_TRNS2_0", "KS\nC Major\nA minor", "Midi set no transposition"),
     K("MI_TRNS2_1", "KS\nC# Major\nA# minor", "Midi set transposition to +1 semitones"),
@@ -1675,6 +1683,7 @@ KEYCODES_MIDI_KEY2 = [
     K("MI_TRNS2_N1", "KS B Major\n G# Minor", "Midi set transposition to -1 semitones"),
 ]
 
+# LEGACY (no longer shown in the picker) — see KEYCODES_MIDI_TS_TRANSPOSE_SELECT.
 KEYCODES_MIDI_KEY3 = [
     K("MI_TRNS3_0", "TS\nC Major\nA minor", "Midi set no transposition"),
     K("MI_TRNS3_1", "TS\nC# Major\nA# minor", "Midi set transposition to +1 semitones"),
@@ -1688,6 +1697,52 @@ KEYCODES_MIDI_KEY3 = [
     K("MI_TRNS3_N3", "TS\nA Major\nF# minor", "Midi set transposition to -3 semitones"),
     K("MI_TRNS3_N2", "TS\nA# Major\nG minor", "Midi set transposition to -2 semitones"),
     K("MI_TRNS3_N1", "TS B Major\n G# Minor", "Midi set transposition to -1 semitones"),
+]
+
+# Transpose selector: ONE -64..+64 semitone band that replaces the separate
+# main-zone Key (MI_TRNS_N6..MI_TRNS_6) and Octave (MI_OCT_N2..MI_OCT_7)
+# selector pickers. The firmware clamps the combined transposition to the value
+# and re-splits it into whole octaves (octave_number) + a -11..+11 key
+# remainder (transpose_number). KS/TS selector lists above are unchanged.
+KEYCODES_MIDI_TRANSPOSE_SELECT = [
+    K("MI_TRNS_SET_N{}".format(-v) if v < 0 else "MI_TRNS_SET_{}".format(v),
+      "Transpose\n 0" if v == 0 else "Transpose\n{:+d}".format(v),
+      "Set combined transposition (octave + key) to {:+d} semitones".format(v))
+    for v in range(-64, 65)
+]
+
+# Per-zone transpose selectors: the same -64..+64 combined-transposition jump
+# for the keysplit / triplesplit zones. These REPLACE the separate KS/TS Key
+# (KEYCODES_MIDI_KEY2/KEY3) and Octave (KEYCODES_MIDI_OCTAVE2/OCTAVE3) selector
+# lists in the picker; those stay registered so old layouts still load.
+KEYCODES_MIDI_KS_TRANSPOSE_SELECT = [
+    K("MI_KS_TRNS_SET_N{}".format(-v) if v < 0 else "MI_KS_TRNS_SET_{}".format(v),
+      "KS\nTranspose\n 0" if v == 0 else "KS\nTranspose\n{:+d}".format(v),
+      "Set the KeySplit zone's combined transposition (octave + key) to {:+d} semitones "
+      "(also enables the keysplit transpose zone)".format(v))
+    for v in range(-64, 65)
+]
+
+KEYCODES_MIDI_TS_TRANSPOSE_SELECT = [
+    K("MI_TS_TRNS_SET_N{}".format(-v) if v < 0 else "MI_TS_TRNS_SET_{}".format(v),
+      "TS\nTranspose\n 0" if v == 0 else "TS\nTranspose\n{:+d}".format(v),
+      "Set the TripleSplit zone's combined transposition (octave + key) to {:+d} semitones "
+      "(also enables the triplesplit transpose zone)".format(v))
+    for v in range(-64, 65)
+]
+
+# Keysplit presets (10). Each preset carries its own settings for the NORMAL
+# (base), KEYSPLIT and TRIPLESPLIT zones — Channel / Transpose / Articulation /
+# Auto Notes / Sustain — every field either "Device Master" (leave it alone) or
+# a forced value. Tap applies them; tap again puts the previous values back.
+KEYCODES_KEYSPLIT_PRESETS = [
+    K("KEYSPLIT_PRESET_{}".format(n), "Keysplit\nPreset {}".format(n),
+      "Keysplit preset {}: tap = on/off. Turning it on applies the preset's Channel, "
+      "Transpose, Articulation, Auto-Notes and Sustain settings for whichever of the "
+      "Normal / Keysplit / Triplesplit sections it has enabled (fields left on "
+      "\"Device Master\" are not touched); turning it off restores what was there before, "
+      "unless you changed that setting yourself in the meantime. Hold 1s to configure.".format(n))
+    for n in range(1, 11)
 ]
 
 KEYCODES_MIDI_CHANNEL = [
@@ -1707,6 +1762,15 @@ KEYCODES_MIDI_CHANNEL = [
     K("MI_CH14", "Channel\n14", "Midi set channel to 14"),
     K("MI_CH15", "Channel\n15", "Midi set channel to 15"),
     K("MI_CH16", "Channel\n16", "Midi set channel to 16"),
+]
+
+# Multichannel echo presets (16): tap = preset on/off — while on, everything
+# the device outputs on the preset's target channel is echoed onto its multi
+# channels; hold = on-device config menu (Target / Multi Ch 1-3).
+KEYCODES_MULTICHANNEL = [
+    K("MULTICHANNEL_{}".format(n), "Multi\nCH {}".format(n),
+      "Multichannel preset {}: tap = echo on/off (duplicates the target channel's output onto up to 3 multi channels), hold = configure target + multi channels".format(n))
+    for n in range(1, 17)
 ]
 
 KEYCODES_MIDI_CHANNEL_KEYSPLIT = [
@@ -1729,6 +1793,8 @@ KEYCODES_MIDI_CHANNEL_KEYSPLIT = [
 ]
 
 KEYCODES_KEYSPLIT_BUTTONS = [
+    K("KS_QB_TOGGLE", "Keysplit\nOn/Off", "Tap: turn keysplit on/off using the button's configured options. Hold: configure Channel, Transpose and Articulation (each defaults to 'Device Master' = follow the base zone); once any option is set, Auto Notes and Sustain Allow/Ignore appear too. LED shows on/off like a toggle key."),
+    K("TS_QB_TOGGLE", "Triplesplit\nOn/Off", "Tap: turn triplesplit on/off using the button's configured options. Hold: configure Channel, Transpose and Articulation (each defaults to 'Device Master' = follow the base zone); once any option is set, Auto Notes and Sustain Allow/Ignore appear too. LED shows on/off like a toggle key."),
     K("KS_TOGGLE", "Channel\nSplit\nToggle", "Toggle keysplit mode"),
     K("KS_TRANSPOSE_TOGGLE", "Transpose\nSplit\nToggle", "Toggle keysplit mode"),
     K("KS_VELOCITY_TOGGLE", "Velocity\nSplit\nToggle", "Toggle keysplit mode"),
@@ -1992,8 +2058,8 @@ KEYCODES_MIDI_CHANNEL_OS = [
 ]
 
 KEYCODES_MIDI_CHORD_0 = [
-K("MI_INV_1", "Major 2nd", "Minor\n2nd"),
-K("MI_INV_2", "Minor 2nd", "Major\n2nd"), 
+K("MI_INV_1", "Minor 2nd", "Minor\n2nd"),
+K("MI_INV_2", "Major 2nd", "Major\n2nd"), 
 K("MI_INV_3", "Minor 3rd", "Minor\n3rd"),
 K("MI_INV_4", "Major 3rd", "Major\n3rd"),
 K("MI_INV_5", "Perfect Fourth", "Perfect\nFourth"),
@@ -2329,6 +2395,7 @@ KEYCODES_LOOP_BUTTONS = [
     K("DM_THRULOOP_6", "Thru\n6", "ThruLoop 6: record/play/stop timing + ThruLoop CCs (no MIDI notes). Hold for menu."),
     K("DM_THRULOOP_7", "Thru\n7", "ThruLoop 7: record/play/stop timing + ThruLoop CCs (no MIDI notes). Hold for menu."),
     K("DM_THRULOOP_8", "Thru\n8", "ThruLoop 8: record/play/stop timing + ThruLoop CCs (no MIDI notes). Hold for menu."),
+    K("DM_NEXT_THRULOOP_REC", "Next\nThru\nRec", "Starts recording the next empty ThruLoop (like pressing its button). If a ThruLoop is currently recording, starting the new one automatically finishes it (the quick record handoff, deferred to the musical boundary when the unit is running), so the new recording takes over seamlessly. If nothing is recording, starts recording the first empty ThruLoop."),
 
     # Core control buttons
     K("DM_MUTE", "Mute\nButton", "Global mute button"),
@@ -2762,6 +2829,12 @@ for x in range(100):
         K("TGL_{:02d}".format(x), "Toggle\n{}".format(x), "Toggle key slot {} - toggle keycode held/released".format(x))
     )
 
+# Toggle bulk-reset action keys (act on ALL toggle slots at once)
+KEYCODES_TOGGLE_ACTIONS = [
+    K("TOGGLE_RESET_MULTI", "Reset\nMulti-\nToggles", "Puts every multi-key toggle back on its first step (as after keyboard startup). Only rewinds the step position - no keycodes are pressed or released."),
+    K("TOGGLE_UNHOLD_ALL", "Reset\nToggles", "Releases (\"unholds\") every held hold-type toggle. Multi-key toggles are not affected - only standard toggles whose target key is currently held down."),
+]
+
 # MIDI Delay control keycodes (navigation + clear)
 KEYCODES_DELAY_CLEAR = [
     K("DELAY_PREV", "Delay\nPrev", "Cycle to previous delay slot"),
@@ -3098,11 +3171,11 @@ def recreate_keycodes():
     KEYCODES.clear()
     KEYCODES.extend(KEYCODES_SPECIAL + KEYCODES_BASIC + KEYCODES_SHIFTED + KEYCODES_ISO + KEYCODES_LAYERS + KEYCODES_LAYERS_DF + KEYCODES_LAYERS_MO + KEYCODES_LAYERS_TG + KEYCODES_LAYERS_TT + KEYCODES_LAYERS_OSL + KEYCODES_LAYERS_TO + KEYCODES_LAYERS_LT +
                     KEYCODES_BOOT + KEYCODES_MODIFIERS + KEYCODES_QUANTUM + KEYCODES_BACKLIGHT + KEYCODES_MEDIA + KEYCODES_OLED + KEYCODES_CLEAR + KEYCODES_RGB_KC_COLOR + KEYCODES_MIDI_OCTAVE2 + KEYCODES_MIDI_OCTAVE3 + KEYCODES_MIDI_KEY2 + KEYCODES_MIDI_KEY3 + KEYCODES_MIDI_VELOCITY2 + KEYCODES_MIDI_VELOCITY3 +
-                    KEYCODES_TAP_DANCE + KEYCODES_MACRO + KEYCODES_MACRO_BASE + KEYCODES_EARTRAINER + KEYCODES_SAVE + KEYCODES_SETTINGS1 + KEYCODES_SETTINGS2 + KEYCODES_SETTINGS3 + KEYCODES_CHORDTRAINER + KEYCODES_USER + KEYCODES_HIDDEN + KEYCODES_MIDI+ KEYCODES_MIDI_CHANNEL_OS + KEYCODES_MIDI_CHANNEL_HOLD + KEYCODES_RGB_KC_CUSTOM + KEYCODES_RGB_KC_CUSTOM2 + KEYCODES_RGBSAVE + KEYCODES_MIDI_CHANNEL_KEYSPLIT + KEYCODES_MIDI_CHANNEL_KEYSPLIT2 + KEYCODES_KEYSPLIT_BUTTONS +
+                    KEYCODES_TAP_DANCE + KEYCODES_MACRO + KEYCODES_MACRO_BASE + KEYCODES_EARTRAINER + KEYCODES_SAVE + KEYCODES_SETTINGS1 + KEYCODES_SETTINGS2 + KEYCODES_SETTINGS3 + KEYCODES_CHORDTRAINER + KEYCODES_USER + KEYCODES_HIDDEN + KEYCODES_MIDI+ KEYCODES_MIDI_CHANNEL_OS + KEYCODES_MIDI_CHANNEL_HOLD + KEYCODES_RGB_KC_CUSTOM + KEYCODES_RGB_KC_CUSTOM2 + KEYCODES_RGBSAVE + KEYCODES_MIDI_CHANNEL_KEYSPLIT + KEYCODES_MIDI_CHANNEL_KEYSPLIT2 + KEYCODES_KEYSPLIT_BUTTONS + KEYCODES_KEYSPLIT_PRESETS + KEYCODES_MIDI_TRANSPOSE_SELECT + KEYCODES_MIDI_KS_TRANSPOSE_SELECT + KEYCODES_MIDI_TS_TRANSPOSE_SELECT +
                     KEYCODES_MIDI_CC_FIXED+KEYCODES_MIDI_CC+KEYCODES_MIDI_CC_DOWN+KEYCODES_MIDI_CC_UP+KEYCODES_MOD_PRESS+KEYCODES_MIDI_BANK+KEYCODES_Program_Change+KEYCODES_MIDI_SMARTCHORDBUTTONS+KEYCODES_VELOCITY_STEPSIZE+KEYCODES_VELOCITY_SHUFFLE + KEYCODES_CC_ENCODERVALUE+ KEYCODES_EXWHEEL +
-                    KEYCODES_MIDI_VELOCITY+KEYCODES_CC_STEPSIZE+KEYCODES_MIDI_CHANNEL+KEYCODES_MIDI_UPDOWN+KEYCODES_MIDI_CHORD_0+KEYCODES_MIDI_CHORD_1+KEYCODES_MIDI_CHORD_2+KEYCODES_MIDI_CHORD_3+KEYCODES_MIDI_CHORD_4+KEYCODES_MIDI_CHORD_5+KEYCODES_MIDI_SPLIT+KEYCODES_MIDI_SPLIT2+
+                    KEYCODES_MIDI_VELOCITY+KEYCODES_CC_STEPSIZE+KEYCODES_MIDI_CHANNEL+KEYCODES_MULTICHANNEL+KEYCODES_MIDI_UPDOWN+KEYCODES_MIDI_CHORD_0+KEYCODES_MIDI_CHORD_1+KEYCODES_MIDI_CHORD_2+KEYCODES_MIDI_CHORD_3+KEYCODES_MIDI_CHORD_4+KEYCODES_MIDI_CHORD_5+KEYCODES_MIDI_SPLIT+KEYCODES_MIDI_SPLIT2+
                     KEYCODES_HE_VELOCITY_CURVE+KEYCODES_HE_MACRO_CURVE+KEYCODES_HE_VELOCITY_RANGE+
-                    KEYCODES_ARPEGGIATOR+KEYCODES_ARPEGGIATOR_PRESETS+KEYCODES_STEP_SEQUENCER+KEYCODES_STEP_SEQUENCER_PRESETS+KEYCODES_DRUM_SLOTS+KEYCODES_OCTAVE_DOUBLER+KEYCODES_DKS+KEYCODES_TOGGLE+KEYCODES_DELAY_CLEAR+KEYCODES_DELAY+KEYCODES_DELAY_QB+KEYCODES_CHORD_QB+KEYCODES_SMARTCHORD_VL+KEYCODES_DYNCHORD_QB+KEYCODES_FADER_QB+KEYCODES_QB_MASTER+KEYCODES_EARTRAINER_QB+
+                    KEYCODES_ARPEGGIATOR+KEYCODES_ARPEGGIATOR_PRESETS+KEYCODES_STEP_SEQUENCER+KEYCODES_STEP_SEQUENCER_PRESETS+KEYCODES_DRUM_SLOTS+KEYCODES_OCTAVE_DOUBLER+KEYCODES_DKS+KEYCODES_TOGGLE+KEYCODES_TOGGLE_ACTIONS+KEYCODES_DELAY_CLEAR+KEYCODES_DELAY+KEYCODES_DELAY_QB+KEYCODES_CHORD_QB+KEYCODES_SMARTCHORD_VL+KEYCODES_DYNCHORD_QB+KEYCODES_FADER_QB+KEYCODES_QB_MASTER+KEYCODES_EARTRAINER_QB+
                     KEYCODES_CPROG_SLOTS + KEYCODES_LOOP_BUTTONS + KEYCODES_DRUMLIVE + KEYCODES_GAMING +
                     KEYCODES_MIDI_INVERSION+KEYCODES_MIDI_SCALES+KEYCODES_MIDI_OCTAVE+KEYCODES_MIDI_KEY+KEYCODES_Program_Change_UPDOWN+KEYCODES_MIDI_BANK_LSB+KEYCODES_MIDI_BANK_MSB+KEYCODES_MIDI_PEDAL+KEYCODES_MIDI_ADVANCED+KEYCODES_MIDI_INOUT+KEYCODES_MIDI_SPLIT_BUTTONS+KEYCODES_BASIC + KEYCODES_SHIFTED + KEYCODES_CHORD_PROG_CONTROLS +
                     KEYCODES_DAW)

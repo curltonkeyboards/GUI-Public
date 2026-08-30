@@ -1851,6 +1851,8 @@ class keycodes_v5:
 
         # Next Loop Rec: stop the recording loop + start recording the next empty loop
         "DM_NEXT_LOOP_REC": 0xCC58,
+        # Next ThruLoop Rec: finish the recording ThruLoop + start recording the next empty track
+        "DM_NEXT_THRULOOP_REC": 0xCC5E,
 
         # Individual clear/reset actions (mirror the Clear Menu options)
         "CLEAR_MODIFIERS": 0xCC59,     # Reset all modifiers
@@ -2262,6 +2264,33 @@ class keycodes_v5:
         # NOTE: Moved from 0xEE00-0xEE63 to avoid conflict with Arpeggiator keycodes
         "TGL_00": 0xEF10,  # Base for Toggle slot selection
 
+        # Toggle bulk-reset actions (free block 0xF2F0+, after factory arps 0xF200-0xF2EF)
+        "TOGGLE_RESET_MULTI": 0xF2F0,  # All multi-toggles back to step 1 (no key events)
+        "TOGGLE_UNHOLD_ALL": 0xF2F1,   # Release every held non-multi (hold) toggle
+        # Keysplit/Triplesplit QuickBuild toggle buttons (tap = zone on/off per
+        # the button's stored config, hold = on-device config menu)
+        "KS_QB_TOGGLE": 0xF2F2,
+        "TS_QB_TOGGLE": 0xF2F3,
+        # Multichannel echo presets (0xF410-0xF41F): tap = preset on/off
+        # (echo the target channel's output onto up to 3 multi channels),
+        # hold = on-device config menu (Target / Multi Ch 1-3).
+        "MULTICHANNEL_1": 0xF410,
+        "MULTICHANNEL_2": 0xF411,
+        "MULTICHANNEL_3": 0xF412,
+        "MULTICHANNEL_4": 0xF413,
+        "MULTICHANNEL_5": 0xF414,
+        "MULTICHANNEL_6": 0xF415,
+        "MULTICHANNEL_7": 0xF416,
+        "MULTICHANNEL_8": 0xF417,
+        "MULTICHANNEL_9": 0xF418,
+        "MULTICHANNEL_10": 0xF419,
+        "MULTICHANNEL_11": 0xF41A,
+        "MULTICHANNEL_12": 0xF41B,
+        "MULTICHANNEL_13": 0xF41C,
+        "MULTICHANNEL_14": 0xF41D,
+        "MULTICHANNEL_15": 0xF41E,
+        "MULTICHANNEL_16": 0xF41F,
+
         # MIDI Delay Navigation/Control (0xEF89-0xEF8F)
         "CLEAR_HOLD": 0xEF88,   # Hold: OLED shows "Press Loop/Seq to Clear", then press to clear
         "DELAY_PREV": 0xEF89,   # Cycle to previous delay slot
@@ -2450,6 +2479,28 @@ for c in range(6):       # 6 category groups
 for v in range(12):      # 12 individual voices
     for m in range(3):
         keycodes_v5.kc["DRUMLIVE_VOICE_{}_{}".format(v, m)] = keycodes_v5.kc["DRUMLIVE_VOICE_BASE"] + v * 3 + m
+
+# Transpose selector band (-64..+64 semitones): MI_TRNS_SET_N64..MI_TRNS_SET_64
+# -> 0xF380..0xF400. One combined-transposition jump band replacing the separate
+# Key (MI_TRNS_*) and Octave (MI_OCT_*) selector pickers; the firmware splits the
+# value into whole octaves + a -11..+11 key remainder (set_transpose_total).
+for t in range(-64, 65):
+    keycodes_v5.kc["MI_TRNS_SET_N{}".format(-t) if t < 0 else "MI_TRNS_SET_{}".format(t)] = 0xF380 + (t + 64)
+
+# Per-zone transpose selector bands, same -64..+64 combined-transposition jump
+# for the keysplit and triplesplit zones (they replace the separate KS/TS Key
+# and Octave selector pickers). The block above the Transpose selector is too
+# small for two more 129-code bands, so these live in the free block between the
+# last SmartChord keycode (0xC4E8) and MI_SPLIT (0xC600).
+for t in range(-64, 65):
+    keycodes_v5.kc["MI_KS_TRNS_SET_N{}".format(-t) if t < 0 else "MI_KS_TRNS_SET_{}".format(t)] = 0xC4F0 + (t + 64)
+    keycodes_v5.kc["MI_TS_TRNS_SET_N{}".format(-t) if t < 0 else "MI_TS_TRNS_SET_{}".format(t)] = 0xC578 + (t + 64)
+
+# Keysplit presets (10): tap = preset on/off (apply its Normal / Keysplit /
+# Triplesplit settings, restore the previous ones when turned off), hold =
+# on-device config menu.
+for n in range(1, 11):
+    keycodes_v5.kc["KEYSPLIT_PRESET_{}".format(n)] = 0xF420 + (n - 1)
 
 for name, val in keycodes_v5.kc.items():
     if name.endswith("(kc)"):

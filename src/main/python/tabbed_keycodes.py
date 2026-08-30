@@ -13,12 +13,12 @@ from keycodes.keycodes import KEYCODES_BASIC, KEYCODES_ISO, KEYCODES_MACRO, KEYC
     KEYCODES_BOOT, KEYCODES_MODIFIERS, KEYCODES_CLEAR, KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_CUSTOM2, KEYCODES_RGBSAVE, KEYCODES_EXWHEEL, KEYCODES_RGB_KC_COLOR, KEYCODES_MIDI_SPLIT_BUTTONS, KEYCODES_SETTINGS1, KEYCODES_SETTINGS2, KEYCODES_SETTINGS3, KEYCODES_BASIC, KEYCODES_SHIFTED, KEYCODES_CHORD_PROG_CONTROLS, KEYCODES_MIDI_CHANNEL_OS, KEYCODES_MIDI_CHANNEL_HOLD, KEYCODES_CPROG_SLOTS, \
     KEYCODES_BACKLIGHT, KEYCODES_MEDIA, KEYCODES_SPECIAL, KEYCODES_SHIFTED, KEYCODES_USER, Keycode, KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_TG, KEYCODES_LAYERS_TT, KEYCODES_LAYERS_OSL, KEYCODES_LAYERS_TO, KEYCODES_LAYERS_LT, KEYCODES_VELOCITY_SHUFFLE, KEYCODES_CC_ENCODERVALUE, KEYCODES_LOOP_BUTTONS, KEYCODES_DRUMLIVE, KEYCODES_GAMING, \
     KEYCODES_DAW, \
-    KEYCODES_TAP_DANCE, KEYCODES_MIDI, KEYCODES_MIDI_SPLIT, KEYCODES_MIDI_SPLIT2, KEYCODES_MIDI_CHANNEL_KEYSPLIT, KEYCODES_KEYSPLIT_BUTTONS, KEYCODES_MIDI_CHANNEL_KEYSPLIT2, KEYCODES_BASIC_NUMPAD, KEYCODES_BASIC_NAV, KEYCODES_ISO_KR, BASIC_KEYCODES, \
-    KEYCODES_ARPEGGIATOR, KEYCODES_ARPEGGIATOR_PRESETS, KEYCODES_STEP_SEQUENCER, KEYCODES_STEP_SEQUENCER_PRESETS, KEYCODES_DRUM_SLOTS, KEYCODES_DKS, KEYCODES_TOGGLE, KEYCODES_DELAY_CLEAR, KEYCODES_DELAY, KEYCODES_DELAY_FACTORY, KEYCODES_DELAY_USER, KEYCODES_DELAY_QB, KEYCODES_CHORD_QB, KEYCODES_DYNCHORD_QB, KEYCODES_FADER_QB, KEYCODES_QB_MASTER, KEYCODES_EARTRAINER_QB, \
+    KEYCODES_TAP_DANCE, KEYCODES_MIDI, KEYCODES_MIDI_SPLIT, KEYCODES_MIDI_SPLIT2, KEYCODES_MIDI_CHANNEL_KEYSPLIT, KEYCODES_KEYSPLIT_BUTTONS, KEYCODES_KEYSPLIT_PRESETS, KEYCODES_MIDI_CHANNEL_KEYSPLIT2, KEYCODES_BASIC_NUMPAD, KEYCODES_BASIC_NAV, KEYCODES_ISO_KR, BASIC_KEYCODES, \
+    KEYCODES_ARPEGGIATOR, KEYCODES_ARPEGGIATOR_PRESETS, KEYCODES_STEP_SEQUENCER, KEYCODES_STEP_SEQUENCER_PRESETS, KEYCODES_DRUM_SLOTS, KEYCODES_DKS, KEYCODES_TOGGLE, KEYCODES_TOGGLE_ACTIONS, KEYCODES_DELAY_CLEAR, KEYCODES_DELAY, KEYCODES_DELAY_FACTORY, KEYCODES_DELAY_USER, KEYCODES_DELAY_QB, KEYCODES_CHORD_QB, KEYCODES_DYNCHORD_QB, KEYCODES_FADER_QB, KEYCODES_QB_MASTER, KEYCODES_EARTRAINER_QB, \
     KEYCODES_MIDI_CC, KEYCODES_MIDI_BANK, KEYCODES_Program_Change, KEYCODES_CC_STEPSIZE, KEYCODES_MIDI_VELOCITY, KEYCODES_Program_Change_UPDOWN, KEYCODES_MIDI_BANK, KEYCODES_MIDI_BANK_LSB, KEYCODES_MIDI_BANK_MSB, KEYCODES_MIDI_CC_FIXED, KEYCODES_OLED, KEYCODES_EARTRAINER, KEYCODES_SAVE, KEYCODES_CHORDTRAINER, \
     KEYCODES_MIDI_OCTAVE2, KEYCODES_MIDI_OCTAVE3, KEYCODES_MIDI_KEY2, KEYCODES_MIDI_KEY3, KEYCODES_MIDI_VELOCITY2, KEYCODES_MIDI_VELOCITY3, KEYCODES_MIDI_ADVANCED, KEYCODES_MIDI_SMARTCHORDBUTTONS, KEYCODES_VELOCITY_STEPSIZE, KEYCODES_MIDI_CHANNEL_OS, KEYCODES_MIDI_CHANNEL_HOLD, \
     KEYCODES_HE_VELOCITY_CURVE, KEYCODES_HE_VELOCITY_RANGE, \
-    KEYCODES_MIDI_CHANNEL, KEYCODES_MIDI_UPDOWN, KEYCODES_MIDI_CHORD_0, KEYCODES_MIDI_CHORD_1, KEYCODES_MIDI_CHORD_2, KEYCODES_MIDI_CHORD_3, KEYCODES_MIDI_CHORD_4, KEYCODES_MIDI_CHORD_5, KEYCODES_MIDI_INVERSION, KEYCODES_MIDI_SCALES, KEYCODES_MIDI_OCTAVE, KEYCODES_MIDI_KEY, KEYCODES_MIDI_CC_UP, KEYCODES_MIDI_CC_DOWN, KEYCODES_MIDI_PEDAL, KEYCODES_MIDI_INOUT, \
+    KEYCODES_MIDI_CHANNEL, KEYCODES_MULTICHANNEL, KEYCODES_MIDI_UPDOWN, KEYCODES_MIDI_CHORD_0, KEYCODES_MIDI_CHORD_1, KEYCODES_MIDI_CHORD_2, KEYCODES_MIDI_CHORD_3, KEYCODES_MIDI_CHORD_4, KEYCODES_MIDI_CHORD_5, KEYCODES_MIDI_INVERSION, KEYCODES_MIDI_SCALES, KEYCODES_MIDI_TRANSPOSE_SELECT, KEYCODES_MIDI_CC_UP, KEYCODES_MIDI_CC_DOWN, KEYCODES_MIDI_PEDAL, KEYCODES_MIDI_INOUT, \
     KEYCODES_OCTAVE_DOUBLER, KEYCODES
 from widgets.square_button import SquareButton
 from widgets.big_square_button import BigSquareButton
@@ -1100,8 +1100,9 @@ class midiadvancedTab(QScrollArea):
             KEYCODES_QB_MASTER, KEYCODES_DRUM_SLOTS,
             KEYCODES_MIDI_CHANNEL, KEYCODES_MIDI_CHANNEL_OS, KEYCODES_MIDI_CHANNEL_HOLD,
             KEYCODES_MIDI_VELOCITY, KEYCODES_VELOCITY_STEPSIZE, KEYCODES_VELOCITY_SHUFFLE,
-            KEYCODES_CC_ENCODERVALUE, KEYCODES_MIDI_KEY, KEYCODES_MIDI_KEY2, KEYCODES_MIDI_KEY3,
-            KEYCODES_MIDI_OCTAVE, KEYCODES_MIDI_OCTAVE2, KEYCODES_MIDI_OCTAVE3,
+            KEYCODES_CC_ENCODERVALUE, KEYCODES_MIDI_TRANSPOSE_SELECT,
+            KEYCODES_MIDI_KS_TRANSPOSE_SELECT, KEYCODES_MIDI_TS_TRANSPOSE_SELECT,
+            KEYCODES_KEYSPLIT_PRESETS,
             KEYCODES_MIDI_CHANNEL_KEYSPLIT, KEYCODES_MIDI_CHANNEL_KEYSPLIT2,
             KEYCODES_MIDI_BANK_LSB, KEYCODES_MIDI_BANK_MSB,
             KEYCODES_Program_Change,
@@ -1130,6 +1131,7 @@ class midiadvancedTab(QScrollArea):
             ("Set Dynamic Velocity Range", KEYCODES_HE_VELOCITY_RANGE, "dynamic velocity range he min max", "range", None),
             # Dropdowns (select from list)
             ("MIDI Channel", KEYCODES_MIDI_CHANNEL, "midi channel set", "dropdown", None),
+            ("Multi Channel", KEYCODES_MULTICHANNEL, "multi channel echo multichannel", "dropdown", None),
             ("Temporary MIDI Channel", KEYCODES_MIDI_CHANNEL_OS, "temporary channel oneshot", "dropdown", None),
             ("Hold MIDI Channel", KEYCODES_MIDI_CHANNEL_HOLD, "hold channel", "dropdown", None),
             ("KeySplit Channel", KEYCODES_MIDI_CHANNEL_KEYSPLIT, "keysplit channel ks", "dropdown", None),
@@ -1137,12 +1139,10 @@ class midiadvancedTab(QScrollArea):
             ("Velocity Increment", KEYCODES_VELOCITY_STEPSIZE, "velocity increment stepsize step size", "dropdown", None),
             ("Dynamic Velocity Range", KEYCODES_VELOCITY_SHUFFLE, "dynamic range velocity shuffle", "dropdown", None),
             ("CC Increment", KEYCODES_CC_STEPSIZE, "cc increment stepsize step size", "dropdown", None),
-            ("Set Key (Main)", KEYCODES_MIDI_KEY, "key transposition set main", "dropdown", None),
-            ("Set Key (KeySplit)", KEYCODES_MIDI_KEY2, "key transposition keysplit ks", "dropdown", None),
-            ("Set Key (TripleSplit)", KEYCODES_MIDI_KEY3, "key transposition triplesplit ts", "dropdown", None),
-            ("Set Octave (Main)", KEYCODES_MIDI_OCTAVE, "octave set main", "dropdown", None),
-            ("Set Octave (KeySplit)", KEYCODES_MIDI_OCTAVE2, "octave keysplit ks", "dropdown", None),
-            ("Set Octave (TripleSplit)", KEYCODES_MIDI_OCTAVE3, "octave triplesplit ts", "dropdown", None),
+            ("Set Transpose (Main)", KEYCODES_MIDI_TRANSPOSE_SELECT, "transpose transposition set main key octave semitone", "dropdown", None),
+            ("Set Transpose (KeySplit)", KEYCODES_MIDI_KS_TRANSPOSE_SELECT, "transpose transposition keysplit ks key octave semitone", "dropdown", None),
+            ("Set Transpose (TripleSplit)", KEYCODES_MIDI_TS_TRANSPOSE_SELECT, "transpose transposition triplesplit ts key octave semitone", "dropdown", None),
+            ("Keysplit Presets", KEYCODES_KEYSPLIT_PRESETS, "keysplit triplesplit preset split channel transpose articulation sustain", "dropdown", None),
             ("Arpeggiator Presets", KEYCODES_ARPEGGIATOR_PRESETS, "arpeggiator arp preset", "dropdown", None),
             ("Sequencer Presets", KEYCODES_STEP_SEQUENCER_PRESETS, "sequencer seq user preset", "dropdown", None),
             ("Drum Machine Slots", KEYCODES_DRUM_SLOTS, "drum machine slot", "dropdown", None),
@@ -1590,6 +1590,7 @@ class midiadvancedTab(QScrollArea):
         self.add_header_dropdown("MIDI Channel", self.channel_options, row_layout, 200)
         self.add_header_dropdown("Temporary MIDI Channel", self.channel_oneshot, row_layout, 200)
         self.add_header_dropdown("Hold MIDI Channel", self.channel_hold, row_layout, 200)
+        self.add_header_dropdown("Multi Channel", KEYCODES_MULTICHANNEL, row_layout, 200)
 
         row_layout.addStretch(1)  # Right spacer
         layout.addLayout(row_layout)
@@ -1653,9 +1654,10 @@ class midiadvancedTab(QScrollArea):
         row_layout = QHBoxLayout()
         row_layout.addStretch(1)  # Left spacer
 
-        # Create and add dropdowns with fixed width of 200 pixels
-        self.add_header_dropdown("Octave Selector", self.smartchord_octave_1, row_layout, 200)
-        self.add_header_dropdown("Key Selector", self.smartchord_key, row_layout, 200)
+        # One combined Transpose selector (-64..+64) — replaces the old separate
+        # Octave and Key selector dropdowns (Octave/Transpose up-down keys remain
+        # in the Up/Down section).
+        self.add_header_dropdown("Transpose Selector", self.smartchord_octave_1, row_layout, 200)
 
         row_layout.addStretch(1)  # Right spacer
         layout.addLayout(row_layout)
@@ -1684,6 +1686,11 @@ class midiadvancedTab(QScrollArea):
         # Add KeySplit modifier buttons below the grid
         modifiers_layout = QHBoxLayout()
         modifiers_layout.addStretch(1)
+
+        # Keysplit presets: one button toggles a whole saved split setup
+        # (Normal + Keysplit + Triplesplit channel/transpose/articulation/
+        # auto-notes/sustain) and restores the previous values when tapped off.
+        self.add_header_dropdown("Keysplit Presets", KEYCODES_KEYSPLIT_PRESETS, modifiers_layout, 200)
 
         split_buttons = [
             ("Enable\nChannel\nKeySplit", "KS_TOGGLE"),
@@ -3147,6 +3154,7 @@ class MacroSubTab(QScrollArea):
             keycodes = KEYCODES_DKS[:self.button_count] if self.button_count > 0 else []
         elif self.tab_type == "toggle":
             keycodes = KEYCODES_TOGGLE[:self.button_count] if self.button_count > 0 else []
+            keycodes = keycodes + KEYCODES_TOGGLE_ACTIONS  # bulk-reset actions always shown
         else:
             keycodes = []
 
@@ -3393,6 +3401,8 @@ class MacroTab(QScrollArea):
         dks_kcs = KEYCODES_DKS[:self.dks_count] if self.dks_count > 0 else []
         self._add_button_section("DKS", dks_kcs, keycode_filter)
         tog_kcs = KEYCODES_TOGGLE[:self.toggle_count] if self.toggle_count > 0 else []
+        # Bulk-reset actions always shown alongside the slot buttons
+        tog_kcs = tog_kcs + KEYCODES_TOGGLE_ACTIONS
         self._add_button_section("Toggle", tog_kcs, keycode_filter)
 
         self.main_layout.addStretch(1)
@@ -4042,6 +4052,7 @@ class midiTab(QScrollArea):
             ("DM_THRULOOP_3", "Thru\n3"), ("DM_THRULOOP_4", "Thru\n4"),
             ("DM_THRULOOP_5", "Thru\n5"), ("DM_THRULOOP_6", "Thru\n6"),
             ("DM_THRULOOP_7", "Thru\n7"), ("DM_THRULOOP_8", "Thru\n8"),
+            ("DM_NEXT_THRULOOP_REC", "Next\nThru\nRec"),
             # Clear / reset actions (individual keycodes; also in the Clear Menu)
             ("CLEAR_MENU", "Clear\nMenu"),
             ("CLEAR_MODIFIERS", "Clear\nModifiers"),
@@ -5174,7 +5185,7 @@ class MIDITab(midiadvancedTab):
                         KEYCODES_MIDI_CC_FIXED, KEYCODES_MIDI_CC_UP, KEYCODES_MIDI_CC_DOWN,
                         KEYCODES_VELOCITY_STEPSIZE, KEYCODES_CC_STEPSIZE, KEYCODES_MIDI_CHANNEL,
                         KEYCODES_MIDI_VELOCITY, KEYCODES_MIDI_CHANNEL_OS, KEYCODES_MIDI_CHANNEL_HOLD,
-                        KEYCODES_MIDI_OCTAVE, KEYCODES_MIDI_KEY, KEYCODES_MIDI_VELOCITY2,
+                        KEYCODES_MIDI_TRANSPOSE_SELECT, [], KEYCODES_MIDI_VELOCITY2,
                         KEYCODES_MIDI_VELOCITY3, KEYCODES_MIDI_KEY2, KEYCODES_MIDI_KEY3,
                         KEYCODES_MIDI_OCTAVE2, KEYCODES_MIDI_OCTAVE3, KEYCODES_MIDI_CHANNEL_KEYSPLIT,
                         KEYCODES_MIDI_CHANNEL_KEYSPLIT2, KEYCODES_MIDI_SPLIT_BUTTONS,

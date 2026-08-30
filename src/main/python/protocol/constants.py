@@ -26,6 +26,11 @@ VIALRGB_GET_INFO = 0x40
 VIALRGB_GET_MODE = 0x41
 VIALRGB_GET_SUPPORTED = 0x42
 VIALRGB_SET_MODE = 0x41
+# VialRGB effect-id bands — must match vialrgb_effects.inc in the firmware:
+# 57-68 per-key presets, 69-77 randomize scratch effects, 78+ custom slots.
+VIALRGB_EFFECT_PER_KEY_BASE = 57
+VIALRGB_EFFECT_RANDOMIZE_BASE = 69
+VIALRGB_EFFECT_CUSTOM_SLOT_BASE = 78
 CMD_VIAL_GET_KEYBOARD_ID = 0x00
 CMD_VIAL_GET_SIZE = 0x01
 CMD_VIAL_GET_DEFINITION = 0x02
@@ -80,8 +85,9 @@ HID_CMD_FUNC_LED_SAVE = 0xEC
 # Functional LED state count — must match the firmware func_led_state enum
 # (FLED_STATE_COUNT). The 2026-07 rework dropped the hold-erase/just-cleared and
 # colorblind states, renamed Fader -> AutoFader, and added DrumLIVE / Drum
-# Machine / Ear Trainer On-Off pairs, bringing the total to 90.
-FUNC_LED_STATE_COUNT = 90
+# Machine / Ear Trainer On-Off pairs (90), then the Multichannel On/Off
+# pair brought the total to 92.
+FUNC_LED_STATE_COUNT = 92
 
 HID_MANUFACTURER_ID = 0x7D
 HID_SUB_ID = 0x00

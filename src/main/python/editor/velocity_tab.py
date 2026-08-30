@@ -1496,6 +1496,13 @@ class VelocityTab(BasicEditor):
         self.export_btn.clicked.connect(self.on_export_articulation)
         buttons_layout.addWidget(self.export_btn)
 
+        self.import_btn = QPushButton(tr("VelocityTab", "Import..."))
+        self.import_btn.setMinimumHeight(35)
+        self.import_btn.setToolTip("Paste an exported articulation text block to load "
+                                   "its settings into the editor (press Save to persist)")
+        self.import_btn.clicked.connect(self.on_import_articulation)
+        buttons_layout.addWidget(self.import_btn)
+
         # Inside the Preset Settings tab (NOT the group layout) so the Channel
         # Articulations tab doesn't inherit the preset New/Save/Save As/Export
         # row — that tab has its own single Save button.
@@ -1743,12 +1750,15 @@ class VelocityTab(BasicEditor):
         self.velocity_as_at_widget.setVisible(not is_off)
         self.at_uses_curve_widget.setVisible(not is_off)
         # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON (intrinsic cap).
+        # NOTE: no inner blockSignals pair here — the whole function runs with
+        # this checkbox blocked (see the blanket block above); the old inner
+        # blockSignals(False) UNBLOCKED it early, so the setChecked below fired
+        # the change handler and pushed param 50 to the device on every
+        # connect/settings load.
         is_post = (pair == 3)
-        self.velocity_as_at_checkbox.blockSignals(True)
         self.velocity_as_at_checkbox.setEnabled(not is_post)
         if is_post:
             self.velocity_as_at_checkbox.setChecked(True)
-        self.velocity_as_at_checkbox.blockSignals(False)
         self.aftertouch_style_widget.setVisible(False)  # retired: legato is now its own checkbox
         self.aftertouch_sustain_widget.setVisible(not is_off)
         self.smoothness_widget.setVisible(not is_off)
@@ -1773,9 +1783,10 @@ class VelocityTab(BasicEditor):
                 self.aftertouch_cc_combo.setCurrentIndex(i)
                 break
 
-        # Set velocity as aftertouch checkbox
-        velocity_as_at = settings.get('velocity_as_at', False)
-        self.velocity_as_at_checkbox.setChecked(velocity_as_at)
+        # Set velocity as aftertouch checkbox (post-actuation keeps the forced ON)
+        if not is_post:
+            velocity_as_at = settings.get('velocity_as_at', False)
+            self.velocity_as_at_checkbox.setChecked(velocity_as_at)
 
         # Set smoothness
         smoothness = settings.get('aftertouch_smoothness', 0)
@@ -1975,9 +1986,18 @@ class VelocityTab(BasicEditor):
                 controls['aftertouch_cc_combo'].setCurrentIndex(i)
                 break
 
-        # Update velocity as aftertouch checkbox
+        # Update velocity as aftertouch checkbox. Signals MUST be blocked: this
+        # checkbox's change handler pushes param 50 to the device, and before
+        # velocity_as_at rode the preset flags this refresh fired it with the
+        # dict's default False — every preset click silently reset the device's
+        # "Velocity as AT/CC" setting (the "sometimes doesn't save" bug). The
+        # firmware now applies the preset's own flag when the preset index is
+        # selected; the GUI refresh must only display it, never echo it back.
         velocity_as_at = zone_data.get('velocity_as_at', False)
-        controls['velocity_as_at_checkbox'].setChecked(velocity_as_at)
+        controls['velocity_as_at_checkbox'].blockSignals(True)
+        if not is_post:   # Post Actuation already forced it ON above
+            controls['velocity_as_at_checkbox'].setChecked(velocity_as_at)
+        controls['velocity_as_at_checkbox'].blockSignals(False)
 
         # Update AT/CC uses velocity curve checkbox
         controls['at_uses_curve_check'].setChecked(bool(zone_data.get('at_uses_curve', False)))
@@ -2658,6 +2678,7 @@ class VelocityTab(BasicEditor):
         self.global_midi_settings['retrigger_distance'] = zone_data['retrigger_distance']
         self.global_midi_settings['at_uses_curve'] = zone_data['at_uses_curve']
         self.global_midi_settings['legato'] = zone_data['legato']
+        self.global_midi_settings['velocity_as_at'] = zone_data.get('velocity_as_at', False)
 
     def _apply_factory_preset_settings(self, curve_index):
         """Apply per-factory-preset zone settings when selecting a factory curve.
@@ -2683,6 +2704,7 @@ class VelocityTab(BasicEditor):
         self.global_midi_settings['retrigger_distance'] = zone_data['retrigger_distance']
         self.global_midi_settings['at_uses_curve'] = zone_data.get('at_uses_curve', False)
         self.global_midi_settings['legato'] = zone_data.get('legato', False)
+        self.global_midi_settings['velocity_as_at'] = zone_data.get('velocity_as_at', False)
 
     def delete_user_preset(self, slot_index):
         """Delete a user preset (clear it on firmware and hide in list). Slot 0 cannot be deleted."""
@@ -2925,6 +2947,7 @@ class VelocityTab(BasicEditor):
                 self.global_midi_settings['retrigger_distance'] = base_zone.get('retrigger_distance', 0)
                 self.global_midi_settings['at_uses_curve'] = base_zone.get('at_uses_curve', False)
                 self.global_midi_settings['legato'] = base_zone.get('legato', False)
+                self.global_midi_settings['velocity_as_at'] = base_zone.get('velocity_as_at', False)
 
         except Exception as e:
             print(f"Error loading user curve {slot_index}: {e}")
@@ -2953,7 +2976,8 @@ class VelocityTab(BasicEditor):
             'speed_peak_ratio': controls['speed_peak_slider'].value(),
             'retrigger_distance': controls['retrigger_slider'].value() if controls['retrigger_checkbox'].isChecked() else 0,
             'at_uses_curve': controls['at_uses_curve_check'].isChecked(),
-            'legato': controls['legato_check'].isChecked()
+            'legato': controls['legato_check'].isChecked(),
+            'velocity_as_at': controls['velocity_as_at_checkbox'].isChecked()
         }
 
         # Get curve points from the zone's curve editor (or the main one for base)
@@ -3005,6 +3029,7 @@ class VelocityTab(BasicEditor):
                 retrigger_distance=settings.get('retrigger_distance', 0),
                 at_uses_curve=settings.get('at_uses_curve', False),
                 legato=settings.get('legato', False),
+                velocity_as_at=settings.get('velocity_as_at', False),
             )
 
             if success:
@@ -3224,6 +3249,27 @@ class VelocityTab(BasicEditor):
         except Exception:
             return False
 
+    def _artic_combo_select_index(self, combo, idx):
+        """Select preset index `idx` in a channel-artic combo, ADDING a row for
+        it when the option list omits it (an unconfigured/deleted user slot).
+        The old findData->else-0 fallback silently displayed "None" for such an
+        index, and the tab's next Save then wrote 255 back to the device —
+        quietly erasing the stored mapping."""
+        if idx is None:
+            idx = 255
+        pos = combo.findData(idx)
+        if pos < 0 and idx != 255:
+            names = getattr(self, 'user_curve_names', [])
+            slot = idx - FACTORY_COUNT
+            if 0 <= slot < 50:
+                base = names[slot] if slot < len(names) else "User {}".format(slot + 1)
+                label = "{} (empty)".format(base)
+            else:
+                label = "Preset {}".format(idx)
+            combo.addItem(label, idx)
+            pos = combo.findData(idx)
+        combo.setCurrentIndex(pos if pos >= 0 else 0)
+
     def _refresh_channel_artic_combos(self):
         """Rebuild dropdown items (e.g. after user preset names load), preserving
         each row's selected preset index."""
@@ -3233,8 +3279,7 @@ class VelocityTab(BasicEditor):
             combo.blockSignals(True)
             combo.clear()
             self._fill_artic_combo(combo, opts)
-            pos = combo.findData(cur if cur is not None else 255)
-            combo.setCurrentIndex(pos if pos >= 0 else 0)
+            self._artic_combo_select_index(combo, cur)
             combo.blockSignals(False)
 
     def load_channel_articulations(self):
@@ -3260,8 +3305,10 @@ class VelocityTab(BasicEditor):
             self._refresh_channel_artic_combos()
             for ch, combo in enumerate(self.channel_artic_combos):
                 combo.blockSignals(True)
-                pos = combo.findData(self.channel_artic_map[ch])
-                combo.setCurrentIndex(pos if pos >= 0 else 0)
+                # Adds a row for an index the list omits (unconfigured user
+                # slot) instead of resetting the display — and the next Save —
+                # to "None".
+                self._artic_combo_select_index(combo, self.channel_artic_map[ch])
                 combo.blockSignals(False)
             self._update_channel_artic_enabled_state()
         finally:
@@ -3307,6 +3354,7 @@ class VelocityTab(BasicEditor):
             "retrigger_distance: {}".format(s.get('retrigger_distance', 0)),
             "at_uses_curve: {}".format(1 if s.get('at_uses_curve', False) else 0),
             "legato: {}".format(1 if s.get('legato', False) else 0),
+            "velocity_as_at: {}".format(1 if s.get('velocity_as_at', False) else 0),
         ]
         return "\n".join(lines)
 
@@ -3358,6 +3406,151 @@ class VelocityTab(BasicEditor):
 
         dlg.exec_()
 
+    @staticmethod
+    def _parse_articulation_import(text):
+        """Parse the text block produced by _build_articulation_export_text back
+        into (name, points, zone_data). zone_data uses the same keys/shape the
+        preset-load path (on_user_curve_selected) consumes. Raises ValueError
+        with a readable message on malformed input. Unknown keys are ignored so
+        newer exports still load on older GUIs."""
+        import re
+
+        fields = {}
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("==="):
+                continue
+            if ":" not in line:
+                continue
+            key, _, value = line.partition(":")
+            fields[key.strip().lower()] = value.strip()
+
+        if "points" not in fields:
+            raise ValueError("No 'points:' line found — is this an articulation export?")
+
+        pairs = re.findall(r"\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]", fields["points"])
+        if len(pairs) != 4:
+            raise ValueError(f"Expected 4 curve points, found {len(pairs)}.")
+        points = [[max(0, min(255, int(x))), max(0, min(255, int(y)))] for x, y in pairs]
+        # The curve editor x-constrains the end points; enforce here so a
+        # hand-edited export can't produce an invalid curve.
+        points[0][0] = 0
+        points[3][0] = 255
+
+        def num(key, default, lo, hi):
+            try:
+                return max(lo, min(hi, int(fields[key])))
+            except (KeyError, ValueError):
+                return default
+
+        def flag(key):
+            return fields.get(key, "0").strip() in ("1", "true", "True")
+
+        zone_data = {
+            'velocity_min': num('velocity_min', 1, 1, 127),
+            'velocity_max': num('velocity_max', 127, 1, 127),
+            'slow_press_time': num('slow_press_time', 200, 2, 1000),
+            'fast_press_time': num('fast_press_time', 20, 2, 1000),
+            'aftertouch_mode': num('aftertouch_mode', 0, 0, 16),
+            'aftertouch_cc': num('aftertouch_cc', 255, 0, 255),
+            'aftertouch_smoothness': num('aftertouch_smoothness', 0, 0, 100),
+            'vibrato_sensitivity': num('vibrato_sensitivity', 50, 0, 100),
+            'vibrato_decay': num('vibrato_decay', 10, 0, 1000),
+            'actuation_override': flag('actuation_override'),
+            'actuation_point': num('actuation_point', 20, 1, 40),
+            'speed_peak_ratio': num('trigger_minimum', 1, 1, 35),
+            'retrigger_distance': num('retrigger_distance', 0, 0, 20),
+            'at_uses_curve': flag('at_uses_curve'),
+            'legato': flag('legato'),
+            'velocity_as_at': flag('velocity_as_at'),
+            'points': points,
+        }
+        name = fields.get('name', 'Imported')[:15]
+        return name, points, zone_data
+
+    def on_import_articulation(self):
+        """Paste an exported articulation text block and load it into the editor.
+        Import only populates the panel + local settings — nothing touches the
+        keyboard or EEPROM until the user presses Save / Save As."""
+        dlg = QDialog()
+        dlg.setWindowTitle(tr("VelocityTab", "Import Articulation"))
+        dlg.setMinimumWidth(360)
+        layout = QVBoxLayout(dlg)
+
+        info = QLabel(tr("VelocityTab",
+                         "Paste an articulation export below (the text produced by "
+                         "Export...). Importing loads the settings into the editor; "
+                         "press Save / Save As afterwards to store it on the keyboard."))
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        text_box = QTextEdit()
+        text_box.setLineWrapMode(QTextEdit.NoWrap)
+        text_box.setMinimumHeight(320)
+        # Pre-fill from the clipboard when it already holds an export block.
+        try:
+            clip = QApplication.clipboard().text()
+            if clip and "=== Articulation Export ===" in clip:
+                text_box.setPlainText(clip)
+        except Exception:
+            pass
+        layout.addWidget(text_box)
+
+        btn_row = QHBoxLayout()
+        import_btn = QPushButton(tr("VelocityTab", "Import"))
+        btn_row.addWidget(import_btn)
+        cancel_btn = QPushButton(tr("VelocityTab", "Cancel"))
+        cancel_btn.clicked.connect(dlg.reject)
+        btn_row.addWidget(cancel_btn)
+        layout.addLayout(btn_row)
+
+        def do_import():
+            try:
+                name, points, zone_data = self._parse_articulation_import(
+                    text_box.toPlainText())
+            except Exception as e:
+                QMessageBox.warning(
+                    dlg,
+                    tr("VelocityTab", "Import Failed"),
+                    tr("VelocityTab", f"Could not parse the pasted text: {e}")
+                )
+                return
+
+            # Apply to the editor — same shape/order as loading a user preset
+            # from the device (on_user_curve_selected), device untouched.
+            self.curve_editor.set_points(points)
+            self.update_zone_controls_from_settings('base', zone_data)
+            s = self.global_midi_settings
+            s['velocity_min'] = zone_data['velocity_min']
+            s['velocity_max'] = zone_data['velocity_max']
+            s['min_press_time'] = zone_data['slow_press_time']
+            s['max_press_time'] = zone_data['fast_press_time']
+            s['aftertouch_mode'] = zone_data['aftertouch_mode']
+            s['aftertouch_smoothness'] = zone_data['aftertouch_smoothness']
+            s['aftertouch_cc'] = zone_data['aftertouch_cc']
+            s['vibrato_sensitivity'] = zone_data['vibrato_sensitivity']
+            s['vibrato_decay_time'] = zone_data['vibrato_decay']
+            s['actuation_override'] = zone_data['actuation_override']
+            s['actuation_point'] = zone_data['actuation_point']
+            s['speed_peak_ratio'] = zone_data['speed_peak_ratio']
+            s['retrigger_distance'] = zone_data['retrigger_distance']
+            s['at_uses_curve'] = zone_data['at_uses_curve']
+            s['legato'] = zone_data['legato']
+            s['velocity_as_at'] = zone_data['velocity_as_at']
+
+            self._imported_articulation_name = name
+            dlg.accept()
+            QMessageBox.information(
+                None,
+                tr("VelocityTab", "Articulation Imported"),
+                tr("VelocityTab", f"'{name}' loaded into the editor.\n\n"
+                   "Press Save / Save As to store it to a user preset slot on "
+                   "the keyboard.")
+            )
+
+        import_btn.clicked.connect(do_import)
+        dlg.exec_()
+
     def on_save_curve(self):
         """Save velocity curve selection to keyboard (sets the active curve index)"""
         if not self.keyboard:
@@ -3407,7 +3600,7 @@ class SaveAsPresetDialog(QDialog):
         name_layout = QHBoxLayout()
         name_layout.addWidget(QLabel("Name:"))
         self.name_edit = QLineEdit()
-        self.name_edit.setMaxLength(16)
+        self.name_edit.setMaxLength(15)  # firmware stores 15 chars + NUL (name[15] forced to 0)
         self.name_edit.setPlaceholderText("Preset name")
         name_layout.addWidget(self.name_edit)
         layout.addLayout(name_layout)
