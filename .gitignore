@@ -5,3 +5,9 @@ __pycache__
 .idea
 oldworkingversion/
 vial-qmk-public/
+
+# This repo is PUBLIC and deliberately carries no project knowledge base: a
+# CLAUDE.md necessarily describes internal firmware behaviour, EEPROM maps and
+# HID command layouts. The knowledge base for THIS repo lives in the private
+# vial-gui-custom repo as CLAUDE-GUI-Public.md — edit it there, never here.
+/CLAUDE.md
