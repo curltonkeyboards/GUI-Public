@@ -286,15 +286,20 @@ class ProtocolToggle:
             # A multi-key slot whose STEP 1 is empty while later steps are set
             # would be interpreted by the firmware as "clear the slot"
             # (target_keycode == 0 -> toggle_remove), silently destroying the
-            # whole cycle even though 0xF6 reports success. Compact the steps
-            # down so step 1 is always the first non-empty keycode.
+            # whole cycle even though 0xF6 reports success. Shift out empty
+            # LEADING steps only, so step 1 is always the first configured
+            # keycode. Interior and trailing empty steps are PRESERVED — an
+            # empty (KC_NO) step is a valid "skip" step in the cycle, and
+            # num_keys keeps the user's configured cycle length.
             if slot.is_multi_key:
                 kcs = [slot.get_keycode(i) for i in range(TOGGLE_MULTI_MAX_KEYS)]
-                packed = [k for k in kcs if k != 0]
-                if packed and kcs != packed + [0] * (TOGGLE_MULTI_MAX_KEYS - len(packed)):
+                lead = 0
+                while lead < TOGGLE_MULTI_MAX_KEYS and kcs[lead] == 0:
+                    lead += 1
+                if 0 < lead < TOGGLE_MULTI_MAX_KEYS:
                     for i in range(TOGGLE_MULTI_MAX_KEYS):
-                        slot.set_keycode(i, packed[i] if i < len(packed) else 0)
-                    slot.num_keys = max(2, len(packed))
+                        slot.set_keycode(i, kcs[i + lead] if i + lead < TOGGLE_MULTI_MAX_KEYS else 0)
+                    slot.num_keys = max(2, min(TOGGLE_MULTI_MAX_KEYS, slot.num_keys) - lead)
 
             # Packet: [slot_num, target_kc_lo, target_kc_hi, flags, num_keys]
             data = bytearray([slot_num]) + bytearray(slot.to_bytes())

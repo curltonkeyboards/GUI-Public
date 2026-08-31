@@ -479,34 +479,40 @@ class ToggleEntryUI(QWidget):
         self.changed.emit()
 
     def _on_add_multi_key(self):
-        """Add another multi-key slot"""
+        """Add another multi-key step. The new step starts as KC_NO (a valid
+        "skip" step in the firmware cycle) and num_keys tracks the number of
+        steps the user added, so an empty step survives a save instead of
+        being trimmed away."""
         if self._visible_multi_keys < TOGGLE_MULTI_MAX_KEYS:
             self._visible_multi_keys += 1
-            if self.slot.num_keys < self._visible_multi_keys:
-                self.slot.num_keys = self._visible_multi_keys
-            self._update_multi_key_visibility()
-            self.pending_changes = True
-            self.save_btn.setEnabled(True)
-            self.changed.emit()
-
-    def _on_remove_multi_key(self):
-        """Remove the last multi-key slot"""
-        if self._visible_multi_keys > 2:
-            # Clear the keycode in the slot being removed
-            removed_idx = self._visible_multi_keys - 1
-            self.slot.set_keycode(removed_idx, 0)
-            self._visible_multi_keys -= 1
-            # Update num_keys based on highest non-zero keycode
-            max_idx = 0
-            for i in range(self._visible_multi_keys):
-                if self.slot.get_keycode(i) != 0:
-                    max_idx = i
-            self.slot.num_keys = max(2, max_idx + 1)
+            self.slot.set_keycode(self._visible_multi_keys - 1, 0)  # explicit KC_NO
+            self.slot.num_keys = max(2, self._visible_multi_keys)
             self._update_multi_key_visibility()
             self._update_display()
             self.pending_changes = True
             self.save_btn.setEnabled(True)
             self.changed.emit()
+
+    def _on_remove_multi_key(self):
+        """Remove the HIGHLIGHTED multi-key step (falling back to the last one
+        when nothing is highlighted), shifting the later steps down."""
+        if self._visible_multi_keys <= 2:
+            return
+        removed_idx = self.selected_key_index
+        if not (0 <= removed_idx < self._visible_multi_keys):
+            removed_idx = self._visible_multi_keys - 1  # nothing highlighted -> last
+        # Shift every later step down into the removed position
+        for i in range(removed_idx, TOGGLE_MULTI_MAX_KEYS - 1):
+            self.slot.set_keycode(i, self.slot.get_keycode(i + 1))
+        self.slot.set_keycode(TOGGLE_MULTI_MAX_KEYS - 1, 0)
+        self._visible_multi_keys -= 1
+        self.slot.num_keys = max(2, self._visible_multi_keys)
+        self._deselect_all_keys()
+        self._update_multi_key_visibility()
+        self._update_display()
+        self.pending_changes = True
+        self.save_btn.setEnabled(True)
+        self.changed.emit()
 
     def _update_multi_key_visibility(self):
         """Show/hide multi-key slots based on _visible_multi_keys count"""
@@ -552,12 +558,10 @@ class ToggleEntryUI(QWidget):
 
         if self.slot.is_multi_key:
             self.slot.set_keycode(self.selected_key_index, keycode_value)
-            # Update num_keys to be the highest non-zero index + 1, minimum 2
-            max_idx = 0
-            for i in range(TOGGLE_MULTI_MAX_KEYS):
-                if self.slot.get_keycode(i) != 0:
-                    max_idx = i
-            self.slot.num_keys = max(2, max_idx + 1)
+            # num_keys is the number of steps the user added (KC_NO steps are
+            # valid "skip" steps and count) — never trimmed to the highest
+            # non-empty step.
+            self.slot.num_keys = max(2, self._visible_multi_keys)
         else:
             self.slot.target_keycode = keycode_value
 

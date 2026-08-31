@@ -3,7 +3,8 @@ import json
 
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (QPushButton, QGridLayout, QHBoxLayout, QToolButton, QVBoxLayout,
-    QWidget, QScrollArea, QLabel, QGroupBox, QComboBox, QInputDialog, QCheckBox, QMessageBox)
+    QWidget, QScrollArea, QLabel, QGroupBox, QComboBox, QInputDialog, QCheckBox, QMessageBox,
+    QApplication, QDialog, QTextEdit)
 
 from keycodes.keycodes import Keycode
 from macro.macro_action import ActionTap
@@ -122,6 +123,18 @@ class MacroTab(QVBoxLayout):
         self.btn_text_window.setStyleSheet("QPushButton { border-radius: 5px; }")
         self.btn_text_window.clicked.connect(self.on_text_window)
 
+        self.btn_export = QPushButton(tr("MacroRecorder", "Export..."))
+        self.btn_export.setMinimumHeight(30)
+        self.btn_export.setMaximumHeight(30)
+        self.btn_export.setStyleSheet("QPushButton { border-radius: 5px; }")
+        self.btn_export.clicked.connect(self.on_export_macro)
+
+        self.btn_import = QPushButton(tr("MacroRecorder", "Import..."))
+        self.btn_import.setMinimumHeight(30)
+        self.btn_import.setMaximumHeight(30)
+        self.btn_import.setStyleSheet("QPushButton { border-radius: 5px; }")
+        self.btn_import.clicked.connect(self.on_import_macro)
+
         self.btn_clear = QPushButton("Clear")
         self.btn_clear.setMinimumHeight(30)
         self.btn_clear.setMaximumHeight(30)
@@ -145,6 +158,8 @@ class MacroTab(QVBoxLayout):
 
         layout_buttons = QHBoxLayout()
         layout_buttons.addWidget(self.btn_text_window)
+        layout_buttons.addWidget(self.btn_export)
+        layout_buttons.addWidget(self.btn_import)
         layout_buttons.addStretch()
         layout_buttons.addWidget(self.btn_clear)
         layout_buttons.addWidget(self.btn_save)
@@ -285,6 +300,189 @@ class MacroTab(QVBoxLayout):
                     actionUI = ui_action[type(obj)]
                     obj.restore(act)
                     self.add_action(actionUI(self.container, obj))
+
+    def _build_macro_export_text(self):
+        """Serialize this macro (actions + repeat/sync options) into a stable,
+        human-readable text block — same clipboard-sharing idiom as the
+        articulation Export on the Velocity tab. The actions line is the same
+        JSON the Open Text Editor window uses, so it round-trips exactly."""
+        from protocol.feature_names import get_feature_name_manager, FEATURE_MACRO
+        name = get_feature_name_manager().get_name(FEATURE_MACRO, self.macro_index)
+        lines = [
+            "=== Macro Export ===",
+            "name: {}".format(name),
+            "loop_mode: {}".format(self.get_loop_mode()),
+            "sync_to_bpm: {}".format(1 if self.get_sync_to_bpm() else 0),
+            "actions: {}".format(json.dumps([act.save() for act in self.actions()])),
+        ]
+        return "\n".join(lines)
+
+    def on_export_macro(self):
+        """Copy this macro to the clipboard as text and show it in a selectable
+        dialog so it can be shared / pasted into another macro slot."""
+        try:
+            text = self._build_macro_export_text()
+        except Exception as e:
+            QMessageBox.warning(
+                None,
+                tr("MacroRecorder", "Export Failed"),
+                tr("MacroRecorder", f"Could not read the current macro: {e}")
+            )
+            return
+
+        # Put it on the clipboard immediately.
+        try:
+            QApplication.clipboard().setText(text)
+        except Exception:
+            pass
+
+        dlg = QDialog()
+        dlg.setWindowTitle(tr("MacroRecorder", "Export Macro"))
+        dlg.setMinimumWidth(420)
+        layout = QVBoxLayout(dlg)
+
+        info = QLabel(tr("MacroRecorder",
+                         "Copied to clipboard. Select and copy the text below to share "
+                         "this macro, or paste it into another macro tab with Import..."))
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        text_box = QTextEdit()
+        text_box.setPlainText(text)
+        text_box.setReadOnly(True)
+        text_box.setLineWrapMode(QTextEdit.NoWrap)
+        text_box.setMinimumHeight(220)
+        layout.addWidget(text_box)
+
+        btn_row = QHBoxLayout()
+        copy_btn = QPushButton(tr("MacroRecorder", "Copy to Clipboard"))
+        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(text))
+        btn_row.addWidget(copy_btn)
+        close_btn = QPushButton(tr("MacroRecorder", "Close"))
+        close_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
+
+        dlg.exec_()
+
+    @staticmethod
+    def _parse_macro_import(text):
+        """Parse the text block produced by _build_macro_export_text back into
+        (name, actions_list, loop_mode, sync_to_bpm). Raises ValueError with a
+        readable message on malformed input. Unknown keys are ignored so newer
+        exports still load on older GUIs."""
+        fields = {}
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("==="):
+                continue
+            if ":" not in line:
+                continue
+            key, _, value = line.partition(":")
+            fields[key.strip().lower()] = value.strip()
+
+        if "actions" not in fields:
+            raise ValueError("No 'actions:' line found — is this a macro export?")
+
+        try:
+            actions_load = json.loads(fields["actions"])
+        except Exception as e:
+            raise ValueError(f"Could not parse the 'actions:' JSON: {e}")
+        if not isinstance(actions_load, list):
+            raise ValueError("'actions:' is not a list.")
+
+        try:
+            loop_mode = max(0, min(3, int(fields.get("loop_mode", "0"))))
+        except ValueError:
+            loop_mode = 0
+        sync_to_bpm = fields.get("sync_to_bpm", "0").strip() in ("1", "true", "True")
+        name = fields.get("name", "Imported")
+        return name, actions_load, loop_mode, sync_to_bpm
+
+    def on_import_macro(self):
+        """Paste an exported macro text block and load it into THIS macro tab.
+        Import only populates the editor — nothing reaches the keyboard until
+        the user presses Save."""
+        dlg = QDialog()
+        dlg.setWindowTitle(tr("MacroRecorder", "Import Macro"))
+        dlg.setMinimumWidth(420)
+        layout = QVBoxLayout(dlg)
+
+        info = QLabel(tr("MacroRecorder",
+                         "Paste a macro export below (the text produced by Export...). "
+                         "Importing REPLACES this tab's actions; press Save afterwards "
+                         "to store it on the keyboard."))
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        text_box = QTextEdit()
+        text_box.setLineWrapMode(QTextEdit.NoWrap)
+        text_box.setMinimumHeight(220)
+        # Pre-fill from the clipboard when it already holds an export block.
+        try:
+            clip = QApplication.clipboard().text()
+            if clip and "=== Macro Export ===" in clip:
+                text_box.setPlainText(clip)
+        except Exception:
+            pass
+        layout.addWidget(text_box)
+
+        btn_row = QHBoxLayout()
+        import_btn = QPushButton(tr("MacroRecorder", "Import"))
+        btn_row.addWidget(import_btn)
+        cancel_btn = QPushButton(tr("MacroRecorder", "Cancel"))
+        cancel_btn.clicked.connect(dlg.reject)
+        btn_row.addWidget(cancel_btn)
+        layout.addLayout(btn_row)
+
+        def do_import():
+            try:
+                name, actions_load, loop_mode, sync_to_bpm = self._parse_macro_import(
+                    text_box.toPlainText())
+            except Exception as e:
+                QMessageBox.warning(
+                    dlg,
+                    tr("MacroRecorder", "Import Failed"),
+                    tr("MacroRecorder", f"Could not parse the pasted text: {e}")
+                )
+                return
+
+            # Restore the action objects FIRST (same restore path as the Open
+            # Text Editor window), so a malformed action list fails before the
+            # existing macro is cleared.
+            try:
+                restored = []
+                for act in actions_load:
+                    if isinstance(act, list) and act and act[0] in tag_to_action:
+                        obj = tag_to_action[act[0]]()
+                        obj.restore(act)
+                        restored.append(obj)
+            except Exception as e:
+                QMessageBox.warning(
+                    dlg,
+                    tr("MacroRecorder", "Import Failed"),
+                    tr("MacroRecorder", f"Could not restore the macro actions: {e}")
+                )
+                return
+
+            # Replace this tab's actions.
+            self.clear()
+            for obj in restored:
+                self.add_action(ui_action[type(obj)](self.container, obj))
+            self.set_loop_mode(loop_mode)
+            self.set_sync_to_bpm(sync_to_bpm)
+            self.changed.emit()
+
+            dlg.accept()
+            QMessageBox.information(
+                None,
+                tr("MacroRecorder", "Macro Imported"),
+                tr("MacroRecorder", f"'{name}' loaded into this macro tab.\n\n"
+                   "Press Save to store it on the keyboard.")
+            )
+
+        import_btn.clicked.connect(do_import)
+        dlg.exec_()
 
     def on_change(self):
         self.changed.emit()
