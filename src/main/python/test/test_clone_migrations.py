@@ -10,6 +10,8 @@ from protocol.clone_migrations import (
     V3_KSP_BASE, V3_KSP_SIZE, V2_KSQB_BASE, V2_KSQB_MAGIC,
     V4_NOTE_GATE_BASE, V4_NOTE_GATE_SIZE,
     V5_NAV_LAYER_BASE, V5_NAV_LAYER_SIZE,
+    V6_DL_QB_BASE, V6_DL_QB_SPAN, V6_DL_QB_V5_MAGIC, V6_DL_QB_V6_MAGIC,
+    V6_DL_QB_V5_ENTRY, V6_DL_QB_V6_ENTRY,
 )
 from protocol import clone_migrations
 
@@ -415,3 +417,105 @@ class TestCloneMigrationV3ToV5DataSurvival(unittest.TestCase):
         # current app's ability to convert every clone back to v3.
         self.assertTrue(can_migrate(3, 5))
         self.assertTrue(can_migrate(1, 5))
+
+
+# ---------------------------------------------------------------------------
+# v5 -> v6: DrumLIVE QuickBuild slot store re-laid (37-byte kind+34-mode
+# entries -> 44-byte 28-voicing+name entries, 64 -> 48 slots).
+# ---------------------------------------------------------------------------
+def _v5_dl_entry(kind, cats, voices=None, extras=None):
+    """One v5 37-byte DrumLIVE entry: kind, toggle_cat, toggle_type, 34 modes."""
+    e = bytearray(V6_DL_QB_V5_ENTRY)
+    e[0] = kind
+    e[3:3 + 6] = bytes(cats)
+    e[9:9 + 12] = bytes(voices or [0] * 12)
+    e[21:21 + 16] = bytes(extras or [0] * 16)
+    return bytes(e)
+
+
+def build_v5_image(with_dl_store=True):
+    """A v5 image. The DrumLIVE region still holds the junk fill from
+    build_v1_image (no earlier migration touches it); with_dl_store plants a
+    valid v5 store over it with a few recognisable buttons."""
+    blob = bytearray(migrate_clone(build_v4_image(), 4, 5)[0])
+    if with_dl_store:
+        struct.pack_into("<H", blob, V6_DL_QB_BASE, V6_DL_QB_V5_MAGIC)
+        body = bytearray(V6_DL_QB_SPAN - 2)      # every slot: SNAPSHOT all-On
+        #                              Kick Snare Hats Cymb Toms Perc
+        body[0:37] = _v5_dl_entry(0, (1,   0,    2,   0,   0,   0),
+                                  voices=[3] + [0] * 11,            # Kick voice overrides -> Loud
+                                  extras=[0] * 5 + [1] + [0] * 10)  # Pedal HH overrides -> Off
+        body[37:74] = _v5_dl_entry(1, (0,) * 6)                     # TOGGLE kind: dropped
+        body[50 * 37:51 * 37] = _v5_dl_entry(0, (1,) * 6)           # slot 50: configured, beyond 48
+        blob[V6_DL_QB_BASE + 2:V6_DL_QB_BASE + V6_DL_QB_SPAN] = body
+    return bytes(blob)
+
+
+class TestCloneMigrationV5ToV6(unittest.TestCase):
+    """DrumLIVE slots: snapshots converted per voicing, toggles + slots 49-64
+    dropped, the whole old span rewritten under the v6 magic."""
+
+    # Expected v6 snapshot for slot 0 above (voice order: Kick Snare ClosdHH
+    # OpenHH Clap Rimshot Cowbell Cymbal LowTom MidTom HiTom Shaker; extras:
+    # Crash Crash2 Splash China RideBell PedalHH ElecSnare HiMidTom FloorTomL
+    # FloorTomH HiBongo LoBongo Maracas Vibraslap Claves Triangle).
+    SLOT0_VOICES = (3, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0)   # Kick Loud (override); hats inherit Quiet
+    SLOT0_EXTRAS = (0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)  # Pedal HH Off (override)
+
+    def setUp(self):
+        self.v5 = build_v5_image()
+        self.v6, self.notes = migrate_clone(self.v5, 5, 6)
+
+    def _entry(self, slot):
+        off = V6_DL_QB_BASE + 2 + slot * V6_DL_QB_V6_ENTRY
+        return bytes(self.v6[off:off + V6_DL_QB_V6_ENTRY])
+
+    def test_magic_is_v6(self):
+        self.assertEqual(struct.unpack_from("<H", self.v6, V6_DL_QB_BASE)[0],
+                         V6_DL_QB_V6_MAGIC)
+
+    def test_snapshot_slot_converted_per_voicing(self):
+        e = self._entry(0)
+        self.assertEqual(e[:12], bytes(self.SLOT0_VOICES))
+        self.assertEqual(e[12:28], bytes(self.SLOT0_EXTRAS))
+        self.assertEqual(e[28:44], bytes(16), "converted slots are unnamed")
+
+    def test_toggle_slot_reset(self):
+        self.assertEqual(self._entry(1), bytes(V6_DL_QB_V6_ENTRY))
+
+    def test_unconfigured_slot_stays_empty(self):
+        self.assertEqual(self._entry(2), bytes(V6_DL_QB_V6_ENTRY))
+
+    def test_old_span_tail_zeroed(self):
+        # Bytes past the last v6 entry up to the end of the old 64x37 span
+        # must not keep stale v5 entry data.
+        tail_from = V6_DL_QB_BASE + 2 + 48 * V6_DL_QB_V6_ENTRY
+        tail_to = V6_DL_QB_BASE + V6_DL_QB_SPAN
+        self.assertEqual(bytes(self.v6[tail_from:tail_to]),
+                         bytes(tail_to - tail_from))
+
+    def test_only_the_drumlive_region_changes(self):
+        changed = {i for i in range(EEPROM_SIZE) if self.v5[i] != self.v6[i]}
+        allowed = set(range(V6_DL_QB_BASE, V6_DL_QB_BASE + V6_DL_QB_SPAN))
+        self.assertTrue(changed.issubset(allowed),
+                        "v5->v6 touched bytes outside the DrumLIVE region: "
+                        "{}".format(sorted(changed - allowed)[:16]))
+
+    def test_counts_reported(self):
+        n = " ".join(self.notes)
+        self.assertIn("1 snapshot button(s) carried over", n)
+        self.assertIn("1 toggle button(s) reset", n)
+        self.assertIn("1 button(s) in slots 49-64 dropped", n)
+
+    def test_no_v5_store_reports_defaults_and_zeroes(self):
+        v5 = build_v5_image(with_dl_store=False)   # junk under no valid magic
+        v6, notes = migrate_clone(v5, 5, 6)
+        self.assertEqual(bytes(v6[V6_DL_QB_BASE:V6_DL_QB_BASE + V6_DL_QB_SPAN]),
+                         bytes(V6_DL_QB_SPAN))
+        self.assertTrue(any("started at defaults" in n for n in notes), notes)
+
+    def test_full_chain_from_v1_reaches_v6(self):
+        self.assertTrue(can_migrate(1, 6))
+        v6, _notes = migrate_clone(build_v1_image(), 1, 6)
+        self.assertEqual(struct.unpack_from("<H", v6, V6_DL_QB_BASE)[0], 0,
+                         "a v1 image never had a DrumLIVE store: region zeroed")

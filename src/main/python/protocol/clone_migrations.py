@@ -248,12 +248,94 @@ def _migrate_v4_to_v5(blob, notes):
                  "default (Layer 1).")
 
 
+# ---------------------------------------------------------------------------
+# v5 -> v6 (2026-09): DrumLIVE QuickBuild slot store at 61600 changed layout.
+# v5 (firmware magic 0xDB07): 64 entries x 37 bytes = kind(1) + toggle_cat(1)
+#   + toggle_type(1) + snapshot[34] (6 categories, 12 voices, 16 extras), with
+#   the filter rule "voice != On ? voice : its category".
+# v6 (magic 0xDB08): 48 entries x 44 bytes = snapshot[28] (12 voices, 16
+#   extras, every voicing explicit) + name[16] (NUL-terminated, "" = unnamed).
+# A v5 SNAPSHOT (kind 0) is exactly expressible in v6 by resolving the
+# inherit rule per voicing, so those buttons carry across; TOGGLE kinds (1/2)
+# have no v6 equivalent and reset to empty; slots 48-63 are dropped. The
+# firmware performs the identical in-place conversion on the first boot after
+# the update (dl_qb_migrate_v2 in drum_live.c) — keep the two in sync.
+# The region magic is written as the v6 value so a restored clone is not
+# converted a second time by the firmware.
+V6_DL_QB_BASE        = 61600
+V6_DL_QB_V5_MAGIC    = 0xDB07
+V6_DL_QB_V6_MAGIC    = 0xDB08
+V6_DL_QB_V5_ENTRY    = 37
+V6_DL_QB_V5_SLOTS    = 64
+V6_DL_QB_V6_ENTRY    = 44
+V6_DL_QB_V6_SLOTS    = 48
+V6_DL_QB_SPAN        = 2 + V6_DL_QB_V5_SLOTS * V6_DL_QB_V5_ENTRY   # 2370: the whole old region
+V6_DL_NUM_VOICES     = 12
+V6_DL_NUM_EXTRA      = 16
+V6_DL_MODE_COUNT     = 4    # On / Off / Quiet / Loud
+# v5 voice / extra -> category index (0 Kick 1 Snare 2 Hats 3 Cymbal 4 Toms 5 Perc)
+V6_DL_V5_VOICE_CATEGORY = (0, 1, 2, 2, 1, 1, 5, 3, 4, 4, 4, 5)
+V6_DL_V5_EXTRA_CATEGORY = (3, 3, 3, 3, 3, 2, 1, 4, 4, 4, 5, 5, 5, 5, 5, 5)
+
+
+def _v6_convert_dl_slot(old):
+    """One v5 37-byte DrumLIVE entry -> one v6 44-byte entry (bytes)."""
+    snap = bytearray(V6_DL_NUM_VOICES + V6_DL_NUM_EXTRA)
+    if old[0] == 0:   # SNAPSHOT kind
+        cat = old[3:3 + 6]
+        voc = old[3 + 6:3 + 6 + V6_DL_NUM_VOICES]
+        ext = old[3 + 6 + V6_DL_NUM_VOICES:3 + 6 + V6_DL_NUM_VOICES + V6_DL_NUM_EXTRA]
+        for v in range(V6_DL_NUM_VOICES):
+            m = voc[v] if voc[v] != 0 else cat[V6_DL_V5_VOICE_CATEGORY[v]]
+            snap[v] = m if m < V6_DL_MODE_COUNT else 0
+        for e in range(V6_DL_NUM_EXTRA):
+            m = ext[e] if ext[e] != 0 else cat[V6_DL_V5_EXTRA_CATEGORY[e]]
+            snap[V6_DL_NUM_VOICES + e] = m if m < V6_DL_MODE_COUNT else 0
+    return bytes(snap) + bytes(16)   # unnamed
+
+
+def _migrate_v5_to_v6(blob, notes):
+    region = bytes(blob[V6_DL_QB_BASE:V6_DL_QB_BASE + V6_DL_QB_SPAN])
+    kept = dropped_toggles = dropped_high = 0
+    new = bytearray(V6_DL_QB_SPAN)          # whole old span: v6 entries + zeroed tail
+    if _u16le(region, 0) == V6_DL_QB_V5_MAGIC:
+        for s in range(V6_DL_QB_V5_SLOTS):
+            off = 2 + s * V6_DL_QB_V5_ENTRY
+            old = region[off:off + V6_DL_QB_V5_ENTRY]
+            configured = old[0] != 0 or any(b != 0 for b in old[3:3 + 34])
+            if s >= V6_DL_QB_V6_SLOTS:
+                if configured:
+                    dropped_high += 1
+                continue
+            if old[0] != 0:
+                dropped_toggles += 1        # TOGGLE / TOGGLE_MASK: no v6 equivalent
+                continue
+            ent = _v6_convert_dl_slot(old)
+            noff = 2 + s * V6_DL_QB_V6_ENTRY
+            new[noff:noff + V6_DL_QB_V6_ENTRY] = ent
+            if configured:
+                kept += 1
+        _set_u16le(new, 0, V6_DL_QB_V6_MAGIC)
+        notes.append("DrumLIVE QuickBuild buttons: {} snapshot button(s) carried "
+                     "over (converted to the new per-voicing format, unnamed); "
+                     "{} toggle button(s) reset (toggles no longer exist); "
+                     "{} button(s) in slots 49-64 dropped (48 slots now)."
+                     .format(kept, dropped_toggles, dropped_high))
+    else:
+        # No valid v5 store (never configured / junk): leave the region zeroed
+        # so the firmware seeds empty slots.
+        notes.append("DrumLIVE QuickBuild buttons: none were configured; "
+                     "started at defaults.")
+    blob[V6_DL_QB_BASE:V6_DL_QB_BASE + V6_DL_QB_SPAN] = new
+
+
 # Registry: key = source version, value = function converting it to key + 1.
 _MIGRATIONS = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
     3: _migrate_v3_to_v4,
     4: _migrate_v4_to_v5,
+    5: _migrate_v5_to_v6,
 }
 
 

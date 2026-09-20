@@ -2516,7 +2516,7 @@ KEYCODES_LOOP_BUTTONS = [
 # toggles that target (press again to clear). The menu/reset keys round it out.
 def _build_drumlive_keycodes():
     out = [
-        K("DRUMLIVE_MENU", "DrumLIVE\nMenu", "Open the DrumLIVE filter menu on the device (Presets / Basic / Advanced)"),
+        K("DRUMLIVE_MENU", "DrumLIVE\nMenu", "Open the DrumLIVE filter menu on the device (Presets / Custom)"),
         K("DRUMLIVE_RESET", "DrumLIVE\nAll On", "Clear all DrumLIVE filters (every target back to On)"),
         K("DRUMLIVE_ALL_OFF", "DrumLIVE\nAll Off", "Mute every drum target (turn one back On for a solo)"),
     ]
