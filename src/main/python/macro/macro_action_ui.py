@@ -2,13 +2,14 @@ from PyQt5.QtCore import QObject, pyqtSignal, Qt
 from PyQt5.QtWidgets import (QLineEdit, QToolButton, QWidget, QSizePolicy, QSpinBox, QComboBox,
                               QLabel, QHBoxLayout, QVBoxLayout, QCheckBox)
 
-from constants import KEY_SIZE_RATIO, KEYCODE_BTN_RATIO
+from constants import KEY_SIZE_RATIO
 from widgets.flowlayout import FlowLayout
 from widgets.combo_box import ArrowComboBox, ArrowSpinBox
 from macro.macro_action import (ActionText, ActionSequence, ActionDown, ActionUp, ActionTap,
                                 ActionDelay, ActionBPMDelay,
                                 ActionMixingControl, MIXING_CURRENT_VALUE)
-from widgets.keycode_button import KeycodeButton, reorder_list, KEYCODE_DRAG_MIME
+from widgets.keycode_button import (KeycodeButton, DropGap, reorder_list, keycode_button_px,
+                                    drag_accepted_from)
 
 
 class MacroKeyWidget(KeycodeButton):
@@ -69,6 +70,7 @@ class PlusDropButton(QToolButton):
     the same drag group on it appends that key to this sequence."""
 
     dropped = pyqtSignal(object)  # the dropped KeycodeButton
+    hovered = pyqtSignal(object)  # a drag of the group hovers "+" (append position)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -76,15 +78,13 @@ class PlusDropButton(QToolButton):
         self.setAcceptDrops(True)
 
     def _drag_accepted(self, ev):
-        src = ev.source()
-        return (isinstance(src, KeycodeButton) and self.drag_group is not None
-                and src.drag_group is self.drag_group
-                and ev.mimeData().hasFormat(KEYCODE_DRAG_MIME))
+        return drag_accepted_from(ev, self.drag_group)
 
     def dragEnterEvent(self, ev):
         if self._drag_accepted(ev):
             ev.setDropAction(Qt.MoveAction)
             ev.accept()
+            self.hovered.emit(ev.source())
         else:
             ev.ignore()
 
@@ -174,21 +174,30 @@ class ActionSequenceUI(BasicActionUI):
         self.btn_plus = PlusDropButton()
         self.btn_plus.setText("+")
         self.btn_plus.dropped.connect(self.on_plus_drop)
-        plus_size = int(round(self.btn_plus.fontMetrics().height() * KEYCODE_BTN_RATIO))
+        self.btn_plus.hovered.connect(self._on_plus_hover)
+        plus_size = keycode_button_px(self.btn_plus.fontMetrics())
         self.btn_plus.setFixedWidth(plus_size)
         self.btn_plus.setFixedHeight(plus_size)
         self.btn_plus.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.btn_plus.clicked.connect(self.on_add)
 
-        self.layout = FlowLayout()
+        # skip_hidden: the key being dragged is hidden for the drag, and its
+        # slot must collapse so the DropGap shows the true post-drop row
+        self.layout = FlowLayout(skip_hidden=True)
         self.layout_container = QWidget()
         self.layout_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         self.layout_container.setLayout(self.layout)
         self.widgets = []
         self.keycode_filter = None
+        # The "push" preview: an empty slot inserted where a hovering drag
+        # would drop, so the neighbours slide aside (see DropGap)
+        self.gap = DropGap()
+        self.gap.dropped.connect(self.on_reorder_widget)
+        self._gap_slot = None
         # Until the owner installs a wider group, keys only move within this line
         self.drag_group = self
         self.btn_plus.drag_group = self
+        self.gap.drag_group = self
         self.recreate_sequence()
 
     def set_keycode_filter(self, keycode_filter):
@@ -202,10 +211,13 @@ class ActionSequenceUI(BasicActionUI):
             group = self
         self.drag_group = group
         self.btn_plus.drag_group = group
+        self.gap.drag_group = group
         for w in self.widgets:
             w.set_drag_group(group)
 
     def recreate_sequence(self):
+        self.gap.close()
+        self.layout.removeWidget(self.gap)
         self.layout.removeWidget(self.btn_plus)
         for w in self.widgets:
             self.layout.removeWidget(w)
@@ -224,6 +236,7 @@ class ActionSequenceUI(BasicActionUI):
             w.set_drag_group(self.drag_group)
             w.reorder_requested.connect(self.on_reorder_widget)
             w.duplicate_requested.connect(self.on_duplicate_widget)
+            w.drop_hover.connect(self._on_drop_hover)
             self.layout.addWidget(w)
             self.widgets.append(w)
         self.layout.addWidget(self.btn_plus)
@@ -242,7 +255,45 @@ class ActionSequenceUI(BasicActionUI):
         for w in self.widgets:
             w.deleteLater()
         self.btn_plus.deleteLater()
+        self.gap.deleteLater()
         self.layout_container.deleteLater()
+
+    # ---- drop preview ("push" the neighbours aside) ----------------------
+
+    def _on_drop_hover(self, source, target, before):
+        """A drag of the group hovers one of this line's keys: open the gap
+        on that side of it."""
+        if target in self.widgets:
+            self._open_gap(source, target, before)
+
+    def _on_plus_hover(self, source):
+        """A drag hovers the "+": the key would be appended — gap at the end."""
+        vis = [w for w in self.widgets if not w.isHidden()]
+        if vis:
+            self._open_gap(source, vis[-1], False)
+        else:
+            self._open_gap(source, None, True)   # the line has no other key
+
+    def _open_gap(self, source, target, before):
+        """Insert the DropGap into the flow where a drop on (target, before)
+        would land the key.  Slots are counted over the VISIBLE keys (the one
+        being dragged is hidden), so "after A" and "before B" — the same
+        place — don't re-open the gap and restart its animation."""
+        vis = [w for w in self.widgets if not w.isHidden()]
+        if target is None:
+            slot = 0
+        elif target in vis:
+            slot = vis.index(target) + (0 if before else 1)
+        else:
+            return
+        if self.gap.is_open() and self._gap_slot == slot:
+            self.gap.target, self.gap.before = target, before   # equivalent position
+            return
+        self._gap_slot = slot
+        self.layout.removeWidget(self.gap)
+        anchor = vis[slot] if slot < len(vis) else self.btn_plus
+        self.layout.insertWidget(self.layout.indexOf(anchor), self.gap)
+        self.gap.open_at(target, before, source.sizeHint())
 
     def on_add(self):
         self.act.sequence.append("KC_TRNS")
@@ -269,6 +320,10 @@ class ActionSequenceUI(BasicActionUI):
 
         From another line of the macro: hand the move to the group owner (the
         macro tab), which rebuilds both lines once the drag has finished."""
+        if target is None:
+            # dropped in the gap of a line with no other key: append
+            self.on_plus_drop(source)
+            return
         try:
             dst_idx = self.widgets.index(target)
         except ValueError:

@@ -104,7 +104,9 @@ class ComboEntryUI(QObject):
             kc_widget.changed.connect(self.on_key_changed)
             kc_widget.selected.connect(self._on_key_selected)
             self.container.addWidget(QLabel("Key {}".format(x + 1)), x, 0)
-            self.container.addWidget(kc_widget, x, 1)
+            # Left-aligned: an unaligned fixed-size widget is CENTRED in the
+            # stretching column, i.e. far from its label / off the visible area
+            self.container.addWidget(kc_widget, x, 1, Qt.AlignLeft | Qt.AlignVCenter)
             self.kc_inputs.append(kc_widget)
             self.key_widgets.append(kc_widget)
 
@@ -113,7 +115,9 @@ class ComboEntryUI(QObject):
         self.kc_output.changed.connect(self.on_key_changed)
         self.kc_output.selected.connect(self._on_key_selected)
         self.container.addWidget(QLabel("Output key"), 4, 0)
-        self.container.addWidget(self.kc_output, 4, 1)
+        self.container.addWidget(self.kc_output, 4, 1, Qt.AlignLeft | Qt.AlignVCenter)
+        # the key column takes the spare width, so the labels stay tight to the keys
+        self.container.setColumnStretch(1, 1)
         self.key_widgets.append(self.kc_output)
 
     def _on_key_selected(self, widget):

@@ -19,13 +19,16 @@ Optional per-sequence behaviour (enabled by the owner setting ``drag_group``):
 * drag one button onto another of the same group to reorder — the owner gets
   ``reorder_requested(source, target, before)`` and reorders its model (a
   group can span several owners, e.g. every action line of one macro; the
-  drop handler then defers any widget rebuild to ``drag_finished``);
+  drop handler then defers any widget rebuild to ``drag_finished``).  While
+  the drag hovers a button the owner gets ``drop_hover(source, target,
+  before)`` and opens its ``DropGap`` there, so the other keys are pushed
+  aside to show where the dragged one will sit;
 * right-click → "Duplicate" — the owner gets ``duplicate_requested(button)``.
 """
 
-from PyQt5.QtCore import Qt, QMimeData, pyqtSignal
+from PyQt5.QtCore import Qt, QMimeData, QPropertyAnimation, QEasingCurve, QSize, QRect, pyqtSignal, pyqtProperty
 from PyQt5.QtGui import QDrag, QPainter, QPen
-from PyQt5.QtWidgets import QApplication, QMenu, QSizePolicy
+from PyQt5.QtWidgets import QApplication, QMenu, QSizePolicy, QWidget
 
 from constants import KEYCODE_BTN_RATIO
 from keycodes.keycodes import Keycode
@@ -35,6 +38,157 @@ from util import KeycodeDisplay
 from widgets.square_button import SquareButton
 
 KEYCODE_DRAG_MIME = "application/x-midiswitch-keycode-button"
+
+# The editor buttons are the palette button plus this much on each axis: the
+# palette packs thousands of keys, an editor shows a handful and they are the
+# thing being edited, so they get room to breathe (and a bigger drop target).
+KEYCODE_BTN_EXTRA_PX = 10
+
+
+def keycode_button_px(font_metrics):
+    """Edge length of an editor keycode button for the given font metrics —
+    the palette size (KEYCODE_BTN_RATIO x font height) + KEYCODE_BTN_EXTRA_PX.
+    Owners size their companion buttons (the macro line's "+") with it."""
+    return int(round(font_metrics.height() * KEYCODE_BTN_RATIO)) + KEYCODE_BTN_EXTRA_PX
+
+
+def drag_accepted_from(ev, drag_group, exclude=None):
+    """True if ``ev`` carries a KeycodeButton of ``drag_group`` (not ``exclude``)."""
+    src = ev.source()
+    return (isinstance(src, KeycodeButton) and src is not exclude
+            and drag_group is not None and src.drag_group is drag_group
+            and ev.mimeData().hasFormat(KEYCODE_DRAG_MIME))
+
+
+class DropGap(QWidget):
+    """The "push" preview of a drag: an empty slot the owner inserts into its
+    row at the place the dragged key will land, so the neighbours slide aside
+    before the drop instead of just highlighting one of them.
+
+    One gap per owner (a row).  ``open_at(target, before, size)`` records the
+    drop position and animates the gap open (the owner has already inserted
+    it into the layout there); ``close()`` collapses it.  Only one gap is open
+    at a time across ALL owners — opening one closes the previous, so dragging
+    from one macro line to another leaves no stale gap behind.
+
+    It accepts the drag itself (the hovered button shifts sideways when the gap
+    opens next to it, so the cursor often ends up over the gap) and a drop on
+    it reorders exactly like a drop on the button it stands in for:
+    ``dropped(source, target, before)``.
+    """
+
+    dropped = pyqtSignal(object, object, bool)   # source, target, insert-before
+
+    _active = None       # the currently open gap, if any
+    ANIM_MS = 130
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.drag_group = None
+        self.target = None       # (target button, before) the gap stands in for
+        self.before = True
+        self._gap_width = 0
+        self._full_width = 0
+        self._key_size = QSize(0, 0)   # dashed outline drawn inside the gap
+        self._key_offset = 0
+        self.setAcceptDrops(True)
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.setFixedWidth(0)
+        self._anim = QPropertyAnimation(self, b"gapWidth", self)
+        self._anim.setDuration(self.ANIM_MS)
+        self._anim.setEasingCurve(QEasingCurve.OutCubic)
+        self.hide()
+
+    # animated property: the current width of the slot
+    def _get_gap_width(self):
+        return self._gap_width
+
+    def _set_gap_width(self, w):
+        self._gap_width = int(w)
+        self.setFixedWidth(self._gap_width)
+        self.updateGeometry()
+
+    gapWidth = pyqtProperty(int, _get_gap_width, _set_gap_width)
+
+    @classmethod
+    def close_active(cls):
+        if cls._active is not None:
+            cls._active.close()
+
+    def is_open(self):
+        return self.isVisible() and self.target is not None
+
+    def stands_for(self, target, before):
+        return self.is_open() and self.target is target and self.before == before
+
+    def open_at(self, target, before, size, key_size=None, key_offset=0):
+        """Open (animated) for a drop next to ``target``.  Call after inserting
+        the gap into the layout at that position.  ``size`` is the slot the
+        row must open; a dashed outline of ``key_size`` (default: the slot)
+        is drawn ``key_offset`` px in, where the key itself will sit."""
+        if DropGap._active is not None and DropGap._active is not self:
+            DropGap._active.close()
+        DropGap._active = self
+        self.target = target
+        self.before = before
+        self._key_size = QSize(key_size) if key_size is not None else QSize(size)
+        self._key_offset = key_offset
+        self.setFixedHeight(size.height())
+        self._anim.stop()
+        if not self.isVisible():
+            self._set_gap_width(0)
+            self.show()
+        self._full_width = size.width()
+        self._anim.setStartValue(self._gap_width)
+        self._anim.setEndValue(self._full_width)
+        self._anim.start()
+
+    def close(self):
+        self._anim.stop()
+        self.target = None
+        self._set_gap_width(0)
+        self.hide()
+        if DropGap._active is self:
+            DropGap._active = None
+
+    def sizeHint(self):
+        return QSize(self._gap_width, self.height())
+
+    def paintEvent(self, ev):
+        # Dashed outline of the landing slot, growing with the gap
+        w = min(self._gap_width - self._key_offset, self._key_size.width())
+        if w < 8:
+            return
+        qp = QPainter(self)
+        qp.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(QApplication.palette().highlight().color())
+        pen.setWidth(2)
+        pen.setStyle(Qt.DashLine)
+        qp.setPen(pen)
+        qp.setBrush(Qt.NoBrush)
+        r = QRect(self._key_offset + 2, 2, w - 4, self._key_size.height() - 4)
+        qp.drawRoundedRect(r, 8, 8)
+        qp.end()
+
+    # ---- drag events: keep accepting the drag while the cursor sits in the gap
+    def dragEnterEvent(self, ev):
+        if drag_accepted_from(ev, self.drag_group):
+            ev.setDropAction(Qt.MoveAction)
+            ev.accept()
+        else:
+            ev.ignore()
+
+    def dragMoveEvent(self, ev):
+        self.dragEnterEvent(ev)
+
+    def dropEvent(self, ev):
+        if not drag_accepted_from(ev, self.drag_group) or self.target is None:
+            ev.ignore()
+            return
+        ev.setDropAction(Qt.MoveAction)
+        ev.accept()
+        target, before = self.target, self.before
+        self.dropped.emit(ev.source(), target, before)
 
 
 def reorder_list(items, src_idx, dst_idx, before):
@@ -76,7 +230,11 @@ class KeycodeButton(SquareButton):
     selected = pyqtSignal(object)                    # self, on left click
     reorder_requested = pyqtSignal(object, object, bool)  # source, target, insert-before
     duplicate_requested = pyqtSignal(object)         # self
+    drag_started = pyqtSignal(object)                # self, just before QDrag.exec_() (already hidden)
     drag_finished = pyqtSignal(object)               # self, after QDrag.exec_() returned
+    # A drag of the same group hovers this button: (source, self, insert-before).
+    # The owner opens its DropGap there so the row previews the drop.
+    drop_hover = pyqtSignal(object, object, bool)
 
     def __init__(self, keycode_filter=None, parent=None):
         super().__init__(parent)
@@ -106,6 +264,10 @@ class KeycodeButton(SquareButton):
         self.update_display()
         KeycodeDisplay.notify_keymap_override(self)
         self._registered = True
+
+    def sizeHint(self):
+        base = super().sizeHint()
+        return QSize(base.width() + KEYCODE_BTN_EXTRA_PX, base.height() + KEYCODE_BTN_EXTRA_PX)
 
     # ---- lifecycle -----------------------------------------------------
 
@@ -278,17 +440,22 @@ class KeycodeButton(SquareButton):
         drag.setPixmap(self.grab())
         drag.setHotSpot(self._press_pos)
         self._press_pos = None
+        # The key is "picked up": hide it for the duration of the drag so the
+        # row collapses around it and the DropGap the owner opens shows the
+        # exact post-drop arrangement (same idiom as Qt's fridge-magnets
+        # example).  Shown again below whatever happened to the drop.
+        self.hide()
+        self.drag_started.emit(self)
         drag.exec_(Qt.MoveAction)
+        DropGap.close_active()
+        self.show()
         # The drop handler ran INSIDE exec_()'s nested event loop, where an
         # owner must not destroy buttons (this one included).  Owners that need
         # to rebuild after a drop wait for this signal instead.
         self.drag_finished.emit(self)
 
     def _drag_accepted(self, ev):
-        src = ev.source()
-        return (isinstance(src, KeycodeButton) and src is not self
-                and self.drag_group is not None and src.drag_group is self.drag_group
-                and ev.mimeData().hasFormat(KEYCODE_DRAG_MIME))
+        return drag_accepted_from(ev, self.drag_group, exclude=self)
 
     def _drop_side(self, pos):
         return "before" if pos.x() < self.width() / 2 else "after"
@@ -298,7 +465,7 @@ class KeycodeButton(SquareButton):
             ev.setDropAction(Qt.MoveAction)
             ev.accept()
             self._drop_hover = self._drop_side(ev.pos())
-            self.update()
+            self.drop_hover.emit(ev.source(), self, self._drop_hover == "before")
         else:
             ev.ignore()
 
@@ -309,18 +476,19 @@ class KeycodeButton(SquareButton):
             side = self._drop_side(ev.pos())
             if side != self._drop_hover:
                 self._drop_hover = side
-                self.update()
+                self.drop_hover.emit(ev.source(), self, side == "before")
         else:
             ev.ignore()
 
     def dragLeaveEvent(self, ev):
+        # The gap stays where it is: the cursor is usually just moving into
+        # the gap itself or onto the next button, which re-places it.  It is
+        # collapsed when the drag ends (DropGap.close_active in _start_drag).
         self._drop_hover = None
-        self.update()
         ev.accept()
 
     def dropEvent(self, ev):
         self._drop_hover = None
-        self.update()
         if not self._drag_accepted(ev):
             ev.ignore()
             return
@@ -328,19 +496,6 @@ class KeycodeButton(SquareButton):
         ev.setDropAction(Qt.MoveAction)
         ev.accept()
         self.reorder_requested.emit(ev.source(), self, before)
-
-    def paintEvent(self, ev):
-        super().paintEvent(ev)
-        if self._drop_hover is None:
-            return
-        # Insertion marker on the side the dragged key will land on
-        qp = QPainter(self)
-        pen = QPen(QApplication.palette().highlight().color())
-        pen.setWidth(3)
-        qp.setPen(pen)
-        x = 2 if self._drop_hover == "before" else self.width() - 2
-        qp.drawLine(x, 3, x, self.height() - 3)
-        qp.end()
 
     def _show_context_menu(self, global_pos):
         if self.drag_group is None:

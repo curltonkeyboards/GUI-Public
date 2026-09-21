@@ -13,7 +13,7 @@ Supports two modes:
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                               QComboBox, QGroupBox, QMessageBox, QFrame, QCheckBox,
                               QSizePolicy, QScrollArea, QTabWidget, QGridLayout, QInputDialog)
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QSize
 
 from editor.basic_editor import BasicEditor
 from editor.arpeggiator import DebugConsole
@@ -23,7 +23,7 @@ from protocol.toggle_protocol import (ProtocolToggle, ToggleSlot,
                                        TOGGLE_MULTI_COLOR_NAMES, TOGGLE_FLAG_MULTI_KEY,
                                        slot_to_toggle_keycode)
 from keycodes.keycodes import Keycode
-from widgets.keycode_button import KeycodeButton, reorder_list
+from widgets.keycode_button import KeycodeButton, DropGap, reorder_list
 from tabbed_keycodes import TabbedKeycodes, FilteredTabbedKeycodes, keycode_filter_any, keycode_filter_masked
 from tabbed_keycodes import KeyboardTab, MusicTab, GamingTab, MacroTab, LightingTab, LightingTab2, MIDITab, SearchTab, SimpleTab
 from keycodes.keycodes import (KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE, KEYCODES_BACKLIGHT,
@@ -312,6 +312,12 @@ class ToggleEntryUI(QWidget):
         self.multi_color_labels = []
         self.multi_key_spacers = []
         self._visible_multi_keys = 2  # Start with 2 visible
+        # The "push" preview of a drag: an empty cell inserted where the
+        # dragged step would land, so the other steps slide aside (DropGap)
+        self._gap = DropGap()
+        self._gap.drag_group = self
+        self._gap.dropped.connect(self._on_multi_key_reorder)
+        self._gap_slot = None
 
         for i in range(TOGGLE_MULTI_MAX_KEYS):
             # Colour indicator (compact)
@@ -336,6 +342,9 @@ class ToggleEntryUI(QWidget):
             key_widget.set_drag_group(self)
             key_widget.reorder_requested.connect(self._on_multi_key_reorder)
             key_widget.duplicate_requested.connect(self._on_multi_key_duplicate)
+            key_widget.drop_hover.connect(self._on_multi_key_hover)
+            key_widget.drag_started.connect(self._on_multi_key_drag_started)
+            key_widget.drag_finished.connect(self._on_multi_key_drag_finished)
             self.multi_key_widgets.append(key_widget)
             self.multi_keys_layout.addWidget(key_widget)
 
@@ -515,6 +524,49 @@ class ToggleEntryUI(QWidget):
         self.pending_changes = True
         self.save_btn.setEnabled(True)
         self.changed.emit()
+
+    # ---- drop preview ("push" the other steps aside) --------------------
+
+    def _on_multi_key_drag_started(self, source):
+        """The dragged step is hidden for the drag; hide its number badge and
+        the spacer after it too, so its whole cell collapses out of the row."""
+        try:
+            idx = self.multi_key_widgets.index(source)
+        except ValueError:
+            return
+        self.multi_color_labels[idx].hide()
+        if idx < len(self.multi_key_spacers):
+            self.multi_key_spacers[idx].hide()
+
+    def _on_multi_key_drag_finished(self, source):
+        self._gap.close()
+        self._update_multi_key_visibility()
+
+    def _on_multi_key_hover(self, source, target, before):
+        """A drag hovers a step: insert the gap on that side of its cell
+        (badge + key + spacer).  Slots are counted over the VISIBLE steps (the
+        dragged one is hidden), so "after 2" and "before 3" — the same place —
+        don't re-open the gap and restart its animation."""
+        n = self._visible_multi_keys
+        vis = [w for w in self.multi_key_widgets[:n] if not w.isHidden()]
+        if target not in vis:
+            return
+        slot = vis.index(target) + (0 if before else 1)
+        if self._gap.is_open() and self._gap_slot == slot:
+            self._gap.target, self._gap.before = target, before   # equivalent position
+            return
+        self._gap_slot = slot
+        self.multi_keys_layout.removeWidget(self._gap)
+        if slot < len(vis):
+            anchor = self.multi_color_labels[self.multi_key_widgets.index(vis[slot])]
+            pos = self.multi_keys_layout.indexOf(anchor)
+        else:
+            pos = self.multi_keys_layout.indexOf(vis[-1]) + 1
+        self.multi_keys_layout.insertWidget(pos, self._gap)
+        key_size = source.sizeHint()
+        cell_w = self.multi_color_labels[0].width() + key_size.width() + 60   # badge + key + spacer
+        self._gap.open_at(target, before, QSize(cell_w, key_size.height()),
+                          key_size=key_size, key_offset=self.multi_color_labels[0].width())
 
     def _on_multi_key_duplicate(self, widget):
         """Right-click -> Duplicate: insert a copy of this step right after it,

@@ -40,12 +40,12 @@
 
 
 from PyQt5.QtCore import QPoint, QRect, QSize, Qt
-from PyQt5.QtWidgets import (QApplication, QLayout, QPushButton, QSizePolicy,
+from PyQt5.QtWidgets import (QApplication, QLayout, QPushButton, QSizePolicy, QWidgetItem,
         QWidget)
 
 
 class FlowLayout(QLayout):
-    def __init__(self, parent=None, margin=0, spacing=-1):
+    def __init__(self, parent=None, margin=0, spacing=-1, skip_hidden=False):
         super(FlowLayout, self).__init__(parent)
 
         if parent is not None:
@@ -54,6 +54,10 @@ class FlowLayout(QLayout):
         self.setSpacing(spacing)
 
         self.itemList = []
+        # Standard Qt layouts give a hidden widget no space; this one always
+        # reserved its slot.  Opt in per layout (the macro action line does, so
+        # a key hidden while it is being dragged collapses out of the row).
+        self.skip_hidden = skip_hidden
 
     def __del__(self):
         item = self.takeAt(0)
@@ -62,6 +66,14 @@ class FlowLayout(QLayout):
 
     def addItem(self, item):
         self.itemList.append(item)
+
+    def insertWidget(self, index, widget):
+        """Place ``widget`` at ``index`` in the flow (QBoxLayout idiom)."""
+        self.addChildWidget(widget)
+        if index < 0 or index > len(self.itemList):
+            index = len(self.itemList)
+        self.itemList.insert(index, QWidgetItem(widget))
+        self.invalidate()
 
     def count(self):
         return len(self.itemList)
@@ -112,6 +124,8 @@ class FlowLayout(QLayout):
         lineHeight = 0
 
         for item in self.itemList:
+            if self.skip_hidden and item.isEmpty():
+                continue
             wid = item.widget()
             spaceX = self.spacing() + wid.style().layoutSpacing(QSizePolicy.PushButton, QSizePolicy.PushButton, Qt.Horizontal)
             spaceY = self.spacing() + wid.style().layoutSpacing(QSizePolicy.PushButton, QSizePolicy.PushButton, Qt.Vertical)

@@ -132,9 +132,13 @@ class TapDanceEntryUI(QObject):
         self.key_widgets.append(self.kc_on_tap_hold)
 
         widgets = [self.kc_on_tap, self.kc_on_hold, self.kc_on_double_tap, self.kc_on_tap_hold]
+        # the key column takes the spare width, so the labels stay tight to the keys
+        self.container.setColumnStretch(1, 1)
         for i, (label, widget) in enumerate(zip(labels, widgets)):
             self.container.addWidget(QLabel(label), i, 0)
-            self.container.addWidget(widget, i, 1)
+            # Left-aligned: an unaligned fixed-size widget is CENTRED in the
+            # stretching column, i.e. far from its label / off the visible area
+            self.container.addWidget(widget, i, 1, Qt.AlignLeft | Qt.AlignVCenter)
 
     def _on_key_selected(self, widget):
         """Bubble up key selection"""
