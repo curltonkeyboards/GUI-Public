@@ -1,4 +1,4 @@
-from PyQt5.QtCore import QObject, pyqtSignal, Qt
+from PyQt5.QtCore import QObject, pyqtSignal, Qt, QTimer
 from PyQt5.QtWidgets import (QLineEdit, QToolButton, QWidget, QSizePolicy, QSpinBox, QComboBox,
                               QLabel, QHBoxLayout, QVBoxLayout, QCheckBox)
 
@@ -9,7 +9,7 @@ from macro.macro_action import (ActionText, ActionSequence, ActionDown, ActionUp
                                 ActionDelay, ActionBPMDelay,
                                 ActionMixingControl, MIXING_CURRENT_VALUE)
 from widgets.keycode_button import (KeycodeButton, DropGap, reorder_list, keycode_button_px,
-                                    drag_accepted_from)
+                                    drag_accepted_from, palette_keycode_from)
 
 
 class MacroKeyWidget(KeycodeButton):
@@ -71,10 +71,12 @@ class PlusDropButton(QToolButton):
 
     dropped = pyqtSignal(object)  # the dropped KeycodeButton
     hovered = pyqtSignal(object)  # a drag of the group hovers "+" (append position)
+    insert_dropped = pyqtSignal(str)  # a palette key was dropped on "+": append it
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.drag_group = None
+        self.keycode_filter = None   # gate for palette drops (None = accept any)
         self.setAcceptDrops(True)
 
     def _drag_accepted(self, ev):
@@ -85,6 +87,10 @@ class PlusDropButton(QToolButton):
             ev.setDropAction(Qt.MoveAction)
             ev.accept()
             self.hovered.emit(ev.source())
+        elif palette_keycode_from(ev, self.keycode_filter):
+            ev.setDropAction(Qt.CopyAction)
+            ev.accept()
+            self.hovered.emit(ev.source())
         else:
             ev.ignore()
 
@@ -92,12 +98,18 @@ class PlusDropButton(QToolButton):
         self.dragEnterEvent(ev)
 
     def dropEvent(self, ev):
-        if not self._drag_accepted(ev):
-            ev.ignore()
+        if self._drag_accepted(ev):
+            ev.setDropAction(Qt.MoveAction)
+            ev.accept()
+            self.dropped.emit(ev.source())
             return
-        ev.setDropAction(Qt.MoveAction)
-        ev.accept()
-        self.dropped.emit(ev.source())
+        qmk_id = palette_keycode_from(ev, self.keycode_filter)
+        if qmk_id:
+            ev.setDropAction(Qt.CopyAction)
+            ev.accept()
+            self.insert_dropped.emit(qmk_id)
+            return
+        ev.ignore()
 
 
 class BasicActionUI(QObject):
@@ -175,6 +187,7 @@ class ActionSequenceUI(BasicActionUI):
         self.btn_plus.setText("+")
         self.btn_plus.dropped.connect(self.on_plus_drop)
         self.btn_plus.hovered.connect(self._on_plus_hover)
+        self.btn_plus.insert_dropped.connect(lambda kc: self.on_insert_keycode(kc, None, True))
         plus_size = keycode_button_px(self.btn_plus.fontMetrics())
         self.btn_plus.setFixedWidth(plus_size)
         self.btn_plus.setFixedHeight(plus_size)
@@ -193,6 +206,7 @@ class ActionSequenceUI(BasicActionUI):
         # would drop, so the neighbours slide aside (see DropGap)
         self.gap = DropGap()
         self.gap.dropped.connect(self.on_reorder_widget)
+        self.gap.inserted.connect(self.on_insert_keycode)
         self._gap_slot = None
         # Until the owner installs a wider group, keys only move within this line
         self.drag_group = self
@@ -203,6 +217,8 @@ class ActionSequenceUI(BasicActionUI):
     def set_keycode_filter(self, keycode_filter):
         if keycode_filter != self.keycode_filter:
             self.keycode_filter = keycode_filter
+            self.gap.keycode_filter = keycode_filter
+            self.btn_plus.keycode_filter = keycode_filter
             for w in self.widgets:
                 w.set_keycode_filter(self.keycode_filter)
 
@@ -237,6 +253,7 @@ class ActionSequenceUI(BasicActionUI):
             w.reorder_requested.connect(self.on_reorder_widget)
             w.duplicate_requested.connect(self.on_duplicate_widget)
             w.drop_hover.connect(self._on_drop_hover)
+            w.insert_requested.connect(self.on_insert_keycode)
             self.layout.addWidget(w)
             self.widgets.append(w)
         self.layout.addWidget(self.btn_plus)
@@ -293,7 +310,30 @@ class ActionSequenceUI(BasicActionUI):
         self.layout.removeWidget(self.gap)
         anchor = vis[slot] if slot < len(vis) else self.btn_plus
         self.layout.insertWidget(self.layout.indexOf(anchor), self.gap)
-        self.gap.open_at(target, before, source.sizeHint())
+        # a palette button is smaller than an editor key: size the slot like ours
+        size = source.sizeHint() if isinstance(source, KeycodeButton) else self.btn_plus.sizeHint()
+        self.gap.open_at(target, before, size)
+
+    def on_insert_keycode(self, qmk_id, target, before):
+        """A key dragged from the palette was dropped on this line (on a key,
+        in the gap, or on "+"): insert it at that position.  The buttons are
+        rebuilt on the next event-loop pass — the drop is still being delivered
+        to one of them."""
+        if target is None or target not in self.widgets:
+            idx = len(self.act.sequence)
+        else:
+            idx = self.widgets.index(target) + (0 if before else 1)
+        self.act.sequence.insert(idx, qmk_id)
+        self.gap.close()
+        QTimer.singleShot(0, self._rebuild_and_select(idx))
+        self.changed.emit()
+
+    def _rebuild_and_select(self, idx):
+        def go():
+            self.recreate_sequence()
+            if 0 <= idx < len(self.widgets):
+                self.widgets[idx].selected.emit(self.widgets[idx])
+        return go
 
     def on_add(self):
         self.act.sequence.append("KC_TRNS")

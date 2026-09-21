@@ -292,6 +292,8 @@ class ToggleEntryUI(QWidget):
 
         self.target_key = ToggleKeyWidget()
         self.target_key.selected.connect(lambda w: self._on_key_selected(0))
+        # a key dragged from the palette onto the target slot assigns it
+        self.target_key.assign_requested.connect(self._on_target_key_assigned)
         standard_layout.addWidget(self.target_key)
 
         standard_layout.addWidget(QLabel("<- Click to select, then choose from keycodes below"))
@@ -317,6 +319,7 @@ class ToggleEntryUI(QWidget):
         self._gap = DropGap()
         self._gap.drag_group = self
         self._gap.dropped.connect(self._on_multi_key_reorder)
+        self._gap.inserted.connect(self._on_multi_key_insert)
         self._gap_slot = None
 
         for i in range(TOGGLE_MULTI_MAX_KEYS):
@@ -343,6 +346,7 @@ class ToggleEntryUI(QWidget):
             key_widget.reorder_requested.connect(self._on_multi_key_reorder)
             key_widget.duplicate_requested.connect(self._on_multi_key_duplicate)
             key_widget.drop_hover.connect(self._on_multi_key_hover)
+            key_widget.insert_requested.connect(self._on_multi_key_insert)
             key_widget.drag_started.connect(self._on_multi_key_drag_started)
             key_widget.drag_finished.connect(self._on_multi_key_drag_finished)
             self.multi_key_widgets.append(key_widget)
@@ -563,10 +567,47 @@ class ToggleEntryUI(QWidget):
         else:
             pos = self.multi_keys_layout.indexOf(vis[-1]) + 1
         self.multi_keys_layout.insertWidget(pos, self._gap)
-        key_size = source.sizeHint()
+        key_size = self.multi_key_widgets[0].sizeHint()   # (a palette source is smaller)
         cell_w = self.multi_color_labels[0].width() + key_size.width() + 60   # badge + key + spacer
         self._gap.open_at(target, before, QSize(cell_w, key_size.height()),
                           key_size=key_size, key_offset=self.multi_color_labels[0].width())
+
+    def _on_target_key_assigned(self, qmk_id, widget):
+        """Palette key dropped on the single target slot."""
+        self._on_key_selected(0)
+        self.on_keycode_selected(qmk_id)
+
+    def _on_multi_key_insert(self, qmk_id, target, before):
+        """A key dragged from the palette was dropped on the cycle (on a
+        step or in the gap): insert it as a NEW step there, shifting the later
+        steps up (needs a free step)."""
+        n = self._visible_multi_keys
+        if n >= TOGGLE_MULTI_MAX_KEYS:
+            QMessageBox.information(
+                self, "Insert Key",
+                f"The cycle already has the maximum of {TOGGLE_MULTI_MAX_KEYS} keys.")
+            return
+        try:
+            idx = self.multi_key_widgets.index(target) + (0 if before else 1)
+        except ValueError:
+            idx = n
+        idx = max(0, min(idx, n))
+        try:
+            keycode_value = Keycode.deserialize(qmk_id)
+        except Exception:
+            keycode_value = 0
+        for i in range(TOGGLE_MULTI_MAX_KEYS - 1, idx, -1):
+            self.slot.set_keycode(i, self.slot.get_keycode(i - 1))
+        self.slot.set_keycode(idx, keycode_value)
+        self._visible_multi_keys = n + 1
+        self.slot.num_keys = max(2, self._visible_multi_keys)
+        self._gap.close()
+        self._deselect_all_keys()
+        self._update_multi_key_visibility()
+        self._update_display()
+        self.pending_changes = True
+        self.save_btn.setEnabled(True)
+        self.changed.emit()
 
     def _on_multi_key_duplicate(self, widget):
         """Right-click -> Duplicate: insert a copy of this step right after it,

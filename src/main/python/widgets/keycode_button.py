@@ -23,7 +23,11 @@ Optional per-sequence behaviour (enabled by the owner setting ``drag_group``):
   the drag hovers a button the owner gets ``drop_hover(source, target,
   before)`` and opens its ``DropGap`` there, so the other keys are pushed
   aside to show where the dragged one will sit;
-* right-click → "Duplicate" — the owner gets ``duplicate_requested(button)``.
+* right-click → "Duplicate" — the owner gets ``duplicate_requested(button)``;
+* a key dragged from the PALETTE (SquareButton's drag, KEYCODE_PALETTE_MIME)
+  can be dropped on a row's button / gap / "+" to INSERT it there
+  (``insert_requested(qmk_id, target, before)``), or on a fixed slot to assign
+  it (``assign_requested``).
 """
 
 from PyQt5.QtCore import Qt, QMimeData, QPropertyAnimation, QEasingCurve, QSize, QRect, pyqtSignal, pyqtProperty
@@ -35,7 +39,7 @@ from keycodes.keycodes import Keycode
 from any_keycode_dialog import AnyKeycodeDialog
 from tabbed_keycodes import keycode_filter_any
 from util import KeycodeDisplay
-from widgets.square_button import SquareButton
+from widgets.square_button import SquareButton, KEYCODE_PALETTE_MIME
 
 KEYCODE_DRAG_MIME = "application/x-midiswitch-keycode-button"
 
@@ -60,6 +64,23 @@ def drag_accepted_from(ev, drag_group, exclude=None):
             and ev.mimeData().hasFormat(KEYCODE_DRAG_MIME))
 
 
+def palette_keycode_from(ev, keycode_filter=None):
+    """The qmk_id a PALETTE drag (see SquareButton) carries, if ``ev`` is one
+    and ``keycode_filter`` (None = accept any) admits it; else None."""
+    mime = ev.mimeData()
+    if mime is None or not mime.hasFormat(KEYCODE_PALETTE_MIME):
+        return None
+    try:
+        qmk_id = bytes(mime.data(KEYCODE_PALETTE_MIME)).decode("utf-8")
+    except Exception:
+        return None
+    if not qmk_id:
+        return None
+    if keycode_filter is not None and not keycode_filter(qmk_id):
+        return None
+    return qmk_id
+
+
 class DropGap(QWidget):
     """The "push" preview of a drag: an empty slot the owner inserts into its
     row at the place the dragged key will land, so the neighbours slide aside
@@ -78,6 +99,7 @@ class DropGap(QWidget):
     """
 
     dropped = pyqtSignal(object, object, bool)   # source, target, insert-before
+    inserted = pyqtSignal(str, object, bool)     # palette qmk_id, target, insert-before
 
     _active = None       # the currently open gap, if any
     ANIM_MS = 130
@@ -85,6 +107,7 @@ class DropGap(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.drag_group = None
+        self.keycode_filter = None   # gate for palette drops (None = accept any)
         self.target = None       # (target button, before) the gap stands in for
         self.before = True
         self._gap_width = 0
@@ -175,6 +198,9 @@ class DropGap(QWidget):
         if drag_accepted_from(ev, self.drag_group):
             ev.setDropAction(Qt.MoveAction)
             ev.accept()
+        elif palette_keycode_from(ev, self.keycode_filter):
+            ev.setDropAction(Qt.CopyAction)
+            ev.accept()
         else:
             ev.ignore()
 
@@ -182,13 +208,22 @@ class DropGap(QWidget):
         self.dragEnterEvent(ev)
 
     def dropEvent(self, ev):
-        if not drag_accepted_from(ev, self.drag_group) or self.target is None:
+        if not self.isVisible():   # not open: nothing to stand in for
             ev.ignore()
             return
-        ev.setDropAction(Qt.MoveAction)
-        ev.accept()
-        target, before = self.target, self.before
-        self.dropped.emit(ev.source(), target, before)
+        target, before = self.target, self.before   # target may be None = "empty row"
+        if drag_accepted_from(ev, self.drag_group):
+            ev.setDropAction(Qt.MoveAction)
+            ev.accept()
+            self.dropped.emit(ev.source(), target, before)
+            return
+        qmk_id = palette_keycode_from(ev, self.keycode_filter)
+        if qmk_id:
+            ev.setDropAction(Qt.CopyAction)
+            ev.accept()
+            self.inserted.emit(qmk_id, target, before)
+            return
+        ev.ignore()
 
 
 def reorder_list(items, src_idx, dst_idx, before):
@@ -233,8 +268,16 @@ class KeycodeButton(SquareButton):
     drag_started = pyqtSignal(object)                # self, just before QDrag.exec_() (already hidden)
     drag_finished = pyqtSignal(object)               # self, after QDrag.exec_() returned
     # A drag of the same group hovers this button: (source, self, insert-before).
-    # The owner opens its DropGap there so the row previews the drop.
+    # The owner opens its DropGap there so the row previews the drop.  A PALETTE
+    # drag hovering a button of a drag group reports the same way (source = the
+    # palette button), so it gets the same push preview.
     drop_hover = pyqtSignal(object, object, bool)
+    # A palette key was dropped on a button of a drag group: (qmk_id, self,
+    # insert-before) — the owner inserts a NEW key there.
+    insert_requested = pyqtSignal(str, object, bool)
+    # A palette key was dropped on a fixed slot (no drag group): the button has
+    # already taken it (on_keycode_changed) — (resulting keycode, self).
+    assign_requested = pyqtSignal(str, object)
 
     def __init__(self, keycode_filter=None, parent=None):
         super().__init__(parent)
@@ -460,23 +503,35 @@ class KeycodeButton(SquareButton):
     def _drop_side(self, pos):
         return "before" if pos.x() < self.width() / 2 else "after"
 
+    def _palette_drop_accepted(self, ev):
+        return palette_keycode_from(ev, self.keycode_filter) is not None
+
     def dragEnterEvent(self, ev):
         if self._drag_accepted(ev):
             ev.setDropAction(Qt.MoveAction)
             ev.accept()
             self._drop_hover = self._drop_side(ev.pos())
             self.drop_hover.emit(ev.source(), self, self._drop_hover == "before")
+        elif self._palette_drop_accepted(ev):
+            ev.setDropAction(Qt.CopyAction)
+            ev.accept()
+            if self.drag_group is not None:   # a row: preview the insertion
+                self._drop_hover = self._drop_side(ev.pos())
+                self.drop_hover.emit(ev.source(), self, self._drop_hover == "before")
         else:
             ev.ignore()
 
     def dragMoveEvent(self, ev):
-        if self._drag_accepted(ev):
-            ev.setDropAction(Qt.MoveAction)
+        if self._drag_accepted(ev) or (self._palette_drop_accepted(ev) and self.drag_group is not None):
+            ev.setDropAction(Qt.MoveAction if self._drag_accepted(ev) else Qt.CopyAction)
             ev.accept()
             side = self._drop_side(ev.pos())
             if side != self._drop_hover:
                 self._drop_hover = side
                 self.drop_hover.emit(ev.source(), self, side == "before")
+        elif self._palette_drop_accepted(ev):
+            ev.setDropAction(Qt.CopyAction)
+            ev.accept()
         else:
             ev.ignore()
 
@@ -489,13 +544,25 @@ class KeycodeButton(SquareButton):
 
     def dropEvent(self, ev):
         self._drop_hover = None
-        if not self._drag_accepted(ev):
-            ev.ignore()
-            return
         before = self._drop_side(ev.pos()) == "before"
-        ev.setDropAction(Qt.MoveAction)
-        ev.accept()
-        self.reorder_requested.emit(ev.source(), self, before)
+        if self._drag_accepted(ev):
+            ev.setDropAction(Qt.MoveAction)
+            ev.accept()
+            self.reorder_requested.emit(ev.source(), self, before)
+            return
+        qmk_id = palette_keycode_from(ev, self.keycode_filter)
+        if qmk_id:
+            ev.setDropAction(Qt.CopyAction)
+            ev.accept()
+            if self.drag_group is not None:
+                # a row (macro line / toggle cycle): insert a new key here
+                self.insert_requested.emit(qmk_id, self, before)
+            else:
+                # a fixed slot (tap dance / combo / DKS / toggle target): take it
+                self.on_keycode_changed(qmk_id)
+                self.assign_requested.emit(self.keycode, self)
+            return
+        ev.ignore()
 
     def _show_context_menu(self, global_pos):
         if self.drag_group is None:
