@@ -8,7 +8,7 @@ from widgets.combo_box import ArrowComboBox, ArrowSpinBox
 from macro.macro_action import (ActionText, ActionSequence, ActionDown, ActionUp, ActionTap,
                                 ActionDelay, ActionBPMDelay,
                                 ActionMixingControl, MIXING_CURRENT_VALUE)
-from widgets.keycode_button import KeycodeButton, reorder_list
+from widgets.keycode_button import KeycodeButton, reorder_list, KEYCODE_DRAG_MIME
 
 
 class MacroKeyWidget(KeycodeButton):
@@ -64,10 +64,50 @@ class DeletableKeyWidget(MacroKeyWidget):
         self._position_x_button()
 
 
+class PlusDropButton(QToolButton):
+    """The sequence's "+" button, also a drop target: dropping a key button of
+    the same drag group on it appends that key to this sequence."""
+
+    dropped = pyqtSignal(object)  # the dropped KeycodeButton
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.drag_group = None
+        self.setAcceptDrops(True)
+
+    def _drag_accepted(self, ev):
+        src = ev.source()
+        return (isinstance(src, KeycodeButton) and self.drag_group is not None
+                and src.drag_group is self.drag_group
+                and ev.mimeData().hasFormat(KEYCODE_DRAG_MIME))
+
+    def dragEnterEvent(self, ev):
+        if self._drag_accepted(ev):
+            ev.setDropAction(Qt.MoveAction)
+            ev.accept()
+        else:
+            ev.ignore()
+
+    def dragMoveEvent(self, ev):
+        self.dragEnterEvent(ev)
+
+    def dropEvent(self, ev):
+        if not self._drag_accepted(ev):
+            ev.ignore()
+            return
+        ev.setDropAction(Qt.MoveAction)
+        ev.accept()
+        self.dropped.emit(ev.source())
+
+
 class BasicActionUI(QObject):
 
     changed = pyqtSignal()
     key_selected = pyqtSignal(object)  # Emits the selected key widget
+    # A key button from ANOTHER action of the same drag group was dropped on
+    # this action: (source button, this action UI, insert index).  The owner of
+    # the group (the macro tab) performs the move once the drag has finished.
+    cross_move_requested = pyqtSignal(object, object, int)
     actcls = None
 
     def __init__(self, container, act=None):
@@ -80,6 +120,11 @@ class BasicActionUI(QObject):
         self.act = act
 
     def set_keycode_filter(self, keycode_filter):
+        pass
+
+    def set_drag_group(self, group):
+        """Object whose key buttons may be dragged onto each other (the macro
+        tab, so keys move between action lines).  No-op for non-key actions."""
         pass
 
 
@@ -124,9 +169,11 @@ class ActionSequenceUI(BasicActionUI):
     def __init__(self, container, act=None):
         super().__init__(container, act)
 
-        # Square + button matching the key buttons' size
-        self.btn_plus = QToolButton()
+        # Square + button matching the key buttons' size (also a drop target
+        # that appends a dragged key to this sequence)
+        self.btn_plus = PlusDropButton()
         self.btn_plus.setText("+")
+        self.btn_plus.dropped.connect(self.on_plus_drop)
         plus_size = int(round(self.btn_plus.fontMetrics().height() * KEYCODE_BTN_RATIO))
         self.btn_plus.setFixedWidth(plus_size)
         self.btn_plus.setFixedHeight(plus_size)
@@ -139,6 +186,9 @@ class ActionSequenceUI(BasicActionUI):
         self.layout_container.setLayout(self.layout)
         self.widgets = []
         self.keycode_filter = None
+        # Until the owner installs a wider group, keys only move within this line
+        self.drag_group = self
+        self.btn_plus.drag_group = self
         self.recreate_sequence()
 
     def set_keycode_filter(self, keycode_filter):
@@ -146,6 +196,14 @@ class ActionSequenceUI(BasicActionUI):
             self.keycode_filter = keycode_filter
             for w in self.widgets:
                 w.set_keycode_filter(self.keycode_filter)
+
+    def set_drag_group(self, group):
+        if group is None:
+            group = self
+        self.drag_group = group
+        self.btn_plus.drag_group = group
+        for w in self.widgets:
+            w.set_drag_group(group)
 
     def recreate_sequence(self):
         self.layout.removeWidget(self.btn_plus)
@@ -160,9 +218,10 @@ class ActionSequenceUI(BasicActionUI):
             w.changed.connect(self.on_change)
             w.selected.connect(self._on_key_selected)
             w.remove_clicked.connect(self.on_remove_widget)
-            # Buttons of one sequence can be dragged onto each other to
-            # reorder, and right-click -> Duplicate copies one next to itself
-            w.set_drag_group(self)
+            # Buttons of the drag group (this line, or every line of the macro)
+            # can be dragged onto each other to reorder / move, and
+            # right-click -> Duplicate copies one next to itself
+            w.set_drag_group(self.drag_group)
             w.reorder_requested.connect(self.on_reorder_widget)
             w.duplicate_requested.connect(self.on_duplicate_widget)
             self.layout.addWidget(w)
@@ -201,19 +260,42 @@ class ActionSequenceUI(BasicActionUI):
             pass
 
     def on_reorder_widget(self, source, target, before):
-        """A key button was dropped onto another one of this sequence: move it
-        there.  The widgets are kept (the drop is delivered while the drag's
-        own event loop is still running, so none of them may be destroyed
-        here); only the keycodes are re-dealt onto them in the new order."""
+        """A key button was dropped onto one of this sequence's buttons.
+
+        From this same line: move it there.  The widgets are kept (the drop is
+        delivered while the drag's own event loop is still running, so none of
+        them may be destroyed here); only the keycodes are re-dealt onto them
+        in the new order.
+
+        From another line of the macro: hand the move to the group owner (the
+        macro tab), which rebuilds both lines once the drag has finished."""
         try:
-            src_idx = self.widgets.index(source)
             dst_idx = self.widgets.index(target)
         except ValueError:
             return
+        if source not in self.widgets:
+            self.cross_move_requested.emit(source, self, dst_idx if before else dst_idx + 1)
+            return
+        src_idx = self.widgets.index(source)
         if src_idx == dst_idx:
             return
-        was_selected = source.is_selected
         new_idx = reorder_list(self.act.sequence, src_idx, dst_idx, before)
+        self._redeal_keycodes(source.is_selected, new_idx)
+
+    def on_plus_drop(self, source):
+        """A key button was dropped on the "+" button: append it to this line."""
+        if source not in self.widgets:
+            self.cross_move_requested.emit(source, self, len(self.act.sequence))
+            return
+        src_idx = self.widgets.index(source)
+        last = len(self.act.sequence) - 1
+        if src_idx == last:
+            return
+        new_idx = reorder_list(self.act.sequence, src_idx, last, False)
+        self._redeal_keycodes(source.is_selected, new_idx)
+
+    def _redeal_keycodes(self, was_selected, new_idx):
+        """Write the (reordered) sequence back onto the existing buttons."""
         for w, kc in zip(self.widgets, self.act.sequence):
             w.blockSignals(True)
             w.set_keycode(kc)

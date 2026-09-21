@@ -17,7 +17,9 @@ colouring are preserved.
 Optional per-sequence behaviour (enabled by the owner setting ``drag_group``):
 
 * drag one button onto another of the same group to reorder — the owner gets
-  ``reorder_requested(source, target, before)`` and reorders its model;
+  ``reorder_requested(source, target, before)`` and reorders its model (a
+  group can span several owners, e.g. every action line of one macro; the
+  drop handler then defers any widget rebuild to ``drag_finished``);
 * right-click → "Duplicate" — the owner gets ``duplicate_requested(button)``.
 """
 
@@ -74,6 +76,7 @@ class KeycodeButton(SquareButton):
     selected = pyqtSignal(object)                    # self, on left click
     reorder_requested = pyqtSignal(object, object, bool)  # source, target, insert-before
     duplicate_requested = pyqtSignal(object)         # self
+    drag_finished = pyqtSignal(object)               # self, after QDrag.exec_() returned
 
     def __init__(self, keycode_filter=None, parent=None):
         super().__init__(parent)
@@ -276,6 +279,10 @@ class KeycodeButton(SquareButton):
         drag.setHotSpot(self._press_pos)
         self._press_pos = None
         drag.exec_(Qt.MoveAction)
+        # The drop handler ran INSIDE exec_()'s nested event loop, where an
+        # owner must not destroy buttons (this one included).  Owners that need
+        # to rebuild after a drop wait for this signal instead.
+        self.drag_finished.emit(self)
 
     def _drag_accepted(self, ev):
         src = ev.source()

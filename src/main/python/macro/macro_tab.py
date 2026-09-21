@@ -210,6 +210,7 @@ class MacroTab(QVBoxLayout):
         line = MacroLine(self, act)
         line.changed.connect(self.on_change)
         line.key_selected.connect(self.on_key_selected)
+        line.cross_move_requested.connect(self.on_cross_key_move)
         self.lines.append(line)
         line.insert(len(self.lines) - 1)
         self.changed.emit()
@@ -217,6 +218,52 @@ class MacroTab(QVBoxLayout):
     def on_key_selected(self, widget):
         """Bubble up key selection to parent MacroRecorder"""
         self.key_selected.emit(widget)
+
+    def on_cross_key_move(self, source, dst_action, ins_idx):
+        """A key button was dragged from one action line and dropped on another
+        (or on its "+" button).  The drop is delivered inside the drag's own
+        event loop, where the buttons must not be destroyed, so the move is
+        only RECORDED here and applied when the dragged button reports that
+        its drag has finished."""
+        src_action = None
+        for line in self.lines:
+            widgets = getattr(line.action, "widgets", None)
+            if widgets and source in widgets:
+                src_action = line.action
+                break
+        if src_action is None or src_action is dst_action:
+            return
+        self._pending_key_move = (src_action, src_action.widgets.index(source),
+                                  dst_action, ins_idx, source.is_selected)
+        source.drag_finished.connect(self._apply_pending_key_move)
+
+    def _apply_pending_key_move(self, source):
+        try:
+            source.drag_finished.disconnect(self._apply_pending_key_move)
+        except TypeError:
+            pass
+        pending = getattr(self, "_pending_key_move", None)
+        self._pending_key_move = None
+        if pending is None:
+            return
+        src_action, src_idx, dst_action, ins_idx, was_selected = pending
+        if src_action not in [l.action for l in self.lines] or dst_action not in [l.action for l in self.lines]:
+            return
+        if src_idx >= len(src_action.act.sequence):
+            return
+        kc = src_action.act.sequence.pop(src_idx)
+        ins_idx = max(0, min(ins_idx, len(dst_action.act.sequence)))
+        dst_action.act.sequence.insert(ins_idx, kc)
+        # both lines rebuild their buttons: let the recorder drop stale references
+        for action in (src_action, dst_action):
+            for w in action.widgets:
+                self.widget_deleted.emit(w)
+        src_action.recreate_sequence()
+        dst_action.recreate_sequence()
+        if was_selected and ins_idx < len(dst_action.widgets):
+            w = dst_action.widgets[ins_idx]
+            w.selected.emit(w)
+        self.changed.emit()
 
     def on_add(self):
         self.add_action(ActionTextUI(self.container))

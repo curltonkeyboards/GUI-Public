@@ -14,6 +14,7 @@ class MacroLine(QObject):
 
     changed = pyqtSignal()
     key_selected = pyqtSignal(object)  # Emits the selected key widget
+    cross_move_requested = pyqtSignal(object, object, int)  # key dragged in from another line
 
     types = ["Keypress (press + release)", "Hold Key (press only)", "Release Key (release only)", "Text"]
     type_to_cls = [ActionTapUI, ActionDownUI, ActionUpUI, ActionTextUI]
@@ -49,8 +50,7 @@ class MacroLine(QObject):
         self.select_type.currentIndexChanged.connect(self.on_change_type)
 
         self.action = action
-        self.action.changed.connect(self.on_change)
-        self.action.key_selected.connect(self.on_key_selected)
+        self._wire_action(self.action)
         self.row = -1
 
         self.btn_remove = QToolButton()
@@ -102,10 +102,16 @@ class MacroLine(QObject):
         self.action.remove()
         self.action.delete()
         self.action = self.type_to_cls[self.select_type.currentIndex()](self.container)
-        self.action.changed.connect(self.on_change)
-        self.action.key_selected.connect(self.on_key_selected)
+        self._wire_action(self.action)
         self.action.insert(self.row)
         self.changed.emit()
+
+    def _wire_action(self, action):
+        action.changed.connect(self.on_change)
+        action.key_selected.connect(self.on_key_selected)
+        action.cross_move_requested.connect(self.cross_move_requested)
+        # keys can be dragged between every action line of this macro
+        action.set_drag_group(self.parent)
 
     def on_remove_clicked(self):
         self.parent.on_remove(self)
