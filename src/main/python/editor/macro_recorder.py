@@ -143,7 +143,7 @@ class MacroRecorder(BasicEditor):
             try:
                 # Check if the widget is still valid (not deleted)
                 if not sip.isdeleted(self.selected_key_widget):
-                    self.selected_key_widget.set_keycode(keycode)
+                    self.selected_key_widget.on_keycode_changed(keycode)
             except RuntimeError:
                 self.selected_key_widget = None
 

@@ -18,48 +18,18 @@ from protocol.dks_protocol import (ProtocolDKS, DKSSlot, DKS_BEHAVIOR_TAP,
                                    DKS_BEHAVIOR_PRESS, DKS_BEHAVIOR_RELEASE,
                                    DKS_NUM_SLOTS, DKS_ACTIONS_PER_STAGE)
 from keycodes.keycodes import Keycode
-from widgets.key_widget import KeyWidget
+from widgets.keycode_button import KeycodeButton
 from tabbed_keycodes import TabbedKeycodes
 from vial_device import VialKeyboard
 import widgets.resources  # Import Qt resources for switch crossection image
 
 
-class DKSKeyWidget(KeyWidget):
-    """Custom KeyWidget that doesn't open tray - parent will handle keycode selection"""
+class DKSKeyWidget(KeycodeButton):
+    """Keycode button styled like the palette buttons. Doesn't open the tray -
+    the editor feeds the palette pick to the selected button."""
 
-    selected = pyqtSignal(object)  # Emits self when clicked
-
-    def __init__(self):
-        super().__init__()
-        self.is_selected = False
-
-    def mousePressEvent(self, ev):
-        # Set active_key to the actual widget so KeyboardWidget draws the highlight
-        if len(self.widgets) > 0:
-            self.active_key = self.widgets[0]
-            self.active_mask = False
-
-        # Emit that we're selected (don't call parent which opens tray)
-        self.selected.emit(self)
-        self.update()  # Force repaint to show highlight
-        ev.accept()
-
-    def mouseReleaseEvent(self, ev):
-        # Override to prevent any tray behavior
-        ev.accept()
-
-    def set_selected(self, selected):
-        """Visual feedback for selection"""
-        self.is_selected = selected
-        if selected:
-            # Set active_key to show native KeyboardWidget highlighting
-            if len(self.widgets) > 0:
-                self.active_key = self.widgets[0]
-                self.active_mask = False
-        else:
-            # Clear active_key to remove highlighting
-            self.active_key = None
-        self.update()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
 
 class TravelBarWidget(QWidget):
@@ -892,7 +862,6 @@ class DKSActionEditor(QWidget):
         key_container.addWidget(action_label)
 
         self.key_widget = DKSKeyWidget()
-        self.key_widget.setFixedSize(55, 45)
         self.key_widget.changed.connect(self._on_changed)
         self.key_widget.selected.connect(self._on_key_selected)
         key_container.addWidget(self.key_widget, alignment=Qt.AlignCenter)

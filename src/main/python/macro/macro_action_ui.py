@@ -2,57 +2,29 @@ from PyQt5.QtCore import QObject, pyqtSignal, Qt
 from PyQt5.QtWidgets import (QLineEdit, QToolButton, QWidget, QSizePolicy, QSpinBox, QComboBox,
                               QLabel, QHBoxLayout, QVBoxLayout, QCheckBox)
 
-from constants import KEY_SIZE_RATIO
+from constants import KEY_SIZE_RATIO, KEYCODE_BTN_RATIO
 from widgets.flowlayout import FlowLayout
 from widgets.combo_box import ArrowComboBox, ArrowSpinBox
 from macro.macro_action import (ActionText, ActionSequence, ActionDown, ActionUp, ActionTap,
                                 ActionDelay, ActionBPMDelay,
                                 ActionMixingControl, MIXING_CURRENT_VALUE)
-from widgets.key_widget import KeyWidget
+from widgets.keycode_button import KeycodeButton, reorder_list
 
 
-class MacroKeyWidget(KeyWidget):
-    """Custom KeyWidget that doesn't open tray - parent will handle keycode selection"""
-
-    selected = pyqtSignal(object)  # Emits self when clicked
+class MacroKeyWidget(KeycodeButton):
+    """Keycode button for a macro sequence - same look as the palette buttons.
+    Doesn't open the tray: the MacroRecorder feeds the palette pick to the
+    selected button."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.is_selected = False
-        self.setFocusPolicy(Qt.ClickFocus)
-
-    def mousePressEvent(self, ev):
-        # Set active_key to the actual widget so KeyboardWidget draws the highlight
-        if len(self.widgets) > 0:
-            self.active_key = self.widgets[0]
-            self.active_mask = False
-
-        # Emit that we're selected (don't call parent which opens tray)
-        self.selected.emit(self)
-        self.update()  # Force repaint to show highlight
-        ev.accept()
-
-    def mouseReleaseEvent(self, ev):
-        # Override to prevent any tray behavior
-        ev.accept()
-
-    def set_selected(self, selected):
-        """Visual feedback for selection"""
-        self.is_selected = selected
-        if selected:
-            # Set active_key to show native KeyboardWidget highlighting
-            if len(self.widgets) > 0:
-                self.active_key = self.widgets[0]
-                self.active_mask = False
-        else:
-            # Clear active_key to remove highlighting
-            self.active_key = None
-        self.update()
 
     def keyReleaseEvent(self, ev):
         # remove this keycode from the sequence when delete is pressed
         if ev.key() == Qt.Key_Delete:
             self.set_keycode(0)
+        else:
+            super().keyReleaseEvent(ev)
 
 
 class DeletableKeyWidget(MacroKeyWidget):
@@ -84,18 +56,11 @@ class DeletableKeyWidget(MacroKeyWidget):
         self._position_x_button()
 
     def _position_x_button(self):
-        """Position X button at top-right using the widget's width/height attributes"""
-        # KeyboardWidget stores size in self.width (int attribute), not QWidget.width() method
-        w = self.width if isinstance(self.width, int) else 40
-        self.btn_x.move(max(0, w - self.btn_x.width() - 1), 1)
+        """Position X button at top-right of the button"""
+        self.btn_x.move(max(0, self.width() - self.btn_x.width() - 2), 2)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._position_x_button()
-
-    def set_keycode(self, kc):
-        super().set_keycode(kc)
-        # Reposition after keycode change may resize the widget
         self._position_x_button()
 
 
@@ -159,11 +124,12 @@ class ActionSequenceUI(BasicActionUI):
     def __init__(self, container, act=None):
         super().__init__(container, act)
 
-        # Square + button matching key widget size
+        # Square + button matching the key buttons' size
         self.btn_plus = QToolButton()
         self.btn_plus.setText("+")
-        self.btn_plus.setFixedWidth(30)
-        self.btn_plus.setFixedHeight(30)
+        plus_size = int(round(self.btn_plus.fontMetrics().height() * KEYCODE_BTN_RATIO))
+        self.btn_plus.setFixedWidth(plus_size)
+        self.btn_plus.setFixedHeight(plus_size)
         self.btn_plus.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.btn_plus.clicked.connect(self.on_add)
 
@@ -194,6 +160,11 @@ class ActionSequenceUI(BasicActionUI):
             w.changed.connect(self.on_change)
             w.selected.connect(self._on_key_selected)
             w.remove_clicked.connect(self.on_remove_widget)
+            # Buttons of one sequence can be dragged onto each other to
+            # reorder, and right-click -> Duplicate copies one next to itself
+            w.set_drag_group(self)
+            w.reorder_requested.connect(self.on_reorder_widget)
+            w.duplicate_requested.connect(self.on_duplicate_widget)
             self.layout.addWidget(w)
             self.widgets.append(w)
         self.layout.addWidget(self.btn_plus)
@@ -228,6 +199,39 @@ class ActionSequenceUI(BasicActionUI):
             self.changed.emit()
         except ValueError:
             pass
+
+    def on_reorder_widget(self, source, target, before):
+        """A key button was dropped onto another one of this sequence: move it
+        there.  The widgets are kept (the drop is delivered while the drag's
+        own event loop is still running, so none of them may be destroyed
+        here); only the keycodes are re-dealt onto them in the new order."""
+        try:
+            src_idx = self.widgets.index(source)
+            dst_idx = self.widgets.index(target)
+        except ValueError:
+            return
+        if src_idx == dst_idx:
+            return
+        was_selected = source.is_selected
+        new_idx = reorder_list(self.act.sequence, src_idx, dst_idx, before)
+        for w, kc in zip(self.widgets, self.act.sequence):
+            w.blockSignals(True)
+            w.set_keycode(kc)
+            w.blockSignals(False)
+        if was_selected:
+            # keep the selection on the key that was dragged
+            self.widgets[new_idx].selected.emit(self.widgets[new_idx])
+        self.changed.emit()
+
+    def on_duplicate_widget(self, widget):
+        """Right-click -> Duplicate: insert a copy right after this key"""
+        try:
+            idx = self.widgets.index(widget)
+        except ValueError:
+            return
+        self.act.sequence.insert(idx + 1, self.act.sequence[idx])
+        self.recreate_sequence()
+        self.changed.emit()
 
     def on_change(self):
         for x in range(len(self.act.sequence)):

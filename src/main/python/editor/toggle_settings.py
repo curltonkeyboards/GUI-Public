@@ -23,7 +23,7 @@ from protocol.toggle_protocol import (ProtocolToggle, ToggleSlot,
                                        TOGGLE_MULTI_COLOR_NAMES, TOGGLE_FLAG_MULTI_KEY,
                                        slot_to_toggle_keycode)
 from keycodes.keycodes import Keycode
-from widgets.key_widget import KeyWidget
+from widgets.keycode_button import KeycodeButton, reorder_list
 from tabbed_keycodes import TabbedKeycodes, FilteredTabbedKeycodes, keycode_filter_any, keycode_filter_masked
 from tabbed_keycodes import KeyboardTab, MusicTab, GamingTab, MacroTab, LightingTab, LightingTab2, MIDITab, SearchTab, SimpleTab
 from keycodes.keycodes import (KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE, KEYCODES_BACKLIGHT,
@@ -212,43 +212,12 @@ class TabbedKeycodesNoLayers(QWidget):
                 opt.recreate_keycode_buttons()
 
 
-class ToggleKeyWidget(KeyWidget):
-    """Custom KeyWidget that doesn't open tray - parent will handle keycode selection"""
+class ToggleKeyWidget(KeycodeButton):
+    """Keycode button styled like the palette buttons. Doesn't open the tray -
+    the entry feeds the palette pick to the selected button."""
 
-    selected = pyqtSignal(object)  # Emits self when clicked
-
-    def __init__(self):
-        super().__init__()
-        self.is_selected = False
-
-    def mousePressEvent(self, ev):
-        # Set active_key to the actual widget so KeyboardWidget draws the highlight
-        if len(self.widgets) > 0:
-            self.active_key = self.widgets[0]
-            self.active_mask = False
-
-        # Emit that we're selected (don't call parent which opens tray)
-        self.selected.emit(self)
-        self.update()  # Force repaint to show highlight
-        ev.accept()
-
-    def mouseReleaseEvent(self, ev):
-        # Override to prevent any tray behavior
-        ev.accept()
-
-    def set_selected(self, selected):
-        """Visual feedback for selection"""
-        self.is_selected = selected
-        if selected:
-            # Set active_key to show native KeyboardWidget highlighting
-            if len(self.widgets) > 0:
-                self.active_key = self.widgets[0]
-                self.active_mask = False
-        else:
-            # Clear active_key to remove highlighting
-            self.active_key = None
-        self.update()
-
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
 class ToggleEntryUI(QWidget):
     """UI for a single toggle slot"""
@@ -362,6 +331,11 @@ class ToggleEntryUI(QWidget):
             key_widget = ToggleKeyWidget()
             key_idx = i  # Capture for lambda
             key_widget.selected.connect(lambda w, idx=key_idx: self._on_key_selected(idx))
+            # Steps can be dragged onto each other to reorder the cycle, and
+            # right-click -> Duplicate inserts a copy of a step after itself
+            key_widget.set_drag_group(self)
+            key_widget.reorder_requested.connect(self._on_multi_key_reorder)
+            key_widget.duplicate_requested.connect(self._on_multi_key_duplicate)
             self.multi_key_widgets.append(key_widget)
             self.multi_keys_layout.addWidget(key_widget)
 
@@ -506,6 +480,61 @@ class ToggleEntryUI(QWidget):
             self.slot.set_keycode(i, self.slot.get_keycode(i + 1))
         self.slot.set_keycode(TOGGLE_MULTI_MAX_KEYS - 1, 0)
         self._visible_multi_keys -= 1
+        self.slot.num_keys = max(2, self._visible_multi_keys)
+        self._deselect_all_keys()
+        self._update_multi_key_visibility()
+        self._update_display()
+        self.pending_changes = True
+        self.save_btn.setEnabled(True)
+        self.changed.emit()
+
+    def _on_multi_key_reorder(self, source, target, before):
+        """A step button was dropped onto another step: move it there. The
+        widgets stay put (only their keycodes are re-dealt from the slot), so
+        nothing is destroyed while the drag's own event loop is still up."""
+        try:
+            src_idx = self.multi_key_widgets.index(source)
+            dst_idx = self.multi_key_widgets.index(target)
+        except ValueError:
+            return
+        n = self._visible_multi_keys
+        if src_idx == dst_idx or src_idx >= n or dst_idx >= n:
+            return
+        keycodes = [self.slot.get_keycode(i) for i in range(n)]
+        new_idx = reorder_list(keycodes, src_idx, dst_idx, before)
+        for i, kc in enumerate(keycodes):
+            self.slot.set_keycode(i, kc)
+        self.slot.num_keys = max(2, n)
+        self._update_display()
+        # keep the selection on the step that was dragged
+        if self.selected_key_index == src_idx:
+            self._deselect_all_keys()
+            self._on_key_selected(new_idx)
+        else:
+            self._deselect_all_keys()
+        self.pending_changes = True
+        self.save_btn.setEnabled(True)
+        self.changed.emit()
+
+    def _on_multi_key_duplicate(self, widget):
+        """Right-click -> Duplicate: insert a copy of this step right after it,
+        shifting the later steps up (needs a free step in the cycle)."""
+        try:
+            idx = self.multi_key_widgets.index(widget)
+        except ValueError:
+            return
+        n = self._visible_multi_keys
+        if idx >= n:
+            return
+        if n >= TOGGLE_MULTI_MAX_KEYS:
+            QMessageBox.information(
+                self, "Duplicate Key",
+                f"The cycle already has the maximum of {TOGGLE_MULTI_MAX_KEYS} keys.")
+            return
+        for i in range(TOGGLE_MULTI_MAX_KEYS - 1, idx + 1, -1):
+            self.slot.set_keycode(i, self.slot.get_keycode(i - 1))
+        self.slot.set_keycode(idx + 1, self.slot.get_keycode(idx))
+        self._visible_multi_keys = n + 1
         self.slot.num_keys = max(2, self._visible_multi_keys)
         self._deselect_all_keys()
         self._update_multi_key_visibility()

@@ -7,46 +7,19 @@ from PyQt5.QtWidgets import QTabWidget, QWidget, QSizePolicy, QGridLayout, QVBox
     QPushButton, QSpinBox, QScrollArea, QGroupBox
 
 from protocol.constants import VIAL_PROTOCOL_DYNAMIC
-from widgets.key_widget import KeyWidget
+from widgets.keycode_button import KeycodeButton
 from tabbed_keycodes import TabbedKeycodes
 from util import tr
 from vial_device import VialKeyboard
 from editor.basic_editor import BasicEditor
 
 
-class TapDanceKeyWidget(KeyWidget):
-    """Custom KeyWidget that doesn't open tray - parent will handle keycode selection"""
-
-    selected = pyqtSignal(object)  # Emits self when clicked
+class TapDanceKeyWidget(KeycodeButton):
+    """Keycode button styled like the palette buttons. Doesn't open the tray -
+    the editor feeds the palette pick to the selected button."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.is_selected = False
-
-    def mousePressEvent(self, ev):
-        # Set active_key to the actual widget so KeyboardWidget draws the highlight
-        if len(self.widgets) > 0:
-            self.active_key = self.widgets[0]
-            self.active_mask = False
-
-        # Emit that we're selected (don't call parent which opens tray)
-        self.selected.emit(self)
-        self.update()
-        ev.accept()
-
-    def mouseReleaseEvent(self, ev):
-        ev.accept()
-
-    def set_selected(self, selected):
-        """Visual feedback for selection"""
-        self.is_selected = selected
-        if selected:
-            if len(self.widgets) > 0:
-                self.active_key = self.widgets[0]
-                self.active_mask = False
-        else:
-            self.active_key = None
-        self.update()
 
 
 class TapDanceEntryUI(QObject):
@@ -277,7 +250,7 @@ class TapDance(BasicEditor):
         if self.selected_key_widget is not None:
             try:
                 if not sip.isdeleted(self.selected_key_widget):
-                    self.selected_key_widget.set_keycode(keycode)
+                    self.selected_key_widget.on_keycode_changed(keycode)
             except RuntimeError:
                 self.selected_key_widget = None
 
