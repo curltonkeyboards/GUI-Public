@@ -2573,6 +2573,9 @@ class KeymapEditor(BasicEditor):
         self.container = KeyboardWidgetSimple(layout_editor)
         self.container.clicked.connect(self.on_key_clicked)
         self.container.deselected.connect(self.on_key_deselected)
+        # Keys dragged out of the keycode palette drop straight onto the layout.
+        self.container.set_drop_assign_enabled(True)
+        self.container.keycode_dropped.connect(self.on_keycode_dropped)
 
         # Connect encoder widget signals
         self.encoder_assign.clicked.connect(self.on_encoder_clicked)
@@ -2898,6 +2901,7 @@ class KeymapEditor(BasicEditor):
             self.container.set_scale(self.container.get_scale() - 0.1)
         else:
             self.container.set_scale(self.container.get_scale() + 0.1)
+        self.container.update_layout()
         self.refresh_layer_display()
 
     def rebuild(self, device):
@@ -2993,7 +2997,10 @@ class KeymapEditor(BasicEditor):
     def refresh_layer_display(self):
         """ Refresh text on key widgets to display data corresponding to current layer """
 
-        self.container.update_layout()
+        # No container.update_layout() here: that re-derives every keycap's
+        # polygons/paths (~7 ms for 70 keys) and is only needed when the
+        # geometry changes (set_keys, resize, scale, layout options) — those
+        # paths call it themselves. This refresh only relabels the keys.
 
         from protocol.feature_names import get_feature_name_manager, FEATURE_LAYER
         mgr = get_feature_name_manager()
@@ -3228,7 +3235,10 @@ class KeymapEditor(BasicEditor):
         # Deselect encoder buttons when keyboard is clicked
         self.encoder_assign.deselect()
 
-        self.refresh_layer_display()
+        # Selection only changed — repaint; the labels are already current
+        # (relabelling all keys here ran on every click AND every drag-paint
+        # move, on top of the relabel set_key just did).
+        self.container.update()
         if self.container.active_mask:
             self.tabbed_keycodes.set_keycode_filter(keycode_filter_masked)
         else:
@@ -3236,6 +3246,32 @@ class KeymapEditor(BasicEditor):
 
     def on_key_deselected(self):
         self.tabbed_keycodes.set_keycode_filter(None)
+
+    def on_keycode_dropped(self, key, mask, qmk_id):
+        """A palette keycode was dropped on ``key`` (see KeyboardWidget2
+        keycode_dropped): select that key and assign exactly like a palette
+        click would, then leave it selected (no select_next — the drop named
+        its target, so the next palette click still lands there)."""
+        if self.keyboard is None or key is None:
+            return
+        if mask and not Keycode.is_basic(qmk_id):
+            return
+        # Run after the drop event returns: the drop is delivered inside the
+        # palette button's QDrag.exec_() loop, and the assignment can raise a
+        # modal warning (navigation-layer guard) that should not nest in it.
+        QTimer.singleShot(0, lambda: self._assign_dropped_keycode(key, mask, qmk_id))
+
+    def _assign_dropped_keycode(self, key, mask, qmk_id):
+        if self.keyboard is None or key not in self.container.widgets:
+            return
+        self.encoder_assign.deselect()
+        self.container.active_key = key
+        self.container.active_mask = mask
+        if isinstance(key, EncoderWidget2):
+            self.set_key_encoder(qmk_id)
+        else:
+            self.set_key_matrix(qmk_id)
+        self.on_key_clicked()
 
     def on_encoder_clicked(self):
         """ Called when an encoder button is clicked """
@@ -3250,6 +3286,7 @@ class KeymapEditor(BasicEditor):
         if self.keyboard is None:
             return
 
+        self.container.update_layout()
         self.refresh_layer_display()
         self.keyboard.set_layout_options(self.layout_editor.pack())
 

@@ -222,6 +222,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.encoder_count = 0
         self.layout = dict()
         self.encoder_layout = dict()
+        # RAM-rescan bookkeeping (send_keymap_for_ram_rescan): (layer, row)
+        # chunks written since the last upload, and whether the firmware's
+        # RAM keymap has ever received the full keymap this session.
+        self._rescan_dirty_rows = set()
+        self._rescan_full_sent = False
         self.rows = self.cols = self.layers = 0
         self.layout_labels = None
         self.layout_options = -1
@@ -652,6 +657,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 self.usb_send(self.dev, struct.pack(">BBBBH", CMD_VIA_SET_KEYCODE, layer, row, col,
                                                     Keycode.deserialize(code)), retries=20)
                 self.layout[key] = code
+                self._rescan_dirty_rows.add((layer, row))
 
     def set_encoder(self, layer, index, direction, code):
         key = (layer, index, direction)
@@ -1386,31 +1392,47 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
             # Send keymap in chunks: 1 chunk = 1 row of 1 layer (14 keycodes × 2 bytes = 28 bytes)
             # chunk_index = layer * firmware_rows + row
-            for layer in range(self.layers):
-                for row in range(firmware_rows):
-                    chunk_index = layer * firmware_rows + row
-                    # Build 28 bytes of keycode data for this row
-                    keycode_data = bytearray()
-                    for col in range(firmware_cols):
-                        key = (layer, row, col)
-                        code_str = self.layout.get(key, "KC_NO")
-                        code_int = Keycode.deserialize(code_str)
-                        keycode_data += struct.pack(">H", code_int)
+            #
+            # Each chunk is a blocking HID round trip on the GUI thread, and
+            # the firmware's RAM keymap persists between uploads — so only the
+            # FIRST upload of a session sends every layer*row chunk; later
+            # ones send just the rows written since (set_key marks them).
+            # This is what turned the post-edit "computing" freeze (~60 round
+            # trips a second after every assignment) into 1-2 round trips.
+            if self._rescan_full_sent:
+                chunks = sorted(self._rescan_dirty_rows)
+            else:
+                chunks = [(layer, row) for layer in range(self.layers) for row in range(firmware_rows)]
+            for layer, row in chunks:
+                if layer >= self.layers or row >= firmware_rows:
+                    continue
+                chunk_index = layer * firmware_rows + row
+                # Build 28 bytes of keycode data for this row
+                keycode_data = bytearray()
+                for col in range(firmware_cols):
+                    key = (layer, row, col)
+                    code_str = self.layout.get(key, "KC_NO")
+                    code_int = Keycode.deserialize(code_str)
+                    keycode_data += struct.pack(">H", code_int)
 
-                    # Pad if fewer than 14 cols (shouldn't happen for 5×14, but be safe)
-                    while len(keycode_data) < 28:
-                        keycode_data += b'\x00\x00'
+                # Pad if fewer than 14 cols (shouldn't happen for 5×14, but be safe)
+                while len(keycode_data) < 28:
+                    keycode_data += b'\x00\x00'
 
-                    # Send chunk: [0xFE, 0xE9, 0x00 (sub_cmd), chunk_index, data[28]]
-                    msg = struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_KEYMAP_RAM_RESCAN, 0x00, chunk_index)
-                    msg += bytes(keycode_data[:28])
-                    data = self.usb_send(self.dev, msg, retries=5)
-                    if not data or data[0] != 0x01:
-                        return False
+                # Send chunk: [0xFE, 0xE9, 0x00 (sub_cmd), chunk_index, data[28]]
+                msg = struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_KEYMAP_RAM_RESCAN, 0x00, chunk_index)
+                msg += bytes(keycode_data[:28])
+                data = self.usb_send(self.dev, msg, retries=5)
+                if not data or data[0] != 0x01:
+                    return False
 
             # All chunks sent - trigger RAM-based rescan
             data = self.usb_send(self.dev, struct.pack("BBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_KEYMAP_RAM_RESCAN, 0x01), retries=5)
-            return data and len(data) > 0 and data[0] == 0x01
+            ok = bool(data and len(data) > 0 and data[0] == 0x01)
+            if ok:
+                self._rescan_full_sent = True
+                self._rescan_dirty_rows.clear()
+            return ok
         except Exception as e:
             return False
 
