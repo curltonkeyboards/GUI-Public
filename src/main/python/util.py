@@ -60,8 +60,20 @@ def is_hid_transfer_active():
     return _hid_transfer_active
 
 
-# For Vial keyboard
-VIAL_SERIAL_NUMBER_MAGIC = "vial:f64c2b3c"
+# Device identity. The keyboard advertises a USB serial number starting with
+# this prefix (firmware config.h SERIAL_NUMBER, currently "midiswitch-v1"), and
+# its configurator raw-HID collection sits on this vendor usage page/usage
+# (firmware RAW_USAGE_PAGE / RAW_USAGE_ID). Both are part of the wire contract:
+# change them here and in the firmware together.
+MIDISWITCH_SERIAL_PREFIX = "midiswitch-"
+RAW_HID_USAGE_PAGE = 0xFF4D
+RAW_HID_USAGE = 0x53
+
+
+def is_midiswitch_serial(dev):
+    """True if an enumerated HID device carries the keyboard's serial prefix."""
+    serial = dev.get("serial_number") or ""
+    return serial.startswith(MIDISWITCH_SERIAL_PREFIX)
 
 # For bootloader
 VIBL_SERIAL_NUMBER_MAGIC = "vibl:d4f8159c"
@@ -149,7 +161,7 @@ def hid_send(dev, msg, retries=1):
 
 
 def is_rawhid(desc, quiet):
-    if desc["usage_page"] != 0xFF60 or desc["usage"] != 0x61:
+    if desc["usage_page"] != RAW_HID_USAGE_PAGE or desc["usage"] != RAW_HID_USAGE:
         if not quiet:
             logging.warning("is_rawhid: {} does not match - usage_page={:04X} usage={:02X}".format(
                 desc["path"], desc["usage_page"], desc["usage"]))
@@ -198,14 +210,14 @@ def find_vial_devices(via_stack_json, sideload_vid=None, sideload_pid=None, quie
                 ))
             if is_rawhid(dev, quiet):
                 filtered.append(VialKeyboard(dev, sideload=True))
-        elif VIAL_SERIAL_NUMBER_MAGIC in dev["serial_number"] and is_our_keyboard(dev):
+        elif is_midiswitch_serial(dev) and is_our_keyboard(dev):
             if not quiet:
-                logging.info("Matching VID={:04X}, PID={:04X}, serial={}, path={} - vial serial magic".format(
+                logging.info("Matching VID={:04X}, PID={:04X}, serial={}, path={} - serial prefix".format(
                     dev["vendor_id"], dev["product_id"], dev["serial_number"], dev["path"]
                 ))
             if is_rawhid(dev, quiet):
                 filtered.append(VialKeyboard(dev))
-        elif VIBL_SERIAL_NUMBER_MAGIC in dev["serial_number"]:
+        elif VIBL_SERIAL_NUMBER_MAGIC in (dev.get("serial_number") or ""):
             if not quiet:
                 logging.info("Matching VID={:04X}, PID={:04X}, serial={}, path={} - vibl serial magic".format(
                     dev["vendor_id"], dev["product_id"], dev["serial_number"], dev["path"]
