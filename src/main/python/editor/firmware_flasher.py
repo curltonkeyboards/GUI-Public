@@ -64,7 +64,7 @@ def cmd_flash(device, firmware, enable_insecure, log_cb, progress_cb, complete_c
 
     send_retries(device, pad_for_vibl(b"VC\x01"))
     uid = device.recv(8)
-    log_cb("* Vial ID: {}".format(uid.hex()))
+    log_cb("* Keyboard ID: {}".format(uid.hex()))
 
     if uid == b"\xFF" * 8:
         log_cb("\n\n\n!!! WARNING !!!\nBootloader UID is not set, make sure to configure it"
@@ -158,10 +158,10 @@ class FirmwareFlasher(BasicEditor):
             return
 
         if isinstance(self.device, VialBootloader):
-            self.log("Valid Vial Bootloader device at {}".format(self.device.desc["path"].decode("utf-8")))
+            self.log("Valid MIDIswitch bootloader device at {}".format(self.device.desc["path"].decode("utf-8")))
             self.chk_restore_keymap.hide()
         elif isinstance(self.device, VialKeyboard):
-            self.log("Vial keyboard detected")
+            self.log("MIDIswitch keyboard detected")
             self.chk_restore_keymap.show()
 
     def valid(self):
@@ -180,7 +180,7 @@ class FirmwareFlasher(BasicEditor):
         dialog = QFileDialog()
         dialog.setDefaultSuffix("vfw")
         dialog.setAcceptMode(QFileDialog.AcceptOpen)
-        dialog.setNameFilters(["Vial Firmware (*.vfw)"])
+        dialog.setNameFilters(["MIDIswitch Firmware (*.vfw)"])
         if dialog.exec_() == QDialog.Accepted:
             self.selected_firmware_path = dialog.selectedFiles()[0]
             self.txt_file_selector.setText(self.selected_firmware_path)
@@ -230,7 +230,7 @@ class FirmwareFlasher(BasicEditor):
                 time.sleep(1)
                 found = self.find_device_with_uid(VialBootloader, self.uid_restore)
 
-            self.log("Found Vial Bootloader device at {}".format(found.desc["path"].decode("utf-8")))
+            self.log("Found MIDIswitch bootloader device at {}".format(found.desc["path"].decode("utf-8")))
             found.open()
             self.device = found
 
@@ -269,7 +269,7 @@ class FirmwareFlasher(BasicEditor):
                 time.sleep(1)
                 found = self.find_device_with_uid(VialKeyboard, self.uid_restore)
 
-            self.log("Found Vial keyboard at {}".format(found.desc["path"].decode("utf-8")))
+            self.log("Found MIDIswitch keyboard at {}".format(found.desc["path"].decode("utf-8")))
             found.open()
             self.device = found
             self.log("Restoring saved layout...")

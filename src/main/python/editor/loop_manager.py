@@ -25,7 +25,7 @@ import math
 NUM_LOOPS = 8
 
 # Setup logging to file for standalone builds
-LOG_FILE = os.path.join(os.path.expanduser("~"), "vial-loop-manager.log")
+LOG_FILE = os.path.join(os.path.expanduser("~"), "switchstation-loop-manager.log")
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s [%(levelname)s] %(message)s',

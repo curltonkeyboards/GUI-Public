@@ -127,29 +127,18 @@ class DelaySlotEditor(QWidget):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
 
-        # Header: centered title (slot name) + Rename button, with a
-        # centered description below -- both within the tab.
+        # Header inside the slot page (like the DKS pages): configurator
+        # title + description; the slot's own name sits above the Mode row.
         from protocol.feature_names import get_feature_name_manager, FEATURE_DELAY
         name = get_feature_name_manager().get_name(FEATURE_DELAY, slot_index)
 
-        title_row = QHBoxLayout()
-        title_row.addStretch()
-        self.title_label = QLabel(f"<b>{name}</b>")
-        self.title_label.setStyleSheet("font-size: 14pt;")
-        title_row.addWidget(self.title_label)
+        title = QLabel("Delay Configurator")
+        title.setStyleSheet("font-size: 14pt; font-weight: bold;")
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
 
-        self.btn_rename = QPushButton("Rename")
-        self.btn_rename.setMaximumHeight(24)
-        self.btn_rename.setMaximumWidth(60)
-        self.btn_rename.setStyleSheet("QPushButton { font-size: 8pt; border-radius: 3px; padding: 2px 6px; }")
-        self.btn_rename.clicked.connect(self._on_rename)
-        title_row.addWidget(self.btn_rename)
-        title_row.addStretch()
-        layout.addLayout(title_row)
-
-        desc = QLabel("Configure delay effects for MIDI notes played/passed through the "
-                      "MIDIswitch. Assign these to the keymap using the User Delay Buttons "
-                      "which can be renamed.")
+        desc = QLabel("Build delay effects for MIDI notes played or passed through the MIDIswitch.\n"
+                      "Assign delays to the keymap using the User Delay Buttons, which can be renamed.")
         desc.setWordWrap(True)
         desc.setStyleSheet("color: gray; font-size: 9pt;")
         desc.setAlignment(Qt.AlignCenter)
@@ -164,6 +153,22 @@ class DelaySlotEditor(QWidget):
         center_layout = QVBoxLayout()
         center_layout.setContentsMargins(0, 0, 0, 0)
         center_layout.setSpacing(8)
+
+        # ---- Slot name + Rename, directly above the Mode row ----
+        title_row = QHBoxLayout()
+        title_row.addStretch()
+        self.title_label = QLabel(f"<b>{name}</b>")
+        self.title_label.setStyleSheet("font-size: 11pt;")
+        title_row.addWidget(self.title_label)
+
+        self.btn_rename = QPushButton("Rename")
+        self.btn_rename.setMaximumHeight(24)
+        self.btn_rename.setMaximumWidth(60)
+        self.btn_rename.setStyleSheet("QPushButton { font-size: 8pt; border-radius: 3px; padding: 2px 6px; }")
+        self.btn_rename.clicked.connect(self._on_rename)
+        title_row.addWidget(self.btn_rename)
+        title_row.addStretch()
+        center_layout.addLayout(title_row)
 
         # ---- Rate & Feedback (no group title) ----
         rate_group = QGroupBox()
@@ -683,20 +688,6 @@ class DelayTab(BasicEditor):
         # Dynamic tab tracking (for user slots only)
         self._visible_tab_count = 1
         self._manually_expanded_count = 0
-
-        # Header: Delay Configurator title + description (matches Loop Manager style)
-        title = QLabel("Delay Configurator")
-        title.setStyleSheet("font-size: 14pt; font-weight: bold;")
-        title.setAlignment(Qt.AlignCenter)
-        self.addWidget(title)
-
-        desc_label = QLabel(
-            "Build delay effects for MIDI notes played or passed through the MIDIswitch.\n"
-            "Assign delays to the keymap using the User Delay Buttons, which can be renamed.")
-        desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
-        desc_label.setAlignment(Qt.AlignCenter)
-        self.addWidget(desc_label)
 
         # Tab widget for user delay slots
         self.tabs = QTabWidget()
