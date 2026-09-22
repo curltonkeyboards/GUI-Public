@@ -38,7 +38,10 @@ from protocol.macro import ProtocolMacro
 from protocol.tap_dance import ProtocolTapDance
 from unlocker import Unlocker
 from protocol.msw_protocol import build_ident_request, parse_ident, encode_request, decode_response, \
-    MSW_PROTOCOL_MAJOR_SUPPORTED, MSW1_VIA_LEVEL, MSW1_VIAL_LEVEL
+    MSW_PROTOCOL_MAJOR_SUPPORTED, MSW1_VIA_LEVEL, MSW1_VIAL_LEVEL, MSW_CAP_DEFINITION, \
+    MACRO_SETTINGS_QSIDS, MSW_MSET_GET, MSW_MSET_SET, MSW_MSET_RESET, \
+    build_macro_settings_request, parse_macro_settings
+from protocol import msw_definition
 from util import MSG_LEN, hid_lock_for, hid_send
 
 SUPPORTED_VIA_PROTOCOL = [-1, 9]
@@ -221,6 +224,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         self._usb_send_raw = usb_send
         self.usb_send = self._usb_send_codec
         self.msw_ident = None       # dict from parse_ident(), or None on a keyboard without IDENT
+        self.settings = dict()      # Macro Settings values by setting id (filled by reload_settings)
+        self.supported_settings = set()
         self.hid_codec = "legacy"   # "legacy" | "msw"
         self.definition = None
 
@@ -409,6 +414,25 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         data = self.usb_send(self.dev, struct.pack("B", CMD_VIA_GET_PROTOCOL_VERSION), retries=20)
         self.via_protocol = struct.unpack(">H", data[1:3])[0]
 
+    def _download_definition(self):
+        """Fetch the layout definition from the keyboard (size, then 32-byte
+        pages of compressed JSON)."""
+        data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_SIZE), retries=20)
+        sz = struct.unpack("<I", data[0:4])[0]
+
+        payload = b""
+        block = 0
+        while sz > 0:
+            data = self.usb_send(self.dev, struct.pack("<BBI", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_DEFINITION, block),
+                                 retries=20)
+            if sz < MSG_LEN:
+                data = data[:sz]
+            payload += data
+            block += 1
+            sz -= MSG_LEN
+
+        return json.loads(lzma.decompress(payload))
+
     def check_protocol_version(self):
         if self.via_protocol not in SUPPORTED_VIA_PROTOCOL or self.vial_protocol not in SUPPORTED_VIAL_PROTOCOL:
             raise ProtocolError()
@@ -438,23 +462,15 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
                 data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_KEYBOARD_ID), retries=20)
                 self.vial_protocol, self.keyboard_id = struct.unpack("<IQ", data[0:12])
 
-            # get the size
-            data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_SIZE), retries=20)
-            sz = struct.unpack("<I", data[0:4])[0]
-
-            # get the payload
-            payload = b""
-            block = 0
-            while sz > 0:
-                data = self.usb_send(self.dev, struct.pack("<BBI", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_DEFINITION, block),
-                                     retries=20)
-                if sz < MSG_LEN:
-                    data = data[:sz]
-                payload += data
-                block += 1
-                sz -= MSG_LEN
-
-            payload = json.loads(lzma.decompress(payload))
+            if ident is not None and self.hid_codec == "msw" and msw_definition.has_definition(ident["model_id"]):
+                # The app carries this model's layout definition; nothing to download.
+                payload = msw_definition.get_definition(ident["model_id"])
+            elif ident is not None and self.hid_codec == "msw" and not (ident["capabilities"] & MSW_CAP_DEFINITION):
+                # A model this app does not know, and the keyboard cannot
+                # describe itself either: the app needs updating.
+                raise ProtocolError()
+            else:
+                payload = self._download_definition()
 
         self.check_protocol_version()
 
@@ -644,6 +660,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
     def reload_settings(self):
         self.settings = dict()
         self.supported_settings = set()
+        if self.hid_codec == "msw":
+            self._macro_settings_cmd(MSW_MSET_GET)
+            return
         if self.vial_protocol < VIAL_PROTOCOL_QMK_SETTINGS:
             return
         cur = 0
@@ -1205,8 +1224,29 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         except Exception:
             return False
 
+    def _macro_settings_cmd(self, sub, values=None):
+        """Send one Macro Settings command and refresh self.settings /
+        self.supported_settings from its reply. Returns True on success."""
+        data = self.usb_send(self.dev, build_macro_settings_request(sub, values), retries=20)
+        parsed = parse_macro_settings(data)
+        if parsed is None:
+            return False
+        self.settings.update(parsed)
+        self.supported_settings = set(MACRO_SETTINGS_QSIDS)
+        return True
+
     def qmk_settings_set(self, qsid, value):
         from editor.qmk_settings import QmkSettingsDefs as QmkSettings
+        if self.hid_codec == "msw":
+            if qsid not in MACRO_SETTINGS_QSIDS:
+                return 1
+            if any(q not in self.settings for q in MACRO_SETTINGS_QSIDS):
+                # the SET carries all three: fetch the ones we do not hold yet
+                if not self._macro_settings_cmd(MSW_MSET_GET):
+                    return 1
+            values = dict(self.settings)
+            values[qsid] = value
+            return 0 if self._macro_settings_cmd(MSW_MSET_SET, values) else 1
         self.settings[qsid] = value
         data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_SET, qsid)
                              + QmkSettings.qsid_serialize(qsid, value),
@@ -1214,6 +1254,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         return data[0]
 
     def qmk_settings_reset(self):
+        if self.hid_codec == "msw":
+            self._macro_settings_cmd(MSW_MSET_RESET)
+            return
         self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_RESET))
 
     def _vialrgb_set_mode(self):

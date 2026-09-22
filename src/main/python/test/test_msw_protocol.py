@@ -1,15 +1,21 @@
 import json
 import lzma
+import os
 import struct
 import unittest
 
 from protocol import msw_protocol as msw
-from protocol.keyboard_comm import Keyboard
+from protocol import msw_definition
+from protocol.keyboard_comm import Keyboard, ProtocolError
 from util import MSG_LEN, chunks
 
 LAYOUT_2x2 = ('{"name":"test","vendorId":"0x0000","productId":"0x1111","lighting":"none",'
               '"matrix":{"rows":2,"cols":2},"layouts":{"keymap":[["0,0","0,1"],["1,0","1,1"]]}}')
 MODEL_UID = 0xB26D0425F36AC4F4
+BUNDLED_MODEL = 1                       # a model id the app carries a definition for
+BUNDLED_ROWS = msw_definition.get_definition(BUNDLED_MODEL)["matrix"]["rows"]
+UNKNOWN_MODEL = 2                       # a model id the app does not know
+SETTINGS_DEFAULTS = {7: 200, 18: 1, 6: 5000}
 
 
 def pad(b):
@@ -21,10 +27,14 @@ class FakeFirmware:
     (the same rules the keyboard applies), a handful of legacy handlers
     with their real response shapes, and the legacy-paths switch."""
 
-    def __init__(self, has_ident=True, legacy_paths=True, definition=LAYOUT_2x2):
+    def __init__(self, has_ident=True, legacy_paths=True, definition=LAYOUT_2x2,
+                 model_id=BUNDLED_MODEL, serve_definition=False):
         self.has_ident = has_ident
         self.legacy_paths = legacy_paths
+        self.model_id = model_id
+        self.serve_definition = serve_definition      # the definition download is compiled in
         self.definition = lzma.compress(definition.encode("utf-8"))
+        self.settings = dict(SETTINGS_DEFAULTS)       # the three Macro Settings values
         self.wire = []  # every request as it arrived on the wire
 
     # ---- the firmware ----
@@ -39,11 +49,27 @@ class FakeFirmware:
         r[8], r[9] = 1, 0
         r[10:13] = bytes([1, 2, 3])
         struct.pack_into("<H", r, 13, 7)
-        caps = msw.MSW_CAP_DEFINITION | msw.MSW_CAP_CLONE | (msw.MSW_CAP_LEGACY_PATHS if self.legacy_paths else 0)
+        caps = msw.MSW_CAP_CLONE | (msw.MSW_CAP_LEGACY_PATHS if self.legacy_paths else 0) \
+            | (msw.MSW_CAP_DEFINITION if self.serve_definition else 0)
         struct.pack_into("<I", r, 15, caps)
-        r[19] = 1
+        r[19] = self.model_id
         struct.pack_into("<Q", r, 20, MODEL_UID)
         struct.pack_into("<I", r, 28, 0xDEADBEEF)
+        return bytes(r)
+
+    def macro_settings(self, d):
+        r = bytearray(32)
+        r[0:4] = d[0:4]
+        sub = d[4]
+        if sub > 2:
+            return bytes(r)  # status 0
+        if sub == 2:
+            self.settings = dict(SETTINGS_DEFAULTS)
+        elif sub == 1:
+            for i, q in enumerate(msw.MACRO_SETTINGS_QSIDS):
+                self.settings[q] = struct.unpack_from("<H", bytes(d), 6 + 2 * i)[0]
+        r[4] = 1
+        struct.pack_into("<HHH", r, 5, *[self.settings[q] for q in msw.MACRO_SETTINGS_QSIDS])
         return bytes(r)
 
     def legacy_dispatch(self, d):
@@ -63,10 +89,29 @@ class FakeFirmware:
             if sub == 0x00:
                 d[0:12] = struct.pack("<IQ", 6, MODEL_UID)
             elif sub == 0x01:
-                d[0:4] = struct.pack("<I", len(self.definition))
+                d[0:4] = struct.pack("<I", len(self.definition) if self.serve_definition else 0)
             elif sub == 0x02:
                 page = struct.unpack("<I", bytes(d[2:6]))[0]
-                d[:] = pad(self.definition[page * 32:(page + 1) * 32])
+                d[:] = pad(self.definition[page * 32:(page + 1) * 32]) if self.serve_definition else bytes(32)
+            elif sub in (0x09, 0x0A, 0x0B, 0x0C):
+                if not self.legacy_paths:
+                    pass  # the per-setting sub-commands are not compiled in: request echoed back
+                elif sub == 0x09:
+                    gt = struct.unpack("<H", bytes(d[2:4]))[0]
+                    ids = [q for q in sorted(self.settings) if q > gt]
+                    d[:] = b"".join(struct.pack("<H", q) for q in ids).ljust(32, b"\xff")
+                elif sub == 0x0A:
+                    qsid = struct.unpack("<H", bytes(d[2:4]))[0]
+                    d[0] = 0 if qsid in self.settings else 1
+                    if qsid in self.settings:
+                        d[1:3] = struct.pack("<H", self.settings[qsid])
+                elif sub == 0x0B:
+                    qsid = struct.unpack("<H", bytes(d[2:4]))[0]
+                    d[0] = 0 if qsid in self.settings else 1
+                    if qsid in self.settings:
+                        self.settings[qsid] = struct.unpack("<H", bytes(d[4:6]))[0]
+                else:
+                    self.settings = dict(SETTINGS_DEFAULTS)
             elif sub == 0x03:
                 kc = 0xFE4D  # a keycode whose high byte equals the legacy prefix
                 d[0], d[1] = kc >> 8, kc & 0xFF
@@ -83,6 +128,8 @@ class FakeFirmware:
         d = bytearray(data)
         if d[0:3] == bytes([0x7D, 0x00, 0x4D]) and d[3] == msw.MSW_CMD_IDENT:
             return self.ident(d)
+        if d[0:3] == bytes([0x7D, 0x00, 0x4D]) and d[3] == msw.MSW_CMD_MACRO_SETTINGS:
+            return self.macro_settings(d)
         # alias translation (msw_alias_translate)
         alias = None
         if d[0] in msw.ALIAS_TO_VIA:
@@ -187,7 +234,7 @@ class TestCodecParity(unittest.TestCase):
 
     def test_definition_bytes_that_look_like_headers_survive(self):
         # a definition page whose first byte is the alias prefix (0x4D) or the legacy prefix (0xFE)
-        fw = FakeFirmware()
+        fw = FakeFirmware(serve_definition=True)
         fw.definition = b"\x4d" * 32 + b"\xfe" * 32 + b"\x2a" * 32
         kb = Keyboard(None, fw.send)
         kb.probe_ident()
@@ -205,7 +252,7 @@ class TestCodecParity(unittest.TestCase):
 class TestConnect(unittest.TestCase):
 
     def test_old_firmware_stays_legacy(self):
-        fw = FakeFirmware(has_ident=False)
+        fw = FakeFirmware(has_ident=False, serve_definition=True)
         kb = Keyboard(None, fw.send)
         self.assertIsNone(kb.probe_ident())
         self.assertEqual(kb.hid_codec, "legacy")
@@ -220,15 +267,31 @@ class TestConnect(unittest.TestCase):
         self.assertEqual(kb.hid_codec, "msw")
         self.assertEqual((kb.via_protocol, kb.vial_protocol, kb.keyboard_id), (9, 6, MODEL_UID))
         self.assertEqual(kb.msw_ident["firmware"], (1, 2, 3))
-        self.assertEqual(kb.rows, 2)
+        self.assertEqual(kb.rows, BUNDLED_ROWS)   # the bundled definition, not the 2x2 the fake would serve
         for pkt in fw.wire:
             self.assertNotIn(pkt[0], LEGACY_BYTE0, "legacy id on the wire during connect: {}".format(pkt.hex()))
+        self.assertFalse(definition_requests(fw), "definition download requested for a bundled model")
+
+    def test_unknown_model_downloads_when_the_keyboard_offers(self):
+        fw = FakeFirmware(model_id=UNKNOWN_MODEL, serve_definition=True)
+        kb = Keyboard(None, fw.send)
+        kb.reload_layout()
+        self.assertEqual(kb.hid_codec, "msw")
+        self.assertEqual(kb.rows, 2)
+        self.assertTrue(definition_requests(fw))
+
+    def test_unknown_model_without_definition_is_refused(self):
+        fw = FakeFirmware(model_id=UNKNOWN_MODEL, serve_definition=False)
+        kb = Keyboard(None, fw.send)
+        with self.assertRaises(ProtocolError):
+            kb.reload_layout()
+        self.assertFalse(definition_requests(fw))
 
     def test_legacy_paths_off_only_aliases_answer(self):
         fw = FakeFirmware(legacy_paths=False)
         kb = Keyboard(None, fw.send)
         kb.reload_layout()  # works: IDENT + aliases only
-        self.assertEqual(kb.rows, 2)
+        self.assertEqual(kb.rows, BUNDLED_ROWS)
         self.assertFalse(kb.msw_ident["capabilities"] & msw.MSW_CAP_LEGACY_PATHS)
         # a foreign probe in the original form gets the custom "unknown" reply
         self.assertEqual(fw.receive(pad(b"\x01"))[0:3], bytes([0x7D, 0x00, 0x4D]))
@@ -243,6 +306,76 @@ class TestConnect(unittest.TestCase):
         kb = Keyboard(None, fw.send)
         self.assertIsNotNone(kb.probe_ident())
         self.assertEqual(kb.hid_codec, "legacy")
+
+
+class TestMacroSettings(unittest.TestCase):
+
+    def test_explicit_command_replaces_the_per_setting_ones(self):
+        fw = FakeFirmware(legacy_paths=False)
+        kb = Keyboard(None, fw.send)
+        kb.reload_layout()
+        kb.reload_settings()
+        self.assertEqual(kb.supported_settings, set(msw.MACRO_SETTINGS_QSIDS))
+        self.assertEqual(kb.settings, SETTINGS_DEFAULTS)
+
+        self.assertEqual(kb.qmk_settings_set(7, 250), 0)
+        self.assertEqual(fw.settings[7], 250)
+        self.assertEqual(fw.settings[18], SETTINGS_DEFAULTS[18])   # the other two carried unchanged
+        self.assertEqual(kb.settings[7], 250)
+
+        kb.qmk_settings_reset()
+        self.assertEqual(fw.settings, SETTINGS_DEFAULTS)
+        self.assertEqual(kb.settings, SETTINGS_DEFAULTS)
+
+        self.assertEqual(kb.qmk_settings_set(99, 1), 1)              # not a Macro Setting
+        self.assertFalse(setting_subcommands(fw), "per-setting sub-command on the wire")
+
+    def test_set_before_reload_fetches_the_rest(self):
+        fw = FakeFirmware()
+        kb = Keyboard(None, fw.send)
+        kb.reload_layout()
+        self.assertEqual(kb.qmk_settings_set(18, 7), 0)
+        self.assertEqual(fw.settings, {7: 200, 18: 7, 6: 5000})
+
+    def test_bad_reply_leaves_settings_unsupported(self):
+        fw = FakeFirmware()
+        fw.macro_settings = lambda d: bytes(32)
+        kb = Keyboard(None, fw.send)
+        kb.reload_layout()
+        kb.reload_settings()
+        self.assertEqual(kb.supported_settings, set())
+        self.assertEqual(kb.settings, {})
+        self.assertEqual(kb.qmk_settings_set(7, 1), 1)
+
+    def test_legacy_firmware_still_uses_the_per_setting_commands(self):
+        # the per-setting path decodes through the settings definitions the app ships
+        from editor.qmk_settings import QmkSettingsDefs
+        res = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "resources", "base")
+
+        class Ctx:
+            def get_resource(self, name):
+                return os.path.join(res, name)
+        QmkSettingsDefs.initialize(Ctx())
+
+        fw = FakeFirmware(has_ident=False, serve_definition=True)
+        kb = Keyboard(None, fw.send)
+        kb.reload_layout()
+        kb.reload_settings()
+        self.assertEqual(kb.supported_settings, set(SETTINGS_DEFAULTS))
+        self.assertEqual(kb.settings, SETTINGS_DEFAULTS)
+        self.assertEqual(kb.qmk_settings_set(6, 123), 0)
+        self.assertEqual(fw.settings[6], 123)
+        self.assertTrue(setting_subcommands(fw))
+
+
+def definition_requests(fw):
+    """The definition size / page requests seen on the wire, either form."""
+    return [p for p in fw.wire if p[0] in (0xFE, msw.ALIAS_VIAL_PREFIX) and p[1] in (0x01, 0x02)]
+
+
+def setting_subcommands(fw):
+    """The per-setting query/get/set/reset requests seen on the wire, either form."""
+    return [p for p in fw.wire if p[0] in (0xFE, msw.ALIAS_VIAL_PREFIX) and 0x09 <= p[1] <= 0x0C]
 
 
 if __name__ == "__main__":

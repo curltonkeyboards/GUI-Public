@@ -118,3 +118,46 @@ def decode_response(request_msg, response):
 def is_alias_candidate(msg):
     """True if :func:`encode_request` would change this packet."""
     return bool(msg) and (msg[0] in VIA_TO_ALIAS or msg[0] == LEGACY_VIAL_PREFIX)
+
+
+# ---- Macro Settings ---------------------------------------------------------
+#
+# The three timing settings the Macro Settings page edits, as ONE explicit
+# custom-family command (0x98) instead of the per-setting sub-commands:
+#
+#   request  data[4] = sub-command: 0 GET, 1 SET, 2 RESET
+#            SET payload: data[6..11] = three u16 LE, in MACRO_SETTINGS_QSIDS order
+#   response status@4 (1 = ok), then the CURRENT values as three u16 LE at
+#            5..10 - for every sub-command, so the caller refreshes from it.
+#
+# The keys are the app's own setting ids (the ones qmk_settings.json lists),
+# so the settings page, .vil save/restore and the About dialog are unchanged.
+
+MSW_CMD_MACRO_SETTINGS = 0x98
+MSW_MSET_GET = 0
+MSW_MSET_SET = 1
+MSW_MSET_RESET = 2
+MACRO_SETTINGS_QSIDS = (7, 18, 6)   # hold duration, gap between macro keys, one-shot timeout
+
+_MSET_HEADER = bytes([0x7D, 0x00, 0x4D, MSW_CMD_MACRO_SETTINGS])
+
+
+def build_macro_settings_request(sub, values=None):
+    """The 32-byte Macro Settings packet. ``values`` maps setting id -> value
+    and is required for SET (every id in MACRO_SETTINGS_QSIDS)."""
+    pkt = bytearray(_MSET_HEADER) + bytearray(28)
+    pkt[4] = sub
+    if sub == MSW_MSET_SET:
+        struct.pack_into("<HHH", pkt, 6, *[int(values[q]) & 0xFFFF for q in MACRO_SETTINGS_QSIDS])
+    return bytes(pkt)
+
+
+def parse_macro_settings(response):
+    """Return {setting id: value} from a Macro Settings reply, or None if the
+    reply is not a successful echo of the command."""
+    if not response or len(response) < 11:
+        return None
+    if bytes(response[0:4]) != _MSET_HEADER or response[4] != 1:
+        return None
+    vals = struct.unpack_from("<HHH", bytes(response), 5)
+    return dict(zip(MACRO_SETTINGS_QSIDS, vals))
