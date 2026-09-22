@@ -23,7 +23,7 @@ from protocol.toggle_protocol import (ProtocolToggle, ToggleSlot,
                                        TOGGLE_MULTI_COLOR_NAMES, TOGGLE_FLAG_MULTI_KEY,
                                        slot_to_toggle_keycode)
 from keycodes.keycodes import Keycode
-from widgets.keycode_button import KeycodeButton, DropGap, reorder_list, install_click_away_deselect
+from widgets.keycode_button import KeycodeButton, DropGap, reorder_list, install_click_away_deselect, install_gap_drop_fallback
 from tabbed_keycodes import TabbedKeycodes, FilteredTabbedKeycodes, keycode_filter_any, keycode_filter_masked
 from tabbed_keycodes import KeyboardTab, MusicTab, GamingTab, MacroTab, LightingTab, LightingTab2, MIDITab, SearchTab, SimpleTab
 from keycodes.keycodes import (KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE, KEYCODES_BACKLIGHT,
@@ -386,6 +386,7 @@ class ToggleEntryUI(QWidget):
         multi_outer_layout.addLayout(multi_btn_layout)
 
         self.multi_group.setLayout(multi_outer_layout)
+        install_gap_drop_fallback(self.multi_group)
         self.multi_group.setVisible(False)
         layout.addWidget(self.multi_group)
 

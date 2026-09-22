@@ -11,6 +11,7 @@ from macro.macro_action import ActionTap
 from macro.macro_action import text_to_actions, expand_text_actions
 from macro.macro_action_ui import ActionTextUI, ActionTapUI, ui_action, tag_to_action, ui_for_action
 from macro.macro_line import MacroLine
+from widgets.keycode_button import install_gap_drop_fallback
 from protocol.constants import VIAL_PROTOCOL_EXT_MACROS
 from tabbed_keycodes import keycode_filter_masked
 from util import tr
@@ -109,6 +110,7 @@ class MacroTab(QVBoxLayout):
         actions_layout.addLayout(loop_layout)
 
         actions_group.setLayout(actions_layout)
+        install_gap_drop_fallback(actions_group)
 
         # Scroll area for actions
         scroll = QScrollArea()

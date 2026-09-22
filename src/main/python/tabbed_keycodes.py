@@ -4283,6 +4283,93 @@ class GamingTab(QScrollArea):
 
 
 
+class LanguageTab(Tab):
+    """One language page of the Languages section: the same keys as the Basic
+    / ISO boards, labelled with what that language's layout prints on them.
+    The keycodes are the ordinary key positions - only the legends change."""
+
+    # Japanese-only keys the shared ISO/JIS board carries; hidden elsewhere.
+    JIS_ONLY = {"KC_RO", "KC_JYEN", "KC_HENK", "KC_MHEN", "KC_KANA", "KC_LANG1", "KC_LANG2"}
+
+    def __init__(self, parent, label, alts, labels, show_jis=False):
+        self.language_labels = labels
+        self.show_jis = show_jis
+        super().__init__(parent, label, alts)
+
+    def _language_buttons(self):
+        for alt in self.alternatives:
+            btns = list(alt.buttons)
+            if alt.kb_display:
+                btns += alt.kb_display.buttons
+            for btn in btns:
+                yield btn
+
+    def relabel_buttons(self):
+        super().relabel_buttons()
+        for btn in self._language_buttons():
+            qmk_id = getattr(getattr(btn, "keycode", None), "qmk_id", None)
+            if not self.show_jis and qmk_id in self.JIS_ONLY:
+                btn.hide()
+                continue
+            if qmk_id in self.language_labels:
+                btn.setStyleSheet("QPushButton {}")
+                btn.setText(self.language_labels[qmk_id].replace("&", "&&"))
+
+    def recreate_buttons(self, keycode_filter):
+        super().recreate_buttons(keycode_filter)
+        self.relabel_buttons()
+
+
+class LanguagesTab(QWidget):
+    """Keyboard & Macro > Languages: German, French, Spanish, Russian and
+    Japanese boards, each labelled for its layout."""
+
+    keycode_changed = pyqtSignal(str)
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        from keymap import german, french, spanish, russian, japanese
+        self.label = "Languages"
+        iso = [
+            (iso_100, KEYCODES_SPECIAL + KEYCODES_ISO_KR),
+            (iso_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_ISO_KR),
+            (iso_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV + KEYCODES_ISO_KR),
+            (None, KEYCODES_ISO),
+        ]
+        ansi = [
+            (ansi_100, KEYCODES_SPECIAL),
+            (ansi_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD),
+            (ansi_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV),
+            (None, KEYCODES_SPECIAL + KEYCODES_BASIC),
+        ]
+        self.pages = [
+            LanguageTab(parent, "German", iso, german.keymap),
+            LanguageTab(parent, "French", iso, french.keymap),
+            LanguageTab(parent, "Spanish", iso, spanish.keymap),
+            LanguageTab(parent, "Russian", ansi, russian.keymap),
+            LanguageTab(parent, "Japanese", iso, japanese.keymap, show_jis=True),
+        ]
+        self.tabs = QTabWidget()
+        for page in self.pages:
+            page.keycode_changed.connect(self.keycode_changed)
+            self.tabs.addTab(page, page.label)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self.tabs)
+
+    def recreate_buttons(self, keycode_filter):
+        for page in self.pages:
+            page.recreate_buttons(keycode_filter)
+            page.setVisible(True)
+
+    def relabel_buttons(self):
+        for page in self.pages:
+            page.relabel_buttons()
+
+    def has_buttons(self):
+        return any(page.has_buttons() for page in self.pages)
+
+
 class KeyboardTab(QWidget):
     """Nested tab container for Keyboard-related tabs with side-tab style"""
 
@@ -4311,6 +4398,7 @@ class KeyboardTab(QWidget):
         ])
 
         self.app_tab = SimpleTab(parent, "App", KEYCODES_MEDIA)
+        self.languages_tab = LanguagesTab(parent)
 
         # Feature tabs folded into Keyboard as side sections. Layers are their
         # own side-tab (directly below Macros), NOT folded into the Macros
@@ -4329,6 +4417,7 @@ class KeyboardTab(QWidget):
         self.basic_tab.keycode_changed.connect(self.on_keycode_changed)
         self.iso_tab.keycode_changed.connect(self.on_keycode_changed)
         self.app_tab.keycode_changed.connect(self.on_keycode_changed)
+        self.languages_tab.keycode_changed.connect(self.on_keycode_changed)
         self.macro_tab.keycode_changed.connect(self.on_keycode_changed)
         if self.layer_tab is not None:
             self.layer_tab.keycode_changed.connect(self.on_keycode_changed)
@@ -4347,6 +4436,7 @@ class KeyboardTab(QWidget):
             (self.lighting_tab, "Lighting"),
             (self.gaming_tab, "Gaming"),
             (self.iso_tab, "ISO/JIS"),
+            (self.languages_tab, "Languages"),
             (self.app_tab, "App"),
         ]
 

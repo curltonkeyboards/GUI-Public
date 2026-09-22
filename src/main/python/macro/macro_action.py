@@ -45,6 +45,8 @@ class ActionText(BasicAction):
     def __init__(self, text=""):
         super().__init__()
         self.text = text
+        # Keyboard layout the text is typed for (UI only, never stored).
+        self.layout = "English (US)"
 
     def serialize(self, vial_protocol):
         return self.text.encode("utf-8")
@@ -140,72 +142,188 @@ class ActionTap(ActionSequence):
         return b"\x01"
 
 
-# Typed text -> key actions (US layout). Macros never store raw text: a typed
-# string is turned into ordinary Keypress / Hold / Release lines, so it plays
-# back through the same key path as any hand-built macro.
-_TEXT_UNSHIFTED = {
-    " ": "KC_SPACE", "\n": "KC_ENTER", "\t": "KC_TAB",
-    "-": "KC_MINUS", "=": "KC_EQUAL", "[": "KC_LBRACKET", "]": "KC_RBRACKET",
-    "\\": "KC_BSLASH", ";": "KC_SCOLON", "'": "KC_QUOTE", "`": "KC_GRAVE",
-    ",": "KC_COMMA", ".": "KC_DOT", "/": "KC_SLASH",
-}
-_TEXT_SHIFTED = {
-    "!": "KC_1", "@": "KC_2", "#": "KC_3", "$": "KC_4", "%": "KC_5",
-    "^": "KC_6", "&": "KC_7", "*": "KC_8", "(": "KC_9", ")": "KC_0",
-    "_": "KC_MINUS", "+": "KC_EQUAL", "{": "KC_LBRACKET", "}": "KC_RBRACKET",
-    "|": "KC_BSLASH", ":": "KC_SCOLON", "\"": "KC_QUOTE", "~": "KC_GRAVE",
-    "<": "KC_COMMA", ">": "KC_DOT", "?": "KC_SLASH",
-}
+# Typed text -> key actions. Macros never store raw text: a typed string is
+# turned into ordinary Keypress / Hold / Release lines, so it plays back
+# through the same key path as any hand-built macro. The keys depend on the
+# keyboard layout the computer is set to, so each language has its own table.
+# Table value = (qmk_id, mods): "" plain, "S" Shift, "A" AltGr (Right Alt),
+# "SA" Shift+AltGr. Dead keys (accents that wait for the next key) are left
+# out - they cannot be typed as a single character.
 TEXT_SHIFT_KEY = "KC_LSHIFT"
+TEXT_ALTGR_KEY = "KC_RALT"
+
+_ROW_NUM = ["KC_1", "KC_2", "KC_3", "KC_4", "KC_5", "KC_6", "KC_7", "KC_8", "KC_9", "KC_0"]
 
 
-def char_to_key(ch):
-    """(qmk_id, needs_shift) for one character on a US layout, or None."""
-    if "a" <= ch <= "z":
-        return "KC_" + ch.upper(), False
-    if "A" <= ch <= "Z":
-        return "KC_" + ch, True
-    if "1" <= ch <= "9":
-        return "KC_" + ch, False
-    if ch == "0":
-        return "KC_0", False
-    if ch in _TEXT_UNSHIFTED:
-        return _TEXT_UNSHIFTED[ch], False
-    if ch in _TEXT_SHIFTED:
-        return _TEXT_SHIFTED[ch], True
-    return None
+def _letters(table, swaps=None):
+    swaps = swaps or {}
+    for c in "abcdefghijklmnopqrstuvwxyz":
+        kc = swaps.get(c, "KC_" + c.upper())
+        table.setdefault(c, (kc, ""))
+        table.setdefault(c.upper(), (kc, "S"))
 
 
-def text_to_actions(text):
-    """Turn typed text into key actions: one Keypress line per run of plain
-    characters, and Hold Shift / Keypress / Release Shift around each run of
-    shifted ones ("happy" -> Keypress H, A, P, P, Y). Returns
-    (actions, skipped_chars) - characters with no key on a US layout are
-    skipped."""
+def _pairs(table, pairs, mods):
+    for ch, kc in pairs:
+        table.setdefault(ch, (kc, mods))
+
+
+def _common(table):
+    _pairs(table, [(" ", "KC_SPACE"), ("\n", "KC_ENTER"), ("\t", "KC_TAB")], "")
+
+
+def _us():
+    t = {}
+    _common(t)
+    _letters(t)
+    _pairs(t, zip("1234567890", _ROW_NUM), "")
+    _pairs(t, zip("!@#$%^&*()", _ROW_NUM), "S")
+    _pairs(t, [("-", "KC_MINUS"), ("=", "KC_EQUAL"), ("[", "KC_LBRACKET"), ("]", "KC_RBRACKET"),
+               ("\\", "KC_BSLASH"), (";", "KC_SCOLON"), ("'", "KC_QUOTE"), ("`", "KC_GRAVE"),
+               (",", "KC_COMMA"), (".", "KC_DOT"), ("/", "KC_SLASH")], "")
+    _pairs(t, [("_", "KC_MINUS"), ("+", "KC_EQUAL"), ("{", "KC_LBRACKET"), ("}", "KC_RBRACKET"),
+               ("|", "KC_BSLASH"), (":", "KC_SCOLON"), ('"', "KC_QUOTE"), ("~", "KC_GRAVE"),
+               ("<", "KC_COMMA"), (">", "KC_DOT"), ("?", "KC_SLASH")], "S")
+    return t
+
+
+def _german():
+    t = {}
+    _common(t)
+    _letters(t, {"y": "KC_Z", "z": "KC_Y"})
+    _pairs(t, zip("1234567890", _ROW_NUM), "")
+    _pairs(t, zip('!"§$%&/()=', _ROW_NUM), "S")
+    _pairs(t, [("²", "KC_2"), ("³", "KC_3"), ("{", "KC_7"), ("[", "KC_8"), ("]", "KC_9"),
+               ("}", "KC_0"), ("\\", "KC_MINUS"), ("~", "KC_RBRACKET"), ("|", "KC_NONUS_BSLASH"),
+               ("@", "KC_Q"), ("€", "KC_E"), ("µ", "KC_M")], "A")
+    _pairs(t, [("ß", "KC_MINUS"), ("ü", "KC_LBRACKET"), ("+", "KC_RBRACKET"), ("ö", "KC_SCOLON"),
+               ("ä", "KC_QUOTE"), ("#", "KC_NONUS_HASH"), (",", "KC_COMMA"), (".", "KC_DOT"),
+               ("-", "KC_SLASH"), ("<", "KC_NONUS_BSLASH")], "")
+    _pairs(t, [("?", "KC_MINUS"), ("Ü", "KC_LBRACKET"), ("*", "KC_RBRACKET"), ("Ö", "KC_SCOLON"),
+               ("Ä", "KC_QUOTE"), ("'", "KC_NONUS_HASH"), (";", "KC_COMMA"), (":", "KC_DOT"),
+               ("_", "KC_SLASH"), (">", "KC_NONUS_BSLASH"), ("°", "KC_GRAVE")], "S")
+    return t
+
+
+def _french():
+    t = {}
+    _common(t)
+    _letters(t, {"a": "KC_Q", "q": "KC_A", "z": "KC_W", "w": "KC_Z", "m": "KC_SCOLON"})
+    _pairs(t, zip("1234567890", _ROW_NUM), "S")
+    _pairs(t, zip('&é"\'(-è_çà', _ROW_NUM), "")
+    _pairs(t, [("#", "KC_3"), ("{", "KC_4"), ("[", "KC_5"), ("|", "KC_6"), ("\\", "KC_8"),
+               ("^", "KC_9"), ("@", "KC_0"), ("]", "KC_MINUS"), ("}", "KC_EQUAL"),
+               ("¤", "KC_RBRACKET"), ("€", "KC_E")], "A")
+    _pairs(t, [(")", "KC_MINUS"), ("=", "KC_EQUAL"), ("$", "KC_RBRACKET"), ("ù", "KC_QUOTE"),
+               ("*", "KC_NONUS_HASH"), (",", "KC_M"), (";", "KC_COMMA"), (":", "KC_DOT"),
+               ("!", "KC_SLASH"), ("<", "KC_NONUS_BSLASH"), ("²", "KC_GRAVE")], "")
+    _pairs(t, [("°", "KC_MINUS"), ("+", "KC_EQUAL"), ("£", "KC_RBRACKET"), ("%", "KC_QUOTE"),
+               ("µ", "KC_NONUS_HASH"), ("?", "KC_M"), (".", "KC_COMMA"), ("/", "KC_DOT"),
+               ("§", "KC_SLASH"), (">", "KC_NONUS_BSLASH")], "S")
+    return t
+
+
+def _spanish():
+    t = {}
+    _common(t)
+    _letters(t)
+    _pairs(t, zip("1234567890", _ROW_NUM), "")
+    _pairs(t, zip('!"·$%&/()=', _ROW_NUM), "S")
+    _pairs(t, [("|", "KC_1"), ("@", "KC_2"), ("#", "KC_3"), ("~", "KC_4"), ("€", "KC_5"),
+               ("¬", "KC_6"), ("[", "KC_LBRACKET"), ("]", "KC_RBRACKET"), ("{", "KC_QUOTE"),
+               ("}", "KC_NONUS_HASH"), ("\\", "KC_GRAVE")], "A")
+    _pairs(t, [("'", "KC_MINUS"), ("¡", "KC_EQUAL"), ("+", "KC_RBRACKET"), ("ñ", "KC_SCOLON"),
+               ("ç", "KC_NONUS_HASH"), ("º", "KC_GRAVE"), (",", "KC_COMMA"), (".", "KC_DOT"),
+               ("-", "KC_SLASH"), ("<", "KC_NONUS_BSLASH")], "")
+    _pairs(t, [("?", "KC_MINUS"), ("¿", "KC_EQUAL"), ("*", "KC_RBRACKET"), ("Ñ", "KC_SCOLON"),
+               ("Ç", "KC_NONUS_HASH"), ("ª", "KC_GRAVE"), (";", "KC_COMMA"), (":", "KC_DOT"),
+               ("_", "KC_SLASH"), (">", "KC_NONUS_BSLASH")], "S")
+    return t
+
+
+def _russian():
+    t = {}
+    _common(t)
+    rows = [
+        ("йцукенгшщзхъ", ["KC_Q", "KC_W", "KC_E", "KC_R", "KC_T", "KC_Y", "KC_U", "KC_I", "KC_O",
+                          "KC_P", "KC_LBRACKET", "KC_RBRACKET"]),
+        ("фывапролджэ", ["KC_A", "KC_S", "KC_D", "KC_F", "KC_G", "KC_H", "KC_J", "KC_K", "KC_L",
+                         "KC_SCOLON", "KC_QUOTE"]),
+        ("ячсмитьбю", ["KC_Z", "KC_X", "KC_C", "KC_V", "KC_B", "KC_N", "KC_M", "KC_COMMA", "KC_DOT"]),
+        ("ё", ["KC_GRAVE"]),
+    ]
+    for chars, kcs in rows:
+        for ch, kc in zip(chars, kcs):
+            t.setdefault(ch, (kc, ""))
+            t.setdefault(ch.upper(), (kc, "S"))
+    _pairs(t, zip("1234567890", _ROW_NUM), "")
+    _pairs(t, zip('!"№;%:?*()', _ROW_NUM), "S")
+    _pairs(t, [("-", "KC_MINUS"), ("=", "KC_EQUAL"), ("\\", "KC_BSLASH"), (".", "KC_SLASH")], "")
+    _pairs(t, [("_", "KC_MINUS"), ("+", "KC_EQUAL"), ("/", "KC_BSLASH"), (",", "KC_SLASH")], "S")
+    return t
+
+
+def _japanese():
+    t = {}
+    _common(t)
+    _letters(t)
+    _pairs(t, zip("1234567890", _ROW_NUM), "")
+    _pairs(t, zip("!\"#$%&'()", _ROW_NUM[:9]), "S")
+    _pairs(t, [("-", "KC_MINUS"), ("^", "KC_EQUAL"), ("¥", "KC_JYEN"), ("@", "KC_LBRACKET"),
+               ("[", "KC_RBRACKET"), (";", "KC_SCOLON"), (":", "KC_QUOTE"), ("]", "KC_NONUS_HASH"),
+               (",", "KC_COMMA"), (".", "KC_DOT"), ("/", "KC_SLASH"), ("\\", "KC_RO")], "")
+    _pairs(t, [("=", "KC_MINUS"), ("~", "KC_EQUAL"), ("|", "KC_JYEN"), ("`", "KC_LBRACKET"),
+               ("{", "KC_RBRACKET"), ("+", "KC_SCOLON"), ("*", "KC_QUOTE"), ("}", "KC_NONUS_HASH"),
+               ("<", "KC_COMMA"), (">", "KC_DOT"), ("?", "KC_SLASH"), ("_", "KC_RO")], "S")
+    return t
+
+
+TEXT_LAYOUT_DEFAULT = "English (US)"
+TEXT_LAYOUTS = {
+    "English (US)": _us(),
+    "German": _german(),
+    "French": _french(),
+    "Spanish": _spanish(),
+    "Russian": _russian(),
+    "Japanese": _japanese(),
+}
+
+
+def char_to_key(ch, layout=TEXT_LAYOUT_DEFAULT):
+    """(qmk_id, mods) for one character on ``layout``, or None."""
+    return TEXT_LAYOUTS.get(layout, TEXT_LAYOUTS[TEXT_LAYOUT_DEFAULT]).get(ch)
+
+
+def text_to_actions(text, layout=TEXT_LAYOUT_DEFAULT):
+    """Turn typed text into key actions for the computer's ``layout``: one
+    Keypress line per run of characters needing the same modifiers, with Hold
+    / Release lines for Shift and AltGr around the runs that need them
+    ("happy" -> Keypress H, A, P, P, Y). Returns (actions, skipped_chars);
+    characters the layout cannot type are skipped."""
     actions = []
     skipped = []
-    run, run_shift = [], None
+    run, run_mods = [], None
 
     def flush():
         if not run:
             return
-        if run_shift:
-            actions.append(ActionDown([TEXT_SHIFT_KEY]))
-            actions.append(ActionTap(list(run)))
-            actions.append(ActionUp([TEXT_SHIFT_KEY]))
-        else:
-            actions.append(ActionTap(list(run)))
+        mods = [kc for flag, kc in (("S", TEXT_SHIFT_KEY), ("A", TEXT_ALTGR_KEY)) if flag in run_mods]
+        if mods:
+            actions.append(ActionDown(list(mods)))
+        actions.append(ActionTap(list(run)))
+        if mods:
+            actions.append(ActionUp(list(reversed(mods))))
 
     for ch in text:
-        key = char_to_key(ch)
+        key = char_to_key(ch, layout)
         if key is None:
             skipped.append(ch)
             continue
-        kc, shift = key
-        if run and shift != run_shift:
+        kc, mods = key
+        if run and mods != run_mods:
             flush()
             run = []
-        run_shift = shift
+        run_mods = mods
         run.append(kc)
     flush()
     return actions, skipped
@@ -216,7 +334,7 @@ def expand_text_actions(actions):
     out = []
     for act in actions:
         if isinstance(act, ActionText):
-            out.extend(text_to_actions(act.text)[0])
+            out.extend(text_to_actions(act.text, getattr(act, "layout", TEXT_LAYOUT_DEFAULT))[0])
         else:
             out.append(act)
     return out

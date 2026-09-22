@@ -229,8 +229,30 @@ themes = [
 
 palettes = dict()
 
+# 3D shade roles every theme must pin. The light themes never set them, so
+# they came from the host system's palette - on some Windows setups Light
+# resolves to black, and every "hover: palette(light)" rule turned buttons,
+# tabs and keys black. Derive them from the theme's own button colour instead.
+_SHADE_ROLES = (QPalette.Light, QPalette.Midlight, QPalette.Mid, QPalette.Dark, QPalette.Shadow)
+
+
+def _derived_shades(button):
+    return {
+        QPalette.Light: QColor("#ffffff"),
+        QPalette.Midlight: button.lighter(104),
+        QPalette.Mid: button.darker(135),
+        QPalette.Dark: button.darker(200),
+        QPalette.Shadow: button.darker(300),
+    }
+
+
 for name, colors in themes:
     palette = QPalette()
+    explicit = {role for role in colors if not hasattr(type(role), '__iter__')}
+    button = QColor(colors.get(QPalette.Button, "#f0f0f0"))
+    for role, color in _derived_shades(button).items():
+        if role not in explicit:
+            palette.setColor(role, color)
     for role, color in colors.items():
         if not hasattr(type(role), '__iter__'):
             role = [role]
@@ -243,12 +265,38 @@ class Theme:
     theme = ""
 
     @classmethod
+    def _arrow_images(cls, color):
+        """Write the spin-box arrow images in this theme's text colour and
+        return their paths (a stylesheet can only show arrows as images)."""
+        from PyQt5.QtCore import QStandardPaths, QDir, QPoint, Qt
+        from PyQt5.QtGui import QPixmap, QPainter, QPolygon
+        base = QStandardPaths.writableLocation(QStandardPaths.TempLocation)
+        folder = QDir(base).filePath("switchstation_arrows")
+        QDir().mkpath(folder)
+        paths = []
+        for name, pts in (("up", [(0, 6), (10, 6), (5, 0)]), ("down", [(0, 0), (10, 0), (5, 6)])):
+            pix = QPixmap(10, 6)
+            pix.fill(Qt.transparent)
+            qp = QPainter(pix)
+            qp.setRenderHint(QPainter.Antialiasing)
+            qp.setPen(Qt.NoPen)
+            qp.setBrush(color)
+            qp.drawPolygon(QPolygon([QPoint(x, y) for x, y in pts]))
+            qp.end()
+            path = QDir(folder).filePath("spin_{}_{}.png".format(name, color.name()[1:]))
+            pix.save(path, "PNG")
+            paths.append(QDir.fromNativeSeparators(path))
+        return paths
+
+    @classmethod
     def set_theme(cls, theme):
         cls.theme = theme
         if theme in palettes:
             QApplication.setPalette(palettes[theme])
             QApplication.setStyle("Fusion")
-            QApplication.instance().setStyleSheet(cls.get_stylesheet())
+            up, down = cls._arrow_images(palettes[theme].color(QPalette.Active, QPalette.ButtonText))
+            sheet = cls.get_stylesheet().replace("__SPIN_UP__", up).replace("__SPIN_DOWN__", down)
+            QApplication.instance().setStyleSheet(sheet)
         # For default/system theme, do nothing
         # User will have to restart the application for it to be applied
 
@@ -541,10 +589,21 @@ class Theme:
                 border-color: palette(highlight);
             }
 
-            QSpinBox::up-arrow, QSpinBox::down-arrow {
-                /* Arrows drawn programmatically by ArrowSpinBox */
+            QSpinBox::up-arrow {
+                image: url(__SPIN_UP__);
                 width: 10px;
                 height: 6px;
+            }
+
+            QSpinBox::down-arrow {
+                image: url(__SPIN_DOWN__);
+                width: 10px;
+                height: 6px;
+            }
+
+            /* ArrowSpinBox paints its own arrows */
+            ArrowSpinBox::up-arrow, ArrowSpinBox::down-arrow {
+                image: none;
             }
 
             QCheckBox::indicator {

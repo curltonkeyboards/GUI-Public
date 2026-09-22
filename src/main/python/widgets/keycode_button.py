@@ -101,6 +101,54 @@ def install_click_away_deselect(area, callback):
     return filt
 
 
+class _GapDropFallback(QObject):
+    """Event filter behind install_gap_drop_fallback."""
+
+    def __init__(self, area):
+        super().__init__(area)
+        self.area = area
+
+    def _gap_for(self, ev):
+        gap = DropGap._active
+        if gap is None or sip.isdeleted(gap) or not gap.isVisible():
+            return None
+        if not self.area.isAncestorOf(gap):
+            return None
+        if drag_accepted_from(ev, gap.drag_group):
+            return gap
+        if palette_keycode_from(ev, gap.keycode_filter):
+            return gap
+        return None
+
+    def eventFilter(self, obj, ev):
+        t = ev.type()
+        if t in (QEvent.DragEnter, QEvent.DragMove):
+            gap = self._gap_for(ev)
+            if gap is None:
+                return False
+            ev.setDropAction(Qt.MoveAction if drag_accepted_from(ev, gap.drag_group) else Qt.CopyAction)
+            ev.accept()
+            return True
+        if t == QEvent.Drop:
+            gap = self._gap_for(ev)
+            if gap is None:
+                return False
+            gap.dropEvent(ev)
+            return True
+        return False
+
+
+def install_gap_drop_fallback(area):
+    """A drop released over empty space inside ``area`` (the spacing between
+    keys, a row's margins) while a drop gap is open goes into that gap, the
+    same as releasing on the gap itself - otherwise the drop is rejected and
+    the dragged key seems to vanish."""
+    area.setAcceptDrops(True)
+    filt = _GapDropFallback(area)
+    area.installEventFilter(filt)
+    return filt
+
+
 def drag_accepted_from(ev, drag_group, exclude=None):
     """True if ``ev`` carries a KeycodeButton of ``drag_group`` (not ``exclude``)."""
     src = ev.source()

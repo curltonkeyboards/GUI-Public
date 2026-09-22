@@ -35,7 +35,6 @@ from editor.keymap_editor import KeymapEditor
 from editor.trigger_settings import TriggerSettingsTab
 from editor.dks_settings import DKSSettingsTab
 from editor.toggle_settings import ToggleSettingsTab
-from keymaps import KEYMAPS
 from editor.layout_editor import LayoutEditor
 from editor.macro_recorder import MacroRecorder
 from editor.qmk_settings import QmkSettingsDefs
@@ -289,22 +288,6 @@ class MainWindow(QMainWindow):
             file_menu.addSeparator()
             file_menu.addAction(clone_load_act)
             file_menu.addAction(clone_save_act)
-
-        keyboard_layout_menu = self.menuBar().addMenu(tr("Menu", "Keyboard layout"))
-        keymap_group = QActionGroup(self)
-        selected_keymap = self.settings.value("keymap")
-        for idx, keymap in enumerate(KEYMAPS):
-            act = QAction(tr("KeyboardLayout", keymap[0]), self)
-            act.triggered.connect(lambda checked, x=idx: self.change_keyboard_layout(x))
-            act.setCheckable(True)
-            if selected_keymap == keymap[0]:
-                self.change_keyboard_layout(idx)
-                act.setChecked(True)
-            keymap_group.addAction(act)
-            keyboard_layout_menu.addAction(act)
-        # check "QWERTY" if nothing else is selected
-        if keymap_group.checkedAction() is None:
-            keymap_group.actions()[0].setChecked(True)
 
         if sys.platform != "emscripten":
             self.theme_menu = self.menuBar().addMenu(tr("Menu", "Theme"))
@@ -913,9 +896,6 @@ class MainWindow(QMainWindow):
             Unlocker.unlock(self.autorefresh.current_device.keyboard)
             self.autorefresh.current_device.keyboard.reset()
 
-    def change_keyboard_layout(self, index):
-        self.settings.setValue("keymap", KEYMAPS[index][0])
-        KeycodeDisplay.set_keymap_override(KEYMAPS[index][1])
 
     def get_theme(self):
         theme = self.settings.value("theme", "Lavender Dream")
