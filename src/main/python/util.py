@@ -60,20 +60,19 @@ def is_hid_transfer_active():
     return _hid_transfer_active
 
 
-# Device identity. The keyboard advertises a USB serial number starting with
-# this prefix (firmware config.h SERIAL_NUMBER, currently "midiswitch-v1"), and
-# its configurator raw-HID collection sits on this vendor usage page/usage
-# (firmware RAW_USAGE_PAGE / RAW_USAGE_ID). Both are part of the wire contract:
-# change them here and in the firmware together.
-MIDISWITCH_SERIAL_PREFIX = "midiswitch-"
+# Device identity: the MIDIswitch keyboard's USB vendor/product IDs and the
+# vendor usage page/usage of its configurator HID collection. These are the
+# interface contract with the keyboard; the keyboard's serial number is a
+# per-unit hardware ID and is not used for matching.
+MIDISWITCH_USB_VID = 0xB1D7
+MIDISWITCH_USB_PID = 0x4012
 RAW_HID_USAGE_PAGE = 0xFF4D
 RAW_HID_USAGE = 0x53
 
 
-def is_midiswitch_serial(dev):
-    """True if an enumerated HID device carries the keyboard's serial prefix."""
-    serial = dev.get("serial_number") or ""
-    return serial.startswith(MIDISWITCH_SERIAL_PREFIX)
+def is_midiswitch_usb_id(dev):
+    """True if an enumerated HID device carries the keyboard's VID/PID."""
+    return dev.get("vendor_id") == MIDISWITCH_USB_VID and dev.get("product_id") == MIDISWITCH_USB_PID
 
 # For bootloader
 VIBL_SERIAL_NUMBER_MAGIC = "vibl:d4f8159c"
@@ -100,7 +99,7 @@ MIDISWITCH_PRODUCT_STRING = "midiswitch"
 # Vial keyboard UID for MIDIswitch (firmware VIAL_KEYBOARD_UID, little-endian uint64)
 MIDISWITCH_KEYBOARD_UID = 0xB26D0425F36AC4F4
 # Latest firmware version bundled with this GUI release (major, minor, patch).
-# Bump in lockstep with the firmware's MIDISWITCH_FW_VERSION_* in config.h so the
+# Bump in lockstep with each keyboard firmware release so the
 # startup "update available" check stays accurate.
 LATEST_FIRMWARE_VERSION = (1, 0, 0)
 
@@ -210,9 +209,9 @@ def find_vial_devices(via_stack_json, sideload_vid=None, sideload_pid=None, quie
                 ))
             if is_rawhid(dev, quiet):
                 filtered.append(VialKeyboard(dev, sideload=True))
-        elif is_midiswitch_serial(dev) and is_our_keyboard(dev):
+        elif is_midiswitch_usb_id(dev) and is_our_keyboard(dev):
             if not quiet:
-                logging.info("Matching VID={:04X}, PID={:04X}, serial={}, path={} - serial prefix".format(
+                logging.info("Matching VID={:04X}, PID={:04X}, serial={}, path={} - MIDIswitch VID/PID".format(
                     dev["vendor_id"], dev["product_id"], dev["serial_number"], dev["path"]
                 ))
             if is_rawhid(dev, quiet):

@@ -2,7 +2,7 @@
 """Keyboard-clone EEPROM layout migrations.
 
 A `.kbclone` file is a byte-for-byte image of the keyboard's 64 KB config
-EEPROM, stamped with the `EEPROM_LAYOUT_VERSION` of the firmware that produced
+EEPROM, stamped with the layout version reported by the firmware that produced
 it. When that version doesn't match the connected keyboard's, the image can't
 be written as-is — regions may have moved, resized, or changed meaning.
 
@@ -12,7 +12,7 @@ with its data intact.
 
 HOW TO ADD A MIGRATION
 ----------------------
-When you bump `EEPROM_LAYOUT_VERSION` in the firmware's config.h, add a
+When a keyboard firmware release reports a new layout version, add a
 `_migrate_vN_to_vN1(blob, notes)` function here and register it in
 `_MIGRATIONS` under key N. `migrate_clone()` chains them, so a v1 image will
 walk 1 -> 2 -> 3 -> ... up to whatever the connected firmware reports.

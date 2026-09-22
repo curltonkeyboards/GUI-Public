@@ -29,16 +29,16 @@ if sys.platform == "emscripten":
             from util import hid_send
 
             desc = json.loads(vialglue.get_device_desc())
-            # hack: we don't know if it's vial or VIA device because webhid doesn't expose serial number
-            # so let's probe it with a vial command, and if the response looks good, inject the keyboard's serial prefix
-            # in the device descriptor
+            # WebHID does not expose the vendor/product IDs discovery keys on, so
+            # probe the device with a keyboard-ID request and, if it answers
+            # with a valid ID, stamp the MIDIswitch VID/PID into the descriptor.
+            from util import MIDISWITCH_USB_VID, MIDISWITCH_USB_PID
             dev = hid.device()
             data = hid_send(dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_KEYBOARD_ID), retries=20)
             uid = data[4:12]
-            # here, a VIA keyboard will echo back all zeroes, while vial will return a valid UID
-            # so if this looks like vial, inject the serial numebr
             if uid != b"\x00" * 8:
-                desc["serial_number"] = "midiswitch-v1"
+                desc["vendor_id"] = MIDISWITCH_USB_VID
+                desc["product_id"] = MIDISWITCH_USB_PID
             return [desc]
 
         @staticmethod
