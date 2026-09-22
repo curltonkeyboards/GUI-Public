@@ -69,6 +69,7 @@ HID_CMD_LOAD_KEYBOARD_SLOT = 0xBA
 HID_CMD_SET_KEYBOARD_CONFIG_ADVANCED = 0xBB
 HID_CMD_LCD_THEME = 0xFE  # Get/set global LCD colour theme (sub 0=GET, 1=SET)
 HID_CMD_CHANNEL_ARTIC = 0xFF  # Get/set channel->articulation map + enable (sub 0=GET, 1=SET)
+HID_CMD_KEYBOARD_CLONE = 0x94  # Whole-EEPROM clone (sub 0=INFO, 1=READ, 2=WRITE, 3=FINALIZE)
 HID_CMD_NAV_LAYER = 0x97  # Get/set the on-device menu navigation layer (sub 0=GET, 1=SET)
 HID_CMD_SET_KEYBOARD_PARAM_SINGLE = 0xE8  # Set individual parameter (changed from 0xBD collision)
 
@@ -825,13 +826,21 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
 
     def get_uid(self):
         """ Retrieve UID from the keyboard, explicitly sending a query packet """
+        ident = self.probe_ident()
+        if ident is not None:
+            return struct.pack("<Q", ident["model_uid"])
         data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_KEYBOARD_ID), retries=20)
         keyboard_id = data[4:12]
         return keyboard_id
 
+    def _msw_unlocked(self):
+        # A keyboard that answered IDENT has no unlock step: everything is
+        # always editable, so the unlock commands are never sent to it.
+        return self.hid_codec == "msw"
+
     def get_unlock_status(self, retries=20):
         # VIA keyboards are always unlocked
-        if self.vial_protocol < 0:
+        if self.vial_protocol < 0 or self._msw_unlocked():
             return 1
 
         data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_UNLOCK_STATUS),
@@ -840,7 +849,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
 
     def get_unlock_in_progress(self):
         # VIA keyboards are never being unlocked
-        if self.vial_protocol < 0:
+        if self.vial_protocol < 0 or self._msw_unlocked():
             return 0
 
         data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_UNLOCK_STATUS), retries=20)
@@ -850,7 +859,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         """ Return keys users have to hold to unlock the keyboard as a list of rowcols """
 
         # VIA keyboards don't have unlock keys
-        if self.vial_protocol < 0:
+        if self.vial_protocol < 0 or self._msw_unlocked():
             return []
 
         data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_UNLOCK_STATUS), retries=20)
@@ -863,20 +872,20 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         return rowcol
 
     def unlock_start(self):
-        if self.vial_protocol < 0:
+        if self.vial_protocol < 0 or self._msw_unlocked():
             return
 
         self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_UNLOCK_START), retries=20)
 
     def unlock_poll(self):
-        if self.vial_protocol < 0:
+        if self.vial_protocol < 0 or self._msw_unlocked():
             return b""
 
         data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_UNLOCK_POLL), retries=20)
         return data
 
     def lock(self):
-        if self.vial_protocol < 0:
+        if self.vial_protocol < 0 or self._msw_unlocked():
             return
 
         self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LOCK), retries=20)
@@ -1701,6 +1710,81 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
             data = self.usb_send(self.dev, packet, retries=3)
             return (bool(data) and len(data) > 5 and data[3] == HID_CMD_NAV_LAYER
                     and data[4] == 0x01 and data[5] == int(layer))
+        except Exception:
+            return False
+
+    # ------------------------------------------------------------------
+    # Keyboard Clone (settings image save/restore, HID command 0x94)
+    # ------------------------------------------------------------------
+
+    def get_clone_info(self):
+        """Query the keyboard's clone capabilities.
+
+        Returns {'layout_version', 'eeprom_size', 'chunk_size',
+        'fw_version': (major, minor, patch)} or None when the keyboard does
+        not support cloning (its error echo never carries status 0x01 at
+        byte 4 nor a non-zero chunk size at byte 11, so both are checked).
+        Response: status@4, layout_ver u16 LE @5-6, image size u32 LE @7-10,
+        chunk @11, fw version @12-14."""
+        try:
+            packet = self._create_hid_packet(HID_CMD_KEYBOARD_CLONE, 0, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if (not data or len(data) < 15 or data[3] != HID_CMD_KEYBOARD_CLONE
+                    or data[4] != 0x01):
+                return None
+            size = data[7] | (data[8] << 8) | (data[9] << 16) | (data[10] << 24)
+            chunk = data[11]
+            if size == 0 or chunk == 0:
+                return None
+            return {
+                'layout_version': data[5] | (data[6] << 8),
+                'eeprom_size': size,
+                'chunk_size': chunk,
+                'fw_version': (data[12], data[13], data[14]),
+            }
+        except Exception:
+            return None
+
+    def clone_read_chunk(self, addr, length):
+        """Read `length` bytes of the settings image at `addr` (one HID round-trip).
+
+        Returns bytes or None. The response echoes addr+length so a stale
+        packet from an earlier request can't be mistaken for this chunk."""
+        try:
+            payload = [addr & 0xFF, (addr >> 8) & 0xFF, length & 0xFF]
+            packet = self._create_hid_packet(HID_CMD_KEYBOARD_CLONE, 1, payload)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if (not data or len(data) < 8 + length
+                    or data[3] != HID_CMD_KEYBOARD_CLONE or data[4] != 0x01
+                    or data[5] != (addr & 0xFF) or data[6] != ((addr >> 8) & 0xFF)
+                    or data[7] != length):
+                return None
+            return bytes(data[8:8 + length])
+        except Exception:
+            return None
+
+    def clone_write_chunk(self, addr, chunk):
+        """Write a chunk of the settings image at `addr` (one HID round-trip).
+
+        Returns True on success."""
+        try:
+            payload = [addr & 0xFF, (addr >> 8) & 0xFF, len(chunk) & 0xFF] + list(chunk)
+            packet = self._create_hid_packet(HID_CMD_KEYBOARD_CLONE, 2, payload)
+            data = self.usb_send(self.dev, packet, retries=3)
+            return (bool(data) and len(data) >= 7
+                    and data[3] == HID_CMD_KEYBOARD_CLONE and data[4] == 0x01
+                    and data[5] == (addr & 0xFF) and data[6] == ((addr >> 8) & 0xFF))
+        except Exception:
+            return False
+
+    def clone_finalize(self):
+        """Commit a restore: the keyboard applies the image and reboots
+        ~0.5s after acknowledging. Returns True when acked."""
+        try:
+            packet = self._create_hid_packet(HID_CMD_KEYBOARD_CLONE, 3, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            return (bool(data) and len(data) >= 5
+                    and data[3] == HID_CMD_KEYBOARD_CLONE and data[4] == 0x01)
         except Exception:
             return False
 
