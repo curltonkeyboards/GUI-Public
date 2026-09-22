@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (QLineEdit, QToolButton, QWidget, QSizePolicy, QSpin
 from constants import KEY_SIZE_RATIO
 from widgets.flowlayout import FlowLayout
 from widgets.combo_box import ArrowComboBox, ArrowSpinBox
-from macro.macro_action import (text_to_actions, TEXT_LAYOUTS, TEXT_LAYOUT_DEFAULT, ActionText, ActionSequence, ActionDown, ActionUp, ActionTap,
+from macro.macro_action import (text_to_actions, ActionText, ActionSequence, ActionDown, ActionUp, ActionTap,
                                 ActionDelay, ActionBPMDelay,
                                 ActionMixingControl, MIXING_CURRENT_VALUE,
                                 ActionMouseMove, MOUSE_COORD_MAX, MOUSE_CLICK_NONE,
@@ -164,18 +164,11 @@ class ActionTextUI(BasicActionUI):
         self.text.setText(self.act.text)
         self.text.textChanged.connect(self.on_change)
         self.text.returnPressed.connect(self.on_generate)
-        # Keyboard layout of the computer the macro will type into
-        self.layout_combo = ArrowComboBox()
-        self.layout_combo.addItems(list(TEXT_LAYOUTS))
-        self.layout_combo.setCurrentText(getattr(self.act, "layout", TEXT_LAYOUT_DEFAULT))
-        self.layout_combo.setToolTip("Keyboard language the computer is set to")
-        self.layout_combo.currentTextChanged.connect(self.on_layout_changed)
         self.btn_generate = QToolButton()
         self.btn_generate.setText("Generate Keys")
         self.btn_generate.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.btn_generate.clicked.connect(self.on_generate)
         lay.addWidget(self.text, 1)
-        lay.addWidget(self.layout_combo)
         lay.addWidget(self.btn_generate)
 
     def insert(self, row):
@@ -191,16 +184,12 @@ class ActionTextUI(BasicActionUI):
         self.act.text = self.text.text()
         self.changed.emit()
 
-    def on_layout_changed(self, name):
-        self.act.layout = name
-        self.changed.emit()
-
     def on_generate(self):
-        actions, skipped = text_to_actions(self.text.text(), self.layout_combo.currentText())
+        actions, skipped = text_to_actions(self.text.text())
         if skipped:
             from PyQt5.QtWidgets import QMessageBox
             QMessageBox.warning(self.widget, "Type Text",
-                                "These characters can't be typed on a {} keyboard and were left out: ".format(self.layout_combo.currentText())
+                                "These characters have no key and were left out: "
                                 + " ".join(sorted(set(skipped))))
         if not actions:
             return

@@ -45,8 +45,6 @@ class ActionText(BasicAction):
     def __init__(self, text=""):
         super().__init__()
         self.text = text
-        # Keyboard layout the text is typed for (UI only, never stored).
-        self.layout = "English (US)"
 
     def serialize(self, vial_protocol):
         return self.text.encode("utf-8")
@@ -145,7 +143,8 @@ class ActionTap(ActionSequence):
 # Typed text -> key actions. Macros never store raw text: a typed string is
 # turned into ordinary Keypress / Hold / Release lines, so it plays back
 # through the same key path as any hand-built macro. The keys depend on the
-# keyboard layout the computer is set to, so each language has its own table.
+# key that carries each character differs per language, so each language has
+# its own table; they are merged into one lookup below.
 # Table value = (qmk_id, mods): "" plain, "S" Shift, "A" AltGr (Right Alt),
 # "SA" Shift+AltGr. Dead keys (accents that wait for the next key) are left
 # out - they cannot be typed as a single character.
@@ -288,18 +287,28 @@ TEXT_LAYOUTS = {
     "Japanese": _japanese(),
 }
 
+# One table for Type Text: every character maps to the key that carries it.
+# Plain ASCII uses the US keys; a character only another language has (ü, é,
+# ñ, Cyrillic, ¥ ...) uses that language's key. Where several languages share
+# a non-US character, the first in this order wins.
+_TEXT_ORDER = ["English (US)", "German", "French", "Spanish", "Russian", "Japanese"]
+TEXT_KEYS = {}
+for _name in _TEXT_ORDER:
+    for _ch, _key in TEXT_LAYOUTS[_name].items():
+        TEXT_KEYS.setdefault(_ch, _key)
 
-def char_to_key(ch, layout=TEXT_LAYOUT_DEFAULT):
-    """(qmk_id, mods) for one character on ``layout``, or None."""
-    return TEXT_LAYOUTS.get(layout, TEXT_LAYOUTS[TEXT_LAYOUT_DEFAULT]).get(ch)
+
+def char_to_key(ch):
+    """(qmk_id, mods) of the key that types ``ch``, or None."""
+    return TEXT_KEYS.get(ch)
 
 
-def text_to_actions(text, layout=TEXT_LAYOUT_DEFAULT):
-    """Turn typed text into key actions for the computer's ``layout``: one
-    Keypress line per run of characters needing the same modifiers, with Hold
-    / Release lines for Shift and AltGr around the runs that need them
-    ("happy" -> Keypress H, A, P, P, Y). Returns (actions, skipped_chars);
-    characters the layout cannot type are skipped."""
+def text_to_actions(text):
+    """Turn typed text into key actions: each character becomes the key that
+    carries it, one Keypress line per run of characters needing the same
+    modifiers, with Hold / Release lines for Shift and AltGr around the runs
+    that need them ("happy" -> Keypress H, A, P, P, Y). Returns (actions,
+    skipped_chars); characters no key carries are skipped."""
     actions = []
     skipped = []
     run, run_mods = [], None
@@ -315,7 +324,7 @@ def text_to_actions(text, layout=TEXT_LAYOUT_DEFAULT):
             actions.append(ActionUp(list(reversed(mods))))
 
     for ch in text:
-        key = char_to_key(ch, layout)
+        key = char_to_key(ch)
         if key is None:
             skipped.append(ch)
             continue
@@ -334,7 +343,7 @@ def expand_text_actions(actions):
     out = []
     for act in actions:
         if isinstance(act, ActionText):
-            out.extend(text_to_actions(act.text, getattr(act, "layout", TEXT_LAYOUT_DEFAULT))[0])
+            out.extend(text_to_actions(act.text)[0])
         else:
             out.append(act)
     return out
