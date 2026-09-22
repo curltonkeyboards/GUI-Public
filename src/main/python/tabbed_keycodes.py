@@ -9,7 +9,7 @@ from widgets.display_keyboard import DisplayKeyboard
 from widgets.display_keyboard_defs import ansi_100, ansi_80, ansi_70, iso_100, iso_80, iso_70, mods, mods_narrow, midi_layout
 from widgets.combo_box import ArrowComboBox
 from widgets.flowlayout import FlowLayout
-from keycodes.keycodes import KEYCODES_BASIC, KEYCODES_ISO, KEYCODES_MACRO, KEYCODES_MACRO_BASE, KEYCODES_LAYERS, KEYCODES_QUANTUM, \
+from keycodes.keycodes import unsupported_ids, KEYCODES_BASIC, KEYCODES_ISO, KEYCODES_MACRO, KEYCODES_MACRO_BASE, KEYCODES_LAYERS, KEYCODES_QUANTUM, \
     KEYCODES_BOOT, KEYCODES_MODIFIERS, KEYCODES_CLEAR, KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_CUSTOM2, KEYCODES_RGBSAVE, KEYCODES_EXWHEEL, KEYCODES_RGB_KC_COLOR, KEYCODES_MIDI_SPLIT_BUTTONS, KEYCODES_SETTINGS1, KEYCODES_SETTINGS2, KEYCODES_SETTINGS3, KEYCODES_BASIC, KEYCODES_SHIFTED, KEYCODES_CHORD_PROG_CONTROLS, KEYCODES_MIDI_CHANNEL_OS, KEYCODES_MIDI_CHANNEL_HOLD, KEYCODES_CPROG_SLOTS, \
     KEYCODES_BACKLIGHT, KEYCODES_MEDIA, KEYCODES_SPECIAL, KEYCODES_SHIFTED, KEYCODES_USER, Keycode, KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_TG, KEYCODES_LAYERS_TT, KEYCODES_LAYERS_OSL, KEYCODES_LAYERS_TO, KEYCODES_LAYERS_LT, KEYCODES_VELOCITY_SHUFFLE, KEYCODES_CC_ENCODERVALUE, KEYCODES_LOOP_BUTTONS, KEYCODES_DRUMLIVE, KEYCODES_GAMING, \
     KEYCODES_DAW, \
@@ -1513,8 +1513,11 @@ class midiadvancedTab(QScrollArea):
         # Build list of ALL matching keycodes (for pagination)
         self._adv_matched_keycodes = []
         seen_ids = set()
+        unsupported = unsupported_ids()
         for keycode in KEYCODES:
             if not keycode.qmk_id or keycode.qmk_id == "KC_NO":
+                continue
+            if keycode.qmk_id in unsupported:
                 continue
             if keycode.qmk_id in seen_ids:
                 continue
@@ -4502,7 +4505,6 @@ class KeyboardTab(QWidget):
         ])
 
         self.app_tab = SimpleTab(parent, "App", KEYCODES_MEDIA)
-        self.advanced_tab = SimpleTab(parent, "Advanced", KEYCODES_BOOT + KEYCODES_MODIFIERS + KEYCODES_QUANTUM)
 
         # Feature tabs folded into Keyboard as side sections. Layers are their
         # own side-tab (directly below Macros), NOT folded into the Macros
@@ -4521,7 +4523,6 @@ class KeyboardTab(QWidget):
         self.basic_tab.keycode_changed.connect(self.on_keycode_changed)
         self.iso_tab.keycode_changed.connect(self.on_keycode_changed)
         self.app_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.advanced_tab.keycode_changed.connect(self.on_keycode_changed)
         self.macro_tab.keycode_changed.connect(self.on_keycode_changed)
         if self.layer_tab is not None:
             self.layer_tab.keycode_changed.connect(self.on_keycode_changed)
@@ -4541,7 +4542,6 @@ class KeyboardTab(QWidget):
             (self.gaming_tab, "Gaming"),
             (self.iso_tab, "ISO/JIS"),
             (self.app_tab, "App"),
-            (self.advanced_tab, "Advanced"),
         ]
 
         # Create horizontal layout: side tabs on left, content on right

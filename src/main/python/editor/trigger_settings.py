@@ -2862,7 +2862,7 @@ class TriggerSettingsTab(BasicEditor):
         ret = QMessageBox.question(
             self.widget(),
             tr("TriggerSettings", "Copy to All Layers"),
-            tr("TriggerSettings", f"Copy per-key settings from Layer {self.current_layer} to all layers?"),
+            tr("TriggerSettings", f"Copy per-key settings from Layer {self.current_layer + 1} to all layers?"),
             QMessageBox.Yes | QMessageBox.No
         )
 

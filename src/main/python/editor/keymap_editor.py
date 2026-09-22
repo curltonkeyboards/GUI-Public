@@ -994,7 +994,7 @@ class QuickActuationWidget(QWidget):
 
         # Update save button text
         if self.per_layer_enabled:
-            self.save_btn.setText(tr("QuickActuationWidget", f"Save to Layer {self.current_layer}"))
+            self.save_btn.setText(tr("QuickActuationWidget", f"Save to Layer {self.current_layer + 1}"))
             # Load current layer's settings from memory
             self.load_layer_from_memory()
         else:
@@ -1731,7 +1731,7 @@ class QuickActuationWidget(QWidget):
                     raise RuntimeError(f"Failed to set actuation for layer {self.current_layer}")
 
                 QMessageBox.information(None, "Success",
-                    f"Layer {self.current_layer} actuation saved successfully!")
+                    f"Layer {self.current_layer + 1} actuation saved successfully!")
             else:
                 # Save to all 12 layers
                 vibrato_decay = global_settings.get('vibrato_decay_time', 10)

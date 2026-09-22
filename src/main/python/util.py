@@ -386,14 +386,11 @@ class KeycodeDisplay:
         widget.setText(text)
         widget.setMaskText(mask_text if not custom else "")
         widget.setToolTip(tooltip)
-        if cls.code_is_overriden(code):
-            widget.setColor(QApplication.palette().color(QPalette.Link))
-        else:
-            widget.setColor(None)
-        if inner and mask and cls.code_is_overriden(inner.qmk_id):
-            widget.setMaskColor(QApplication.palette().color(QPalette.Link))
-        else:
-            widget.setMaskColor(None)
+        # Keys relabelled by a language layout keep the normal text colour: the
+        # theme's Link colour marks MIDI keys elsewhere (actuation views), so
+        # tinting the relabelled letters made them look like MIDI keys.
+        widget.setColor(None)
+        widget.setMaskColor(None)
 
     @classmethod
     def set_keymap_override(cls, override):
@@ -420,8 +417,7 @@ class KeycodeDisplay:
                 widget.setStyleSheet("QPushButton {}")
             elif qmk_id in KeycodeDisplay.keymap_override:
                 label = KeycodeDisplay.keymap_override[qmk_id]
-                highlight_color = QApplication.palette().color(QPalette.Link).getRgb()
-                widget.setStyleSheet("QPushButton {color: rgb%s;}" % str(highlight_color))
+                widget.setStyleSheet("QPushButton {}")
             else:
                 label = widget.keycode.label
                 widget.setStyleSheet("QPushButton {}")
