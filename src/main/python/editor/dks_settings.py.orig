@@ -18,7 +18,7 @@ from protocol.dks_protocol import (ProtocolDKS, DKSSlot, DKS_BEHAVIOR_TAP,
                                    DKS_BEHAVIOR_PRESS, DKS_BEHAVIOR_RELEASE,
                                    DKS_NUM_SLOTS, DKS_ACTIONS_PER_STAGE)
 from keycodes.keycodes import Keycode
-from widgets.keycode_button import KeycodeButton, install_click_away_deselect
+from widgets.keycode_button import KeycodeButton
 from tabbed_keycodes import TabbedKeycodes
 from vial_device import VialKeyboard
 import widgets.resources  # Import Qt resources for switch crossection image
@@ -1329,11 +1329,6 @@ class DKSEntryUI(QWidget):
         self.selected_key_widget = widget
         widget.set_selected(True)
 
-    def clear_key_selection(self):
-        if self.selected_key_widget:
-            self.selected_key_widget.set_selected(False)
-        self.selected_key_widget = None
-
     def on_keycode_selected(self, keycode):
         """Called when a keycode is selected from TabbedKeycodes"""
         if self.selected_key_widget:
@@ -1541,7 +1536,6 @@ class DKSSettingsTab(BasicEditor):
 
         # Add TabbedKeycodes at the bottom (same as keymap editor)
         self.tabbed_keycodes = TabbedKeycodes()
-        install_click_away_deselect(self.tabs, self._clear_key_selection)
         self.tabbed_keycodes.keycode_changed.connect(self.on_keycode_selected)
         self.addWidget(self.tabbed_keycodes)
 
@@ -1583,11 +1577,6 @@ class DKSSettingsTab(BasicEditor):
         """Handle entry change (can be used for modified indicators)"""
         # Future: Add modified state tracking like TapDance
         pass
-
-    def _clear_key_selection(self):
-        """Click on empty space in the editor: unselect the selected key."""
-        for entry in self._entries.values():
-            entry.clear_key_selection()
 
     def on_keycode_selected(self, keycode):
         """Called when a keycode is selected from TabbedKeycodes"""

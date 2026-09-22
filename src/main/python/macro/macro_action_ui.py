@@ -75,6 +75,8 @@ class PlusDropButton(QToolButton):
     hovered = pyqtSignal(object)  # a drag of the group hovers "+" (append position)
     insert_dropped = pyqtSignal(str)  # a palette key was dropped on "+": append it
 
+    keeps_key_selection = True   # adding a key must not clear the selection
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.drag_group = None

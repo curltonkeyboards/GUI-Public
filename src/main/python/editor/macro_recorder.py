@@ -15,6 +15,7 @@ from unlocker import Unlocker
 from util import tr
 from vial_device import VialKeyboard
 from tabbed_keycodes import TabbedKeycodes
+from widgets.keycode_button import install_click_away_deselect
 
 
 class MacroRecorder(BasicEditor):
@@ -69,6 +70,7 @@ class MacroRecorder(BasicEditor):
 
         # TabbedKeycodes always visible at the bottom
         self.tabbed_keycodes = TabbedKeycodes()
+        install_click_away_deselect(self.tabs, self._clear_key_selection)
         self.tabbed_keycodes.keycode_changed.connect(self.on_keycode_selected)
         self.addWidget(self.tabbed_keycodes)
 
@@ -136,6 +138,17 @@ class MacroRecorder(BasicEditor):
         # Select the new widget
         self.selected_key_widget = widget
         widget.set_selected(True)
+
+    def _clear_key_selection(self):
+        """Click on empty space in the editor: unselect the selected key."""
+        w = self.selected_key_widget
+        self.selected_key_widget = None
+        if w is not None:
+            try:
+                if not sip.isdeleted(w):
+                    w.set_selected(False)
+            except RuntimeError:
+                pass
 
     def on_keycode_selected(self, keycode):
         """Handle keycode selection from TabbedKeycodes"""

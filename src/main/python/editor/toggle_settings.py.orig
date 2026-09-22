@@ -23,7 +23,7 @@ from protocol.toggle_protocol import (ProtocolToggle, ToggleSlot,
                                        TOGGLE_MULTI_COLOR_NAMES, TOGGLE_FLAG_MULTI_KEY,
                                        slot_to_toggle_keycode)
 from keycodes.keycodes import Keycode
-from widgets.keycode_button import KeycodeButton, DropGap, reorder_list, install_click_away_deselect
+from widgets.keycode_button import KeycodeButton, DropGap, reorder_list
 from tabbed_keycodes import TabbedKeycodes, FilteredTabbedKeycodes, keycode_filter_any, keycode_filter_masked
 from tabbed_keycodes import KeyboardTab, MusicTab, GamingTab, MacroTab, LightingTab, LightingTab2, MIDITab, SearchTab, SimpleTab
 from keycodes.keycodes import (KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE, KEYCODES_BACKLIGHT,
@@ -844,7 +844,6 @@ class ToggleSettingsTab(BasicEditor):
 
         # Add TabbedKeycodes at the bottom
         self.tabbed_keycodes = TabbedKeycodesNoLayers()
-        install_click_away_deselect(self.tabs, self._clear_key_selection)
         self.tabbed_keycodes.keycode_changed.connect(self.on_keycode_selected)
         self.addWidget(self.tabbed_keycodes)
 
@@ -891,11 +890,6 @@ class ToggleSettingsTab(BasicEditor):
         """Handle name change - update tab titles and refresh keycode labels"""
         self.on_entry_changed()
         self.tabbed_keycodes.recreate_keycode_buttons()
-
-    def _clear_key_selection(self):
-        """Click on empty space in the editor: unselect the selected key."""
-        for entry in self._entries.values():
-            entry._deselect_all_keys()
 
     def on_keycode_selected(self, keycode):
         """Called when a keycode is selected from TabbedKeycodes"""

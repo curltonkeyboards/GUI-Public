@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import QTabWidget, QWidget, QSizePolicy, QGridLayout, QVBox
     QPushButton, QSpinBox, QScrollArea, QGroupBox
 
 from protocol.constants import VIAL_PROTOCOL_DYNAMIC
-from widgets.keycode_button import KeycodeButton, install_click_away_deselect
+from widgets.keycode_button import KeycodeButton
 from tabbed_keycodes import TabbedKeycodes
 from util import tr
 from vial_device import VialKeyboard
@@ -52,7 +52,7 @@ class TapDanceEntryUI(QObject):
 
         # Header with tap dance name
         header_layout = QHBoxLayout()
-        self.title_label = QLabel(f"<b>Tap/Hold {idx}</b>")
+        self.title_label = QLabel(f"<b>TD({idx})</b>")
         self.title_label.setStyleSheet("font-size: 14pt;")
         header_layout.addWidget(self.title_label)
         header_layout.addStretch()
@@ -60,8 +60,7 @@ class TapDanceEntryUI(QObject):
 
         # Description
         desc = QLabel("Configure what happens when this Tap/Hold key is tapped, held, or double-tapped.\n"
-                      "Assign it in the keymap with the \"Tap/Hold {}\" key "
-                      "(Keyboard & Macro > Macro > Tap/Hold).".format(idx))
+                      "Assign this Tap/Hold key to a key using TD({}) in your keymap.".format(idx))
         desc.setWordWrap(True)
         desc.setStyleSheet("color: gray; font-size: 9pt;")
         main_layout.addWidget(desc)
@@ -234,7 +233,6 @@ class TapDance(BasicEditor):
 
         # TabbedKeycodes always visible at bottom
         self.tabbed_keycodes = TabbedKeycodes()
-        install_click_away_deselect(self.tabs, self._clear_key_selection)
         self.tabbed_keycodes.keycode_changed.connect(self.on_keycode_selected)
         self.addWidget(self.tabbed_keycodes)
 
@@ -250,17 +248,6 @@ class TapDance(BasicEditor):
 
         self.selected_key_widget = widget
         widget.set_selected(True)
-
-    def _clear_key_selection(self):
-        """Click on empty space in the editor: unselect the selected key."""
-        w = self.selected_key_widget
-        self.selected_key_widget = None
-        if w is not None:
-            try:
-                if not sip.isdeleted(w):
-                    w.set_selected(False)
-            except RuntimeError:
-                pass
 
     def on_keycode_selected(self, keycode):
         """Handle keycode selection from TabbedKeycodes"""

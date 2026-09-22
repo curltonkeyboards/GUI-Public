@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWid
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSettings
 
 from widgets.combo_box import ArrowComboBox
-from keycode_search_dialog import KeycodeSearchDialog
+from any_keycode_dialog import AnyKeycodeDialog
 from editor.basic_editor import BasicEditor
 from editor.articulation_options import populate_articulation_combo, apply_articulation_visibility
 from widgets.keyboard_widget import KeyboardWidget2, KeyboardWidgetSimple, EncoderWidget, EncoderWidget2
@@ -2973,14 +2973,18 @@ class KeymapEditor(BasicEditor):
     def on_any_keycode(self):
         if self.container.active_key is None:
             return
-        keycode_filter = keycode_filter_masked if self.container.active_mask else None
-        self.dlg = KeycodeSearchDialog(keycode_filter, self.container.window())
+        current_code = self.code_for_widget(self.container.active_key)
+        if self.container.active_mask:
+            kc = Keycode.find_inner_keycode(current_code)
+            current_code = kc.qmk_id
+
+        self.dlg = AnyKeycodeDialog(current_code)
         self.dlg.finished.connect(self.on_dlg_finished)
         self.dlg.setModal(True)
         self.dlg.show()
 
     def on_dlg_finished(self, res):
-        if res > 0 and self.dlg.value:
+        if res > 0:
             self.on_keycode_changed(self.dlg.value)
 
     def code_for_widget(self, widget):

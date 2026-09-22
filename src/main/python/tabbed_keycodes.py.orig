@@ -1549,7 +1549,7 @@ class midiadvancedTab(QScrollArea):
             btn = SquareButton()
             btn.setRelSize(KEYCODE_BTN_RATIO)
             btn.setText(keycode.label if keycode.label else keycode.qmk_id)
-            btn.setToolTip(Keycode.tooltip(keycode.qmk_id) or keycode.qmk_id)
+            btn.setToolTip("{}\n{}".format(keycode.qmk_id, keycode.tooltip or ""))
             btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
             btn.keycode = keycode
             self.adv_keys_flow.addWidget(btn)
@@ -4491,7 +4491,7 @@ class KeyboardTab(QWidget):
             (ansi_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_SHIFTED),
             (ansi_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV + KEYCODES_SHIFTED),
             (None, KEYCODES_SPECIAL + KEYCODES_BASIC + KEYCODES_SHIFTED),
-        ])
+        ], prefix_buttons=[("Any", -1)])
 
         self.iso_tab = Tab(parent, "ISO/JIS", [
             (iso_100, KEYCODES_SPECIAL + KEYCODES_SHIFTED + KEYCODES_ISO_KR),
@@ -4499,7 +4499,7 @@ class KeyboardTab(QWidget):
             (iso_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV + KEYCODES_SHIFTED +
              KEYCODES_ISO_KR),
             (None, KEYCODES_ISO),
-        ])
+        ], prefix_buttons=[("Any", -1)])
 
         self.app_tab = SimpleTab(parent, "App", KEYCODES_MEDIA)
         self.advanced_tab = SimpleTab(parent, "Advanced", KEYCODES_BOOT + KEYCODES_MODIFIERS + KEYCODES_QUANTUM)

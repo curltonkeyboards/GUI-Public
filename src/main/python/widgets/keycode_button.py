@@ -6,7 +6,9 @@ It is a SquareButton with the same ``keycode_button`` styling and
 ``KEYCODE_BTN_RATIO`` size as the buttons in FilteredTabbedKeycodes, so the
 keys shown inside an editor look exactly like the palette they are picked from.
 The selected slot (the one the next palette pick lands on) renders through the
-stylesheet's ``:checked`` state.
+stylesheet's ``:checked`` state plus a contrasting outline drawn on top, and an
+owner can call ``install_click_away_deselect`` so a click on empty space in its
+editor area clears the selection.
 
 Unlike KeyWidget it never opens the keycode tray itself: clicking a button emits
 ``selected`` and the owning editor feeds the palette pick back through
@@ -30,13 +32,15 @@ Optional per-sequence behaviour (enabled by the owner setting ``drag_group``):
   it (``assign_requested``).
 """
 
-from PyQt5.QtCore import Qt, QMimeData, QPropertyAnimation, QEasingCurve, QSize, QRect, pyqtSignal, pyqtProperty
-from PyQt5.QtGui import QDrag, QPainter, QPen
+import sip
+
+from PyQt5.QtCore import Qt, QEvent, QObject, QMimeData, QPropertyAnimation, QEasingCurve, QSize, QRect, pyqtSignal, pyqtProperty
+from PyQt5.QtGui import QDrag, QPainter, QPen, QPalette
 from PyQt5.QtWidgets import QApplication, QMenu, QSizePolicy, QWidget
 
 from constants import KEYCODE_BTN_RATIO
 from keycodes.keycodes import Keycode
-from any_keycode_dialog import AnyKeycodeDialog
+from keycode_search_dialog import KeycodeSearchDialog
 from tabbed_keycodes import keycode_filter_any
 from util import KeycodeDisplay
 from widgets.square_button import SquareButton, KEYCODE_PALETTE_MIME
@@ -54,6 +58,47 @@ def keycode_button_px(font_metrics):
     the palette size (KEYCODE_BTN_RATIO x font height) + KEYCODE_BTN_EXTRA_PX.
     Owners size their companion buttons (the macro line's "+") with it."""
     return int(round(font_metrics.height() * KEYCODE_BTN_RATIO)) + KEYCODE_BTN_EXTRA_PX
+
+
+class _ClickAwayDeselect(QObject):
+    """Application event filter behind install_click_away_deselect."""
+
+    def __init__(self, area, callback):
+        super().__init__(area)
+        self.area = area
+        self.callback = callback
+
+    def eventFilter(self, obj, ev):
+        if ev.type() != QEvent.MouseButtonPress or not isinstance(obj, QWidget):
+            return False
+        area = self.area
+        if sip.isdeleted(area) or not area.isVisible():
+            return False
+        if obj is not area and not area.isAncestorOf(obj):
+            return False
+        w = obj
+        while w is not None and w is not area:
+            # A press on a key (or a key's own child, e.g. the macro X) or on a
+            # drop target keeps the selection; the key handles it itself.
+            if getattr(w, "keeps_key_selection", False):
+                return False
+            w = w.parentWidget()
+        self.callback()
+        return False
+
+
+def install_click_away_deselect(area, callback):
+    """Call ``callback`` whenever the mouse is pressed inside ``area`` on
+    anything that is not a keycode button (empty space, labels, group boxes,
+    ...), so clicking off the selected key in the same editor unselects it.
+    The palette sits outside ``area``, so picking a keycode never deselects."""
+    app = QApplication.instance()
+    if app is None:
+        return None
+    filt = _ClickAwayDeselect(area, callback)
+    app.installEventFilter(filt)
+    area.destroyed.connect(lambda *_: app.removeEventFilter(filt))
+    return filt
 
 
 def drag_accepted_from(ev, drag_group, exclude=None):
@@ -97,6 +142,8 @@ class DropGap(QWidget):
     it reorders exactly like a drop on the button it stands in for:
     ``dropped(source, target, before)``.
     """
+
+    keeps_key_selection = True
 
     dropped = pyqtSignal(object, object, bool)   # source, target, insert-before
     inserted = pyqtSignal(str, object, bool)     # palette qmk_id, target, insert-before
@@ -279,6 +326,8 @@ class KeycodeButton(SquareButton):
     # already taken it (on_keycode_changed) — (resulting keycode, self).
     assign_requested = pyqtSignal(str, object)
 
+    keeps_key_selection = True   # see install_click_away_deselect
+
     def __init__(self, keycode_filter=None, parent=None):
         super().__init__(parent)
         self.setRelSize(KEYCODE_BTN_RATIO)
@@ -352,18 +401,13 @@ class KeycodeButton(SquareButton):
         self.set_keycode(merge_keycode_pick(self.keycode, keycode))
 
     def on_anykey(self):
-        kc = self.keycode
-        if self.masked:
-            inner = Keycode.find_inner_keycode(kc)
-            if inner is not None:
-                kc = inner.qmk_id
-        self.dlg = AnyKeycodeDialog(kc)
+        self.dlg = KeycodeSearchDialog(self.keycode_filter, self.window())
         self.dlg.finished.connect(self.on_dlg_finished)
         self.dlg.setModal(True)
         self.dlg.show()
 
     def on_dlg_finished(self, res):
-        if res > 0:
+        if res > 0 and self.dlg.value:
             self.on_keycode_changed(self.dlg.value)
 
     def on_keymap_override(self):
@@ -436,6 +480,21 @@ class KeycodeButton(SquareButton):
 
     def deselect(self):
         self.set_selected(False)
+
+    def paintEvent(self, ev):
+        super().paintEvent(ev)
+        if not self.is_selected:
+            return
+        # Selection outline: the :checked fill alone reads as "pressed", so
+        # the key the next pick lands on also gets a contrasting border.
+        qp = QPainter(self)
+        qp.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(self.palette().color(QPalette.WindowText))
+        pen.setWidth(3)
+        qp.setPen(pen)
+        qp.setBrush(Qt.NoBrush)
+        qp.drawRoundedRect(self.rect().adjusted(2, 2, -2, -2), 8, 8)
+        qp.end()
 
     # ---- drag & drop reordering / duplicate ----------------------------
 

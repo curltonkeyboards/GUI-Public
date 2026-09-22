@@ -23,7 +23,7 @@ from PyQt5.QtWidgets import QTabWidget, QWidget, QGridLayout, QVBoxLayout, QLabe
 
 from protocol.constants import VIAL_PROTOCOL_DYNAMIC
 from protocol.key_override import KeyOverrideEntry, KeyOverrideOptions
-from widgets.keycode_button import KeycodeButton
+from widgets.keycode_button import KeycodeButton, install_click_away_deselect
 from widgets.checkbox_no_padding import CheckBoxNoPadding
 from tabbed_keycodes import TabbedKeycodes
 from util import tr
@@ -314,6 +314,7 @@ class ComboKeys(BasicEditor):
 
         # Keycode palette always visible at the bottom
         self.tabbed_keycodes = TabbedKeycodes()
+        install_click_away_deselect(self.tabs, self._clear_key_selection)
         self.tabbed_keycodes.keycode_changed.connect(self.on_keycode_selected)
         self.addWidget(self.tabbed_keycodes)
 
@@ -329,6 +330,17 @@ class ComboKeys(BasicEditor):
             self.selected_key_widget = None
         self.selected_key_widget = widget
         widget.set_selected(True)
+
+    def _clear_key_selection(self):
+        """Click on empty space in the editor: unselect the selected key."""
+        w = self.selected_key_widget
+        self.selected_key_widget = None
+        if w is not None:
+            try:
+                if not sip.isdeleted(w):
+                    w.set_selected(False)
+            except RuntimeError:
+                pass
 
     def on_keycode_selected(self, keycode):
         if self.selected_key_widget is not None:

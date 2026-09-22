@@ -110,8 +110,6 @@ class Keycode:
         keycode = cls.find_outer_keycode(qmk_id)
         if keycode is None:
             return None
-        if keycode.qmk_id.startswith("TD("):
-            return keycode.label.replace("\n", " ").replace("/ ", "/")
         tooltip = keycode.qmk_id
         if keycode.tooltip:
             tooltip = "{}: {}".format(tooltip, keycode.tooltip)
