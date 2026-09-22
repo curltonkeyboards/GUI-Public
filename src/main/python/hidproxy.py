@@ -33,9 +33,16 @@ if sys.platform == "emscripten":
             # probe the device with a keyboard-ID request and, if it answers
             # with a valid ID, stamp the MIDIswitch VID/PID into the descriptor.
             from util import MIDISWITCH_USB_VID, MIDISWITCH_USB_PID
+            from protocol.msw_protocol import build_ident_request, parse_ident
             dev = hid.device()
-            data = hid_send(dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_KEYBOARD_ID), retries=20)
-            uid = data[4:12]
+            # IDENT first; a keyboard that predates it still answers the
+            # legacy keyboard-ID request.
+            ident = parse_ident(hid_send(dev, build_ident_request(), retries=20))
+            if ident is not None:
+                uid = struct.pack("<Q", ident["model_uid"])
+            else:
+                data = hid_send(dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_KEYBOARD_ID), retries=20)
+                uid = data[4:12]
             if uid != b"\x00" * 8:
                 desc["vendor_id"] = MIDISWITCH_USB_VID
                 desc["product_id"] = MIDISWITCH_USB_PID

@@ -63,9 +63,17 @@ class AboutKeyboard(QDialog):
         elif self.keyboard.vial_protocol < 0:
             text += "VIA keyboard, Vial functionality is disabled\n\n"
 
-        text += "VIA protocol: {}\n".format(self.keyboard.via_protocol)
-        text += "Vial protocol: {}\n".format(self.keyboard.vial_protocol)
-        text += "Vial keyboard ID: {:08X}\n".format(self.keyboard.keyboard_id)
+        ident = getattr(self.keyboard, "msw_ident", None)
+        if ident is not None:
+            text += "MIDIswitch protocol: {}.{}\n".format(*ident["protocol"])
+            text += "Firmware: {}.{}.{}\n".format(*ident["firmware"])
+            text += "Settings layout: v{}\n".format(ident["eeprom_layout_version"])
+            text += "Model ID: {:08X}\n".format(ident["model_uid"])
+            text += "Unit ID: {:08X}\n".format(ident["hardware_id"])
+        else:
+            text += "VIA protocol: {}\n".format(self.keyboard.via_protocol)
+            text += "Vial protocol: {}\n".format(self.keyboard.vial_protocol)
+            text += "Vial keyboard ID: {:08X}\n".format(self.keyboard.keyboard_id)
         text += "\n"
 
         text += "Macro entries: {}\n".format(self.keyboard.macro_count)

@@ -65,6 +65,9 @@ class DummyKeyboard(Keyboard):
     def lock(self):
         return
 
+    def probe_ident(self):
+        return None
+
     def reload_via_protocol(self):
         pass
 

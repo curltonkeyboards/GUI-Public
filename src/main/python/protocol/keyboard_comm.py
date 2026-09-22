@@ -37,6 +37,8 @@ from protocol.key_override import ProtocolKeyOverride
 from protocol.macro import ProtocolMacro
 from protocol.tap_dance import ProtocolTapDance
 from unlocker import Unlocker
+from protocol.msw_protocol import build_ident_request, parse_ident, encode_request, decode_response, \
+    MSW_PROTOCOL_MAJOR_SUPPORTED, MSW1_VIA_LEVEL, MSW1_VIAL_LEVEL
 from util import MSG_LEN, hid_lock_for, hid_send
 
 SUPPORTED_VIA_PROTOCOL = [-1, 9]
@@ -211,7 +213,14 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
 
     def __init__(self, dev, usb_send=hid_send):
         self.dev = dev
-        self.usb_send = usb_send
+        # Every packet leaves through usb_send. It is wrapped so the
+        # MIDIswitch command aliases can be applied in one place once IDENT
+        # has answered (see protocol/msw_protocol.py); callers keep using
+        # the byte-0 ids they always have.
+        self._usb_send_raw = usb_send
+        self.usb_send = self._usb_send_codec
+        self.msw_ident = None       # dict from parse_ident(), or None on a keyboard without IDENT
+        self.hid_codec = "legacy"   # "legacy" | "msw"
         self.definition = None
 
         # n.b. using OrderedDict here to make order of layout requests consistent for tests
@@ -360,6 +369,37 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         total_time = time.time() - reload_start
         _startup_log(f"Keyboard reload complete! Total time: {total_time:.2f}s")
 
+    def _usb_send_codec(self, dev, msg, retries=1):
+        """usb_send with the command-alias codec applied."""
+        if self.hid_codec != "msw":
+            return self._usb_send_raw(dev, msg, retries)
+        response = self._usb_send_raw(dev, encode_request(msg), retries)
+        return decode_response(msg, response)
+
+    def probe_ident(self):
+        """Send IDENT ("who are you"). On a MIDIswitch this fills
+        self.msw_ident and switches the codec to the alias form; on a
+        keyboard that predates IDENT the request comes back as an error echo
+        and the legacy form stays in use. Returns the ident dict or None."""
+        self.msw_ident = None
+        self.hid_codec = "legacy"
+        try:
+            data = self._usb_send_raw(self.dev, build_ident_request(), 3)
+        except RuntimeError:
+            return None
+        ident = parse_ident(data)
+        if ident is None:
+            return None
+        if ident["protocol"][0] != MSW_PROTOCOL_MAJOR_SUPPORTED:
+            # A future protocol major the app does not speak: do not switch
+            # codecs, the legacy form is what such a firmware guarantees to
+            # keep answering until the app is updated.
+            self.msw_ident = ident
+            return ident
+        self.msw_ident = ident
+        self.hid_codec = "msw"
+        return ident
+
     def reload_layers(self):
         """ Get how many layers the keyboard has """
         self.layers = self.usb_send(self.dev, struct.pack("B", CMD_VIA_GET_LAYER_COUNT), retries=20)[1]
@@ -375,7 +415,14 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
     def reload_layout(self, sideload_json=None):
         """ Requests layout data from the current device """
 
-        self.reload_via_protocol()
+        # IDENT first: a MIDIswitch answers with its protocol/firmware
+        # versions and model UID, and from here on every command goes out in
+        # its alias form. Without an answer the legacy probes below run.
+        ident = self.probe_ident()
+        if ident is not None and self.hid_codec == "msw":
+            self.via_protocol = MSW1_VIA_LEVEL
+        else:
+            self.reload_via_protocol()
 
         self.sideload = False
         if sideload_json is not None:
@@ -383,8 +430,12 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
             payload = sideload_json
         else:
             # get keyboard identification
-            data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_KEYBOARD_ID), retries=20)
-            self.vial_protocol, self.keyboard_id = struct.unpack("<IQ", data[0:12])
+            if ident is not None and self.hid_codec == "msw":
+                self.vial_protocol = MSW1_VIAL_LEVEL
+                self.keyboard_id = ident["model_uid"]
+            else:
+                data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_KEYBOARD_ID), retries=20)
+                self.vial_protocol, self.keyboard_id = struct.unpack("<IQ", data[0:12])
 
             # get the size
             data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_SIZE), retries=20)
