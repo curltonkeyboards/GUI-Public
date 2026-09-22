@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (QPushButton, QGridLayout, QHBoxLayout, QToolButton,
 
 from keycodes.keycodes import Keycode
 from macro.macro_action import ActionTap
-from macro.macro_action_ui import ActionTextUI, ActionTapUI, ui_action, tag_to_action
+from macro.macro_action_ui import ActionTextUI, ActionTapUI, ui_action, tag_to_action, ui_for_action
 from macro.macro_line import MacroLine
 from protocol.constants import VIAL_PROTOCOL_EXT_MACROS
 from tabbed_keycodes import keycode_filter_masked
@@ -344,7 +344,7 @@ class MacroTab(QVBoxLayout):
             for act in macro_load:
                 if act[0] in tag_to_action:
                     obj = tag_to_action[act[0]]()
-                    actionUI = ui_action[type(obj)]
+                    actionUI = ui_for_action(obj)
                     obj.restore(act)
                     self.add_action(actionUI(self.container, obj))
 
@@ -515,7 +515,7 @@ class MacroTab(QVBoxLayout):
             # Replace this tab's actions.
             self.clear()
             for obj in restored:
-                self.add_action(ui_action[type(obj)](self.container, obj))
+                self.add_action(ui_for_action(obj)(self.container, obj))
             self.set_loop_mode(loop_mode)
             self.set_sync_to_bpm(sync_to_bpm)
             self.changed.emit()

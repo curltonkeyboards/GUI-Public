@@ -7,7 +7,9 @@ from widgets.flowlayout import FlowLayout
 from widgets.combo_box import ArrowComboBox, ArrowSpinBox
 from macro.macro_action import (ActionText, ActionSequence, ActionDown, ActionUp, ActionTap,
                                 ActionDelay, ActionBPMDelay,
-                                ActionMixingControl, MIXING_CURRENT_VALUE)
+                                ActionMixingControl, MIXING_CURRENT_VALUE,
+                                ActionMouseMove, MOUSE_COORD_MAX, MOUSE_CLICK_NONE,
+                                MOUSE_CLICK_LEFT, MOUSE_CLICK_DOUBLE, MOUSE_CLICK_RIGHT)
 from widgets.keycode_button import (KeycodeButton, DropGap, reorder_list, keycode_button_px,
                                     drag_accepted_from, palette_keycode_from)
 
@@ -728,6 +730,212 @@ class ActionMixingControlUI(BasicActionUI):
         self.changed.emit()
 
 
+
+# ---------------------------------------------------------------------------
+# Mouse Move actions: X/Y in desktop pixels + "Get coordinate" capture overlay
+# ---------------------------------------------------------------------------
+def _virtual_desktop():
+    """The union of every screen, in pixels (what the digitizer's 0..32767 maps to)."""
+    from PyQt5.QtWidgets import QApplication
+    screen = QApplication.primaryScreen()
+    if screen is None:
+        from PyQt5.QtCore import QRect
+        return QRect(0, 0, 1920, 1080)
+    return screen.virtualGeometry()
+
+
+def mouse_px_to_coord(px, origin, size):
+    if size <= 1:
+        return 0
+    v = int(round((px - origin) * MOUSE_COORD_MAX / float(size - 1)))
+    return max(0, min(MOUSE_COORD_MAX, v))
+
+
+def mouse_coord_to_px(v, origin, size):
+    return origin + int(round(v * (size - 1) / float(MOUSE_COORD_MAX)))
+
+
+class CoordinateCaptureOverlay(QWidget):
+    """Full-desktop, semi-transparent, always-on-top sheet: the next click
+    anywhere reports its global pixel position; Esc cancels."""
+
+    captured = pyqtSignal(int, int)   # global x, y in pixels
+    cancelled = pyqtSignal()
+
+    def __init__(self):
+        super().__init__(None, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_DeleteOnClose)
+        self.setCursor(Qt.CrossCursor)
+        self.setGeometry(_virtual_desktop())
+        self.setFocusPolicy(Qt.StrongFocus)
+
+    def paintEvent(self, ev):
+        from PyQt5.QtGui import QPainter, QColor, QFont
+        p = QPainter(self)
+        p.fillRect(self.rect(), QColor(0, 0, 0, 70))
+        p.setPen(QColor(255, 255, 255))
+        f = QFont()
+        f.setPointSize(16)
+        f.setBold(True)
+        p.setFont(f)
+        p.drawText(self.rect(), Qt.AlignCenter,
+                   "Click anywhere to capture that position\n(Esc to cancel)")
+        p.end()
+
+    def mousePressEvent(self, ev):
+        pos = ev.globalPos()
+        self.captured.emit(pos.x(), pos.y())
+        self.close()
+
+    def keyPressEvent(self, ev):
+        if ev.key() == Qt.Key_Escape:
+            self.cancelled.emit()
+            self.close()
+        else:
+            super().keyPressEvent(ev)
+
+
+class ActionMouseMoveUI(BasicActionUI):
+    """Shared UI for the four Mouse Move line types; the subclass fixes the
+    click kind. Coordinates are edited in pixels of THIS desktop and stored as
+    the digitizer's 0..32767 fraction, so they survive a resolution change."""
+
+    actcls = ActionMouseMove
+    click_kind = MOUSE_CLICK_NONE
+
+    def __init__(self, container, act=None):
+        fresh = act is None
+        super().__init__(container, act)
+        if fresh:
+            self.act.click = self.click_kind
+        self._initializing = True
+        self._overlay = None
+
+        self.layout = QHBoxLayout()
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(4)
+        self.layout_container = QWidget()
+        self.layout_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+
+        vg = _virtual_desktop()
+        self.lbl_x = QLabel("X")
+        self.layout.addWidget(self.lbl_x)
+        self.x_spin = ArrowSpinBox()
+        self.x_spin.setRange(vg.left(), vg.left() + max(0, vg.width() - 1))
+        self.x_spin.setFixedWidth(80)
+        self.x_spin.setValue(mouse_coord_to_px(self.act.x, vg.left(), vg.width()))
+        self.x_spin.valueChanged.connect(self.on_change)
+        self.layout.addWidget(self.x_spin)
+
+        self.lbl_y = QLabel("Y")
+        self.layout.addWidget(self.lbl_y)
+        self.y_spin = ArrowSpinBox()
+        self.y_spin.setRange(vg.top(), vg.top() + max(0, vg.height() - 1))
+        self.y_spin.setFixedWidth(80)
+        self.y_spin.setValue(mouse_coord_to_px(self.act.y, vg.top(), vg.height()))
+        self.y_spin.valueChanged.connect(self.on_change)
+        self.layout.addWidget(self.y_spin)
+
+        self.btn_get = QToolButton()
+        self.btn_get.setText("Get coordinate")
+        self.btn_get.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.btn_get.setToolTip("Hides this window, then the next click anywhere on the desktop "
+                                "becomes the position (Esc cancels).")
+        self.btn_get.clicked.connect(self.on_get_coordinate)
+        self.layout.addWidget(self.btn_get)
+
+        self.lbl_desk = QLabel("(desktop {}x{})".format(vg.width(), vg.height()))
+        self.lbl_desk.setStyleSheet("color: gray; font-size: 9pt;")
+        self.layout.addWidget(self.lbl_desk)
+        self.layout.addStretch()
+
+        self.layout_container.setLayout(self.layout)
+        self._initializing = False
+
+    # ---- capture ---------------------------------------------------------
+
+    def on_get_coordinate(self):
+        win = self.btn_get.window()
+        self._restore_state = win.windowState() if win is not None else None
+        self._restore_win = win
+        if win is not None:
+            win.showMinimized()
+        self._overlay = CoordinateCaptureOverlay()
+        self._overlay.captured.connect(self._on_captured)
+        self._overlay.cancelled.connect(self._restore_window)
+        self._overlay.show()
+        self._overlay.raise_()
+        self._overlay.activateWindow()
+
+    def _on_captured(self, gx, gy):
+        vg = _virtual_desktop()
+        self.set_pixels(gx, gy)
+        self._restore_window()
+
+    def _restore_window(self):
+        win = getattr(self, "_restore_win", None)
+        self._overlay = None
+        if win is None:
+            return
+        state = self._restore_state if self._restore_state is not None else Qt.WindowNoState
+        win.setWindowState(state & ~Qt.WindowMinimized)
+        win.show()
+        win.raise_()
+        win.activateWindow()
+
+    # ---- model -----------------------------------------------------------
+
+    def set_pixels(self, px, py):
+        """Set the position from desktop pixels (clamped to the desktop)."""
+        self.x_spin.setValue(int(px))
+        self.y_spin.setValue(int(py))
+
+    def insert(self, row):
+        self.container.addWidget(self.layout_container, row, 3)
+
+    def remove(self):
+        self.container.removeWidget(self.layout_container)
+
+    def delete(self):
+        self.x_spin.deleteLater()
+        self.y_spin.deleteLater()
+        self.btn_get.deleteLater()
+        self.lbl_x.deleteLater()
+        self.lbl_y.deleteLater()
+        self.lbl_desk.deleteLater()
+        self.layout_container.deleteLater()
+
+    def on_change(self):
+        if self._initializing:
+            return
+        vg = _virtual_desktop()
+        self.act.x = mouse_px_to_coord(self.x_spin.value(), vg.left(), vg.width())
+        self.act.y = mouse_px_to_coord(self.y_spin.value(), vg.top(), vg.height())
+        self.act.click = self.click_kind
+        self.changed.emit()
+
+
+class ActionMouseMoveClickUI(ActionMouseMoveUI):
+    click_kind = MOUSE_CLICK_LEFT
+
+
+class ActionMouseMoveDoubleClickUI(ActionMouseMoveUI):
+    click_kind = MOUSE_CLICK_DOUBLE
+
+
+class ActionMouseMoveRightClickUI(ActionMouseMoveUI):
+    click_kind = MOUSE_CLICK_RIGHT
+
+
+MOUSE_UI_BY_CLICK = {
+    MOUSE_CLICK_NONE: ActionMouseMoveUI,
+    MOUSE_CLICK_LEFT: ActionMouseMoveClickUI,
+    MOUSE_CLICK_DOUBLE: ActionMouseMoveDoubleClickUI,
+    MOUSE_CLICK_RIGHT: ActionMouseMoveRightClickUI,
+}
+
+
 tag_to_action = {
     "down": ActionDown,
     "up": ActionUp,
@@ -737,6 +945,7 @@ tag_to_action = {
     "bpm_delay": ActionBPMDelay,
     "bpm_delay_repeat": ActionBPMDelay,  # Convert old repeat type to plain BPM delay
     "mixing_control": ActionMixingControl,
+    "mouse_move": ActionMouseMove,
 }
 
 ui_action = {
@@ -747,4 +956,14 @@ ui_action = {
     ActionDelay: ActionDelayUI,
     ActionBPMDelay: ActionBPMDelayUI,
     ActionMixingControl: ActionMixingControlUI,
+    ActionMouseMove: ActionMouseMoveUI,
 }
+
+
+def ui_for_action(act):
+    """The UI class for an existing action object. Mouse Move is one action
+    class shown as four line types (one per click kind), so it is resolved by
+    the action's click field rather than its type."""
+    if isinstance(act, ActionMouseMove):
+        return MOUSE_UI_BY_CLICK.get(act.click, ActionMouseMoveUI)
+    return ui_action[type(act)]

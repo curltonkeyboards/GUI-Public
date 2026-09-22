@@ -297,3 +297,70 @@ class ActionMixingControl(BasicAction):
                 and self.channel == other.channel and self.start_val == other.start_val
                 and self.end_val == other.end_val and self.duration_type == other.duration_type
                 and self.duration == other.duration)
+
+
+# ---------------------------------------------------------------------------
+# Mouse Move (absolute pointer position via the keyboard's HID digitizer)
+# ---------------------------------------------------------------------------
+SS_MOUSE_MOVE_CODE = 11
+
+# Coordinates are stored as 0..MOUSE_COORD_MAX over the WHOLE host desktop
+# (the digitizer's logical range), so a macro is resolution independent: the
+# GUI converts to/from pixels of the desktop it is running on.
+MOUSE_COORD_MAX = 32767
+
+MOUSE_CLICK_NONE = 0
+MOUSE_CLICK_LEFT = 1
+MOUSE_CLICK_DOUBLE = 2
+MOUSE_CLICK_RIGHT = 3
+MOUSE_CLICK_NAMES = {
+    MOUSE_CLICK_NONE: "Mouse Move",
+    MOUSE_CLICK_LEFT: "Mouse Move + Click",
+    MOUSE_CLICK_DOUBLE: "Mouse Move + Double Click",
+    MOUSE_CLICK_RIGHT: "Mouse Move + Right Click",
+}
+
+
+def _mouse_coord_bytes(v):
+    """0..32767 -> three +1-encoded 7-bit groups (no byte may be 0 in a macro)."""
+    v = max(0, min(MOUSE_COORD_MAX, int(v)))
+    return [(v & 0x7F) + 1, ((v >> 7) & 0x7F) + 1, ((v >> 14) & 0x01) + 1]
+
+
+def mouse_coord_from_bytes(b0, b1, b2):
+    return ((b0 - 1) | ((b1 - 1) << 7) | ((b2 - 1) << 14)) & MOUSE_COORD_MAX
+
+
+class ActionMouseMove(BasicAction):
+    """Move the host pointer to an absolute desktop position, optionally
+    clicking there. x / y are 0..MOUSE_COORD_MAX; click is MOUSE_CLICK_*."""
+
+    tag = "mouse_move"
+
+    def __init__(self, x=0, y=0, click=MOUSE_CLICK_NONE):
+        super().__init__()
+        self.x = x
+        self.y = y
+        self.click = click
+
+    def serialize(self, vial_protocol):
+        if vial_protocol < VIAL_PROTOCOL_ADVANCED_MACROS:
+            raise RuntimeError("ActionMouseMove can only be used with vial_protocol>=2")
+        payload = _mouse_coord_bytes(self.x) + _mouse_coord_bytes(self.y) + [int(self.click) + 1]
+        return struct.pack("BB", SS_QMK_PREFIX, SS_MOUSE_MOVE_CODE) + bytes(payload)
+
+    def save(self):
+        return super().save() + [self.x, self.y, self.click]
+
+    def restore(self, act):
+        super().restore(act)
+        self.x = act[1]
+        self.y = act[2]
+        self.click = act[3] if len(act) > 3 else MOUSE_CLICK_NONE
+
+    def __eq__(self, other):
+        return (super().__eq__(other) and self.x == other.x and self.y == other.y
+                and self.click == other.click)
+
+    def __repr__(self):
+        return "{}<{},{} click={}>".format(self.tag, self.x, self.y, self.click)

@@ -6,7 +6,9 @@ from PyQt5.QtWidgets import QHBoxLayout, QToolButton, QComboBox
 from widgets.combo_box import ArrowComboBox
 from macro.macro_action_ui import (ActionTextUI, ActionDownUI, ActionUpUI, ActionTapUI,
                                    ActionDelayUI, ActionBPMDelayUI,
-                                   ActionMixingControlUI)
+                                   ActionMixingControlUI, ActionMouseMoveUI,
+                                   ActionMouseMoveClickUI, ActionMouseMoveDoubleClickUI,
+                                   ActionMouseMoveRightClickUI)
 from protocol.constants import VIAL_PROTOCOL_ADVANCED_MACROS
 
 
@@ -26,9 +28,14 @@ class MacroLine(QObject):
         self.container = parent.container
 
         if self.parent.parent.keyboard.vial_protocol >= VIAL_PROTOCOL_ADVANCED_MACROS:
-            self.types = self.types[:] + ["Wait (ms)", "Wait (BPM)", "AutoFader"]
+            self.types = self.types[:] + ["Wait (ms)", "Wait (BPM)", "AutoFader",
+                                          "Mouse Move", "Mouse Move + Click",
+                                          "Mouse Move + Double Click", "Mouse Move + Right Click"]
             self.type_to_cls = self.type_to_cls[:] + [ActionDelayUI, ActionBPMDelayUI,
-                                                       ActionMixingControlUI]
+                                                       ActionMixingControlUI, ActionMouseMoveUI,
+                                                       ActionMouseMoveClickUI,
+                                                       ActionMouseMoveDoubleClickUI,
+                                                       ActionMouseMoveRightClickUI]
 
         self.arrows = QHBoxLayout()
         self.btn_up = QToolButton()

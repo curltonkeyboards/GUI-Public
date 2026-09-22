@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import QPushButton, QHBoxLayout, QWidget, QLabel, QTabWidge
 
 from editor.basic_editor import BasicEditor
 from macro.macro_action import ActionText, ActionTap, ActionDown, ActionUp
-from macro.macro_action_ui import ui_action
+from macro.macro_action_ui import ui_action, ui_for_action
 from macro.macro_key import KeyString, KeyDown, KeyUp, KeyTap
 from macro.macro_optimizer import macro_optimize
 from macro.macro_tab import MacroTab
@@ -179,7 +179,7 @@ class MacroRecorder(BasicEditor):
         # merge: i.e. replace multiple instances of KeyDown with a single multi-key ActionDown, etc
         actions = self.keyboard.macro_deserialize(self.keyboard.macro_serialize(actions))
         for act in actions:
-            self.recording_tab.add_action(ui_action[type(act)](self.recording_tab.container, act))
+            self.recording_tab.add_action(ui_for_action(act)(self.recording_tab.container, act))
 
     def on_keystroke(self, keystroke):
         self.keystrokes.append(keystroke)
@@ -233,7 +233,7 @@ class MacroRecorder(BasicEditor):
         for macro, tab in zip(macros, self.macro_tabs[:self.keyboard.macro_count]):
             tab.clear()
             for act in macro:
-                tab.add_action(ui_action[type(act)](tab.container, act))
+                tab.add_action(ui_for_action(act)(tab.container, act))
         # Load loop modes from keyboard
         loop_modes = self.keyboard.get_macro_loop_modes()
         for x, mode in enumerate(loop_modes[:self.keyboard.macro_count]):

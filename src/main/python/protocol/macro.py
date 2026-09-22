@@ -4,7 +4,8 @@ from keycodes.keycodes import Keycode
 from macro.macro_action import (SS_TAP_CODE, SS_DOWN_CODE, SS_UP_CODE, ActionText, ActionTap, ActionDown, ActionUp,
     SS_QMK_PREFIX, SS_DELAY_CODE, ActionDelay, VIAL_MACRO_EXT_TAP, VIAL_MACRO_EXT_DOWN, VIAL_MACRO_EXT_UP,
     SS_BPM_DELAY_CODE, ActionBPMDelay, SS_BPM_DELAY_REPEAT_CODE,
-    SS_MIXING_CONTROL_CODE, ActionMixingControl)
+    SS_MIXING_CONTROL_CODE, ActionMixingControl,
+    SS_MOUSE_MOVE_CODE, ActionMouseMove, mouse_coord_from_bytes)
 from macro.macro_action_ui import tag_to_action
 from protocol.base_protocol import BaseProtocol
 from protocol.constants import CMD_VIA_MACRO_GET_COUNT, CMD_VIA_MACRO_GET_BUFFER_SIZE, CMD_VIA_MACRO_GET_BUFFER, \
@@ -152,6 +153,15 @@ def macro_deserialize_v2(data):
 
                 for x in range(9):
                     data.pop(0)
+            elif act == SS_MOUSE_MOVE_CODE:
+                if len(data) < 9:
+                    break
+                mx = mouse_coord_from_bytes(data[2], data[3], data[4])
+                my = mouse_coord_from_bytes(data[5], data[6], data[7])
+                click = data[8] - 1
+                sequence.append([SS_MOUSE_MOVE_CODE, mx, my, click])
+                for x in range(9):
+                    data.pop(0)
             else:
                 # it is clearly malformed, just skip this byte and hope for the best
                 data.pop(0)
@@ -181,6 +191,8 @@ def macro_deserialize_v2(data):
                 out.append(a)
             elif s[0] == SS_MIXING_CONTROL_CODE:
                 out.append(ActionMixingControl(s[1], s[2], s[3], s[4], s[5], s[6]))
+            elif s[0] == SS_MOUSE_MOVE_CODE:
+                out.append(ActionMouseMove(s[1], s[2], s[3]))
             else:
                 args = None
                 if s[0] in [SS_TAP_CODE, SS_DOWN_CODE, SS_UP_CODE]:
