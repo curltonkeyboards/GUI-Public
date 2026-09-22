@@ -321,7 +321,7 @@ class MacroTab(QVBoxLayout):
         # serialize all actions in this tab to a json
         macro_text = json.dumps([act.save() for act in self.actions()])
 
-        self.dlg_textbox = TextboxWindow(macro_text, "vim", "Vial macro")
+        self.dlg_textbox = TextboxWindow(macro_text, "vim", "SwitchStation macro")
         self.dlg_textbox.setModal(True)
         self.dlg_textbox.finished.connect(self.on_dlg_finished)
         self.dlg_textbox.show()

@@ -604,7 +604,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
                                  retries=20)[2:]
             self.rgb_version = data[0] | (data[1] << 8)
             if self.rgb_version != 1:
-                raise RuntimeError("Unsupported VialRGB protocol ({}), update your Vial version to latest"
+                raise RuntimeError("Unsupported lighting protocol ({}), update SwitchStation to the latest version"
                                    .format(self.rgb_version))
             self.rgb_maximum_brightness = data[2]
 

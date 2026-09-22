@@ -80,7 +80,7 @@ class VialKeyboard(VialDevice):
         if self.sideload:
             s += " [sideload]"
         elif self.via_stack:
-            s += " [VIA]"
+            s += " [layout file]"
         return s
 
     def get_uid(self):
@@ -97,7 +97,7 @@ class VialKeyboard(VialDevice):
 class VialBootloader(VialDevice):
 
     def title(self):
-        return "Vial Bootloader [{:04X}:{:04X}]".format(self.desc["vendor_id"], self.desc["product_id"])
+        return "MIDIswitch Bootloader [{:04X}:{:04X}]".format(self.desc["vendor_id"], self.desc["product_id"])
 
     def get_uid(self):
         try:

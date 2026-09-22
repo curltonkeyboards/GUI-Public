@@ -3321,9 +3321,9 @@ FUNC_LED_STATES = [
     (82, "Pending Play (Deferred Start)", "Chord Progression"),
     (83, "Pending Stop (Deferred Stop)", "Chord Progression"),
     # Vial Macros [12-14]
-    (12, "Loop Idle", "Vial Macros"),
-    (13, "Playing", "Vial Macros"),
-    (14, "Deferred Start", "Vial Macros"),
+    (12, "Loop Idle", "Macros"),
+    (13, "Playing", "Macros"),
+    (14, "Deferred Start", "Macros"),
     # Loop Pedal base states [15-20]
     (15, "Primed for Recording", "Loop Pedal"),
     (16, "Recording (REC/DUB)", "Loop Pedal"),
@@ -3391,7 +3391,7 @@ BLINK_MODES = ["Solid", "Slow Blink", "Fast Blink"]
 
 # Group ordering for the dropdown
 FUNC_LED_GROUPS = [
-    "Arpeggiator", "Step Sequencer", "Chord Progression", "Vial Macros",
+    "Arpeggiator", "Step Sequencer", "Chord Progression", "Macros",
     "Loop Pedal", "Toggle Keys", "Delay Slots", "SmartChord", "AutoFader",
     "Dynamic Chord", "DrumLIVE", "Drum Machine", "Ear Trainer",
     "Multi Channel", "Other Indicators"
@@ -3402,7 +3402,7 @@ FUNC_LED_GROUP_DESCRIPTIONS = {
     "Arpeggiator": "Colors for arpeggiator quick build, play button, and preset button LEDs.",
     "Step Sequencer": "Colors for step sequencer quick build, play button, and preset button LEDs.",
     "Chord Progression": "Colors for chord progression.",
-    "Vial Macros": "Colors for Vial macro keys (loop idle, playing, deferred).",
+    "Macros": "Colors for macro keys (loop idle, playing, deferred).",
     "Loop Pedal": (
         "Colors for the hardware loop pedal macro system.\n"
         "Base states control the primary color. Overdub 'Alt Color' entries control\n"

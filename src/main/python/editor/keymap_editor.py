@@ -207,7 +207,7 @@ class QuickActuationWidget(QWidget):
         self.enable_per_key_checkbox = QCheckBox(tr("QuickActuationWidget", "Enable Per-Key"))
         self.enable_per_key_checkbox.setStyleSheet("QCheckBox { font-weight: bold; font-size: 10px; } QCheckBox::indicator { border: 1px solid palette(mid); background-color: palette(button); width: 13px; height: 13px; } QCheckBox::indicator:checked { border: 1px solid palette(highlight); background-color: palette(highlight); }")
         self.enable_per_key_checkbox.stateChanged.connect(self.on_enable_per_key_toggled)
-        top_row_layout.addWidget(self.create_help_label("Enable individual actuation point per key.\nConfigure in Trigger Settings tab."))
+        top_row_layout.addWidget(self.create_help_label("Enable individual actuation point per key.\nConfigure in the Key Sensitivity tab."))
         top_row_layout.addWidget(self.enable_per_key_checkbox)
 
         top_row_layout.addWidget(self.create_help_label("Enable different actuation points per layer.\nWhen off, same actuation applies to all layers."))
@@ -232,7 +232,7 @@ class QuickActuationWidget(QWidget):
         layout.addWidget(line)
 
         # Per-key mode message (shown when per-key actuation is enabled)
-        self.per_key_message = QLabel(tr("QuickActuationWidget", "Per-key actuation enabled.\nChange per key actuation in Trigger Settings tab."))
+        self.per_key_message = QLabel(tr("QuickActuationWidget", "Per-key actuation enabled.\nChange per key actuation in the Key Sensitivity tab."))
         self.per_key_message.setStyleSheet("QLabel { font-style: italic; font-size: 10px; color: #888; padding: 10px; }")
         self.per_key_message.setAlignment(Qt.AlignCenter)
         self.per_key_message.setVisible(False)
@@ -1029,7 +1029,7 @@ class QuickActuationWidget(QWidget):
             QMessageBox.information(
                 self,
                 tr("QuickActuationWidget", "Per-Key Actuation Enabled"),
-                tr("QuickActuationWidget", "Per-key actuation is now enabled.\nUse Trigger Settings tab to configure individual keys.")
+                tr("QuickActuationWidget", "Per-key actuation is now enabled.\nUse the Key Sensitivity tab to configure individual keys.")
             )
             # Emit signal to request tab switch
             self.enable_per_key_requested.emit()
@@ -3067,7 +3067,7 @@ class KeymapEditor(BasicEditor):
         checkbox. Returns True when the action may proceed. The suppression is
         only persisted when the user proceeds (Yes), so a suppressed dialog can
         never block a later confirmation."""
-        settings = QSettings("Vial", "Vial")
+        settings = QSettings("MIDIswitch", "SwitchStation")
         if settings.value(suppress_key, False, type=bool):
             return True
         box = QMessageBox(self.widget())

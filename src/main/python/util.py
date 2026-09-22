@@ -233,7 +233,7 @@ def find_vial_devices(via_stack_json, sideload_vid=None, sideload_pid=None, quie
     if sideload_vid == sideload_pid == 0:
         filtered.append(VialDummyKeyboard())
 
-    startup_log(f"Found {len(filtered)} Vial-compatible device(s)")
+    startup_log(f"Found {len(filtered)} MIDIswitch device(s)")
     return filtered
 
 
@@ -253,7 +253,7 @@ def init_logger():
     logging.basicConfig(level=logging.INFO)
     directory = QStandardPaths.writableLocation(QStandardPaths.AppLocalDataLocation)
     pathlib.Path(directory).mkdir(parents=True, exist_ok=True)
-    path = os.path.join(directory, "vial.log")
+    path = os.path.join(directory, "switchstation.log")
     handler = RotatingFileHandler(path, maxBytes=5 * 1024 * 1024, backupCount=5)
     handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s"))
     logging.getLogger().addHandler(handler)

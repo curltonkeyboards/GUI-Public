@@ -854,7 +854,7 @@ class ThruLoopConfigurator(BasicEditor):
         basic_layout.addWidget(self.alternate_restart, 2, 1)
 
         self.macro_sync_to_loop = QCheckBox(tr("ThruLoopConfigurator", "Sync Macros"))
-        self.macro_sync_to_loop.setToolTip("Global master override: when ON every macro defers until the next loop trigger, regardless of its per-macro sync bit (which is set from Vial per keycode)")
+        self.macro_sync_to_loop.setToolTip("Global master override: when ON every macro defers until the next loop trigger, regardless of its per-macro sync bit (which is set per macro in the Macros tab)")
         self.macro_sync_to_loop.stateChanged.connect(self.on_macro_sync_changed)
         basic_layout.addWidget(self.macro_sync_to_loop, 3, 0, 1, 2)
 

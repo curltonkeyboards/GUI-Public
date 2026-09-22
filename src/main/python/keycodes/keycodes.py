@@ -1241,7 +1241,7 @@ KEYCODES_MACRO_BASE = [
     K("DYN_MACRO_PLAY1", "Dynamic\nMacro 1\nPlay", "Dynamic Macro 1 Play", alias=["DM_PLY1"]),
     K("DYN_MACRO_PLAY2", "Dynamic\nMacro 2\nPlay", "Dynamic Macro 2 Play", alias=["DM_PLY2"]),
     K("DYN_REC_STOP", "Stop\nMacro\nRec", "Dynamic Macro Rec Stop", alias=["DM_RSTP"]),
-    K("QK_MACRO_ALL_OFF", "All\nMacros\nOff", "Stop all playing Vial macros"),
+    K("QK_MACRO_ALL_OFF", "All\nMacros\nOff", "Stop all playing macros"),
 ]
 
 KEYCODES_EARTRAINER = []  # removed: ear trainer is outdated / managed on-device

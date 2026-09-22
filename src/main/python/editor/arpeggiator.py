@@ -4025,7 +4025,7 @@ class Arpeggiator(BasicEditor):
             # Load the currently selected preset from device
             self.load_preset()
         else:
-            self.update_status("Connect a Vial device to use arpeggiator")
+            self.update_status("Connect a MIDIswitch to use the arpeggiator")
 
     def activate(self):
         """Tab activated"""
