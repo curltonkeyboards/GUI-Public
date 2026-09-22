@@ -182,9 +182,9 @@ class QuickActuationWidget(QWidget):
                 background: transparent;
             }
             QPushButton:hover {
-                color: #fff;
-                background-color: #555;
-                border-color: #fff;
+                color: palette(button-text);
+                background-color: palette(light);
+                border-color: palette(highlight);
             }
         """)
         help_btn.setToolTip(tooltip_text)
@@ -2505,9 +2505,9 @@ class KeymapEditor(BasicEditor):
                 background: transparent;
             }
             QPushButton:hover {
-                color: #fff;
-                background-color: #555;
-                border-color: #fff;
+                color: palette(button-text);
+                background-color: palette(light);
+                border-color: palette(highlight);
             }
         """)
         nav_help.setFocusPolicy(Qt.NoFocus)

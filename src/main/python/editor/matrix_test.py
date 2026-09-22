@@ -1458,9 +1458,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                 background: transparent;
             }
             QPushButton:hover {
-                color: #fff;
-                background-color: #555;
-                border-color: #fff;
+                color: palette(button-text);
+                background-color: palette(light);
+                border-color: palette(highlight);
             }
         """)
         help_btn.setToolTip(tooltip_text)
@@ -6051,9 +6051,9 @@ class GamingConfigurator(BasicEditor):
                 background: transparent;
             }
             QPushButton:hover {
-                color: #fff;
-                background-color: #555;
-                border-color: #fff;
+                color: palette(button-text);
+                background-color: palette(light);
+                border-color: palette(highlight);
             }
         """)
         help_btn.setToolTip(tooltip_text)

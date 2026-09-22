@@ -105,8 +105,8 @@ def _make_help_label(tooltip_text):
             background: transparent;
         }
         QPushButton:hover {
-            color: #fff;
-            background-color: #555;
+            color: palette(button-text);
+            background-color: palette(light);
         }
     """)
     help_btn.setToolTip(tooltip_text)
