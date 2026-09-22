@@ -1340,6 +1340,20 @@ class midiadvancedTab(QScrollArea):
         # Initial populate
         self._update_advanced_keys("")
 
+    def _tap_hold_configured(self, qmk_id):
+        """Search offers only Tap/Hold slots that have at least one action set
+        (read live from the keyboard, so a newly saved slot shows up)."""
+        entries = getattr(getattr(self, "keyboard", None), "tap_dance_entries", None)
+        if not entries:
+            return False
+        try:
+            idx = int(qmk_id[3:-1])
+        except ValueError:
+            return False
+        if idx >= len(entries):
+            return False
+        return any(kc not in ("KC_NO", "", None, 0) for kc in entries[idx][:4])
+
     def _expand_search_words(self, words):
         """Expand search words with synonyms for better matching."""
         expanded = list(words)
@@ -1518,6 +1532,8 @@ class midiadvancedTab(QScrollArea):
             if not keycode.qmk_id or keycode.qmk_id == "KC_NO":
                 continue
             if keycode.qmk_id in unsupported:
+                continue
+            if keycode.qmk_id.startswith("TD(") and not self._tap_hold_configured(keycode.qmk_id):
                 continue
             if keycode.qmk_id in seen_ids:
                 continue
@@ -4490,16 +4506,16 @@ class KeyboardTab(QWidget):
 
         # Create the individual tabs
         self.basic_tab = Tab(parent, "Basic", [
-            (ansi_100, KEYCODES_SPECIAL + KEYCODES_SHIFTED),
-            (ansi_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_SHIFTED),
-            (ansi_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV + KEYCODES_SHIFTED),
-            (None, KEYCODES_SPECIAL + KEYCODES_BASIC + KEYCODES_SHIFTED),
+            (ansi_100, KEYCODES_SPECIAL),
+            (ansi_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD),
+            (ansi_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV),
+            (None, KEYCODES_SPECIAL + KEYCODES_BASIC),
         ])
 
         self.iso_tab = Tab(parent, "ISO/JIS", [
-            (iso_100, KEYCODES_SPECIAL + KEYCODES_SHIFTED + KEYCODES_ISO_KR),
-            (iso_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_SHIFTED + KEYCODES_ISO_KR),
-            (iso_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV + KEYCODES_SHIFTED +
+            (iso_100, KEYCODES_SPECIAL + KEYCODES_ISO_KR),
+            (iso_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_ISO_KR),
+            (iso_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV +
              KEYCODES_ISO_KR),
             (None, KEYCODES_ISO),
         ])
@@ -5220,9 +5236,19 @@ class MIDITab(midiadvancedTab):
 class SearchTab(MIDITab):
     """Top-level Search tab: the searchable browser over every keycode."""
 
+    # Last connected keyboard, so a search window opened later (double-click)
+    # can also tell which Tap/Hold slots are configured.
+    last_keyboard = None
+
     def __init__(self, parent):
+        self.keyboard = SearchTab.last_keyboard
         super().__init__(parent, label="Search",
                          include_sections=["Advanced Keys"], with_external=False)
+
+    def set_keyboard(self, keyboard):
+        # No arp/seq sections here: just remember the keyboard.
+        self.keyboard = keyboard
+        SearchTab.last_keyboard = keyboard
 
 
 # =============================================================================

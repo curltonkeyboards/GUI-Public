@@ -918,9 +918,24 @@ KEYCODES_MEDIA[:] = [kc for kc in KEYCODES_MEDIA if kc.qmk_id in _MEDIA_SUPPORTE
 KEYCODES_UNSUPPORTED = []
 
 
+# Also never offered: the dynamic-macro recorder keys, the USER00-15
+# placeholders, the pre-shifted symbols (Shift+key combos) and the Fn 1 / Fn 2
+# held keys (Combo Keys was removed). Listed by id because some of these lists
+# are rebuilt per keyboard.
+_UNSUPPORTED_EXTRA_IDS = {
+    "DYN_REC_START1", "DYN_REC_START2", "DYN_MACRO_PLAY1", "DYN_MACRO_PLAY2", "DYN_REC_STOP",
+    "FN_MO13", "FN_MO23",
+}
+
+
 def unsupported_ids():
     """qmk_ids of every unsupported keycode (see KEYCODES_UNSUPPORTED)."""
-    return {kc.qmk_id for kc in KEYCODES_UNSUPPORTED}
+    ids = {kc.qmk_id for kc in KEYCODES_UNSUPPORTED}
+    ids.update(kc.qmk_id for kc in KEYCODES_SHIFTED)
+    ids.update(kc.qmk_id for kc in KEYCODES_USER)
+    ids.update("USER{:02}".format(x) for x in range(16))
+    ids.update(_UNSUPPORTED_EXTRA_IDS)
+    return ids
 
 
 KEYCODES_SAVE = [

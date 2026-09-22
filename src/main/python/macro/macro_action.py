@@ -140,6 +140,88 @@ class ActionTap(ActionSequence):
         return b"\x01"
 
 
+# Typed text -> key actions (US layout). Macros never store raw text: a typed
+# string is turned into ordinary Keypress / Hold / Release lines, so it plays
+# back through the same key path as any hand-built macro.
+_TEXT_UNSHIFTED = {
+    " ": "KC_SPACE", "\n": "KC_ENTER", "\t": "KC_TAB",
+    "-": "KC_MINUS", "=": "KC_EQUAL", "[": "KC_LBRACKET", "]": "KC_RBRACKET",
+    "\\": "KC_BSLASH", ";": "KC_SCOLON", "'": "KC_QUOTE", "`": "KC_GRAVE",
+    ",": "KC_COMMA", ".": "KC_DOT", "/": "KC_SLASH",
+}
+_TEXT_SHIFTED = {
+    "!": "KC_1", "@": "KC_2", "#": "KC_3", "$": "KC_4", "%": "KC_5",
+    "^": "KC_6", "&": "KC_7", "*": "KC_8", "(": "KC_9", ")": "KC_0",
+    "_": "KC_MINUS", "+": "KC_EQUAL", "{": "KC_LBRACKET", "}": "KC_RBRACKET",
+    "|": "KC_BSLASH", ":": "KC_SCOLON", "\"": "KC_QUOTE", "~": "KC_GRAVE",
+    "<": "KC_COMMA", ">": "KC_DOT", "?": "KC_SLASH",
+}
+TEXT_SHIFT_KEY = "KC_LSHIFT"
+
+
+def char_to_key(ch):
+    """(qmk_id, needs_shift) for one character on a US layout, or None."""
+    if "a" <= ch <= "z":
+        return "KC_" + ch.upper(), False
+    if "A" <= ch <= "Z":
+        return "KC_" + ch, True
+    if "1" <= ch <= "9":
+        return "KC_" + ch, False
+    if ch == "0":
+        return "KC_0", False
+    if ch in _TEXT_UNSHIFTED:
+        return _TEXT_UNSHIFTED[ch], False
+    if ch in _TEXT_SHIFTED:
+        return _TEXT_SHIFTED[ch], True
+    return None
+
+
+def text_to_actions(text):
+    """Turn typed text into key actions: one Keypress line per run of plain
+    characters, and Hold Shift / Keypress / Release Shift around each run of
+    shifted ones ("happy" -> Keypress H, A, P, P, Y). Returns
+    (actions, skipped_chars) - characters with no key on a US layout are
+    skipped."""
+    actions = []
+    skipped = []
+    run, run_shift = [], None
+
+    def flush():
+        if not run:
+            return
+        if run_shift:
+            actions.append(ActionDown([TEXT_SHIFT_KEY]))
+            actions.append(ActionTap(list(run)))
+            actions.append(ActionUp([TEXT_SHIFT_KEY]))
+        else:
+            actions.append(ActionTap(list(run)))
+
+    for ch in text:
+        key = char_to_key(ch)
+        if key is None:
+            skipped.append(ch)
+            continue
+        kc, shift = key
+        if run and shift != run_shift:
+            flush()
+            run = []
+        run_shift = shift
+        run.append(kc)
+    flush()
+    return actions, skipped
+
+
+def expand_text_actions(actions):
+    """Replace every ActionText in ``actions`` with its key actions."""
+    out = []
+    for act in actions:
+        if isinstance(act, ActionText):
+            out.extend(text_to_actions(act.text)[0])
+        else:
+            out.append(act)
+    return out
+
+
 class ActionDelay(BasicAction):
 
     tag = "delay"

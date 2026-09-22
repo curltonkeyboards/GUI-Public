@@ -29,7 +29,6 @@ from autorefresh.autorefresh import Autorefresh
 from constants import WINDOW_WIDTH, WINDOW_HEIGHT
 from widgets.editor_container import EditorContainer
 from editor.firmware_flasher import FirmwareFlasher
-from editor.combo_keys import ComboKeys
 from protocol.keyboard_comm import ProtocolError
 from protocol.clone_migrations import CloneMigrationError, can_migrate, migrate_clone
 from editor.keymap_editor import KeymapEditor
@@ -142,7 +141,6 @@ class MainWindow(QMainWindow):
         self.firmware_flasher = FirmwareFlasher(self)
         self.macro_recorder = MacroRecorder()
         self.tap_dance = TapDance()
-        self.combo_keys = ComboKeys()
         QmkSettingsDefs.initialize(appctx)
         self.matrix_tester = MatrixTest(self.layout_editor)
         self.velocity_tab = VelocityTab(self.layout_editor)
@@ -174,7 +172,7 @@ class MainWindow(QMainWindow):
                         (self.midi_patchbay, "MIDI-Link"), (self.loop_manager, "Loop Manager"),
                         (self.arpeggiator, "Arpeggiator"), (self.step_sequencer, "Step Sequencer"),
                         (self.delay_tab, "Delay"),
-                        (self.tap_dance, "Tap/Hold"), (self.combo_keys, "Combo Keys"),
+                        (self.tap_dance, "Tap/Hold"),
                         (self.matrix_tester, "Matrix tester"), (self.velocity_tab, "Articulation"),
                         (self.firmware_flasher, "Firmware updater")]
 
@@ -796,7 +794,6 @@ class MainWindow(QMainWindow):
             (self.firmware_flasher, "firmware_flasher"),
             (self.macro_recorder, "macro_recorder"),
             (self.tap_dance, "tap_dance"),
-            (self.combo_keys, "combo_keys"),
             (self.matrix_tester, "matrix_tester"),
             (self.rgb_configurator, "rgb_configurator"),
             (self.MIDIswitchSettingsConfigurator, "MIDIswitchSettingsConfigurator"),
@@ -834,7 +831,6 @@ class MainWindow(QMainWindow):
             self.tap_dance,
             self.dks_settings,
             self.toggle_settings,
-            self.combo_keys,
             self.matrix_tester,
         ]
 

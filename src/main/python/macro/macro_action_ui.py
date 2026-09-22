@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (QLineEdit, QToolButton, QWidget, QSizePolicy, QSpin
 from constants import KEY_SIZE_RATIO
 from widgets.flowlayout import FlowLayout
 from widgets.combo_box import ArrowComboBox, ArrowSpinBox
-from macro.macro_action import (ActionText, ActionSequence, ActionDown, ActionUp, ActionTap,
+from macro.macro_action import (text_to_actions, ActionText, ActionSequence, ActionDown, ActionUp, ActionTap,
                                 ActionDelay, ActionBPMDelay,
                                 ActionMixingControl, MIXING_CURRENT_VALUE,
                                 ActionMouseMove, MOUSE_COORD_MAX, MOUSE_CLICK_NONE,
@@ -124,6 +124,8 @@ class BasicActionUI(QObject):
     # this action: (source button, this action UI, insert index).  The owner of
     # the group (the macro tab) performs the move once the drag has finished.
     cross_move_requested = pyqtSignal(object, object, int)
+    # Replace this line with these actions (the "Type Text" line generating its keys).
+    expand_requested = pyqtSignal(object)
     actcls = None
 
     def __init__(self, container, act=None):
@@ -145,27 +147,55 @@ class BasicActionUI(QObject):
 
 
 class ActionTextUI(BasicActionUI):
+    """"Type Text" line: the user types text and presses Generate Keys (or
+    Enter); the line is replaced by the Keypress / Hold / Release lines that
+    type it (text_to_actions). Raw text is never stored in a macro — anything
+    left in the box is converted the same way when the macro is saved."""
 
     actcls = ActionText
 
     def __init__(self, container, act=None):
         super().__init__(container, act)
+        self.widget = QWidget()
+        lay = QHBoxLayout(self.widget)
+        lay.setContentsMargins(0, 0, 0, 0)
         self.text = QLineEdit()
+        self.text.setPlaceholderText("Type text, then Generate Keys")
         self.text.setText(self.act.text)
         self.text.textChanged.connect(self.on_change)
+        self.text.returnPressed.connect(self.on_generate)
+        self.btn_generate = QToolButton()
+        self.btn_generate.setText("Generate Keys")
+        self.btn_generate.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.btn_generate.clicked.connect(self.on_generate)
+        lay.addWidget(self.text, 1)
+        lay.addWidget(self.btn_generate)
 
     def insert(self, row):
-        self.container.addWidget(self.text, row, 3)
+        self.container.addWidget(self.widget, row, 3)
 
     def remove(self):
-        self.container.removeWidget(self.text)
+        self.container.removeWidget(self.widget)
 
     def delete(self):
-        self.text.deleteLater()
+        self.widget.deleteLater()
 
     def on_change(self):
         self.act.text = self.text.text()
         self.changed.emit()
+
+    def on_generate(self):
+        actions, skipped = text_to_actions(self.text.text())
+        if skipped:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.warning(self.widget, "Type Text",
+                                "These characters have no key on a US keyboard and were left out: "
+                                + " ".join(sorted(set(skipped))))
+        if not actions:
+            return
+        # The button that fired this belongs to the line being replaced:
+        # replace it on the next event-loop pass.
+        QTimer.singleShot(0, lambda: self.expand_requested.emit(actions))
 
 
 def _make_thruloop_combo():

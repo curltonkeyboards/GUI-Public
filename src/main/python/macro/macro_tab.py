@@ -8,6 +8,7 @@ from PyQt5.QtWidgets import (QPushButton, QGridLayout, QHBoxLayout, QToolButton,
 
 from keycodes.keycodes import Keycode
 from macro.macro_action import ActionTap
+from macro.macro_action import text_to_actions, expand_text_actions
 from macro.macro_action_ui import ActionTextUI, ActionTapUI, ui_action, tag_to_action, ui_for_action
 from macro.macro_line import MacroLine
 from protocol.constants import VIAL_PROTOCOL_EXT_MACROS
@@ -204,15 +205,41 @@ class MacroTab(QVBoxLayout):
             self.name_changed.emit()  # trigger save enable + tab title update
             self.changed.emit()  # trigger tab title update
 
-    def add_action(self, act):
+    def _make_line(self, act):
         if self.parent.keyboard.vial_protocol < VIAL_PROTOCOL_EXT_MACROS:
             act.set_keycode_filter(keycode_filter_masked)
         line = MacroLine(self, act)
         line.changed.connect(self.on_change)
         line.key_selected.connect(self.on_key_selected)
         line.cross_move_requested.connect(self.on_cross_key_move)
+        line.expand_requested.connect(self.on_expand_line)
+        return line
+
+    def add_action(self, act):
+        # Text arriving from the keyboard, the recorder or an import is shown
+        # as the keys that type it: macros never keep raw text.
+        if isinstance(act, ActionTextUI) and act.act.text:
+            act.delete()
+            for key_act in text_to_actions(act.act.text)[0]:
+                self.add_action(ui_for_action(key_act)(self.container, key_act))
+            return
+        line = self._make_line(act)
         self.lines.append(line)
         line.insert(len(self.lines) - 1)
+        self.changed.emit()
+
+    def on_expand_line(self, line, actions):
+        """A "Type Text" line generated its keys: replace it with them."""
+        if line not in self.lines:
+            return
+        index = self.lines.index(line)
+        for existing in self.lines:
+            existing.remove()
+        line.delete()
+        new_lines = [self._make_line(ui_for_action(a)(self.container, a)) for a in actions]
+        self.lines[index:index + 1] = new_lines
+        for x, existing in enumerate(self.lines):
+            existing.insert(x)
         self.changed.emit()
 
     def on_key_selected(self, widget):
@@ -570,4 +597,5 @@ class MacroTab(QVBoxLayout):
         self.changed.emit()
 
     def actions(self):
-        return [line.action.act for line in self.lines]
+        # Any text still typed into a "Type Text" line is saved as its keys.
+        return expand_text_actions([line.action.act for line in self.lines])

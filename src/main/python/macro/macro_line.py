@@ -17,8 +17,9 @@ class MacroLine(QObject):
     changed = pyqtSignal()
     key_selected = pyqtSignal(object)  # Emits the selected key widget
     cross_move_requested = pyqtSignal(object, object, int)  # key dragged in from another line
+    expand_requested = pyqtSignal(object, object)  # (this line, actions replacing it)
 
-    types = ["Keypress (press + release)", "Hold Key (press only)", "Release Key (release only)", "Text"]
+    types = ["Keypress (press + release)", "Hold Key (press only)", "Release Key (release only)", "Type Text"]
     type_to_cls = [ActionTapUI, ActionDownUI, ActionUpUI, ActionTextUI]
 
     def __init__(self, parent, action):
@@ -117,6 +118,7 @@ class MacroLine(QObject):
         action.changed.connect(self.on_change)
         action.key_selected.connect(self.on_key_selected)
         action.cross_move_requested.connect(self.cross_move_requested)
+        action.expand_requested.connect(lambda acts: self.expand_requested.emit(self, acts))
         # keys can be dragged between every action line of this macro
         action.set_drag_group(self.parent)
 
