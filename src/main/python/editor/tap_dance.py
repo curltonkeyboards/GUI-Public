@@ -71,7 +71,7 @@ class TapDanceEntryUI(QObject):
         keys_layout = QVBoxLayout()
 
         # Instruction text
-        instruction = QLabel("← Click a key to select, then choose from keycodes below")
+        instruction = QLabel("Click a key to select, then choose from keycodes below")
         instruction.setStyleSheet("color: gray; font-style: italic;")
         keys_layout.addWidget(instruction)
 
@@ -80,16 +80,14 @@ class TapDanceEntryUI(QObject):
         self.populate_container()
         keys_layout.addLayout(self.container)
 
-        # Tapping term
-        timing_layout = QHBoxLayout()
-        timing_layout.addWidget(QLabel("Tapping term (ms):"))
-        self.txt_tapping_term = QSpinBox()
-        self.txt_tapping_term.valueChanged.connect(self.on_timing_changed)
-        self.txt_tapping_term.setMinimum(0)
-        self.txt_tapping_term.setMaximum(10000)
-        timing_layout.addWidget(self.txt_tapping_term)
-        timing_layout.addStretch()
-        keys_layout.addLayout(timing_layout)
+        # Hold time is global (Advanced Settings), not per entry. The entry's
+        # stored term is kept only so a save round-trips it unchanged.
+        self._tapping_term = 0
+        timing_note = QLabel("Hold time: set by \"Key press duration for hold in Tap/Hold Keys\" "
+                             "in MIDI Settings > Advanced Settings.")
+        timing_note.setWordWrap(True)
+        timing_note.setStyleSheet("color: gray; font-size: 9pt;")
+        keys_layout.addWidget(timing_note)
 
         keys_layout.addStretch()
         keys_group.setLayout(keys_layout)
@@ -155,7 +153,7 @@ class TapDanceEntryUI(QObject):
             self._apply_data(data)
 
     def _apply_data(self, data):
-        objs = [self.kc_on_tap, self.kc_on_hold, self.kc_on_double_tap, self.kc_on_tap_hold, self.txt_tapping_term]
+        objs = [self.kc_on_tap, self.kc_on_hold, self.kc_on_double_tap, self.kc_on_tap_hold]
         for o in objs:
             o.blockSignals(True)
 
@@ -163,7 +161,7 @@ class TapDanceEntryUI(QObject):
         self.kc_on_hold.set_keycode(data[1])
         self.kc_on_double_tap.set_keycode(data[2])
         self.kc_on_tap_hold.set_keycode(data[3])
-        self.txt_tapping_term.setValue(data[4])
+        self._tapping_term = data[4]
 
         for o in objs:
             o.blockSignals(False)
@@ -180,7 +178,7 @@ class TapDanceEntryUI(QObject):
             self.kc_on_hold.keycode,
             self.kc_on_double_tap.keycode,
             self.kc_on_tap_hold.keycode,
-            self.txt_tapping_term.value()
+            self._tapping_term
         )
 
     def on_key_changed(self):

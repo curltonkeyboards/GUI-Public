@@ -15,6 +15,7 @@ from protocol.clone_migrations import (
     V6_DL_QB_V5_ENTRY, V6_DL_QB_V6_ENTRY,
     V7_DYN_COMBO_OLD_BASE, V7_DYN_COMBO_OLD_COUNT, V7_DYN_KO_OLD_BASE, V7_DYN_KO_OLD_COUNT,
     V7_DYN_ENTRY, V7_DYN_KO_NEW_BASE, V7_DYN_KO_NEW_COUNT, V7_DYN_SPAN_END,
+    V8_MOUSE_TIMING_BASE, V8_MOUSE_TIMING_SIZE,
 )
 from protocol import clone_migrations
 
@@ -235,6 +236,30 @@ class TestCloneMigrationV6ToV7(unittest.TestCase):
         self.assertTrue(can_migrate(1, 7))
         v7, _notes = migrate_clone(build_v1_image(), 1, 7)
         self.assertEqual(len(v7), EEPROM_SIZE)
+
+
+class TestCloneMigrationV7ToV8(unittest.TestCase):
+
+    def setUp(self):
+        self.v7 = build_v1_image()
+        self.v8, self.notes = migrate_clone(self.v7, 7, 8)
+
+    def test_region_fully_cleared(self):
+        self.assertEqual(bytes(self.v8[V8_MOUSE_TIMING_BASE:V8_MOUSE_TIMING_BASE + V8_MOUSE_TIMING_SIZE]),
+                         bytes(V8_MOUSE_TIMING_SIZE))
+
+    def test_only_the_region_changes(self):
+        changed = {i for i in range(EEPROM_SIZE) if self.v7[i] != self.v8[i]}
+        allowed = set(range(V8_MOUSE_TIMING_BASE, V8_MOUSE_TIMING_BASE + V8_MOUSE_TIMING_SIZE))
+        self.assertTrue(changed.issubset(allowed), sorted(changed - allowed)[:16])
+
+    def test_default_is_reported(self):
+        self.assertTrue(any("mouse timing" in n for n in self.notes), self.notes)
+
+    def test_full_chain_from_v1_reaches_v8(self):
+        self.assertTrue(can_migrate(1, 8))
+        v8, _notes = migrate_clone(build_v1_image(), 1, 8)
+        self.assertEqual(len(v8), EEPROM_SIZE)
 
 
 if __name__ == "__main__":

@@ -132,12 +132,25 @@ def is_alias_candidate(msg):
 #
 # The keys are the app's own setting ids (the ones qmk_settings.json lists),
 # so the settings page, .vil save/restore and the About dialog are unchanged.
+#
+# The macro Mouse Move timing rides the same command, feature-detected by a
+# marker byte so an app and a firmware of different ages never misread it:
+#   SET      data[12..15] = click delay, double-click speed (u16 LE each),
+#            data[16] = MSET_MOUSE_MARKER (without it the mouse values are
+#            left alone)
+#   response click delay, double-click speed (u16 LE) at 11..14 and
+#            MSET_MOUSE_MARKER at 15 when the firmware has them
+# They use app-side ids (MOUSE_SETTINGS_IDS) that are not device setting ids.
 
 MSW_CMD_MACRO_SETTINGS = 0x98
 MSW_MSET_GET = 0
 MSW_MSET_SET = 1
 MSW_MSET_RESET = 2
 MACRO_SETTINGS_QSIDS = (7, 18, 6)   # hold duration, gap between macro keys, one-shot timeout
+MOUSE_CLICK_DELAY_ID = 0x1001        # wait after a macro mouse move before clicking (ms)
+MOUSE_DOUBLE_CLICK_ID = 0x1002       # gap between the two clicks of a double click (ms)
+MOUSE_SETTINGS_IDS = (MOUSE_CLICK_DELAY_ID, MOUSE_DOUBLE_CLICK_ID)
+MSET_MOUSE_MARKER = 0x4D
 
 _MSET_HEADER = bytes([0x7D, 0x00, 0x4D, MSW_CMD_MACRO_SETTINGS])
 
@@ -149,6 +162,9 @@ def build_macro_settings_request(sub, values=None):
     pkt[4] = sub
     if sub == MSW_MSET_SET:
         struct.pack_into("<HHH", pkt, 6, *[int(values[q]) & 0xFFFF for q in MACRO_SETTINGS_QSIDS])
+        if all(q in values for q in MOUSE_SETTINGS_IDS):
+            struct.pack_into("<HH", pkt, 12, *[int(values[q]) & 0xFFFF for q in MOUSE_SETTINGS_IDS])
+            pkt[16] = MSET_MOUSE_MARKER
     return bytes(pkt)
 
 
@@ -160,4 +176,7 @@ def parse_macro_settings(response):
     if bytes(response[0:4]) != _MSET_HEADER or response[4] != 1:
         return None
     vals = struct.unpack_from("<HHH", bytes(response), 5)
-    return dict(zip(MACRO_SETTINGS_QSIDS, vals))
+    out = dict(zip(MACRO_SETTINGS_QSIDS, vals))
+    if len(response) >= 16 and response[15] == MSET_MOUSE_MARKER:
+        out.update(zip(MOUSE_SETTINGS_IDS, struct.unpack_from("<HH", bytes(response), 11)))
+    return out

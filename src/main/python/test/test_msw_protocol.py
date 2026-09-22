@@ -16,6 +16,7 @@ BUNDLED_MODEL = 1                       # a model id the app carries a definitio
 BUNDLED_ROWS = msw_definition.get_definition(BUNDLED_MODEL)["matrix"]["rows"]
 UNKNOWN_MODEL = 2                       # a model id the app does not know
 SETTINGS_DEFAULTS = {7: 200, 18: 1, 6: 5000}
+MOUSE_DEFAULTS = {msw.MOUSE_CLICK_DELAY_ID: 10, msw.MOUSE_DOUBLE_CLICK_ID: 100}
 
 
 def pad(b):
@@ -28,8 +29,10 @@ class FakeFirmware:
     with their real response shapes, and the legacy-paths switch."""
 
     def __init__(self, has_ident=True, legacy_paths=True, definition=LAYOUT_2x2,
-                 model_id=BUNDLED_MODEL, serve_definition=False):
+                 model_id=BUNDLED_MODEL, serve_definition=False, mouse=False):
         self.has_ident = has_ident
+        self.mouse = mouse                            # firmware carries the Mouse Move timing
+        self.mouse_settings = dict(MOUSE_DEFAULTS)
         self.legacy_paths = legacy_paths
         self.model_id = model_id
         self.serve_definition = serve_definition      # the definition download is compiled in
@@ -65,11 +68,18 @@ class FakeFirmware:
             return bytes(r)  # status 0
         if sub == 2:
             self.settings = dict(SETTINGS_DEFAULTS)
+            self.mouse_settings = dict(MOUSE_DEFAULTS)
         elif sub == 1:
             for i, q in enumerate(msw.MACRO_SETTINGS_QSIDS):
                 self.settings[q] = struct.unpack_from("<H", bytes(d), 6 + 2 * i)[0]
+            if self.mouse and d[16] == msw.MSET_MOUSE_MARKER:
+                for i, q in enumerate(msw.MOUSE_SETTINGS_IDS):
+                    self.mouse_settings[q] = struct.unpack_from("<H", bytes(d), 12 + 2 * i)[0]
         r[4] = 1
         struct.pack_into("<HHH", r, 5, *[self.settings[q] for q in msw.MACRO_SETTINGS_QSIDS])
+        if self.mouse:
+            struct.pack_into("<HH", r, 11, *[self.mouse_settings[q] for q in msw.MOUSE_SETTINGS_IDS])
+            r[15] = msw.MSET_MOUSE_MARKER
         return bytes(r)
 
     def legacy_dispatch(self, d):
@@ -329,6 +339,34 @@ class TestMacroSettings(unittest.TestCase):
 
         self.assertEqual(kb.qmk_settings_set(99, 1), 1)              # not a Macro Setting
         self.assertFalse(setting_subcommands(fw), "per-setting sub-command on the wire")
+
+    def test_mouse_timing_rides_the_same_command(self):
+        fw = FakeFirmware(legacy_paths=False, mouse=True)
+        kb = Keyboard(None, fw.send)
+        kb.reload_layout()
+        kb.reload_settings()
+        self.assertEqual(kb.supported_settings, set(msw.MACRO_SETTINGS_QSIDS + msw.MOUSE_SETTINGS_IDS))
+        self.assertEqual(kb.settings[msw.MOUSE_DOUBLE_CLICK_ID], 100)
+
+        self.assertEqual(kb.qmk_settings_set(msw.MOUSE_CLICK_DELAY_ID, 40), 0)
+        self.assertEqual(fw.mouse_settings[msw.MOUSE_CLICK_DELAY_ID], 40)
+        self.assertEqual(fw.mouse_settings[msw.MOUSE_DOUBLE_CLICK_ID], 100)
+        self.assertEqual(fw.settings, SETTINGS_DEFAULTS)
+        self.assertEqual(kb.qmk_settings_set(7, 300), 0)             # carries the mouse values unchanged
+        self.assertEqual(fw.mouse_settings[msw.MOUSE_CLICK_DELAY_ID], 40)
+
+        kb.qmk_settings_reset()
+        self.assertEqual(fw.mouse_settings, MOUSE_DEFAULTS)
+        self.assertEqual(kb.settings[msw.MOUSE_CLICK_DELAY_ID], 10)
+
+    def test_firmware_without_mouse_timing(self):
+        fw = FakeFirmware(legacy_paths=False)
+        kb = Keyboard(None, fw.send)
+        kb.reload_layout()
+        kb.reload_settings()
+        self.assertNotIn(msw.MOUSE_CLICK_DELAY_ID, kb.supported_settings)
+        self.assertEqual(kb.qmk_settings_set(7, 250), 0)
+        self.assertEqual(fw.settings[7], 250)
 
     def test_set_before_reload_fetches_the_rest(self):
         fw = FakeFirmware()

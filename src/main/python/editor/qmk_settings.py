@@ -6,9 +6,14 @@ Combo / One Shot Keys / Mouse keys) is gone. Only three values are still
 user-facing, as the "Macro Settings" group of MIDI Settings > Advanced
 Settings:
 
-    Key press duration for hold (ms)   qsid 7   (tapping term)
-    Gap between Macro keys (ms)        qsid 18  (tap code delay)
-    One shot key timeout (ms)          qsid 6   (one shot timeout)
+    Key press duration for hold in Tap/Hold Keys (ms)   qsid 7   (tapping term)
+    Gap between Macro keys (ms)                         qsid 18  (tap code delay)
+    Mouse click delay on macro (ms)                     app id 0x1001
+    Mouse double click speed (ms)                       app id 0x1002
+    One shot key timeout (ms)                           qsid 6   (one shot timeout)
+
+The two mouse settings are not device setting ids: they ride the Macro
+Settings command's feature-detected mouse fields (protocol/msw_protocol.py).
 
 The other qsids stay at their firmware defaults; the firmware still supports
 them (stage 1 of the migration is GUI-only), they just have no UI.
@@ -99,8 +104,12 @@ class MacroSettingsGroup(QGroupBox):
         for row, field in enumerate(QmkSettingsDefs.fields()):
             if field["type"] != "integer":
                 continue
-            grid.addWidget(QLabel(field["title"]), row, 0)
+            lbl = QLabel(field["title"])
+            grid.addWidget(lbl, row, 0)
             sb = QSpinBox()
+            if field.get("tooltip"):
+                lbl.setToolTip(field["tooltip"])
+                sb.setToolTip(field["tooltip"])
             sb.setMinimum(field["min"])
             sb.setMaximum(field["max"])
             sb.setMinimumWidth(90)

@@ -3,8 +3,12 @@
         {
             "name": "Macro Settings",
             "fields": [
-                { "type": "integer", "title": "Key press duration for hold (ms)", "qsid": 7, "min": 0, "max": 10000, "width": 2 },
+                { "type": "integer", "title": "Key press duration for hold in Tap/Hold Keys (ms)", "qsid": 7, "min": 0, "max": 10000, "width": 2 },
                 { "type": "integer", "title": "Gap between Macro keys (ms)", "qsid": 18, "min": 0, "max": 1000, "width": 2 },
+                { "type": "integer", "title": "Mouse click delay on macro (ms)", "qsid": 4097, "min": 0, "max": 1000, "width": 2,
+                  "tooltip": "How long a Mouse Move macro action waits after moving the pointer before it clicks, double clicks or right clicks" },
+                { "type": "integer", "title": "Mouse double click speed (ms)", "qsid": 4098, "min": 1, "max": 500, "width": 2,
+                  "tooltip": "Time between the two clicks of a Mouse Move + Double Click macro action" },
                 { "type": "integer", "title": "One shot key timeout (ms)", "qsid": 6, "min": 0, "max": 60000, "width": 2 }
             ]
         }

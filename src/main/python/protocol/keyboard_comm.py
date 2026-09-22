@@ -39,7 +39,7 @@ from protocol.tap_dance import ProtocolTapDance
 from unlocker import Unlocker
 from protocol.msw_protocol import build_ident_request, parse_ident, encode_request, decode_response, \
     MSW_PROTOCOL_MAJOR_SUPPORTED, MSW1_VIA_LEVEL, MSW1_VIAL_LEVEL, MSW_CAP_DEFINITION, \
-    MACRO_SETTINGS_QSIDS, MSW_MSET_GET, MSW_MSET_SET, MSW_MSET_RESET, \
+    MACRO_SETTINGS_QSIDS, MOUSE_SETTINGS_IDS, MSW_MSET_GET, MSW_MSET_SET, MSW_MSET_RESET, \
     build_macro_settings_request, parse_macro_settings
 from protocol import msw_definition
 from util import MSG_LEN, hid_lock_for, hid_send
@@ -1230,13 +1230,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         if parsed is None:
             return False
         self.settings.update(parsed)
-        self.supported_settings = set(MACRO_SETTINGS_QSIDS)
+        self.supported_settings = set(parsed.keys())
         return True
 
     def qmk_settings_set(self, qsid, value):
         from editor.qmk_settings import QmkSettingsDefs as QmkSettings
         if self.hid_codec == "msw":
-            if qsid not in MACRO_SETTINGS_QSIDS:
+            if qsid not in MACRO_SETTINGS_QSIDS + MOUSE_SETTINGS_IDS:
                 return 1
             if any(q not in self.settings for q in MACRO_SETTINGS_QSIDS):
                 # the SET carries all three: fetch the ones we do not hold yet

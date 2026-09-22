@@ -408,8 +408,9 @@ class Theme:
             QComboBox {
                 border: 1px solid palette(mid);
                 border-radius: 6px;
-                padding: 6px 12px;
+                padding: 2px 12px;
                 padding-right: 28px;
+                min-height: 20px;
                 background: palette(button);
                 min-width: 80px;
             }
@@ -426,6 +427,15 @@ class Theme:
 
             QComboBox:on {
                 background: palette(button);
+            }
+
+            /* The read-only text field inside editable (centred) combos:
+               no box of its own, so it can't eat the combo's height */
+            QComboBox QLineEdit, QComboBox QLineEdit:hover, QComboBox QLineEdit:focus {
+                padding: 0px;
+                margin: 0px;
+                border: none;
+                background: transparent;
             }
 
             QComboBox::drop-down {

@@ -2,7 +2,7 @@
 
 import time
 
-from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWidget,
+from PyQt5.QtWidgets import (QHBoxLayout, QGridLayout, QLabel, QVBoxLayout, QMessageBox, QWidget,
                               QInputDialog,
                               QSlider, QCheckBox, QPushButton, QComboBox, QFrame,
                               QSizePolicy, QScrollArea, QTabWidget, QApplication,
@@ -1210,50 +1210,41 @@ class TriggerSettingsTab(BasicEditor):
         self.nullbind_selected_display = QLabel(tr("TriggerSettings", "(No keys selected)"))
         self.nullbind_selected_display.setStyleSheet("QLabel { font-size: 10pt; padding: 8px; background: palette(base); border-radius: 4px; }")
         self.nullbind_selected_display.setWordWrap(True)
-        self.nullbind_selected_display.setMinimumHeight(40)
+        self.nullbind_selected_display.setMinimumHeight(32)
         sel_layout.addWidget(self.nullbind_selected_display)
 
         sel_frame.setLayout(sel_layout)
         layout.addWidget(sel_frame)
 
-        # --- Behavior selection row (authoring input for the group to Save) ---
-        behavior_row = QHBoxLayout()
-        behavior_row.setSpacing(10)
+        # --- Behavior + Active Layer (authoring inputs for the group to Save) ---
+        form = QGridLayout()
+        form.setHorizontalSpacing(10)
+        form.setVerticalSpacing(6)
 
         behavior_label = QLabel(tr("TriggerSettings", "Behavior:"))
         behavior_label.setStyleSheet("QLabel { font-weight: bold; }")
-        behavior_row.addWidget(behavior_label)
+        form.addWidget(behavior_label, 0, 0)
 
         self.nullbind_behavior_combo = QComboBox()
-        self.nullbind_behavior_combo.setFixedWidth(200)
+        self.nullbind_behavior_combo.setMinimumWidth(210)
         self.nullbind_behavior_combo.currentIndexChanged.connect(self.on_nullbind_behavior_changed)
-        behavior_row.addWidget(self.nullbind_behavior_combo)
-
-        behavior_row.addStretch()
-        layout.addLayout(behavior_row)
-
-        # --- Active Layer row (authoring input; SOCD groups are layer-specific) ---
-        layer_row = QHBoxLayout()
-        layer_row.setSpacing(10)
+        form.addWidget(self.nullbind_behavior_combo, 0, 1)
 
         layer_label = QLabel(tr("TriggerSettings", "Active Layer:"))
         layer_label.setStyleSheet("QLabel { font-weight: bold; }")
-        layer_row.addWidget(layer_label)
+        layer_label.setToolTip(tr("TriggerSettings", "This group only activates on this layer"))
+        form.addWidget(layer_label, 1, 0)
 
         self.nullbind_layer_combo = QComboBox()
-        self.nullbind_layer_combo.addItem("All Layers", NULLBIND_LAYER_ALL)
         for i in range(12):
             self.nullbind_layer_combo.addItem(f"Layer {i + 1}", i)
         self.nullbind_layer_combo.currentIndexChanged.connect(self.on_nullbind_layer_changed)
-        self.nullbind_layer_combo.setFixedWidth(120)
-        layer_row.addWidget(self.nullbind_layer_combo)
+        self.nullbind_layer_combo.setMinimumWidth(210)
+        self.nullbind_layer_combo.setToolTip(tr("TriggerSettings", "This group only activates on this layer"))
+        form.addWidget(self.nullbind_layer_combo, 1, 1)
 
-        layer_hint = QLabel(tr("TriggerSettings", "(This group only activates on this layer)"))
-        layer_hint.setStyleSheet("QLabel { color: gray; font-size: 9pt; }")
-        layer_row.addWidget(layer_hint)
-
-        layer_row.addStretch()
-        layout.addLayout(layer_row)
+        form.setColumnStretch(2, 1)
+        layout.addLayout(form)
 
         # --- Save / Overwrite buttons (above the Group Viewer) ---
         button_row = QHBoxLayout()
@@ -1288,25 +1279,21 @@ class TriggerSettingsTab(BasicEditor):
         gv_header.addWidget(gv_group_label)
 
         self.nullbind_group_combo = QComboBox()
-        self.nullbind_group_combo.setFixedWidth(140)
+        self.nullbind_group_combo.setMinimumWidth(110)
         self.nullbind_group_combo.currentIndexChanged.connect(self.on_nullbind_group_changed)
         gv_header.addWidget(self.nullbind_group_combo)
         gv_header.addStretch()
+        self.nullbind_clear_btn = QPushButton(tr("TriggerSettings", "Clear Group"))
+        self.nullbind_clear_btn.clicked.connect(self.on_nullbind_clear_group)
+        gv_header.addWidget(self.nullbind_clear_btn)
         gv_layout.addLayout(gv_header)
 
         self.nullbind_group_view = QLabel(tr("TriggerSettings", "(No groups configured)"))
         self.nullbind_group_view.setStyleSheet("QLabel { font-size: 10pt; padding: 8px; background: palette(base); border-radius: 4px; }")
         self.nullbind_group_view.setWordWrap(True)
-        self.nullbind_group_view.setMinimumHeight(56)
+        self.nullbind_group_view.setMinimumHeight(44)
         gv_layout.addWidget(self.nullbind_group_view)
 
-        clear_row = QHBoxLayout()
-        self.nullbind_clear_btn = QPushButton(tr("TriggerSettings", "Clear Group"))
-        self.nullbind_clear_btn.clicked.connect(self.on_nullbind_clear_group)
-        self.nullbind_clear_btn.setMinimumHeight(28)
-        clear_row.addWidget(self.nullbind_clear_btn)
-        clear_row.addStretch()
-        gv_layout.addLayout(clear_row)
 
         gv_frame.setLayout(gv_layout)
         layout.addWidget(gv_frame)
@@ -1518,7 +1505,13 @@ class TriggerSettingsTab(BasicEditor):
 
         # Right side: Controls
         self.nullbind_container = self.create_nullbind_container()
-        nullbind_layout.addWidget(self.nullbind_container, 1)
+        # Scroll rather than squeeze when the settings area is short
+        nullbind_scroll = QScrollArea()
+        nullbind_scroll.setWidgetResizable(True)
+        nullbind_scroll.setFrameShape(QFrame.NoFrame)
+        nullbind_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        nullbind_scroll.setWidget(self.nullbind_container)
+        nullbind_layout.addWidget(nullbind_scroll, 1)
 
         nullbind_tab.setLayout(nullbind_layout)
         self.settings_tabs.addTab(nullbind_tab, "SOCD/Null Bind")

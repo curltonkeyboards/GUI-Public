@@ -222,6 +222,17 @@ def _migrate_v6_to_v7(blob, notes):
                  "exist.".format(kept, "y" if kept == 1 else "ies", combos_dropped))
 
 
+V8_MOUSE_TIMING_BASE = 60522
+V8_MOUSE_TIMING_SIZE = 6
+
+
+def _migrate_v7_to_v8(blob, notes):
+    blob[V8_MOUSE_TIMING_BASE:V8_MOUSE_TIMING_BASE + V8_MOUSE_TIMING_SIZE] = bytes(
+        V8_MOUSE_TIMING_SIZE)
+    notes.append("Macro mouse timing (click delay, double click speed): new in this "
+                 "firmware, starts at the defaults.")
+
+
 _MIGRATIONS = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -229,6 +240,7 @@ _MIGRATIONS = {
     4: _migrate_v4_to_v5,
     5: _migrate_v5_to_v6,
     6: _migrate_v6_to_v7,
+    7: _migrate_v7_to_v8,
 }
 
 

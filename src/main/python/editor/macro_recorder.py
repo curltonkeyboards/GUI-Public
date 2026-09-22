@@ -2,7 +2,7 @@
 import sys
 import sip
 
-from PyQt5.QtWidgets import QPushButton, QHBoxLayout, QWidget, QLabel, QTabWidget
+from PyQt5.QtWidgets import QPushButton, QHBoxLayout, QWidget, QLabel, QTabWidget, QProgressBar
 
 from editor.basic_editor import BasicEditor
 from macro.macro_action import ActionText, ActionTap, ActionDown, ActionUp
@@ -59,11 +59,16 @@ class MacroRecorder(BasicEditor):
         self.tabs = QTabWidget()
         self.addWidget(self.tabs)
 
-        # Memory label
+        # Macro usage: percentage + a small bar (green, yellow above 80%, red above 90%)
         self.lbl_memory = QLabel()
+        self.bar_memory = QProgressBar()
+        self.bar_memory.setRange(0, 1000)
+        self.bar_memory.setTextVisible(False)
+        self.bar_memory.setFixedSize(140, 10)
 
         buttons = QHBoxLayout()
         buttons.addWidget(self.lbl_memory)
+        buttons.addWidget(self.bar_memory)
         buttons.addStretch()
 
         self.addLayout(buttons)
@@ -218,7 +223,7 @@ class MacroRecorder(BasicEditor):
 
         data = self.serialize()
         memory = len(data)
-        self.lbl_memory.setText("Memory used by macros: {}/{}".format(memory, self.keyboard.macro_memory))
+        self._show_macro_usage(memory, self.keyboard.macro_memory)
 
         # Check if anything changed: macro data, loop modes, sync flags, or names
         data_changed = data != self.keyboard.macro
@@ -231,8 +236,22 @@ class MacroRecorder(BasicEditor):
         for tab in self.macro_tabs[:self.keyboard.macro_count]:
             tab.set_save_enabled(save_enabled)
 
-        self.lbl_memory.setStyleSheet("QLabel { color: red; }" if memory > self.keyboard.macro_memory else "")
         self.update_tab_titles()
+
+    def _show_macro_usage(self, used, total):
+        pct = (100.0 * used / total) if total else 0.0
+        self.lbl_memory.setText("Macro usage: {:.0f}%".format(pct))
+        if pct > 90:
+            color = "#dc2626"
+        elif pct > 80:
+            color = "#eab308"
+        else:
+            color = "#22c55e"
+        self.lbl_memory.setStyleSheet("QLabel { color: #dc2626; font-weight: bold; }" if used > total else "")
+        self.bar_memory.setValue(min(1000, int(round(pct * 10))))
+        self.bar_memory.setStyleSheet(
+            "QProgressBar { border: 1px solid palette(mid); border-radius: 4px; background: palette(base); }"
+            "QProgressBar::chunk { background: %s; border-radius: 3px; }" % color)
 
     def serialize(self):
         macros = []

@@ -195,7 +195,9 @@ class MainWindow(QMainWindow):
         self.lbl_no_devices.setAlignment(Qt.AlignCenter)
 
         layout = QVBoxLayout()
-        layout.addLayout(layout_combobox)
+        # The device picker + Refresh toolbar is not shown: the app connects
+        # to the keyboard on its own. The (hidden) combobox is still the model
+        # autorefresh selects devices through.
 
         # Allow tabs to shrink much more
         self.tabs.setMinimumHeight(150)  # Tabs can compress to 150px
