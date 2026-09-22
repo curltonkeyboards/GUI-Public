@@ -21,11 +21,6 @@ class AboutKeyboard(QDialog):
             return str(self.keyboard.tap_dance_count)
         return self.want_min_vial_fw(VIAL_PROTOCOL_DYNAMIC)
 
-    def about_combo(self):
-        if self.keyboard.combo_count > 0:
-            return str(self.keyboard.combo_count)
-        return self.want_min_vial_fw(VIAL_PROTOCOL_DYNAMIC)
-
     def about_key_override(self):
         if self.keyboard.key_override_count > 0:
             return str(self.keyboard.key_override_count)
@@ -79,9 +74,8 @@ class AboutKeyboard(QDialog):
         text += "Complex (2-byte) macro keycodes: {}\n".format(self.about_macro_ext_keycodes())
         text += "\n"
 
-        text += "Tap Dance entries: {}\n".format(self.about_tap_dance())
-        text += "Combo entries: {}\n".format(self.about_combo())
-        text += "Key Override entries: {}\n".format(self.about_key_override())
+        text += "Tap/Hold entries: {}\n".format(self.about_tap_dance())
+        text += "Combo Key entries: {}\n".format(self.about_key_override())
         text += "\n"
 
         text += "QMK Settings: {}\n".format(self.about_qmk_settings())

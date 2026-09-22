@@ -12,6 +12,8 @@ from protocol.clone_migrations import (
     V5_NAV_LAYER_BASE, V5_NAV_LAYER_SIZE,
     V6_DL_QB_BASE, V6_DL_QB_SPAN, V6_DL_QB_V5_MAGIC, V6_DL_QB_V6_MAGIC,
     V6_DL_QB_V5_ENTRY, V6_DL_QB_V6_ENTRY,
+    V7_DYN_COMBO_OLD_BASE, V7_DYN_COMBO_OLD_COUNT, V7_DYN_KO_OLD_BASE, V7_DYN_KO_OLD_COUNT,
+    V7_DYN_ENTRY, V7_DYN_KO_NEW_BASE, V7_DYN_KO_NEW_COUNT, V7_DYN_SPAN_END,
 )
 from protocol import clone_migrations
 
@@ -198,6 +200,79 @@ class TestCloneMigrationUninitialisedSource(unittest.TestCase):
 
     def test_notes_still_produced(self):
         self.assertTrue(self.notes)
+
+
+
+def build_v6_image():
+    """A v6 image: junk fill, 3 recognisable combos and 3 recognisable key
+    overrides in the v6 dynamic-region slots."""
+    blob = bytearray(build_v1_image())
+    # combos at 2805: 4 inputs + output, u16 each
+    for i, (a, out) in enumerate(((0x04, 0x1E), (0x05, 0x1F), (0x06, 0x20))):
+        struct.pack_into("<HHHHH", blob, V7_DYN_COMBO_OLD_BASE + i * V7_DYN_ENTRY, a, a + 1, 0, 0, out)
+    # overrides at 3805: trigger repl layers tmods neg supp opts
+    struct.pack_into("<HHHBBBB", blob, V7_DYN_KO_OLD_BASE + 0 * V7_DYN_ENTRY, 0x04, 0x05, 0xF001, 0x01, 0, 0x01, 0x87)
+    struct.pack_into("<HHHBBBB", blob, V7_DYN_KO_OLD_BASE + 5 * V7_DYN_ENTRY, 0x1E, 0x1F, 0x0FFF, 0x22, 0, 0x22, 0x07)
+    struct.pack_into("<HHHBBBB", blob, V7_DYN_KO_OLD_BASE + 31 * V7_DYN_ENTRY, 0x29, 0x2A, 0x3800, 0x80, 0, 0x80, 0x87)
+    # every other slot in both regions is genuinely empty
+    for i in range(3, V7_DYN_COMBO_OLD_COUNT):
+        blob[V7_DYN_COMBO_OLD_BASE + i * V7_DYN_ENTRY:V7_DYN_COMBO_OLD_BASE + (i + 1) * V7_DYN_ENTRY] = bytes(V7_DYN_ENTRY)
+    for i in range(V7_DYN_KO_OLD_COUNT):
+        if i not in (0, 5, 31):
+            blob[V7_DYN_KO_OLD_BASE + i * V7_DYN_ENTRY:V7_DYN_KO_OLD_BASE + (i + 1) * V7_DYN_ENTRY] = bytes(V7_DYN_ENTRY)
+    return bytes(blob)
+
+
+class TestCloneMigrationV6ToV7(unittest.TestCase):
+    """Combos dropped; key overrides move down into the old combo block, Fn
+    bits (layers 12-15) cleared, the old override span zeroed as reserve."""
+
+    def setUp(self):
+        self.v6 = build_v6_image()
+        self.v7, self.notes = migrate_clone(self.v6, 6, 7)
+
+    def _entry(self, slot):
+        off = V7_DYN_KO_NEW_BASE + slot * V7_DYN_ENTRY
+        return struct.unpack_from("<HHHBBBB", self.v7, off)
+
+    def test_overrides_relocated_and_fn_bits_cleared(self):
+        self.assertEqual(self._entry(0), (0x04, 0x05, 0x0001, 0x01, 0, 0x01, 0x87))
+        self.assertEqual(self._entry(5), (0x1E, 0x1F, 0x0FFF, 0x22, 0, 0x22, 0x07))
+        self.assertEqual(self._entry(31), (0x29, 0x2A, 0x0800, 0x80, 0, 0x80, 0x87))
+
+    def test_unused_new_slots_and_reserve_are_zero(self):
+        for slot in range(V7_DYN_KO_NEW_COUNT):
+            if slot in (0, 5, 31):
+                continue
+            off = V7_DYN_KO_NEW_BASE + slot * V7_DYN_ENTRY
+            self.assertEqual(bytes(self.v7[off:off + V7_DYN_ENTRY]), bytes(V7_DYN_ENTRY), slot)
+        self.assertEqual(bytes(self.v7[V7_DYN_KO_OLD_BASE:V7_DYN_SPAN_END]),
+                         bytes(V7_DYN_SPAN_END - V7_DYN_KO_OLD_BASE))
+
+    def test_combos_gone(self):
+        # slot 0-2 of the old combo block now hold override 0 / empty / empty
+        self.assertNotEqual(struct.unpack_from("<HHHHH", self.v7, V7_DYN_COMBO_OLD_BASE + V7_DYN_ENTRY),
+                            (0x05, 0x06, 0, 0, 0x1F))
+
+    def test_only_the_dynamic_span_changes(self):
+        changed = {i for i in range(EEPROM_SIZE) if self.v6[i] != self.v7[i]}
+        allowed = set(range(V7_DYN_COMBO_OLD_BASE, V7_DYN_SPAN_END))
+        self.assertTrue(changed.issubset(allowed),
+                        "v6->v7 touched bytes outside the combo/override span: "
+                        "{}".format(sorted(changed - allowed)[:16]))
+        # in particular the VIA macros right after the span are untouched
+        self.assertEqual(self.v6[V7_DYN_SPAN_END:V7_DYN_SPAN_END + 64],
+                         self.v7[V7_DYN_SPAN_END:V7_DYN_SPAN_END + 64])
+
+    def test_counts_reported(self):
+        n = " ".join(self.notes)
+        self.assertIn("3 entries carried over", n)
+        self.assertIn("3 combo(s) dropped", n)
+
+    def test_full_chain_from_v1_reaches_v7(self):
+        self.assertTrue(can_migrate(1, 7))
+        v7, _notes = migrate_clone(build_v1_image(), 1, 7)
+        self.assertEqual(len(v7), EEPROM_SIZE)
 
 
 if __name__ == "__main__":

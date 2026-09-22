@@ -329,6 +329,57 @@ def _migrate_v5_to_v6(blob, notes):
     blob[V6_DL_QB_BASE:V6_DL_QB_BASE + V6_DL_QB_SPAN] = new
 
 
+# ---------------------------------------------------------------------------
+# v6 -> v7: Vial combos removed; Combo Keys (key overrides) take their block
+# ---------------------------------------------------------------------------
+# The Vial dynamic region on the orthomidi5x14 (LUNA build, 1 encoder):
+#   41   keymap  12 layers x 70 keys x 2 B   (EECONFIG_SIZE 37 + VIA magic 3 + layout options 1)
+#   1721 encoders 1 x 12 x 4 B
+#   1769 qmk_settings_t 36 B
+#   1805 tap dance     100 x 10 B
+#   2805 combos        100 x 10 B   <- v6: combos;  v7: Combo Keys (100 x 10 B)
+#   3805 key overrides  32 x 10 B   <- v6: overrides; v7: reserved (zero), kept free
+#   4125 VIA macros ... 20000
+# In v7 COMBO_ENABLE is off, the override count is 100 and the old override
+# span is kept as VIAL_KEY_OVERRIDE_RESERVE so the macros do not move. An
+# override entry's `layers` word (u16 @+4) also gained meaning: bits 12-13
+# are now the Fn 1 / Fn 2 held-key requirement. v6 entries written by the old
+# 16-checkbox layers UI could carry bits 12-15, so they are cleared.
+V7_DYN_COMBO_OLD_BASE = 2805
+V7_DYN_COMBO_OLD_COUNT = 100
+V7_DYN_KO_OLD_BASE = 3805
+V7_DYN_KO_OLD_COUNT = 32
+V7_DYN_ENTRY = 10
+V7_DYN_KO_NEW_BASE = V7_DYN_COMBO_OLD_BASE          # 2805
+V7_DYN_KO_NEW_COUNT = 100
+V7_DYN_SPAN_END = V7_DYN_KO_OLD_BASE + V7_DYN_KO_OLD_COUNT * V7_DYN_ENTRY   # 4125 (exclusive)
+V7_KO_LAYERS_MASK = 0x0FFF
+
+
+def _migrate_v6_to_v7(blob, notes):
+    old_ko = bytes(blob[V7_DYN_KO_OLD_BASE:V7_DYN_SPAN_END])
+    old_combos = bytes(blob[V7_DYN_COMBO_OLD_BASE:V7_DYN_KO_OLD_BASE])
+    combos_dropped = sum(1 for i in range(V7_DYN_COMBO_OLD_COUNT)
+                         if any(old_combos[i * V7_DYN_ENTRY:(i + 1) * V7_DYN_ENTRY]))
+
+    new = bytearray(V7_DYN_SPAN_END - V7_DYN_COMBO_OLD_BASE)   # combos + old overrides span, zeroed
+    kept = 0
+    for i in range(V7_DYN_KO_OLD_COUNT):
+        ent = bytearray(old_ko[i * V7_DYN_ENTRY:(i + 1) * V7_DYN_ENTRY])
+        if not any(ent):
+            continue
+        layers = _u16le(ent, 4) & V7_KO_LAYERS_MASK    # drop stale bits 12-15 (now the Fn held keys)
+        _set_u16le(ent, 4, layers)
+        off = (V7_DYN_KO_NEW_BASE - V7_DYN_COMBO_OLD_BASE) + i * V7_DYN_ENTRY
+        new[off:off + V7_DYN_ENTRY] = ent
+        kept += 1
+    blob[V7_DYN_COMBO_OLD_BASE:V7_DYN_SPAN_END] = new
+
+    notes.append("Combo Keys (key overrides): {} entr{} carried over into the first 32 of the "
+                 "100 slots (Fn held-key bits cleared). {} combo(s) dropped: combos no longer "
+                 "exist.".format(kept, "y" if kept == 1 else "ies", combos_dropped))
+
+
 # Registry: key = source version, value = function converting it to key + 1.
 _MIGRATIONS = {
     1: _migrate_v1_to_v2,
@@ -336,6 +387,7 @@ _MIGRATIONS = {
     3: _migrate_v3_to_v4,
     4: _migrate_v4_to_v5,
     5: _migrate_v5_to_v6,
+    6: _migrate_v6_to_v7,
 }
 
 

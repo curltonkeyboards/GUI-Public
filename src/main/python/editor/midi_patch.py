@@ -48,7 +48,7 @@ class MIDIPatchBay(BasicEditor):
         self.setAlignment(main_widget, QtCore.Qt.AlignHCenter)
 
         # Title
-        title_label = QLabel(tr("MIDIPatchBay", "MIDI Patchbay"))
+        title_label = QLabel(tr("MIDIPatchBay", "MIDI-Link"))
         title_label.setStyleSheet("font-weight: bold; font-size: 14pt;")
         title_label.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(title_label)

@@ -1020,20 +1020,8 @@ class LoopManager(BasicEditor):
         main_widget.setLayout(main_layout)
         scroll.setWidget(main_widget)
 
-        # Create tab widget
-        self.tabs = QTabWidget()
-
-        # Tab 1: Loop Control (existing content)
-        self.tabs.addTab(scroll, "Loop Control")
-
-        # Tab 2: ThruLoop
-        from editor.matrix_test import ThruLoopConfigurator
-        self.thruloop_tab = ThruLoopConfigurator()
-        thruloop_container = QWidget()
-        thruloop_container.setLayout(self.thruloop_tab)
-        self.tabs.addTab(thruloop_container, "ThruLoop")
-
-        self.addWidget(self.tabs)
+        # The ThruLoop configuration lives in MIDI Settings > Loop Settings now
+        self.addWidget(scroll)
 
         # Title
         title = QLabel(tr("LoopManager", "Loop Manager"))
@@ -3105,11 +3093,6 @@ class LoopManager(BasicEditor):
         if not self.valid():
             self.stop_hid_listener()
             return
-
-        # Rebuild ThruLoop tab
-        if hasattr(self, 'thruloop_tab'):
-            self.thruloop_tab.device = self.device
-            self.thruloop_tab.rebuild(device)
 
         # Don't start HID listener automatically - only start when needed during transfers
         # This prevents continuous polling that blocks other HID operations

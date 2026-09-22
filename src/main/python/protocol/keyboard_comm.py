@@ -16,7 +16,6 @@ def _startup_log(msg):
     except ImportError:
         pass
 from kle_serial import Serial as KleSerial, Key
-from protocol.combo import ProtocolCombo
 from protocol.constants import CMD_VIA_GET_PROTOCOL_VERSION, CMD_VIA_GET_KEYBOARD_VALUE, CMD_VIA_SET_KEYBOARD_VALUE, \
     CMD_VIA_SET_KEYCODE, CMD_VIA_LIGHTING_SET_VALUE, CMD_VIA_LIGHTING_GET_VALUE, CMD_VIA_LIGHTING_SAVE, \
     CMD_VIA_GET_LAYER_COUNT, CMD_VIA_KEYMAP_GET_BUFFER, CMD_VIA_VIAL_PREFIX, VIA_LAYOUT_OPTIONS, \
@@ -208,7 +207,7 @@ def _hid_transaction(fn):
     wrapper.__doc__ = fn.__doc__
     return wrapper
 
-class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, ProtocolKeyOverride):
+class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOverride):
     """ Low-level communication with a vial-enabled keyboard """
 
     def __init__(self, dev, usb_send=hid_send):
@@ -332,11 +331,6 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         t0 = time.time()
         self.reload_tap_dance()
         _startup_log(f"  Tap dance done ({time.time()-t0:.2f}s)")
-
-        _startup_log("  Loading combos...")
-        t0 = time.time()
-        self.reload_combo()
-        _startup_log(f"  Combos done ({time.time()-t0:.2f}s)")
 
         _startup_log("  Loading key overrides...")
         t0 = time.time()
@@ -628,7 +622,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 break
 
         for qsid in self.supported_settings:
-            from editor.qmk_settings import QmkSettings
+            from editor.qmk_settings import QmkSettingsDefs as QmkSettings
 
             if not QmkSettings.is_qsid_supported(qsid):
                 continue
@@ -738,7 +732,6 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         data["vial_protocol"] = self.vial_protocol
         data["via_protocol"] = self.via_protocol
         data["tap_dance"] = self.save_tap_dance()
-        data["combo"] = self.save_combo()
         data["key_override"] = self.save_key_override()
         data["settings"] = self.settings
 
@@ -766,11 +759,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.restore_macros(data.get("macro"))
 
         self.restore_tap_dance(data.get("tap_dance", []))
-        self.restore_combo(data.get("combo", []))
+        # "combo" blocks in older layout files are ignored: combos no longer exist
         self.restore_key_override(data.get("key_override", []))
 
         for qsid, value in data.get("settings", dict()).items():
-            from editor.qmk_settings import QmkSettings
+            from editor.qmk_settings import QmkSettingsDefs as QmkSettings
 
             qsid = int(qsid)
             if QmkSettings.is_qsid_supported(qsid):
@@ -1154,7 +1147,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             return False
 
     def qmk_settings_set(self, qsid, value):
-        from editor.qmk_settings import QmkSettings
+        from editor.qmk_settings import QmkSettingsDefs as QmkSettings
         self.settings[qsid] = value
         data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_SET, qsid)
                              + QmkSettings.qsid_serialize(qsid, value),

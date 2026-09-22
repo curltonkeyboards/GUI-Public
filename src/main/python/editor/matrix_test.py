@@ -13,6 +13,7 @@ from PyQt5.QtGui import QPainterPath, QRegion, QPainter, QColor, QBrush, QPen, Q
 
 from widgets.combo_box import ArrowComboBox, ArrowSpinBox
 from editor.basic_editor import BasicEditor
+from editor.qmk_settings import MacroSettingsGroup
 from editor.articulation_options import populate_articulation_combo, apply_articulation_visibility
 from editor import drum_voices
 from themes import Theme
@@ -2567,7 +2568,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ))
         lcd_theme_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "LCD Theme:")))
         lcd_theme_label.setLayout(lcd_theme_label_layout)
-        advanced_layout.addWidget(lcd_theme_label, 3, 3)
+        self._adv_lcd_theme_label = lcd_theme_label   # placed on the Advanced Settings tab
         self.lcd_theme = ArrowComboBox()
         self.lcd_theme.setMinimumWidth(120)
         self.lcd_theme.setMinimumHeight(25)
@@ -2583,7 +2584,6 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ]):
             self.lcd_theme.addItem(_name, _idx)
         self.lcd_theme.currentIndexChanged.connect(self.on_lcd_theme_changed)
-        advanced_layout.addWidget(self.lcd_theme, 3, 4)
 
         # SC Light Mode with help
         guide_lights_label = QWidget()
@@ -2599,7 +2599,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ))
         guide_lights_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Guide Lights:")))
         guide_lights_label.setLayout(guide_lights_label_layout)
-        advanced_layout.addWidget(guide_lights_label, 2, 1)
+        self._adv_guide_lights_label = guide_lights_label   # placed on the Advanced Settings tab
         self.smart_chord_light_mode = ArrowComboBox()
         self.smart_chord_light_mode.setMinimumWidth(120)
         self.smart_chord_light_mode.setMinimumHeight(25)
@@ -2612,7 +2612,6 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.smart_chord_light_mode.addItem("All On: Dynamic", 0)
         self.smart_chord_light_mode.addItem("All on: Guitar EADGB", 3)
         self.smart_chord_light_mode.addItem("All on: Guitar ADGBE", 4)
-        advanced_layout.addWidget(self.smart_chord_light_mode, 2, 2)
 
         # Colorblind Mode with help
         colorblind_label = QWidget()
@@ -2626,7 +2625,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ))
         colorblind_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Colorblind Mode:")))
         colorblind_label.setLayout(colorblind_label_layout)
-        advanced_layout.addWidget(colorblind_label, 2, 3)
+        advanced_layout.addWidget(colorblind_label, 2, 1)
         self.colorblind_mode = ArrowComboBox()
         self.colorblind_mode.setMinimumWidth(120)
         self.colorblind_mode.setMinimumHeight(25)
@@ -2636,7 +2635,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.colorblind_mode.lineEdit().setAlignment(Qt.AlignCenter)
         self.colorblind_mode.addItem("Off", 0)
         self.colorblind_mode.addItem("On", 1)
-        advanced_layout.addWidget(self.colorblind_mode, 2, 4)
+        advanced_layout.addWidget(self.colorblind_mode, 2, 2)
 
         # RGB Layer Mode with help
         rgb_layer_label = QWidget()
@@ -2650,7 +2649,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ))
         rgb_layer_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "RGB Layer Mode:")))
         rgb_layer_label.setLayout(rgb_layer_label_layout)
-        advanced_layout.addWidget(rgb_layer_label, 3, 1)
+        self._adv_rgb_layer_label = rgb_layer_label   # placed on the Advanced Settings tab
         self.custom_layer_animations = ArrowComboBox()
         self.custom_layer_animations.setMinimumWidth(120)
         self.custom_layer_animations.setMinimumHeight(25)
@@ -2660,7 +2659,6 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.custom_layer_animations.lineEdit().setAlignment(Qt.AlignCenter)
         self.custom_layer_animations.addItem("Off", False)
         self.custom_layer_animations.addItem("On", True)
-        advanced_layout.addWidget(self.custom_layer_animations, 3, 2)
 
         # True Sustain with help
         true_sustain_label = QWidget()
@@ -2674,7 +2672,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ))
         true_sustain_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "True Sustain:")))
         true_sustain_label.setLayout(true_sustain_label_layout)
-        advanced_layout.addWidget(true_sustain_label, 4, 1)
+        advanced_layout.addWidget(true_sustain_label, 2, 3)
         self.true_sustain = ArrowComboBox()
         self.true_sustain.setMinimumWidth(120)
         self.true_sustain.setMinimumHeight(25)
@@ -2684,7 +2682,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.true_sustain.lineEdit().setAlignment(Qt.AlignCenter)
         self.true_sustain.addItem("Off", False)
         self.true_sustain.addItem("On", True)
-        advanced_layout.addWidget(self.true_sustain, 4, 2)
+        advanced_layout.addWidget(self.true_sustain, 2, 4)
 
         # Chord Display with help — global setting controlling how the chord
         # progression OLED menu labels each progression.
@@ -2700,7 +2698,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ))
         chord_display_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Chord Display:")))
         chord_display_label.setLayout(chord_display_label_layout)
-        advanced_layout.addWidget(chord_display_label, 4, 3)
+        advanced_layout.addWidget(chord_display_label, 3, 1)
         self.chord_display_mode = ArrowComboBox()
         self.chord_display_mode.setMinimumWidth(120)
         self.chord_display_mode.setMinimumHeight(25)
@@ -2712,7 +2710,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.chord_display_mode.addItem("Numerals", 1)
         self.chord_display_mode.addItem("Name", 2)
         self.chord_display_mode.setCurrentIndex(2)  # Default: Name (legacy behavior)
-        advanced_layout.addWidget(self.chord_display_mode, 4, 4)
+        advanced_layout.addWidget(self.chord_display_mode, 3, 2)
 
         # SmartChord Mode widget removed — only tap-toggle remains on the
         # firmware side.  A hidden ArrowComboBox pinned to "Toggle" stays
@@ -3122,8 +3120,14 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         # Drum Keybinds tab (global default drum-voice bindings for the drum machine)
         self.setup_drum_keybinds_tab()
 
+        # Loop Settings tab (ThruLoop CC configuration)
+        self.setup_loop_settings_tab()
+
         # Multi Channel tab (16 channel-echo presets: target + 3 multi channels)
         self.setup_multichannel_tab()
+
+        # Advanced Settings tab (Macro Settings + display / lighting options)
+        self.setup_advanced_settings_tab()
 
     # =====================================================================
     # DRUM SETTINGS (global default drum-machine channel + voice bindings)
@@ -3160,6 +3164,86 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
     # immediately; the on/off state itself is toggled on the device.
     MULTICHANNEL_COUNT = 16
 
+    def setup_loop_settings_tab(self):
+        """Loop Settings sub-tab: the ThruLoop CC configuration (moved here from
+        the Loop Manager tab)."""
+        self.thruloop_tab = ThruLoopConfigurator()
+        container = QWidget()
+        container.setLayout(self.thruloop_tab)
+        self.tabs_widget.addTab(container, tr("MIDIswitchSettingsConfigurator", "Loop Settings"))
+
+    def setup_advanced_settings_tab(self):
+        """Advanced Settings sub-tab: the Macro Settings (firmware timing values,
+        formerly the QMK Settings tab) plus the display / lighting options moved
+        out of the main MIDI Settings page (LCD Theme, Guide Lights, RGB Layer
+        Mode)."""
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+
+        main_widget = QWidget()
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(15)
+        main_widget.setLayout(main_layout)
+        scroll_area.setWidget(main_widget)
+        self.tabs_widget.addTab(scroll_area, tr("MIDIswitchSettingsConfigurator", "Advanced Settings"))
+
+        main_layout.addSpacing(10)
+        title_label = QLabel(tr("MIDIswitchSettingsConfigurator", "Advanced Settings"))
+        title_label.setStyleSheet("font-weight: bold; font-size: 14pt;")
+        title_label.setAlignment(QtCore.Qt.AlignCenter)
+        main_layout.addWidget(title_label)
+        desc_label = QLabel(tr("MIDIswitchSettingsConfigurator",
+            "Macro timing, LCD theme and lighting behaviour."))
+        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
+        desc_label.setAlignment(QtCore.Qt.AlignCenter)
+        main_layout.addWidget(desc_label)
+
+        # Macro Settings: the three firmware timing values (explicit Save / Undo / Reset)
+        self.macro_settings_group = MacroSettingsGroup()
+        macro_row = QHBoxLayout()
+        macro_row.addStretch()
+        macro_row.addWidget(self.macro_settings_group)
+        macro_row.addStretch()
+        main_layout.addLayout(macro_row)
+
+        # Display & Lighting: widgets created by the main page's Advanced grid,
+        # placed here instead. They keep their attribute names so the settings
+        # packet (get_current_settings / apply_settings) is unchanged.
+        display_group = QGroupBox(tr("MIDIswitchSettingsConfigurator", "Display & Lighting"))
+        display_layout = QGridLayout()
+        display_layout.setHorizontalSpacing(25)
+        display_layout.addWidget(self._adv_lcd_theme_label, 0, 0)
+        display_layout.addWidget(self.lcd_theme, 0, 1)
+        display_layout.addWidget(self._adv_guide_lights_label, 1, 0)
+        display_layout.addWidget(self.smart_chord_light_mode, 1, 1)
+        display_layout.addWidget(self._adv_rgb_layer_label, 2, 0)
+        display_layout.addWidget(self.custom_layer_animations, 2, 1)
+        note = QLabel(tr("MIDIswitchSettingsConfigurator",
+            "LCD Theme applies and saves instantly. Guide Lights and RGB Layer Mode are part of\n"
+            "the MIDI Settings and are saved with them (Save as Default / Save to Slot)."))
+        note.setStyleSheet("color: gray; font-size: 9pt;")
+        display_layout.addWidget(note, 3, 0, 1, 2)
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_save_default = QPushButton(tr("MIDIswitchSettingsConfigurator", "Save as Default"))
+        btn_save_default.setMinimumHeight(30)
+        btn_save_default.setMaximumHeight(30)
+        btn_save_default.setMinimumWidth(120)
+        btn_save_default.setStyleSheet("QPushButton { border-radius: 5px; }")
+        btn_save_default.clicked.connect(lambda: self.on_save_slot(0))
+        btn_row.addWidget(btn_save_default)
+        display_layout.addLayout(btn_row, 4, 0, 1, 2)
+        display_group.setLayout(display_layout)
+        display_row = QHBoxLayout()
+        display_row.addStretch()
+        display_row.addWidget(display_group)
+        display_row.addStretch()
+        main_layout.addLayout(display_row)
+
+        main_layout.addStretch()
+
     def setup_multichannel_tab(self):
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -3167,7 +3251,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         layout = QVBoxLayout()
         container.setLayout(layout)
         scroll_area.setWidget(container)
-        self.tabs_widget.addTab(scroll_area, tr("MIDIswitchSettingsConfigurator", "Multi Channel"))
+        self.tabs_widget.addTab(scroll_area, tr("MIDIswitchSettingsConfigurator", "Multi Channel Settings"))
 
         layout.addSpacing(8)
         title = QLabel(tr("MIDIswitchSettingsConfigurator", "Multi Channel"))
@@ -4214,6 +4298,11 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
 
         # Load the Multichannel echo presets
         self.load_multichannel_from_keyboard()
+
+        # Loop Settings (ThruLoop) + Advanced Settings (Macro Settings) sub-tabs
+        self.thruloop_tab.device = self.device
+        self.thruloop_tab.rebuild(device)
+        self.macro_settings_group.rebuild(device)
 
 # SPDX-License-Identifier: GPL-2.0-or-later
 

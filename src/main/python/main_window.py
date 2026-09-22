@@ -27,11 +27,10 @@ def _startup_log(msg):
 from widgets.combo_box import ArrowComboBox
 from about_keyboard import AboutKeyboard
 from autorefresh.autorefresh import Autorefresh
-from editor.combos import Combos
 from constants import WINDOW_WIDTH, WINDOW_HEIGHT
 from widgets.editor_container import EditorContainer
 from editor.firmware_flasher import FirmwareFlasher
-from editor.key_override import KeyOverride
+from editor.combo_keys import ComboKeys
 from protocol.keyboard_comm import ProtocolError
 from protocol.clone_migrations import CloneMigrationError, can_migrate, migrate_clone
 from editor.keymap_editor import KeymapEditor
@@ -41,7 +40,7 @@ from editor.toggle_settings import ToggleSettingsTab
 from keymaps import KEYMAPS
 from editor.layout_editor import LayoutEditor
 from editor.macro_recorder import MacroRecorder
-from editor.qmk_settings import QmkSettings
+from editor.qmk_settings import QmkSettingsDefs
 from editor.rgb_configurator import RGBConfigurator
 from tabbed_keycodes import TabbedKeycodes
 from editor.tap_dance import TapDance
@@ -144,10 +143,8 @@ class MainWindow(QMainWindow):
         self.firmware_flasher = FirmwareFlasher(self)
         self.macro_recorder = MacroRecorder()
         self.tap_dance = TapDance()
-        self.combos = Combos()
-        self.key_override = KeyOverride()
-        QmkSettings.initialize(appctx)
-        self.qmk_settings = QmkSettings()
+        self.combo_keys = ComboKeys()
+        QmkSettingsDefs.initialize(appctx)
         self.matrix_tester = MatrixTest(self.layout_editor)
         self.velocity_tab = VelocityTab(self.layout_editor)
         self.rgb_configurator = RGBConfigurator()
@@ -175,11 +172,10 @@ class MainWindow(QMainWindow):
                         (self.layout_editor, "Layout"), (self.macro_recorder, "Macros"),
                         (self.rgb_configurator, "Lighting"), (self.MIDIswitchSettingsConfigurator, "MIDI Settings"),
                         (self.gaming_configurator, "Gaming Settings"),
-                        (self.midi_patchbay, "MIDI Patch"), (self.loop_manager, "Loop Manager"),
+                        (self.midi_patchbay, "MIDI-Link"), (self.loop_manager, "Loop Manager"),
                         (self.arpeggiator, "Arpeggiator"), (self.step_sequencer, "Step Sequencer"),
                         (self.delay_tab, "Delay"),
-                        (self.tap_dance, "Tap Dance"), (self.combos, "Combos"),
-                        (self.key_override, "Key Overrides"), (self.qmk_settings, "QMK Settings"),
+                        (self.tap_dance, "Tap/Hold"), (self.combo_keys, "Combo Keys"),
                         (self.matrix_tester, "Matrix tester"), (self.velocity_tab, "Articulation"),
                         (self.firmware_flasher, "Firmware updater")]
 
@@ -838,9 +834,7 @@ class MainWindow(QMainWindow):
             (self.firmware_flasher, "firmware_flasher"),
             (self.macro_recorder, "macro_recorder"),
             (self.tap_dance, "tap_dance"),
-            (self.combos, "combos"),
-            (self.key_override, "key_override"),
-            (self.qmk_settings, "qmk_settings"),
+            (self.combo_keys, "combo_keys"),
             (self.matrix_tester, "matrix_tester"),
             (self.rgb_configurator, "rgb_configurator"),
             (self.MIDIswitchSettingsConfigurator, "MIDIswitchSettingsConfigurator"),
@@ -878,7 +872,7 @@ class MainWindow(QMainWindow):
             self.tap_dance,
             self.dks_settings,
             self.toggle_settings,
-            self.combos,
+            self.combo_keys,
             self.matrix_tester,
         ]
 

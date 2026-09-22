@@ -59,8 +59,8 @@ class TapDanceEntryUI(QObject):
         main_layout.addLayout(header_layout)
 
         # Description
-        desc = QLabel("Configure what happens when this tap dance key is tapped, held, or double-tapped.\n"
-                      "Assign this tap dance to a key using TD({}) in your keymap.".format(idx))
+        desc = QLabel("Configure what happens when this Tap/Hold key is tapped, held, or double-tapped.\n"
+                      "Assign this Tap/Hold key to a key using TD({}) in your keymap.".format(idx))
         desc.setWordWrap(True)
         desc.setStyleSheet("color: gray; font-size: 9pt;")
         main_layout.addWidget(desc)

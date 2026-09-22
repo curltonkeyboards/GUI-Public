@@ -3243,8 +3243,9 @@ def recreate_keyboard_keycodes(keyboard):
     KEYCODES_LAYERS.clear()
 
     if layers >= 4:
-        KEYCODES_LAYERS.append(Keycode("FN_MO13", "Fn1\n(Fn3)"))
-        KEYCODES_LAYERS.append(Keycode("FN_MO23", "Fn2\n(Fn3)"))
+        # Fn 1 / Fn 2 no longer change layer: they are the "held keys" for Combo Keys.
+        KEYCODES_LAYERS.append(Keycode("FN_MO13", "Fn 1", "Held key for Combo Keys (does not change layer)"))
+        KEYCODES_LAYERS.append(Keycode("FN_MO23", "Fn 2", "Held key for Combo Keys (does not change layer)"))
 
 
     for x in range(layers):
@@ -3262,7 +3263,7 @@ def recreate_keyboard_keycodes(keyboard):
     for x in range(keyboard.tap_dance_count):
         qmk_id = "TD({})".format(x)
         label = "Tap/\nHold\n{}".format(x)
-        KEYCODES_TAP_DANCE.append(Keycode(qmk_id, label, "Tap dance keycode"))
+        KEYCODES_TAP_DANCE.append(Keycode(qmk_id, label, "Tap/Hold keycode"))
 
     # Check if custom keycodes are defined in keyboard, and if so add them to user keycodes
     if keyboard.custom_keycodes is not None and len(keyboard.custom_keycodes) > 0:
