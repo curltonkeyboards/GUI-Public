@@ -21,6 +21,12 @@ def _invalidate_any_keycode_cache():
     _any_keycode_cache = None
 
 
+def _has_cjk(text):
+    return any(0x2E80 <= ord(c) <= 0x9FFF or 0xAC00 <= ord(c) <= 0xD7AF
+               or 0xF900 <= ord(c) <= 0xFAFF or 0xFF00 <= ord(c) <= 0xFFEF
+               for c in text)
+
+
 class Keycode:
 
     masked_keycodes = set()
@@ -32,8 +38,10 @@ class Keycode:
         self.qmk_id = qmk_id
         self.qmk_id_to_keycode[qmk_id] = self
         self.label = label
-        # we cannot embed full CJK fonts due to large size, workaround like this for now
-        if sys.platform == "emscripten" and not label.isascii() and qmk_id != "KC_TRNS":
+        # The web build only carries DejaVu Sans / Vera (no CJK fonts): those
+        # draw subscripts, arrows, sharps etc. fine, so only labels with
+        # Japanese / Chinese / Korean text fall back to the keycode name.
+        if sys.platform == "emscripten" and _has_cjk(label) and qmk_id != "KC_TRNS":
             self.label = qmk_id.replace("KC_", "")
 
         self.tooltip = tooltip
