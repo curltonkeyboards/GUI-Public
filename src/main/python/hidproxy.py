@@ -11,15 +11,24 @@ if sys.platform == "emscripten":
 
     class hiddevice:
 
+        def __init__(self):
+            self._pending = False
+
         def open_path(self, path):
             print("opening {}...".format(path))
 
         def write(self, data):
+            self._pending = True
             return vialglue.write_device(data)
 
         def read(self, length, timeout_ms=0):
-            data = vialglue.read_device()
-            return data
+            # The browser only has a reply for a request we sent: with none
+            # outstanding there is nothing to wait for (read_device would
+            # wait forever), so report "no data" like a timed-out read.
+            if not self._pending:
+                return b""
+            self._pending = False
+            return vialglue.read_device()
 
 
     class hid:
