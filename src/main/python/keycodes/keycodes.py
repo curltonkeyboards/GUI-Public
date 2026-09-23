@@ -919,12 +919,10 @@ KEYCODES_UNSUPPORTED = []
 
 
 # Also never offered: the dynamic-macro recorder keys, the USER00-15
-# placeholders, the pre-shifted symbols (Shift+key combos) and the Fn 1 / Fn 2
-# held keys (Combo Keys was removed). Listed by id because some of these lists
+# placeholders and the pre-shifted symbols (Shift+key combos). Listed by id because some of these lists
 # are rebuilt per keyboard.
 _UNSUPPORTED_EXTRA_IDS = {
     "DYN_REC_START1", "DYN_REC_START2", "DYN_MACRO_PLAY1", "DYN_MACRO_PLAY2", "DYN_REC_STOP",
-    "FN_MO13", "FN_MO23",
 }
 
 
@@ -2590,7 +2588,7 @@ KEYCODES_DRUMLIVE = _build_drumlive_keycodes()
 # Gaming Controller Keycodes
 KEYCODES_GAMING = [
     # Toggle gaming mode
-    K("GAMING_MODE", "Gaming\nMode", "Toggle gaming mode on/off. When on, keys assigned in the Gaming Settings tab act as gamepad inputs."),
+    K("GAMING_MODE", "Gaming\nMode", "Toggle gaming mode on/off. When on, keys assigned in Settings > Gaming Settings act as gamepad inputs."),
 
     # Digital Buttons (Face buttons)
     K("XBOX_A", "Button\n1", "Button 1 (Button 0)"),
@@ -3291,9 +3289,9 @@ def recreate_keyboard_keycodes(keyboard):
     KEYCODES_LAYERS.clear()
 
     if layers >= 4:
-        # Fn 1 / Fn 2 no longer change layer: they are the "held keys" for Combo Keys.
-        KEYCODES_LAYERS.append(Keycode("FN_MO13", "Fn 1", "Held key for Combo Keys (does not change layer)"))
-        KEYCODES_LAYERS.append(Keycode("FN_MO23", "Fn 2", "Held key for Combo Keys (does not change layer)"))
+        # Fn 1 / Fn 2 no longer change layer: they are the "held keys" for Key Combos.
+        KEYCODES_LAYERS.append(Keycode("FN_MO13", "Fn 1", "Held key for Key Combos (does not change layer)"))
+        KEYCODES_LAYERS.append(Keycode("FN_MO23", "Fn 2", "Held key for Key Combos (does not change layer)"))
 
 
     # Layer-tap is unsupported: registered for display only (see KEYCODES_UNSUPPORTED).

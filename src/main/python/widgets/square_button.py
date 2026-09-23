@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-from PyQt5.QtCore import QSize, Qt, QMimeData
+from PyQt5.QtCore import QEvent, QSize, Qt, QMimeData
 from PyQt5.QtGui import QDrag
 from PyQt5.QtWidgets import QPushButton, QLabel, QHBoxLayout, QApplication
 
@@ -77,6 +77,14 @@ class SquareButton(QPushButton):
             DropGap.close_active()
         except Exception:
             pass
+
+    def event(self, ev):
+        # Keycode buttons (anything carrying a keycode) show no hover text,
+        # so hovering never pops up an id such as "KC_T".
+        if ev.type() == QEvent.ToolTip and getattr(self, "keycode", None) is not None:
+            ev.ignore()
+            return True
+        return super().event(ev)
 
     def setRelSize(self, ratio):
         self.scale = ratio

@@ -374,7 +374,6 @@ class KeycodeDisplay:
             text = custom
         else:
             text = cls.get_label(code)
-        tooltip = Keycode.tooltip(code)
         mask = Keycode.is_mask(code)
         mask_text = ""
         inner = Keycode.find_inner_keycode(code)
@@ -387,7 +386,8 @@ class KeycodeDisplay:
         widget.icon_id = code if (not custom and has_gamepad_icon(code)) else None
         widget.setText(text)
         widget.setMaskText(mask_text if not custom else "")
-        widget.setToolTip(tooltip)
+        # No hover tooltip: keys never show their keycode id (e.g. KC_T).
+        widget.setToolTip("")
         # Keys relabelled by a language layout keep the normal text colour: the
         # theme's Link colour marks MIDI keys elsewhere (actuation views), so
         # tinting the relabelled letters made them look like MIDI keys.

@@ -29,6 +29,7 @@ from autorefresh.autorefresh import Autorefresh
 from constants import WINDOW_WIDTH, WINDOW_HEIGHT
 from widgets.editor_container import EditorContainer
 from editor.firmware_flasher import FirmwareFlasher
+from editor.combo_keys import ComboKeys
 from protocol.keyboard_comm import ProtocolError
 from protocol.clone_migrations import CloneMigrationError, can_migrate, migrate_clone
 from editor.keymap_editor import KeymapEditor
@@ -140,6 +141,7 @@ class MainWindow(QMainWindow):
         self.firmware_flasher = FirmwareFlasher(self)
         self.macro_recorder = MacroRecorder()
         self.tap_dance = TapDance()
+        self.combo_keys = ComboKeys()
         QmkSettingsDefs.initialize(appctx)
         self.matrix_tester = MatrixTest(self.layout_editor)
         self.velocity_tab = VelocityTab(self.layout_editor)
@@ -163,16 +165,20 @@ class MainWindow(QMainWindow):
         _startup_log(f"  MIDI configurators ({time.time()-t0:.2f}s)")
 
         # Updated editors list with new tabs inserted between Lighting and Tap Dance
-        self.editors = [(self.keymap_editor, "Keymap"), (self.trigger_settings, "Key Sensitivity"),
-                        (self.dks_settings, "Dynamic Keystroke"), (self.toggle_settings, "Toggle Keys"),
-                        (self.layout_editor, "Layout"), (self.macro_recorder, "Macros"),
-                        (self.rgb_configurator, "Lighting"), (self.MIDIswitchSettingsConfigurator, "MIDI Settings"),
-                        (self.gaming_configurator, "Gaming Settings"),
-                        (self.midi_patchbay, "MIDI-Link"), (self.loop_manager, "Loop Manager"),
-                        (self.arpeggiator, "Arpeggiator"), (self.step_sequencer, "Step Sequencer"),
-                        (self.delay_tab, "Delay"),
-                        (self.tap_dance, "Tap/Hold"),
-                        (self.matrix_tester, "Matrix tester"), (self.velocity_tab, "Articulation"),
+        # Gaming Settings is a sub-tab of Settings, not a tab of its own
+        self.MIDIswitchSettingsConfigurator.add_sub_editor(self.gaming_configurator, "Gaming Settings")
+
+        self.editors = [(self.keymap_editor, "Keymap"), (self.trigger_settings, "Advanced Keymap"),
+                        (self.velocity_tab, "Articulation"), (self.rgb_configurator, "Lighting"),
+                        (self.macro_recorder, "Macros"), (self.toggle_settings, "Toggle"),
+                        (self.tap_dance, "Tap/Hold"), (self.combo_keys, "Key Combos"),
+                        (self.dks_settings, "Dynamic Keystroke"),
+                        (self.delay_tab, "Delay"), (self.arpeggiator, "Arpeggiator"),
+                        (self.step_sequencer, "Step Sequencer"), (self.midi_patchbay, "MIDI Link"),
+                        (self.loop_manager, "Loop Manager"),
+                        (self.MIDIswitchSettingsConfigurator, "Settings"),
+                        (self.matrix_tester, "Calibration"),
+                        (self.layout_editor, "Layout"),
                         (self.firmware_flasher, "Firmware updater")]
 
         Unlocker.global_layout_editor = self.layout_editor
@@ -779,6 +785,7 @@ class MainWindow(QMainWindow):
             (self.firmware_flasher, "firmware_flasher"),
             (self.macro_recorder, "macro_recorder"),
             (self.tap_dance, "tap_dance"),
+            (self.combo_keys, "combo_keys"),
             (self.matrix_tester, "matrix_tester"),
             (self.rgb_configurator, "rgb_configurator"),
             (self.MIDIswitchSettingsConfigurator, "MIDIswitchSettingsConfigurator"),
@@ -814,6 +821,7 @@ class MainWindow(QMainWindow):
             self.keymap_editor,
             self.macro_recorder,
             self.tap_dance,
+            self.combo_keys,
             self.dks_settings,
             self.toggle_settings,
             self.matrix_tester,

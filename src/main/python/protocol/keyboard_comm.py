@@ -802,6 +802,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         data["vial_protocol"] = self.vial_protocol
         data["via_protocol"] = self.via_protocol
         data["tap_dance"] = self.save_tap_dance()
+        data["key_override"] = self.save_key_override()
         data["settings"] = self.settings
 
         return json.dumps(data).encode("utf-8")
@@ -828,6 +829,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         self.restore_macros(data.get("macro"))
 
         self.restore_tap_dance(data.get("tap_dance", []))
+        self.restore_key_override(data.get("key_override", []))
         # "combo" blocks in older layout files are ignored: combos no longer exist
 
         for qsid, value in data.get("settings", dict()).items():

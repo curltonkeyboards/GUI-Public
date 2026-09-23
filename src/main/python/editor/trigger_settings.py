@@ -1477,6 +1477,18 @@ class TriggerSettingsTab(BasicEditor):
         nb_enable_slot.setContentsMargins(0, 0, 0, 0)
         nullbind_desc_layout.addLayout(nb_enable_slot)
 
+        nb_howto_title = QLabel(tr("TriggerSettings", "How to use"))
+        nb_howto_title.setStyleSheet("font-weight: bold;")
+        nullbind_desc_layout.addWidget(nb_howto_title)
+        nb_howto = QLabel(tr("TriggerSettings",
+            "Click or drag across the virtual keyboard to pick the keys that "
+            "should cancel each other out. Choose a behavior and the layer it "
+            "works on, then press Save to turn them into a group."))
+        nb_howto.setWordWrap(True)
+        nb_howto.setStyleSheet("color: gray; font-size: 9pt;")
+        nullbind_desc_layout.addWidget(nb_howto)
+        nullbind_desc_layout.addSpacing(8)
+
         nb_guide_title = QLabel(tr("TriggerSettings", "Behaviors"))
         nb_guide_title.setStyleSheet("font-weight: bold;")
         nullbind_desc_layout.addWidget(nb_guide_title)

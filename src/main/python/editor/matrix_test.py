@@ -261,7 +261,7 @@ class MatrixTest(BasicEditor):
         container.setLayout(container_layout)
 
         # Title
-        title_label = QLabel(tr("MatrixTest", "Matrix Tester"))
+        title_label = QLabel(tr("MatrixTest", "Calibration"))
         title_label.setStyleSheet("font-weight: bold; font-size: 14pt;")
         title_label.setAlignment(QtCore.Qt.AlignCenter)
         container_layout.addWidget(title_label)
@@ -1369,6 +1369,14 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
     def __init__(self):
         super().__init__()
         self.setup_ui()
+
+    def add_sub_editor(self, editor, label):
+        """Show another editor (a BasicEditor layout) as a sub-tab of
+        Settings. Its rebuild() is still driven by the main window."""
+        from widgets.editor_container import EditorContainer
+        container = EditorContainer(editor)
+        self.tabs_widget.addTab(container, tr("MIDIswitchSettingsConfigurator", label))
+        return container
 
     def get_stop_mode_mask(self):
         """Build the 5-bit Stop Mode bitmask from the per-family combos."""

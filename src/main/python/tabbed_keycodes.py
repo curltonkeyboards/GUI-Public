@@ -3485,23 +3485,30 @@ class MacroTab(QScrollArea):
                 btn.setText(custom if custom else btn.keycode.label)
 
 
-def feature_tabs(parent, include_layer=True):
-    """Top-level palette tabs for the user-configured features, each its own
-    tab next to Music / Advanced / Search."""
+def palette_tabs(parent, layer_tab=None):
+    """Top-level palette tabs in display order: Keyboard, Music, Layers,
+    Lighting, Gaming, Macro, Toggle, Tap/Hold, Dynamic Keystroke, Advanced,
+    Search. `layer_tab` replaces the default Layers tab (the toggle editor
+    passes its overlay-safe LightingTab2)."""
     def macro_tab(label, section):
         return MacroTab(parent, label, KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE,
                         include_layer=False, sections=(section,))
-    tabs = [
+    if layer_tab is None:
+        layer_tab = LayerTab(parent, "Layers", KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_OSL)
+    return [
+        KeyboardTab(parent),
+        MusicTab(parent),
+        layer_tab,
+        LightingTab(parent, "Lighting", KEYCODES_BACKLIGHT, KEYCODES_RGBSAVE,
+                    KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_COLOR, KEYCODES_RGB_KC_CUSTOM2),
+        GamingTab(parent, "Gaming", KEYCODES_GAMING),
         macro_tab("Macro", "macro"),
+        macro_tab("Toggle", "toggle"),
         macro_tab("Tap/Hold", "tapdance"),
         macro_tab("Dynamic Keystroke", "dks"),
-        macro_tab("Toggle", "toggle"),
+        MIDITab(parent),
+        SearchTab(parent),
     ]
-    if include_layer:
-        tabs.append(LayerTab(parent, "Layers", KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_OSL))
-    tabs.append(LightingTab(parent, "Lighting", KEYCODES_BACKLIGHT, KEYCODES_RGBSAVE,
-                            KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_COLOR, KEYCODES_RGB_KC_CUSTOM2))
-    return tabs
 
 
 class KeySplitTab(QScrollArea):
@@ -4446,156 +4453,19 @@ class BasicTab(QWidget):
         return any(page.has_buttons() for page in self.pages)
 
 
-class KeyboardTab(QWidget):
-    """Keyboard tab: Basic (all key boards) and Gaming, with side-tab style.
-    Macros, Tap/Hold, Dynamic Keystroke, Toggle, Layers and Lighting are
-    top-level tabs of their own (see feature_tabs)."""
-
-    keycode_changed = pyqtSignal(str)
+class KeyboardTab(Tab):
+    """Keyboard tab: the standard (US) board with the application / media
+    keys below it. (Language boards are not offered for now; BasicTab still
+    holds them.)"""
 
     def __init__(self, parent, include_layer=True):
-        super().__init__(parent)
-        self.label = "Keyboard"
-        self.parent_widget = parent
-        self.current_keycode_filter = keycode_filter_any
-
-        self.basic_tab = BasicTab(parent)
-        self.gaming_tab = GamingTab(parent, "Gaming", KEYCODES_GAMING)
-
-        self.basic_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.gaming_tab.keycode_changed.connect(self.on_keycode_changed)
-
-        self.sections = [
-            (self.basic_tab, "Basic"),
-            (self.gaming_tab, "Gaming"),
-        ]
-        # Create horizontal layout: side tabs on left, content on right
-        main_layout_h = QHBoxLayout()
-        main_layout_h.setSpacing(0)
-        main_layout_h.setContentsMargins(0, 0, 0, 0)
-
-        # Create side tabs container
-        side_tabs_container = QWidget()
-        side_tabs_container.setObjectName("side_tabs_container")
-        side_tabs_container.setStyleSheet("""
-            QWidget#side_tabs_container {
-                background: palette(window);
-                border: 1px solid palette(mid);
-                border-right: none;
-            }
-        """)
-        side_tabs_layout = QVBoxLayout(side_tabs_container)
-        side_tabs_layout.setSpacing(0)
-        side_tabs_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.side_tab_buttons = {}
-        for tab_widget, display_name in self.sections:
-            btn = QPushButton(display_name)
-            btn.setCheckable(True)
-            btn.setMinimumHeight(40)
-            btn.setMinimumWidth(120)
-            btn.setStyleSheet("""
-                QPushButton {
-                    border: 1px solid palette(mid);
-                    border-radius: 0px;
-                    border-right: none;
-                    background: palette(button);
-                    text-align: left;
-                    padding-left: 15px;
-                    font-size: 9pt;
-                }
-                QPushButton:hover:!checked {
-                    background: palette(light);
-                }
-                QPushButton:checked {
-                    background: palette(base);
-                    font-weight: 600;
-                    border-right: 1px solid palette(base);
-                }
-            """)
-            btn.clicked.connect(lambda checked, dn=display_name: self.show_section(dn))
-            side_tabs_layout.addWidget(btn)
-            self.side_tab_buttons[display_name] = btn
-
-        side_tabs_layout.addStretch(1)
-        main_layout_h.addWidget(side_tabs_container)
-
-        # Create content container
-        self.content_wrapper = QWidget()
-        self.content_wrapper.setObjectName("content_wrapper")
-        self.content_wrapper.setStyleSheet("""
-            QWidget#content_wrapper {
-                border: 1px solid palette(mid);
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 0.1,
-                                           stop: 0 palette(alternate-base),
-                                           stop: 1 palette(base));
-            }
-        """)
-        self.content_layout = QVBoxLayout(self.content_wrapper)
-        self.content_layout.setSpacing(0)
-        self.content_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Add all section widgets to content area
-        self.section_widgets = {}
-        for tab_widget, display_name in self.sections:
-            tab_widget.hide()
-            self.content_layout.addWidget(tab_widget)
-            self.section_widgets[display_name] = tab_widget
-
-        main_layout_h.addWidget(self.content_wrapper)
-        self.setLayout(main_layout_h)
-
-        # Show first section by default
-        self.show_section("Basic")
-
-    def show_section(self, section_name):
-        """Show the specified section and update tab button states"""
-        # Hide all section widgets
-        for widget in self.section_widgets.values():
-            widget.hide()
-
-        # Uncheck all tab buttons
-        for btn in self.side_tab_buttons.values():
-            btn.setChecked(False)
-
-        # Show the selected section widget and check its tab button
-        if section_name in self.section_widgets:
-            self.section_widgets[section_name].show()
-            if section_name in self.side_tab_buttons:
-                self.side_tab_buttons[section_name].setChecked(True)
-
-    def on_keycode_changed(self, code):
-        self.keycode_changed.emit(code)
-
-    def recreate_buttons(self, keycode_filter):
-        self.current_keycode_filter = keycode_filter
-
-        # Store currently selected section before recreating
-        current_section = None
-        for section_name, widget in self.section_widgets.items():
-            if widget.isVisible():
-                current_section = section_name
-                break
-
-        # Recreate buttons for each tab
-        for tab_widget, display_name in self.sections:
-            tab_widget.recreate_buttons(keycode_filter)
-
-        # Restore the previously selected section, or default to first
-        if current_section and current_section in self.section_widgets:
-            self.show_section(current_section)
-        else:
-            self.show_section("Basic")
-
-    def has_buttons(self):
-        return any(tab.has_buttons() for tab, _ in self.sections)
-
-    def relabel_buttons(self):
-        for tab_widget, _ in self.sections:
-            tab_widget.relabel_buttons()
-
-    def set_keyboard(self, keyboard):
-        self.gaming_tab.keyboard = keyboard
+        app = KEYCODES_MEDIA
+        super().__init__(parent, "Keyboard", [
+            (ansi_100, KEYCODES_SPECIAL + app),
+            (ansi_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + app),
+            (ansi_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV + app),
+            (None, KEYCODES_SPECIAL + KEYCODES_BASIC + app),
+        ])
 
 
 class ArpeggiatorTab(QScrollArea):
@@ -5295,12 +5165,7 @@ class FilteredTabbedKeycodes(QTabWidget):
 
         self.keycode_filter = keycode_filter
 
-        self.tabs = [KeyboardTab(self)] + feature_tabs(self) + [
-            MusicTab(self),
-            MIDITab(self),
-            SearchTab(self),
-            SimpleTab(self, " ", KEYCODES_CLEAR),
-        ]
+        self.tabs = palette_tabs(self) + [SimpleTab(self, " ", KEYCODES_CLEAR)]
 
         for tab in self.tabs:
             tab.keycode_changed.connect(self.on_keycode_changed)
