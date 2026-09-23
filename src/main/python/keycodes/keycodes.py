@@ -2588,7 +2588,7 @@ KEYCODES_DRUMLIVE = _build_drumlive_keycodes()
 # Gaming Controller Keycodes
 KEYCODES_GAMING = [
     # Toggle gaming mode
-    K("GAMING_MODE", "Gaming\nMode", "Toggle gaming mode on/off. When on, keys assigned in Settings > Gaming Settings act as gamepad inputs."),
+    K("GAMING_MODE", "Gaming\nMode", "Toggle gaming mode on/off. When on, keys with a joystick function attached act as gamepad inputs."),
 
     # Digital Buttons (Face buttons)
     K("XBOX_A", "Button\n1", "Button 1 (Button 0)"),
@@ -2630,6 +2630,28 @@ KEYCODES_GAMING = [
     K("DPAD_LEFT", "D-pad ←", "D-pad Left (Button 14)"),
     K("DPAD_RIGHT", "D-pad →", "D-pad Right (Button 15)"),
 ]
+
+
+# Joystick functions are not placed on the keymap as keycodes: dragging one onto
+# a key attaches it to that key position on the current layer. Function id =
+# keycode value - 0xCC60 (0 = none); overlay label shown in the key's corner.
+JOYSTICK_FUNCTIONS = [
+    ("XBOX_A", 1, "B1"), ("XBOX_B", 2, "B2"), ("XBOX_X", 3, "B3"), ("XBOX_Y", 4, "B4"),
+    ("XBOX_LB", 5, "LB"), ("XBOX_RB", 6, "RB"), ("XBOX_BACK", 7, "Bk"), ("XBOX_START", 8, "St"),
+    ("XBOX_L3", 9, "L3"), ("XBOX_R3", 10, "R3"),
+    ("LS_UP", 11, "L\u2191"), ("LS_DOWN", 12, "L\u2193"), ("LS_LEFT", 13, "L\u2190"), ("LS_RIGHT", 14, "L\u2192"),
+    ("RS_UP", 15, "R\u2191"), ("RS_DOWN", 16, "R\u2193"), ("RS_LEFT", 17, "R\u2190"), ("RS_RIGHT", 18, "R\u2192"),
+    ("LT", 19, "LT"), ("RT", 20, "RT"),
+    ("DPAD_UP", 21, "D\u2191"), ("DPAD_DOWN", 22, "D\u2193"), ("DPAD_LEFT", 23, "D\u2190"), ("DPAD_RIGHT", 24, "D\u2192"),
+]
+JOYSTICK_FUNCTION_IDS = {qmk_id: fid for qmk_id, fid, _ in JOYSTICK_FUNCTIONS}
+JOYSTICK_FUNCTION_LABELS = {fid: label for _, fid, label in JOYSTICK_FUNCTIONS}
+JOYSTICK_FUNCTION_NAMES = {fid: qmk_id for qmk_id, fid, _ in JOYSTICK_FUNCTIONS}
+
+
+def joystick_function_id(qmk_id):
+    """Joystick function id (1-24) for a Gaming palette keycode, else 0."""
+    return JOYSTICK_FUNCTION_IDS.get(qmk_id, 0)
 
 
 KEYCODES_ARPEGGIATOR = [

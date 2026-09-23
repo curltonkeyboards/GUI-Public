@@ -233,6 +233,23 @@ def _migrate_v7_to_v8(blob, notes):
                  "firmware, starts at the defaults.")
 
 
+V9_GBIND_MAGIC_BASE = 20100
+V9_GBIND_TABLE_BASE = 20102
+V9_GBIND_TABLE_SIZE = 12 * 70
+V9_GBIND_ROW5_BASE = 21400
+V9_GBIND_ROW5_SIZE = 12 * 14
+V9_GBIND_REGIONS = (
+    (V9_GBIND_MAGIC_BASE, 2),
+    (V9_GBIND_TABLE_BASE, V9_GBIND_TABLE_SIZE),
+    (V9_GBIND_ROW5_BASE, V9_GBIND_ROW5_SIZE),
+)
+
+
+def _migrate_v8_to_v9(blob, notes):
+    for base, size in V9_GBIND_REGIONS:
+        blob[base:base + size] = bytes(size)
+    notes.append("Joystick keys: new in this firmware, start empty.")
+
 _MIGRATIONS = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -241,6 +258,7 @@ _MIGRATIONS = {
     5: _migrate_v5_to_v6,
     6: _migrate_v6_to_v7,
     7: _migrate_v7_to_v8,
+    8: _migrate_v8_to_v9,
 }
 
 

@@ -4319,6 +4319,14 @@ class GamingTab(QScrollArea):
             elif item.layout():
                 self.clear_layout(item.layout())
 
+        hint = QLabel(tr("GamingTab",
+            "Drag a joystick function onto a key on the Keymap tab (or select the key "
+            "and click the function). It is attached to that key on the current layer "
+            "and only acts while Gaming Mode is on; click it on the key to remove it."))
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: gray; font-size: 9pt;")
+        self.main_layout.addWidget(hint)
+
         container = QWidget()
         flow = FlowLayout()
         container.setLayout(flow)
@@ -4459,7 +4467,9 @@ class KeyboardTab(Tab):
     holds them.)"""
 
     def __init__(self, parent, include_layer=True):
-        app = KEYCODES_MEDIA
+        # Gaming Mode toggle sits with the application keys (it is a normal key;
+        # the joystick functions themselves live in the Gaming tab).
+        app = KEYCODES_MEDIA + [kc for kc in KEYCODES_GAMING if kc.qmk_id == "GAMING_MODE"]
         super().__init__(parent, "Keyboard", [
             (ansi_100, KEYCODES_SPECIAL + app),
             (ansi_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + app),

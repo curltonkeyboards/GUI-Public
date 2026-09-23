@@ -21,6 +21,31 @@ def _paint_key_icon(qp, key):
     paint_gamepad_icon(qp, box, key.icon_id)
 
 
+def _paint_joystick_overlay(qp, key, base_point_size):
+    """The joystick function attached to a key: its gamepad icon (or a short
+    label) at 50% opacity in the key's bottom-right quarter."""
+    from widgets.gamepad_icon_button import paint_gamepad_icon, has_gamepad_icon
+    jr = key.joystick_rect
+    qp.save()
+    qp.setOpacity(0.5)
+    qp.setPen(Qt.NoPen)
+    qp.setBrush(QColor(150, 60, 255))
+    qp.drawRoundedRect(jr, key.corner * 0.6, key.corner * 0.6)
+    icon = getattr(key, "joystick_icon", None)
+    if icon and has_gamepad_icon(icon):
+        side = min(jr.width(), jr.height()) * 0.9
+        box = QRectF(jr.center().x() - side / 2, jr.center().y() - side / 2, side, side)
+        paint_gamepad_icon(qp, box, icon)
+    else:
+        font = qp.font()
+        font.setPointSize(max(6, base_point_size - 1))
+        font.setBold(True)
+        qp.setFont(font)
+        qp.setPen(QColor(255, 255, 255))
+        qp.drawText(jr, Qt.AlignCenter, key.joystick_text)
+    qp.restore()
+
+
 class KeyWidget:
 
     def __init__(self, desc, scale, shift_x=0, shift_y=0):
@@ -625,6 +650,10 @@ class KeyWidget2:
         self.mask_color = None
         self.scale = 0
         self.adc_value = None  # ADC value for matrix tester (None = not shown, 0-4095 = value)
+        # Joystick function attached to this key (keymap editor): short label
+        # drawn at 50% opacity in the bottom-right quarter, "" = none.
+        self.joystick_text = ""
+        self.joystick_icon = None   # gamepad icon id (qmk_id) for the overlay
 
         self.rotation_angle = desc.rotation_angle
 
@@ -700,6 +729,16 @@ class KeyWidget2:
             )
             self.mask_bbox = self.calculate_bbox(self.mask_rect)
             self.mask_polygon = QPolygonF(self.mask_bbox + [self.mask_bbox[0]])
+
+            # Bottom-right quarter of the key: the joystick overlay
+            self.joystick_rect = QRect(
+                round(self.x + self.w / 2),
+                round(self.y + self.h / 2),
+                round(self.w / 2),
+                round(self.h / 2)
+            )
+            self.joystick_bbox = self.calculate_bbox(self.joystick_rect)
+            self.joystick_polygon = QPolygonF(self.joystick_bbox + [self.joystick_bbox[0]])
 
     def calculate_bbox(self, rect):
         x1 = rect.topLeft().x()
@@ -867,6 +906,8 @@ class KeyboardWidget2(QWidget):
     # KEYCODE_PALETTE_MIME) was dropped on a key: (key widget, hit the masked
     # inner part, qmk_id). Only emitted once set_drop_assign_enabled(True).
     keycode_dropped = pyqtSignal(object, bool, str)
+    # The joystick overlay in a key's corner was clicked (key widget).
+    joystick_clicked = pyqtSignal(object)
 
     def __init__(self, layout_editor):
         super().__init__()
@@ -1277,6 +1318,10 @@ class KeyboardWidget2(QWidget):
                 qp.setFont(smaller_font)
                 qp.drawText(key.text_rect, Qt.AlignCenter, key.text)
 
+            # draw the attached joystick function (50% opacity, bottom-right quarter)
+            if getattr(key, "joystick_text", ""):
+                _paint_joystick_overlay(qp, key, self.font().pointSize())
+
             # draw ADC value if set (for matrix tester)
             if key.adc_value is not None:
                 adc_font = qp.font()
@@ -1328,10 +1373,24 @@ class KeyboardWidget2(QWidget):
 
         return None, False
 
+    def joystick_hit_test(self, pos):
+        """Key whose joystick overlay is under pos, else None."""
+        adjusted_pos = pos / (self.scale * 1.3)
+        for key in self.widgets:
+            if getattr(key, "joystick_text", "") and key.joystick_polygon.containsPoint(
+                    adjusted_pos - QPointF(key.shift_x, key.shift_y), Qt.OddEvenFill):
+                return key
+        return None
 
     def mousePressEvent(self, ev):
         if not self.enabled:
             return
+
+        if ev.button() == Qt.LeftButton:
+            js_key = self.joystick_hit_test(ev.pos())
+            if js_key is not None:
+                self.joystick_clicked.emit(js_key)
+                return
 
         clicked_key, self.active_mask = self.hit_test(ev.pos())
         if clicked_key is not None:
@@ -1519,6 +1578,12 @@ class KeyboardWidgetSimple(KeyboardWidget2):
         """Original simple mouse press behavior: click to select, drag to paint"""
         if not self.enabled:
             return
+
+        if ev.button() == Qt.LeftButton:
+            js_key = self.joystick_hit_test(ev.pos())
+            if js_key is not None:
+                self.joystick_clicked.emit(js_key)
+                return
 
         self.active_key, self.active_mask = self.hit_test(ev.pos())
         if self.active_key is not None:

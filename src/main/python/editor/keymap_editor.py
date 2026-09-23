@@ -7,13 +7,14 @@ from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWid
                               QSizePolicy, QScrollArea, QTabWidget, QDialog, QDialogButtonBox,
                               QSpinBox, QGridLayout, QMenu, QToolButton, QAction, QInputDialog)
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSettings
+from PyQt5.QtGui import QCursor
 
 from widgets.combo_box import ArrowComboBox
 from keycode_search_dialog import KeycodeSearchDialog
 from editor.basic_editor import BasicEditor
 from editor.articulation_options import populate_articulation_combo, apply_articulation_visibility
 from widgets.keyboard_widget import KeyboardWidget2, KeyboardWidgetSimple, EncoderWidget, EncoderWidget2
-from keycodes.keycodes import Keycode
+from keycodes.keycodes import Keycode, joystick_function_id, JOYSTICK_FUNCTION_LABELS, JOYSTICK_FUNCTION_NAMES
 from widgets.square_button import SquareButton
 from tabbed_keycodes import TabbedKeycodes, keycode_filter_masked
 from util import tr, KeycodeDisplay
@@ -2253,6 +2254,7 @@ class EncoderAssignWidget(QWidget):
     """Widget for assigning keycodes to encoders and sustain pedal per layer"""
 
     clicked = pyqtSignal()  # Emitted when a button is clicked (for tabbed_keycodes integration)
+    joystick_clicked = pyqtSignal(int)  # joystick overlay on button index clicked
 
     def __init__(self):
         super().__init__()
@@ -2260,6 +2262,7 @@ class EncoderAssignWidget(QWidget):
         self.current_layer = 0
         self.selected_button = None
         self.buttons = []
+        self.joystick_overlays = {}
         # Single-encoder hardware: one rotary encoder (enc_idx 0) + sustain pedal.
         self.labels = [
             "Encoder Up",
@@ -2389,6 +2392,33 @@ class EncoderAssignWidget(QWidget):
         """Update button display with keycode"""
         if 0 <= index < len(self.buttons):
             self.buttons[index].setText(Keycode.label(keycode))
+
+    def set_joystick(self, index, text):
+        """Show the joystick function attached to button `index` (the click /
+        footswitch matrix keys) at 50% opacity in its bottom-right quarter;
+        clicking it emits joystick_clicked(index). Empty text hides it."""
+        if not (0 <= index < len(self.buttons)):
+            return
+        overlay = self.joystick_overlays.get(index)
+        if not text:
+            if overlay is not None:
+                overlay.hide()
+            return
+        btn = self.buttons[index]
+        if overlay is None:
+            overlay = QPushButton(btn)
+            overlay.setFocusPolicy(Qt.NoFocus)
+            overlay.setCursor(Qt.PointingHandCursor)
+            overlay.setStyleSheet(
+                "QPushButton { background: rgba(150, 60, 255, 128); color: rgba(255, 255, 255, 170);"
+                " border: none; border-radius: 4px; font-weight: bold; font-size: 8pt; padding: 0px; }")
+            overlay.clicked.connect(lambda _=False, i=index: self.joystick_clicked.emit(i))
+            self.joystick_overlays[index] = overlay
+        w, h = btn.width(), btn.height()
+        overlay.setGeometry(w // 2, h // 2, w - w // 2, h - h // 2)
+        overlay.setText(text)
+        overlay.show()
+        overlay.raise_()
 
     def set_layer(self, layer, keyboard=None):
         """Update current layer and refresh button displays from keyboard"""
@@ -2576,9 +2606,11 @@ class KeymapEditor(BasicEditor):
         # Keys dragged out of the keycode palette drop straight onto the layout.
         self.container.set_drop_assign_enabled(True)
         self.container.keycode_dropped.connect(self.on_keycode_dropped)
+        self.container.joystick_clicked.connect(self.on_joystick_overlay_clicked)
 
         # Connect encoder widget signals
         self.encoder_assign.clicked.connect(self.on_encoder_clicked)
+        self.encoder_assign.joystick_clicked.connect(self.on_encoder_joystick_clicked)
 
         # Create overlay container with encoder widget overlaying keyboard
         self.keyboard_overlay = OverlayContainer(self.container, self.encoder_assign)
@@ -2886,6 +2918,11 @@ class KeymapEditor(BasicEditor):
         self.container.update()
 
     def on_keycode_changed(self, code):
+        # Joystick functions are attached to the selected key, not placed on it.
+        fid = joystick_function_id(code)
+        if fid:
+            self._attach_joystick_to_selection(fid)
+            return
         # Check if encoder button is selected
         if self.encoder_assign.selected_button is not None:
             self.set_encoder_keycode(self.encoder_assign.selected_button, code)
@@ -3042,8 +3079,79 @@ class KeymapEditor(BasicEditor):
         for widget in self.container.widgets:
             code = self.code_for_widget(widget)
             KeycodeDisplay.display_keycode(widget, code)
+        self._refresh_joystick_overlays()
         self.container.update()
         self.container.updateGeometry()
+
+    # ------------------------------------------------------------------
+    # Joystick functions attached to keys (active in Gaming Mode)
+    # ------------------------------------------------------------------
+
+    # Encoder-widget buttons that are real matrix keys: click, footswitch
+    ENCODER_MATRIX_KEYS = {2: (5, 0), 3: (5, 2)}
+
+    def _joystick_label(self, layer, row, col):
+        if self.keyboard is None or not hasattr(self.keyboard, "get_gaming_bind"):
+            return ""
+        return JOYSTICK_FUNCTION_LABELS.get(self.keyboard.get_gaming_bind(layer, row, col), "")
+
+    def _refresh_joystick_overlays(self):
+        layer = self.current_layer
+        for widget in self.container.widgets:
+            if isinstance(widget, EncoderWidget2) or widget.desc.row is None or widget.desc.row < 0:
+                widget.joystick_text = ""
+                widget.joystick_icon = None
+            else:
+                fid = self.keyboard.get_gaming_bind(layer, widget.desc.row, widget.desc.col) \
+                    if self.keyboard is not None and hasattr(self.keyboard, "get_gaming_bind") else 0
+                widget.joystick_text = JOYSTICK_FUNCTION_LABELS.get(fid, "")
+                widget.joystick_icon = JOYSTICK_FUNCTION_NAMES.get(fid)
+        for idx, (row, col) in self.ENCODER_MATRIX_KEYS.items():
+            self.encoder_assign.set_joystick(idx, self._joystick_label(layer, row, col))
+
+    def _set_joystick(self, row, col, fid):
+        """Attach joystick function `fid` (0 = remove) to row/col on the
+        current layer. Replaces whatever joystick the key had."""
+        if self.keyboard is None:
+            return
+        if not getattr(self.keyboard, "gaming_binds_supported", False):
+            QMessageBox.warning(None, "Joystick keys",
+                                "This keyboard needs a firmware update before joystick "
+                                "functions can be attached to keys.")
+            return
+        if not self.keyboard.set_gaming_bind(self.current_layer, row, col, fid):
+            QMessageBox.warning(None, "Joystick keys",
+                                "Could not save the joystick function to the keyboard.")
+        self._refresh_joystick_overlays()
+        self.container.update()
+
+    def _attach_joystick_to_selection(self, fid):
+        sel = self.encoder_assign.selected_button
+        if sel is not None:
+            if sel in self.ENCODER_MATRIX_KEYS:
+                self._set_joystick(*self.ENCODER_MATRIX_KEYS[sel], fid)
+            return  # encoder turns cannot hold a joystick function
+        key = self.container.active_key
+        if key is None or isinstance(key, EncoderWidget2):
+            return
+        if key.desc.row is None or key.desc.row < 0 or key.desc.col < 0:
+            return
+        self._set_joystick(key.desc.row, key.desc.col, fid)
+
+    def _joystick_remove_menu(self, row, col):
+        menu = QMenu(self.container)
+        act = menu.addAction(tr("KeymapEditor", "Remove Joystick button"))
+        if menu.exec_(QCursor.pos()) is act:
+            self._set_joystick(row, col, 0)
+
+    def on_joystick_overlay_clicked(self, key):
+        if key is None or isinstance(key, EncoderWidget2):
+            return
+        self._joystick_remove_menu(key.desc.row, key.desc.col)
+
+    def on_encoder_joystick_clicked(self, index):
+        if index in self.ENCODER_MATRIX_KEYS:
+            self._joystick_remove_menu(*self.ENCODER_MATRIX_KEYS[index])
 
     def switch_layer(self, idx):
         self.container.deselect()
@@ -3276,7 +3384,9 @@ class KeymapEditor(BasicEditor):
         its target, so the next palette click still lands there)."""
         if self.keyboard is None or key is None:
             return
-        if mask and not Keycode.is_basic(qmk_id):
+        if joystick_function_id(qmk_id):
+            mask = False  # a joystick function attaches to the whole key
+        elif mask and not Keycode.is_basic(qmk_id):
             return
         # Run after the drop event returns: the drop is delivered inside the
         # palette button's QDrag.exec_() loop, and the assignment can raise a
@@ -3289,6 +3399,12 @@ class KeymapEditor(BasicEditor):
         self.encoder_assign.deselect()
         self.container.active_key = key
         self.container.active_mask = mask
+        fid = joystick_function_id(qmk_id)
+        if fid:
+            if not isinstance(key, EncoderWidget2):
+                self._set_joystick(key.desc.row, key.desc.col, fid)
+            self.on_key_clicked()
+            return
         if isinstance(key, EncoderWidget2):
             self.set_key_encoder(qmk_id)
         else:

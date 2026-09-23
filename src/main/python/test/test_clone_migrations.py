@@ -16,6 +16,7 @@ from protocol.clone_migrations import (
     V7_DYN_COMBO_OLD_BASE, V7_DYN_COMBO_OLD_COUNT, V7_DYN_KO_OLD_BASE, V7_DYN_KO_OLD_COUNT,
     V7_DYN_ENTRY, V7_DYN_KO_NEW_BASE, V7_DYN_KO_NEW_COUNT, V7_DYN_SPAN_END,
     V8_MOUSE_TIMING_BASE, V8_MOUSE_TIMING_SIZE,
+    V9_GBIND_REGIONS,
 )
 from protocol import clone_migrations
 
@@ -260,6 +261,32 @@ class TestCloneMigrationV7ToV8(unittest.TestCase):
         self.assertTrue(can_migrate(1, 8))
         v8, _notes = migrate_clone(build_v1_image(), 1, 8)
         self.assertEqual(len(v8), EEPROM_SIZE)
+
+
+class TestCloneMigrationV8ToV9(unittest.TestCase):
+
+    def setUp(self):
+        self.v8 = build_v1_image()
+        self.v9, self.notes = migrate_clone(self.v8, 8, 9)
+
+    def test_regions_fully_cleared(self):
+        for base, size in V9_GBIND_REGIONS:
+            self.assertEqual(bytes(self.v9[base:base + size]), bytes(size))
+
+    def test_only_the_regions_change(self):
+        changed = {i for i in range(EEPROM_SIZE) if self.v8[i] != self.v9[i]}
+        allowed = set()
+        for base, size in V9_GBIND_REGIONS:
+            allowed.update(range(base, base + size))
+        self.assertTrue(changed.issubset(allowed), sorted(changed - allowed)[:16])
+
+    def test_reset_is_reported(self):
+        self.assertTrue(any("Joystick keys" in n for n in self.notes), self.notes)
+
+    def test_full_chain_from_v1_reaches_v9(self):
+        self.assertTrue(can_migrate(1, 9))
+        v9, _notes = migrate_clone(build_v1_image(), 1, 9)
+        self.assertEqual(len(v9), EEPROM_SIZE)
 
 
 if __name__ == "__main__":

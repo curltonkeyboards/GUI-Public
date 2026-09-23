@@ -8,7 +8,10 @@ from macro.macro_action_ui import (ActionTextUI, ActionDownUI, ActionUpUI, Actio
                                    ActionDelayUI, ActionBPMDelayUI,
                                    ActionMixingControlUI, ActionMouseMoveUI,
                                    ActionMouseMoveClickUI, ActionMouseMoveDoubleClickUI,
-                                   ActionMouseMoveRightClickUI)
+                                   ActionMouseMoveRightClickUI, ActionGamepadButtonUI,
+                                   ActionGamepadTriggerUI, ActionGamepadLeftStickUI,
+                                   ActionGamepadRightStickUI, ActionGamepadLeftStickReleaseUI,
+                                   ActionGamepadRightStickReleaseUI)
 from protocol.constants import VIAL_PROTOCOL_ADVANCED_MACROS
 
 
@@ -31,12 +34,19 @@ class MacroLine(QObject):
         if self.parent.parent.keyboard.vial_protocol >= VIAL_PROTOCOL_ADVANCED_MACROS:
             self.types = self.types[:] + ["Wait (ms)", "Wait (BPM)", "AutoFader",
                                           "Mouse Move", "Mouse Move + Click",
-                                          "Mouse Move + Double Click", "Mouse Move + Right Click"]
+                                          "Mouse Move + Double Click", "Mouse Move + Right Click",
+                                          "Gamepad Button", "Gamepad Trigger",
+                                          "Gamepad Left Stick", "Gamepad Right Stick",
+                                          "Gamepad Left Stick Release", "Gamepad Right Stick Release"]
             self.type_to_cls = self.type_to_cls[:] + [ActionDelayUI, ActionBPMDelayUI,
                                                        ActionMixingControlUI, ActionMouseMoveUI,
                                                        ActionMouseMoveClickUI,
                                                        ActionMouseMoveDoubleClickUI,
-                                                       ActionMouseMoveRightClickUI]
+                                                       ActionMouseMoveRightClickUI,
+                                                       ActionGamepadButtonUI, ActionGamepadTriggerUI,
+                                                       ActionGamepadLeftStickUI, ActionGamepadRightStickUI,
+                                                       ActionGamepadLeftStickReleaseUI,
+                                                       ActionGamepadRightStickReleaseUI]
 
         self.arrows = QHBoxLayout()
         self.btn_up = QToolButton()

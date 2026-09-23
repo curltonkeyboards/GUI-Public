@@ -6032,12 +6032,13 @@ class LayerActuationConfigurator(BasicEditor):
 
 
 class GamingConfigurator(BasicEditor):
+    """Gaming Settings: gamepad mode switch plus the stick / trigger response
+    settings. Which keys act as gamepad inputs is set on the Keymap tab by
+    attaching a joystick function to a key (drag it from the Gaming palette)."""
 
     def __init__(self):
         super().__init__()
         self.keyboard = None
-        self.gaming_controls = {}
-        self.active_control_id = None  # Track which control is being assigned
         self.setup_ui()
 
     def create_help_label(self, tooltip_text):
@@ -6069,7 +6070,6 @@ class GamingConfigurator(BasicEditor):
         return help_btn
 
     def setup_ui(self):
-        # Create scroll area for better window resizing
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
@@ -6078,64 +6078,52 @@ class GamingConfigurator(BasicEditor):
         main_widget = QWidget()
         main_layout = QVBoxLayout()
         main_widget.setLayout(main_layout)
-
         scroll_area.setWidget(main_widget)
         self.addWidget(scroll_area)
 
-        # Create horizontal layout: Settings (title+desc+response+calibration) | Gamepad | Curve
-        controls_layout = QHBoxLayout()
-        controls_layout.setSpacing(15)
-        main_layout.addLayout(controls_layout)
-
-        # COLUMN 1: Title, Description, and Response+Calibration side by side
-        settings_column = QVBoxLayout()
-        settings_column.setSpacing(8)
-
-        # Title at top
         title_label = QLabel(tr("GamingConfigurator", "Gaming Mode"))
         title_label.setStyleSheet("font-weight: bold; font-size: 11pt;")
-        settings_column.addWidget(title_label)
+        main_layout.addWidget(title_label)
 
-        # Description below title
         desc_label = QLabel(tr("GamingConfigurator",
-            "Assign keyboard keys to gamepad buttons. "
-            "Assigned keys will act as gamepad inputs when Gaming Mode is enabled, "
-            "and function normally when disabled. "
-            "Click a button on the controller, then select a key from the keycodes below."))
+            "To make a key a gamepad input, go to the Keymap tab and drag a joystick "
+            "function from the Gaming keycodes onto the key (or select the key and "
+            "click the joystick function). The joystick shows in the bottom-right "
+            "corner of the key; click it to remove it. Each key position on each "
+            "layer can hold one joystick function, and several keys can share one.\n\n"
+            "Joystick keys only act as gamepad inputs while Gaming Mode is on, and "
+            "then they do not type their normal key. Macros can send gamepad input "
+            "whether Gaming Mode is on or off.\n\n"
+            "The settings below shape how the sticks and triggers respond."))
         desc_label.setWordWrap(True)
-        desc_label.setMaximumWidth(400)
+        desc_label.setMaximumWidth(760)
         desc_label.setStyleSheet("color: gray; font-size: 9pt;")
-        settings_column.addWidget(desc_label)
+        main_layout.addWidget(desc_label)
 
-        # Gaming Mode master enable. Without this the tab had no way to turn gaming
-        # mode ON — a user could assign controls and Save, but the mappings only
-        # take effect while gaming mode is active, so the gamepad stayed dead. This
-        # applies instantly (like the on-device GAMING_MODE keycode) rather than
-        # waiting for "Save Configuration".
         enable_row = QHBoxLayout()
         enable_row.setContentsMargins(0, 0, 0, 0)
         self.gaming_mode_checkbox = QCheckBox(tr("GamingConfigurator", "Gaming Mode Enabled"))
         self.gaming_mode_checkbox.setStyleSheet("font-weight: bold;")
         self.gaming_mode_checkbox.setToolTip(
             "Turn the keyboard's gamepad mode on or off. Applies immediately.\n"
-            "When on, assigned keys act as gamepad inputs; when off, they behave normally.")
+            "When on, keys with a joystick function act as gamepad inputs;\n"
+            "when off, they behave normally.")
         self.gaming_mode_checkbox.toggled.connect(self.on_gaming_mode_toggled)
         enable_row.addWidget(self.gaming_mode_checkbox)
         enable_row.addStretch()
-        settings_column.addLayout(enable_row)
+        main_layout.addLayout(enable_row)
 
-        # Horizontal layout for Response and Calibration side by side
-        response_calibration_layout = QHBoxLayout()
-        response_calibration_layout.setSpacing(8)
+        controls_layout = QHBoxLayout()
+        controls_layout.setSpacing(15)
+        main_layout.addLayout(controls_layout)
 
-        # Gamepad Response Section
+        # Gamepad Response
         response_group = QGroupBox(tr("GamingConfigurator", "Gamepad Response"))
-        response_group.setMaximumWidth(200)
+        response_group.setMaximumWidth(220)
         response_layout = QVBoxLayout()
         response_layout.setSpacing(4)
         response_group.setLayout(response_layout)
 
-        # Angle Adjustment
         angle_adj_row = QHBoxLayout()
         angle_adj_row.addWidget(self.create_help_label("Enable diagonal angle adjustment.\nModifies the angle at which diagonals are registered."))
         self.angle_adj_checkbox = QCheckBox(tr("GamingConfigurator", "Angle adjustment"))
@@ -6143,20 +6131,17 @@ class GamingConfigurator(BasicEditor):
         angle_adj_row.addStretch()
         response_layout.addLayout(angle_adj_row)
 
-        # Diagonal Angle Slider
         angle_widget = QWidget()
         angle_layout = QVBoxLayout()
         angle_layout.setSpacing(2)
-        angle_layout.setContentsMargins(15, 0, 0, 0)  # Indent
+        angle_layout.setContentsMargins(15, 0, 0, 0)
         angle_widget.setLayout(angle_layout)
-
         angle_label_row = QHBoxLayout()
         angle_label_row.addWidget(self.create_help_label("Angle offset for diagonal detection (0-90°).\nHigher values make diagonals easier to hit."))
         self.diagonal_angle_label = QLabel("Angle: 0°")
         angle_label_row.addWidget(self.diagonal_angle_label)
         angle_label_row.addStretch()
         angle_layout.addLayout(angle_label_row)
-
         self.diagonal_angle_slider = QSlider(Qt.Horizontal)
         self.diagonal_angle_slider.setMinimum(0)
         self.diagonal_angle_slider.setMaximum(90)
@@ -6168,7 +6153,6 @@ class GamingConfigurator(BasicEditor):
         angle_layout.addWidget(self.diagonal_angle_slider)
         response_layout.addWidget(angle_widget)
 
-        # Square Output
         square_row = QHBoxLayout()
         square_row.addWidget(self.create_help_label(
             "Restrict joystick movement to a square instead of circle.\n"
@@ -6178,7 +6162,6 @@ class GamingConfigurator(BasicEditor):
         square_row.addStretch()
         response_layout.addLayout(square_row)
 
-        # Snappy Joystick
         snappy_row = QHBoxLayout()
         snappy_row.addWidget(self.create_help_label(
             "Use maximum value of opposite sides of axis rather than combining them."))
@@ -6187,271 +6170,85 @@ class GamingConfigurator(BasicEditor):
         snappy_row.addStretch()
         response_layout.addLayout(snappy_row)
 
-        # Suppress Keystrokes
-        suppress_row = QHBoxLayout()
-        suppress_row.addWidget(self.create_help_label(
-            "When enabled, keys mapped as gaming controls will not send\n"
-            "their normal keystrokes (e.g. 'E') while Gaming Mode is active.\n"
-            "Only the joystick button/axis output will be sent."))
-        self.suppress_keystrokes_checkbox = QCheckBox(tr("GamingConfigurator", "Suppress keystrokes"))
-        self.suppress_keystrokes_checkbox.setChecked(True)  # Default ON
-        suppress_row.addWidget(self.suppress_keystrokes_checkbox)
-        suppress_row.addStretch()
-        response_layout.addLayout(suppress_row)
+        controls_layout.addWidget(response_group, alignment=QtCore.Qt.AlignTop)
 
-        response_calibration_layout.addWidget(response_group, alignment=QtCore.Qt.AlignTop)
-
-        # Analog Calibration Group
+        # Analog Calibration
         calibration_group = QGroupBox(tr("GamingConfigurator", "Analog Calibration"))
         calibration_group.setMaximumWidth(400)
         calibration_layout = QVBoxLayout()
         calibration_layout.setSpacing(6)
         calibration_group.setLayout(calibration_layout)
 
-        # Helper function to create stacked slider pair (min on top, max below)
         def create_minmax_slider_row(section_name, default_min, default_max):
             container = QWidget()
             layout = QVBoxLayout()
             layout.setSpacing(2)
             layout.setContentsMargins(0, 0, 0, 0)
             container.setLayout(layout)
-
-            section_label = QLabel(f"<b>{section_name}</b>")
-            layout.addWidget(section_label)
-
-            # Min slider
+            layout.addWidget(QLabel(f"<b>{section_name}</b>"))
             min_label = QLabel(f"Min: {default_min/100:.2f}mm")
             min_label.setStyleSheet("font-size: 8pt;")
             layout.addWidget(min_label)
-
             min_slider = QSlider(Qt.Horizontal)
             min_slider.setMinimum(0)
             min_slider.setMaximum(400)  # 0.00 to 4.00mm in 0.01mm increments
             min_slider.setValue(default_min)
             min_slider.valueChanged.connect(
-                lambda val, lbl=min_label: lbl.setText(f"Min: {val/100:.2f}mm")
-            )
+                lambda val, lbl=min_label: lbl.setText(f"Min: {val/100:.2f}mm"))
             layout.addWidget(min_slider)
-
-            # Max slider
             max_label = QLabel(f"Max: {default_max/100:.2f}mm")
             max_label.setStyleSheet("font-size: 8pt;")
             layout.addWidget(max_label)
-
             max_slider = QSlider(Qt.Horizontal)
             max_slider.setMinimum(0)
-            max_slider.setMaximum(400)  # 0.00 to 4.00mm in 0.01mm increments
+            max_slider.setMaximum(400)
             max_slider.setValue(default_max)
             max_slider.valueChanged.connect(
-                lambda val, lbl=max_label: lbl.setText(f"Max: {val/100:.2f}mm")
-            )
+                lambda val, lbl=max_label: lbl.setText(f"Max: {val/100:.2f}mm"))
             layout.addWidget(max_slider)
-
             return container, min_slider, max_slider, min_label, max_label
 
-        # LS (Left Stick) Calibration
         ls_widget, self.ls_min_travel_slider, self.ls_max_travel_slider, self.ls_min_travel_label, self.ls_max_travel_label = create_minmax_slider_row(
-            tr("GamingConfigurator", "Left Stick"), 100, 200
-        )
+            tr("GamingConfigurator", "Left Stick"), 100, 200)
         calibration_layout.addWidget(ls_widget)
-
-        # RS (Right Stick) Calibration
         rs_widget, self.rs_min_travel_slider, self.rs_max_travel_slider, self.rs_min_travel_label, self.rs_max_travel_label = create_minmax_slider_row(
-            tr("GamingConfigurator", "Right Stick"), 100, 200
-        )
+            tr("GamingConfigurator", "Right Stick"), 100, 200)
         calibration_layout.addWidget(rs_widget)
-
-        # Triggers Calibration
         trigger_widget, self.trigger_min_travel_slider, self.trigger_max_travel_slider, self.trigger_min_travel_label, self.trigger_max_travel_label = create_minmax_slider_row(
-            tr("GamingConfigurator", "Triggers"), 100, 200
-        )
+            tr("GamingConfigurator", "Triggers"), 100, 200)
         calibration_layout.addWidget(trigger_widget)
 
-        response_calibration_layout.addWidget(calibration_group, alignment=QtCore.Qt.AlignTop)
+        controls_layout.addWidget(calibration_group, alignment=QtCore.Qt.AlignTop)
 
-        settings_column.addLayout(response_calibration_layout)
-        settings_column.addStretch()
-
-        controls_layout.addLayout(settings_column)
-
-        # COLUMN 3: Gamepad widget with drawn outline
-        gamepad_widget = GamepadWidget()
-        gamepad_widget.setFixedSize(750, 560)
-        controls_layout.addWidget(gamepad_widget)
-
-        # RIGHT COLUMN: Per-Axis Analog Curves (LS/RS/LT/RT tabs)
+        # Per-axis analog curves
         from widgets.gaming_curve_editor import GamingCurveEditor
         curve_group = QGroupBox(tr("GamingConfigurator", "Analog Curves"))
         curve_group.setMaximumWidth(320)
         curve_group_layout = QVBoxLayout()
         curve_group.setLayout(curve_group_layout)
-
         self.gaming_curve_editor = GamingCurveEditor()
         curve_group_layout.addWidget(self.gaming_curve_editor)
-
-        # Save/Load/Reset buttons below curves
-        curve_buttons_layout = QHBoxLayout()
-        curve_buttons_layout.setSpacing(4)
-
-        curve_button_style = "QPushButton { border-radius: 3px; padding: 4px 8px; font-size: 8pt; }"
-
-        save_btn = QPushButton(tr("GamingConfigurator", "Save Configuration"))
-        save_btn.setMinimumHeight(30)
-        save_btn.setStyleSheet(curve_button_style)
-        save_btn.clicked.connect(self.on_save)
-        curve_buttons_layout.addWidget(save_btn)
-
-        load_btn = QPushButton(tr("GamingConfigurator", "Load from Keyboard"))
-        load_btn.setMinimumHeight(30)
-        load_btn.setStyleSheet(curve_button_style)
-        load_btn.clicked.connect(self.on_load_from_keyboard)
-        curve_buttons_layout.addWidget(load_btn)
-
-        reset_btn = QPushButton(tr("GamingConfigurator", "Reset to Defaults"))
-        reset_btn.setMinimumHeight(30)
-        reset_btn.setStyleSheet(curve_button_style)
-        reset_btn.clicked.connect(self.on_reset)
-        curve_buttons_layout.addWidget(reset_btn)
-
-        curve_group_layout.addLayout(curve_buttons_layout)
-
         controls_layout.addWidget(curve_group, alignment=QtCore.Qt.AlignTop)
-
-        # Map control IDs to positions and names
-        # Control IDs 0-9: axes/triggers (handled by firmware switch statement)
-        #   0=LS Up, 1=LS Down, 2=LS Left, 3=LS Right
-        #   4=RS Up, 5=RS Down, 6=RS Left, 7=RS Right
-        #   8=LT, 9=RT
-        # Control IDs 10+: buttons[control_id - 10] → joystick button (control_id - 10)
-        # Must match keycode button IDs: A=0, B=1, X=2, Y=3, LB=4, RB=5,
-        # Back=6, Start=7, L3=8, R3=9, DPad=12-15
-        control_mapping = {
-            # Face buttons (buttons 0-3, control_ids 10-13)
-            10: ("Button 1", "btn1", 517, 178, 50, 50, "1"),  # A = joystick button 0
-            11: ("Button 2", "btn2", 553, 139, 50, 50, "2"),  # B = joystick button 1
-            12: ("Button 3", "btn3", 481, 139, 50, 50, "3"),  # X = joystick button 2
-            13: ("Button 4", "btn4", 517, 103, 50, 50, "4"),  # Y = joystick button 3
-            # Bumpers (buttons 4-5, control_ids 14-15)
-            14: ("LB", "lb", 177, 65, 60, 30, "LB"),
-            15: ("RB", "rb", 503, 65, 60, 30, "RB"),
-            # Center buttons (buttons 6-7, control_ids 16-17)
-            16: ("Back", "back", 320, 170, 50, 30, "Back"),
-            17: ("Start", "start", 380, 170, 50, 30, "Start"),
-            # Stick clicks (buttons 8-9, control_ids 18-19)
-            18: ("LS Click", "l3", 275, 223, 38, 38, "L3"),
-            19: ("RS Click", "r3", 439, 223, 38, 38, "R3"),
-            # D-pad (buttons 12-15, control_ids 22-25)
-            22: ("D-pad Up", "dpad_up", 180, 105, 56, 58, "↑"),
-            23: ("D-pad Down", "dpad_down", 180, 163, 56, 58, "↓"),
-            24: ("D-pad Left", "dpad_left", 150, 135, 58, 56, "←"),
-            25: ("D-pad Right", "dpad_right", 208, 135, 58, 56, "→"),
-            # Sticks (axes, control_ids 0-7)
-            0: ("LS Up", "ls_up", 275, 185, 38, 38, "↑"),
-            1: ("LS Down", "ls_down", 275, 261, 38, 38, "↓"),
-            2: ("LS Left", "ls_left", 237, 223, 38, 38, "←"),
-            3: ("LS Right", "ls_right", 313, 223, 38, 38, "→"),
-            4: ("RS Up", "rs_up", 439, 185, 38, 38, "↑"),
-            5: ("RS Down", "rs_down", 439, 261, 38, 38, "↓"),
-            6: ("RS Left", "rs_left", 401, 223, 38, 38, "←"),
-            7: ("RS Right", "rs_right", 477, 223, 38, 38, "→"),
-            # Triggers (axes, control_ids 8-9)
-            8: ("LT", "lt", 177, 25, 60, 35, "LT"),
-            9: ("RT", "rt", 503, 25, 60, 35, "RT"),
-        }
-
-        # Create buttons positioned over gamepad
-        for control_id, (name, key, x, y, w, h, text) in control_mapping.items():
-            # Create button based on type
-            if "dpad" in key:
-                # Use DpadButton for d-pad with shaped paths
-                btn = DpadButton("Not Set")
-                btn.setFixedSize(w, h)
-                btn.setParent(gamepad_widget)
-                btn.move(x, y)
-
-                # Set shaped path for d-pad buttons
-                path = QPainterPath()
-                if key == "dpad_up":
-                    path.moveTo(28, 58)
-                    path.lineTo(3, 33)
-                    path.lineTo(3, 8)
-                    path.quadTo(8, 3, 15, 3)
-                    path.lineTo(41, 3)
-                    path.quadTo(48, 3, 53, 8)
-                    path.lineTo(53, 33)
-                    path.lineTo(28, 58)
-                    path.closeSubpath()
-                elif key == "dpad_down":
-                    path.moveTo(28, 0)
-                    path.lineTo(3, 25)
-                    path.lineTo(3, 50)
-                    path.quadTo(8, 55, 15, 55)
-                    path.lineTo(41, 55)
-                    path.quadTo(48, 55, 53, 50)
-                    path.lineTo(53, 25)
-                    path.lineTo(28, 0)
-                    path.closeSubpath()
-                elif key == "dpad_left":
-                    path.moveTo(58, 28)
-                    path.lineTo(33, 3)
-                    path.lineTo(8, 3)
-                    path.quadTo(3, 8, 3, 15)
-                    path.lineTo(3, 41)
-                    path.quadTo(3, 48, 8, 53)
-                    path.lineTo(33, 53)
-                    path.lineTo(58, 28)
-                    path.closeSubpath()
-                elif key == "dpad_right":
-                    path.moveTo(0, 28)
-                    path.lineTo(25, 3)
-                    path.lineTo(50, 3)
-                    path.quadTo(55, 8, 55, 15)
-                    path.lineTo(55, 41)
-                    path.quadTo(55, 48, 50, 53)
-                    path.lineTo(25, 53)
-                    path.lineTo(0, 28)
-                    path.closeSubpath()
-
-                btn.setMask(QRegion(path.toFillPolygon().toPolygon()))
-                btn.set_border_path(path)
-            elif "btn" in key and key in ["btn1", "btn2", "btn3", "btn4"]:
-                # Circular face buttons (exactly like GamingTab)
-                btn = QPushButton("Not Set")
-                btn.setFixedSize(w, h)
-                btn.setParent(gamepad_widget)
-                btn.move(x, y)
-                btn.setStyleSheet("border-radius: 25px;")
-            else:
-                # Regular rectangular buttons (no special styling, exactly like GamingTab)
-                btn = QPushButton("Not Set")
-                btn.setFixedSize(w, h)
-                btn.setParent(gamepad_widget)
-                btn.move(x, y)
-
-            btn.clicked.connect(lambda checked, cid=control_id: self.on_assign_key(cid))
-            btn.setProperty("control_id", control_id)
-
-            # Store reference with button type
-            button_type = "dpad" if "dpad" in key else ("face" if key in ["btn1", "btn2", "btn3", "btn4"] else "regular")
-            self.gaming_controls[control_id] = {
-                'button': btn,
-                'button_type': button_type,
-                'keycode': None,
-                'row': None,
-                'col': None,
-                'enabled': False
-            }
-
-        # Add outer stretch on the right
         controls_layout.addStretch(1)
 
-        # Add TabbedKeycodes at the bottom like in Macros tab
-        from tabbed_keycodes import TabbedKeycodes
-        self.tabbed_keycodes = TabbedKeycodes()
-        self.tabbed_keycodes.keycode_changed.connect(self.on_keycode_selected)
-        self.addWidget(self.tabbed_keycodes)
+        buttons_layout = QHBoxLayout()
+        buttons_layout.setSpacing(6)
+        save_btn = QPushButton(tr("GamingConfigurator", "Save Configuration"))
+        save_btn.setMinimumHeight(30)
+        save_btn.clicked.connect(self.on_save)
+        buttons_layout.addWidget(save_btn)
+        load_btn = QPushButton(tr("GamingConfigurator", "Load from Keyboard"))
+        load_btn.setMinimumHeight(30)
+        load_btn.clicked.connect(self.on_load_from_keyboard)
+        buttons_layout.addWidget(load_btn)
+        reset_btn = QPushButton(tr("GamingConfigurator", "Reset to Defaults"))
+        reset_btn.setMinimumHeight(30)
+        reset_btn.clicked.connect(self.on_reset)
+        buttons_layout.addWidget(reset_btn)
+        buttons_layout.addStretch(1)
+        main_layout.addLayout(buttons_layout)
+        main_layout.addStretch(1)
 
-        # Apply stylesheet
         main_widget.setStyleSheet("""
             QCheckBox:focus {
                 font-weight: normal;
@@ -6463,31 +6260,6 @@ class GamingConfigurator(BasicEditor):
             }
         """)
 
-    def get_button_style(self, button_type, highlighted=False):
-        """Get the appropriate style for a button based on its type"""
-        from PyQt5.QtWidgets import QApplication
-        from PyQt5.QtGui import QPalette
-
-        if button_type == "face":
-            # Face buttons are circular
-            base_style = "border-radius: 25px;"
-        elif button_type == "dpad":
-            # D-pad buttons don't have inline styles (they use masks)
-            base_style = ""
-        else:
-            # Regular buttons have no special styling
-            base_style = ""
-
-        if highlighted:
-            # Use theme colors for highlighting
-            palette = QApplication.palette()
-            highlight_color = palette.color(QPalette.Highlight).name()
-            highlight_text = palette.color(QPalette.HighlightedText).name()
-            return f"QPushButton {{ {base_style} background-color: {highlight_color}; color: {highlight_text}; }}"
-        else:
-            # Return empty stylesheet to clear any previous styling (except base_style)
-            return f"QPushButton {{ {base_style} }}"
-
     def on_gaming_mode_toggled(self, checked):
         """Enable/disable gaming mode on the device immediately."""
         if not self.keyboard:
@@ -6498,120 +6270,6 @@ class GamingConfigurator(BasicEditor):
         except Exception as e:
             QMessageBox.critical(None, "Error", f"Error setting Gaming Mode: {str(e)}")
 
-    def _apply_key_map_to_control(self, control_id, mapping):
-        """Populate one gamepad control button from a firmware key mapping dict."""
-        data = self.gaming_controls.get(control_id)
-        if data is None:
-            return
-        button_type = data.get('button_type', 'regular')
-        if mapping and mapping.get('enabled'):
-            row, col = mapping['row'], mapping['col']
-            data['row'] = row
-            data['col'] = col
-            data['enabled'] = True
-            # Resolve the keycode at that position (prefer layer 0) purely for a
-            # readable button label; the mapping itself is by row/col.
-            label = None
-            kc = None
-            if self.keyboard:
-                for (layer, r, c), k in sorted(self.keyboard.layout.items()):
-                    if r == row and c == col:
-                        kc = k
-                        break
-            if kc is not None:
-                from keycodes.keycodes import Keycode
-                label = Keycode.label(kc)
-                data['keycode'] = kc
-            if not label:
-                label = f"r{row}c{col}"
-            if len(label) > 7:
-                label = label[:6] + ".."
-            data['button'].setText(label)
-        else:
-            data['keycode'] = None
-            data['row'] = None
-            data['col'] = None
-            data['enabled'] = False
-            data['button'].setText("Not Set")
-        data['button'].setStyleSheet(self.get_button_style(button_type, highlighted=False))
-
-    def _load_key_mappings(self):
-        """Read every gamepad control's mapping back from the device and show it.
-
-        Essential for a safe Save: on_save() sends enabled=0 for any control that
-        isn't shown as assigned, so without loading the existing mappings first a
-        Save would wipe the user's gamepad layout on the device."""
-        if not self.keyboard or not hasattr(self.keyboard, 'get_gaming_key_map'):
-            return
-        for control_id in self.gaming_controls.keys():
-            mapping = self.keyboard.get_gaming_key_map(control_id)
-            self._apply_key_map_to_control(control_id, mapping)
-
-    def on_assign_key(self, control_id):
-        """Handle key assignment for a gaming control"""
-        self.active_control_id = control_id
-        # Highlight the button being assigned and unhighlight all others
-        for cid, data in self.gaming_controls.items():
-            button_type = data.get('button_type', 'regular')
-            if cid == control_id:
-                data['button'].setStyleSheet(self.get_button_style(button_type, highlighted=True))
-            else:
-                # Always set style to clear any previous highlighting
-                data['button'].setStyleSheet(self.get_button_style(button_type, highlighted=False))
-
-    def on_keycode_selected(self, keycode):
-        """Called when a keycode is selected from TabbedKeycodes"""
-        if self.active_control_id is None or not self.keyboard:
-            return
-
-        # Find the physical position (row, col) of this keycode - search ALL layers
-        row, col = self.find_keycode_position(keycode)
-
-        if row is not None and col is not None:
-            # Assign to the active control
-            data = self.gaming_controls[self.active_control_id]
-            data['keycode'] = keycode
-            data['row'] = row
-            data['col'] = col
-            data['enabled'] = True
-
-            # Update button text to show the keycode label
-            from keycodes.keycodes import Keycode
-            label = Keycode.label(keycode)
-            # Truncate label to fit in 50x50 button
-            if len(label) > 7:
-                label = label[:6] + ".."
-            data['button'].setText(label)
-
-            # Reset button style based on its type (clears highlighting)
-            button_type = data.get('button_type', 'regular')
-            data['button'].setStyleSheet(self.get_button_style(button_type, highlighted=False))
-
-            # Clear active control
-            self.active_control_id = None
-        else:
-            # Keycode not found in any layer - show error
-            QMessageBox.warning(None, "Key Not Found",
-                              f"The selected keycode is not found in your keymap on any layer.\n"
-                              f"Please select a key that exists in your keymap.")
-            # Reset the button style (clears highlighting)
-            data = self.gaming_controls[self.active_control_id]
-            button_type = data.get('button_type', 'regular')
-            data['button'].setStyleSheet(self.get_button_style(button_type, highlighted=False))
-            self.active_control_id = None
-
-    def find_keycode_position(self, keycode):
-        """Find the matrix position (row, col) of a keycode - searches ALL layers"""
-        if not self.keyboard:
-            return None, None
-
-        # Search through ALL layers for this keycode (prefer layer 0 first)
-        for (layer, row, col), kc in sorted(self.keyboard.layout.items()):
-            if kc == keycode:
-                return row, col
-
-        return None, None
-
     def on_save(self):
         """Save gaming configuration to keyboard"""
         if not self.keyboard:
@@ -6619,7 +6277,6 @@ class GamingConfigurator(BasicEditor):
             return
 
         try:
-            # Save analog configuration - separate for LS, RS, and Triggers
             ls_min = self.ls_min_travel_slider.value()
             ls_max = self.ls_max_travel_slider.value()
             rs_min = self.rs_min_travel_slider.value()
@@ -6627,7 +6284,6 @@ class GamingConfigurator(BasicEditor):
             trigger_min = self.trigger_min_travel_slider.value()
             trigger_max = self.trigger_max_travel_slider.value()
 
-            # Validate ranges
             if ls_min >= ls_max:
                 QMessageBox.warning(None, "Invalid Range", "LS Min travel must be less than LS Max travel")
                 return
@@ -6638,31 +6294,18 @@ class GamingConfigurator(BasicEditor):
                 QMessageBox.warning(None, "Invalid Range", "Trigger Min travel must be less than Trigger Max travel")
                 return
 
-            suppress_keystrokes = self.suppress_keystrokes_checkbox.isChecked()
-            # Convert slider values from 0.01mm to 0.1mm (firmware units)
+            # Slider values are 0.01mm, the keyboard stores 0.1mm. Joystick keys
+            # always suppress their normal key while Gaming Mode is on.
             success = self.keyboard.set_gaming_analog_config(
                 ls_min // 10, ls_max // 10, rs_min // 10, rs_max // 10,
-                trigger_min // 10, trigger_max // 10, suppress_keystrokes
+                trigger_min // 10, trigger_max // 10, True
             )
-
-            # Save key mappings
-            for control_id, data in self.gaming_controls.items():
-                if data['enabled'] and data['row'] is not None and data['col'] is not None:
-                    self.keyboard.set_gaming_key_map(control_id, data['row'], data['col'], 1)
-                else:
-                    self.keyboard.set_gaming_key_map(control_id, 0, 0, 0)
-
-            # Save gamepad response settings
-            angle_adj_enabled = self.angle_adj_checkbox.isChecked()
-            diagonal_angle = self.diagonal_angle_slider.value()
-            square_output = self.square_output_checkbox.isChecked()
-            snappy_joystick = self.snappy_joystick_checkbox.isChecked()
 
             response_success = self.keyboard.set_gaming_response(
-                angle_adj_enabled, diagonal_angle, square_output, snappy_joystick, 0
+                self.angle_adj_checkbox.isChecked(), self.diagonal_angle_slider.value(),
+                self.square_output_checkbox.isChecked(), self.snappy_joystick_checkbox.isChecked(), 0
             )
 
-            # Save per-axis analog curves
             curve_map = {'ls': 0, 'rs': 1, 'lt': 2, 'rt': 3}
             curves = self.gaming_curve_editor.get_all_curves()
             curves_success = True
@@ -6678,78 +6321,61 @@ class GamingConfigurator(BasicEditor):
         except Exception as e:
             QMessageBox.critical(None, "Error", f"Error saving configuration: {str(e)}")
 
+    def _apply_settings(self, settings):
+        sliders = [
+            (self.ls_min_travel_slider, self.ls_min_travel_label, 'ls_min_travel', 10, "Min"),
+            (self.ls_max_travel_slider, self.ls_max_travel_label, 'ls_max_travel', 20, "Max"),
+            (self.rs_min_travel_slider, self.rs_min_travel_label, 'rs_min_travel', 10, "Min"),
+            (self.rs_max_travel_slider, self.rs_max_travel_label, 'rs_max_travel', 20, "Max"),
+            (self.trigger_min_travel_slider, self.trigger_min_travel_label, 'trigger_min_travel', 10, "Min"),
+            (self.trigger_max_travel_slider, self.trigger_max_travel_label, 'trigger_max_travel', 20, "Max"),
+        ]
+        for slider, label, key, default, name in sliders:
+            value = settings.get(key, default)  # 0.1mm units
+            slider.blockSignals(True)
+            slider.setValue(value * 10)
+            slider.blockSignals(False)
+            label.setText(f"{name}: {value/10:.1f}mm")
+
+        # Reflect the current gaming-mode state without sending it back.
+        self.gaming_mode_checkbox.blockSignals(True)
+        self.gaming_mode_checkbox.setChecked(settings.get('enabled', False))
+        self.gaming_mode_checkbox.blockSignals(False)
+
+    def _load_response_and_curves(self):
+        response = self.keyboard.get_gaming_response()
+        if response:
+            widgets = (self.angle_adj_checkbox, self.diagonal_angle_slider,
+                       self.square_output_checkbox, self.snappy_joystick_checkbox)
+            for w in widgets:
+                w.blockSignals(True)
+            self.angle_adj_checkbox.setChecked(response.get('angle_adj_enabled', False))
+            self.diagonal_angle_slider.setValue(response.get('diagonal_angle', 0))
+            self.diagonal_angle_label.setText(f"Angle: {response.get('diagonal_angle', 0)}°")
+            self.square_output_checkbox.setChecked(response.get('square_output', False))
+            self.snappy_joystick_checkbox.setChecked(response.get('snappy_joystick', False))
+            for w in widgets:
+                w.blockSignals(False)
+
+        curve_map = {'ls': 0, 'rs': 1, 'lt': 2, 'rt': 3}
+        curves = {}
+        for key, curve_id in curve_map.items():
+            points = self.keyboard.get_gaming_curve(curve_id)
+            if points:
+                curves[key] = points
+        if curves:
+            self.gaming_curve_editor.set_all_curves(curves)
+
     def on_load_from_keyboard(self):
         """Load gaming configuration from keyboard"""
         if not self.keyboard:
             QMessageBox.warning(None, "No Keyboard", "No keyboard connected")
             return
-
         try:
             settings = self.keyboard.get_gaming_settings()
             if settings:
-                # Block signals while updating
-                self.ls_min_travel_slider.blockSignals(True)
-                self.ls_max_travel_slider.blockSignals(True)
-                self.rs_min_travel_slider.blockSignals(True)
-                self.rs_max_travel_slider.blockSignals(True)
-                self.trigger_min_travel_slider.blockSignals(True)
-                self.trigger_max_travel_slider.blockSignals(True)
-
-                # Set values for LS/RS/Triggers (convert from 0.1mm firmware units to 0.01mm slider units)
-                self.ls_min_travel_slider.setValue(settings.get('ls_min_travel', 10) * 10)
-                self.ls_max_travel_slider.setValue(settings.get('ls_max_travel', 20) * 10)
-                self.rs_min_travel_slider.setValue(settings.get('rs_min_travel', 10) * 10)
-                self.rs_max_travel_slider.setValue(settings.get('rs_max_travel', 20) * 10)
-                self.trigger_min_travel_slider.setValue(settings.get('trigger_min_travel', 10) * 10)
-                self.trigger_max_travel_slider.setValue(settings.get('trigger_max_travel', 20) * 10)
-
-                self.ls_min_travel_slider.blockSignals(False)
-                self.ls_max_travel_slider.blockSignals(False)
-                self.rs_min_travel_slider.blockSignals(False)
-                self.rs_max_travel_slider.blockSignals(False)
-                self.trigger_min_travel_slider.blockSignals(False)
-                self.trigger_max_travel_slider.blockSignals(False)
-
-                # Update labels (firmware values in 0.1mm, display in mm)
-                self.ls_min_travel_label.setText(f"Min: {settings.get('ls_min_travel', 10)/10:.1f}mm")
-                self.ls_max_travel_label.setText(f"Max: {settings.get('ls_max_travel', 20)/10:.1f}mm")
-                self.rs_min_travel_label.setText(f"Min: {settings.get('rs_min_travel', 10)/10:.1f}mm")
-                self.rs_max_travel_label.setText(f"Max: {settings.get('rs_max_travel', 20)/10:.1f}mm")
-                self.trigger_min_travel_label.setText(f"Min: {settings.get('trigger_min_travel', 10)/10:.1f}mm")
-                self.trigger_max_travel_label.setText(f"Max: {settings.get('trigger_max_travel', 20)/10:.1f}mm")
-
-                # Update suppress keystrokes checkbox
-                self.suppress_keystrokes_checkbox.blockSignals(True)
-                self.suppress_keystrokes_checkbox.setChecked(settings.get('suppress_keystrokes', True))
-                self.suppress_keystrokes_checkbox.blockSignals(False)
-
-                # Reflect current gaming-mode enable state (signals blocked)
-                self.gaming_mode_checkbox.blockSignals(True)
-                self.gaming_mode_checkbox.setChecked(settings.get('enabled', False))
-                self.gaming_mode_checkbox.blockSignals(False)
-
-                # Load existing key mappings so Save can't wipe them
-                self._load_key_mappings()
-
-                # Load gamepad response settings
-                response = self.keyboard.get_gaming_response()
-                if response:
-                    self.angle_adj_checkbox.setChecked(response.get('angle_adj_enabled', False))
-                    self.diagonal_angle_slider.setValue(response.get('diagonal_angle', 0))
-                    self.diagonal_angle_label.setText(f"Angle: {response.get('diagonal_angle', 0)}°")
-                    self.square_output_checkbox.setChecked(response.get('square_output', False))
-                    self.snappy_joystick_checkbox.setChecked(response.get('snappy_joystick', False))
-
-                # Load per-axis analog curves
-                curve_map = {'ls': 0, 'rs': 1, 'lt': 2, 'rt': 3}
-                curves = {}
-                for key, curve_id in curve_map.items():
-                    points = self.keyboard.get_gaming_curve(curve_id)
-                    if points:
-                        curves[key] = points
-                if curves:
-                    self.gaming_curve_editor.set_all_curves(curves)
-
+                self._apply_settings(settings)
+                self._load_response_and_curves()
                 QMessageBox.information(None, "Success", "Gaming configuration loaded from keyboard")
             else:
                 QMessageBox.warning(None, "Error", "Failed to load gaming configuration")
@@ -6757,29 +6383,20 @@ class GamingConfigurator(BasicEditor):
             QMessageBox.critical(None, "Error", f"Error loading configuration: {str(e)}")
 
     def on_reset(self):
-        """Reset gaming configuration to defaults"""
+        """Reset gaming configuration to defaults (joystick keys are kept)."""
         if not self.keyboard:
             QMessageBox.warning(None, "No Keyboard", "No keyboard connected")
             return
 
         reply = QMessageBox.question(None, "Confirm Reset",
-                                     "Reset gaming configuration to defaults?",
+                                     "Reset the gaming settings to defaults?\n\n"
+                                     "Joystick functions attached to keys are kept.",
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
             try:
-                success = self.keyboard.reset_gaming_settings()
-                if success:
-                    self.on_load_from_keyboard()
-                    # Clear all assignments
-                    for data in self.gaming_controls.values():
-                        data['button'].setText("Not Set")
-                        data['button'].setStyleSheet("QPushButton { text-align: center; border-radius: 3px; font-size: 9px; }")
-                        data['keycode'] = None
-                        data['row'] = None
-                        data['col'] = None
-                        data['enabled'] = False
+                if self.keyboard.reset_gaming_settings():
                     self.gaming_curve_editor.reset_all()
-                    QMessageBox.information(None, "Success", "Gaming configuration reset to defaults")
+                    self.on_load_from_keyboard()
                 else:
                     QMessageBox.warning(None, "Error", "Failed to reset gaming configuration")
             except Exception as e:
@@ -6789,10 +6406,6 @@ class GamingConfigurator(BasicEditor):
         super().rebuild(device)
         if self.valid():
             self.keyboard = device.keyboard
-            # Set keyboard reference for tabbed keycodes (so GamingTab can access it)
-            self.tabbed_keycodes.set_keyboard(self.keyboard)
-            self.tabbed_keycodes.recreate_keycode_buttons()
-            # Load gaming data immediately during device connection
             self._load_gaming_data()
 
     def activate(self):
@@ -6800,89 +6413,13 @@ class GamingConfigurator(BasicEditor):
         pass
 
     def _load_gaming_data(self):
-        """Load gaming settings from device (heavy operation - multiple HID calls)"""
-        print("GamingConfigurator: Loading gaming data (this may take a while)...")
+        """Load gaming settings from the device during connect."""
         try:
-            # Use cached gaming settings if available, otherwise fetch them
             settings = getattr(self.keyboard, 'gaming_settings', None) or self.keyboard.get_gaming_settings()
             if settings:
-                # Block signals while updating
-                self.ls_min_travel_slider.blockSignals(True)
-                self.ls_max_travel_slider.blockSignals(True)
-                self.rs_min_travel_slider.blockSignals(True)
-                self.rs_max_travel_slider.blockSignals(True)
-                self.trigger_min_travel_slider.blockSignals(True)
-                self.trigger_max_travel_slider.blockSignals(True)
-
-                # Convert from 0.1mm (firmware) to 0.01mm (slider units)
-                self.ls_min_travel_slider.setValue(settings.get('ls_min_travel', 10) * 10)
-                self.ls_max_travel_slider.setValue(settings.get('ls_max_travel', 20) * 10)
-                self.rs_min_travel_slider.setValue(settings.get('rs_min_travel', 10) * 10)
-                self.rs_max_travel_slider.setValue(settings.get('rs_max_travel', 20) * 10)
-                self.trigger_min_travel_slider.setValue(settings.get('trigger_min_travel', 10) * 10)
-                self.trigger_max_travel_slider.setValue(settings.get('trigger_max_travel', 20) * 10)
-
-                self.ls_min_travel_slider.blockSignals(False)
-                self.ls_max_travel_slider.blockSignals(False)
-                self.rs_min_travel_slider.blockSignals(False)
-                self.rs_max_travel_slider.blockSignals(False)
-                self.trigger_min_travel_slider.blockSignals(False)
-                self.trigger_max_travel_slider.blockSignals(False)
-
-                # Update labels (firmware values in 0.1mm, display in mm)
-                self.ls_min_travel_label.setText(f"Min: {settings.get('ls_min_travel', 10)/10:.1f}mm")
-                self.ls_max_travel_label.setText(f"Max: {settings.get('ls_max_travel', 20)/10:.1f}mm")
-                self.rs_min_travel_label.setText(f"Min: {settings.get('rs_min_travel', 10)/10:.1f}mm")
-                self.rs_max_travel_label.setText(f"Max: {settings.get('rs_max_travel', 20)/10:.1f}mm")
-                self.trigger_min_travel_label.setText(f"Min: {settings.get('trigger_min_travel', 10)/10:.1f}mm")
-                self.trigger_max_travel_label.setText(f"Max: {settings.get('trigger_max_travel', 20)/10:.1f}mm")
-
-                # Update suppress keystrokes checkbox
-                self.suppress_keystrokes_checkbox.blockSignals(True)
-                self.suppress_keystrokes_checkbox.setChecked(settings.get('suppress_keystrokes', True))
-                self.suppress_keystrokes_checkbox.blockSignals(False)
-
-                # Reflect the current gaming-mode enable state (block signals so
-                # showing it doesn't fire an unwanted set_gaming_mode round-trip).
-                self.gaming_mode_checkbox.blockSignals(True)
-                self.gaming_mode_checkbox.setChecked(settings.get('enabled', False))
-                self.gaming_mode_checkbox.blockSignals(False)
-
-            # Load existing key mappings so Save can't wipe them
-            self._load_key_mappings()
-
-            # Load gamepad response settings
-            response = self.keyboard.get_gaming_response()
-            if response:
-                self.angle_adj_checkbox.blockSignals(True)
-                self.diagonal_angle_slider.blockSignals(True)
-                self.square_output_checkbox.blockSignals(True)
-                self.snappy_joystick_checkbox.blockSignals(True)
-
-                self.angle_adj_checkbox.setChecked(response.get('angle_adj_enabled', False))
-                self.diagonal_angle_slider.setValue(response.get('diagonal_angle', 0))
-                self.diagonal_angle_label.setText(f"Angle: {response.get('diagonal_angle', 0)}°")
-                self.square_output_checkbox.setChecked(response.get('square_output', False))
-                self.snappy_joystick_checkbox.setChecked(response.get('snappy_joystick', False))
-
-                self.angle_adj_checkbox.blockSignals(False)
-                self.diagonal_angle_slider.blockSignals(False)
-                self.square_output_checkbox.blockSignals(False)
-                self.snappy_joystick_checkbox.blockSignals(False)
-
-            # Load per-axis analog curves
-            curve_map = {'ls': 0, 'rs': 1, 'lt': 2, 'rt': 3}
-            curves = {}
-            for key, curve_id in curve_map.items():
-                points = self.keyboard.get_gaming_curve(curve_id)
-                if points:
-                    curves[key] = points
-            if curves:
-                self.gaming_curve_editor.set_all_curves(curves)
-
-            print("GamingConfigurator: Gaming data loading complete")
+                self._apply_settings(settings)
+            self._load_response_and_curves()
         except Exception as e:
-            # Silently fail during load - user can manually load if needed
             print(f"GamingConfigurator: Error loading data: {e}")
 
     def valid(self):

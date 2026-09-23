@@ -573,3 +573,65 @@ class ActionMouseMove(BasicAction):
 
     def __repr__(self):
         return "{}<{},{} click={}>".format(self.tag, self.x, self.y, self.click)
+
+
+SS_GAMEPAD_CODE = 12
+
+GAMEPAD_TAP = 0
+GAMEPAD_PRESS = 1
+GAMEPAD_RELEASE = 2
+GAMEPAD_TRIGGER = 3
+GAMEPAD_TRIGGER_RELEASE = 4
+GAMEPAD_STICK = 5
+GAMEPAD_STICK_RELEASE = 6
+GAMEPAD_MS_MAX = 16383
+
+# (button number sent to the host, label)
+GAMEPAD_BUTTONS = [
+    (0, "Button 1"), (1, "Button 2"), (2, "Button 3"), (3, "Button 4"),
+    (4, "LB"), (5, "RB"), (6, "Back"), (7, "Start"), (8, "L3"), (9, "R3"),
+    (12, "D-pad Up"), (13, "D-pad Down"), (14, "D-pad Left"), (15, "D-pad Right"),
+]
+GAMEPAD_DIRECTIONS = ["Up", "Up-Right", "Right", "Down-Right", "Down", "Down-Left", "Left", "Up-Left"]
+
+
+class ActionGamepad(BasicAction):
+    """Gamepad output from a macro (works with Gaming Mode on or off).
+    kind: GAMEPAD_*; target: button number / trigger (0 LT, 1 RT) / stick
+    (0 left, 1 right); value: stick direction 0-7 (clockwise from Up);
+    percent: trigger / stick amount; ms: wait before the next action (the
+    hold time of a tap)."""
+
+    tag = "gamepad"
+
+    def __init__(self, kind=GAMEPAD_TAP, target=0, value=0, percent=100, ms=0):
+        super().__init__()
+        self.kind = kind
+        self.target = target
+        self.value = value
+        self.percent = percent
+        self.ms = ms
+
+    def serialize(self, vial_protocol):
+        if vial_protocol < VIAL_PROTOCOL_ADVANCED_MACROS:
+            raise RuntimeError("ActionGamepad can only be used with vial_protocol>=2")
+        ms = max(0, min(GAMEPAD_MS_MAX, int(self.ms)))
+        payload = [int(self.kind) + 1, int(self.target) + 1, int(self.value) + 1,
+                   max(0, min(100, int(self.percent))) + 1,
+                   (ms & 0x7F) + 1, ((ms >> 7) & 0x7F) + 1]
+        return struct.pack("BB", SS_QMK_PREFIX, SS_GAMEPAD_CODE) + bytes(payload)
+
+    def save(self):
+        return super().save() + [self.kind, self.target, self.value, self.percent, self.ms]
+
+    def restore(self, act):
+        super().restore(act)
+        self.kind, self.target, self.value, self.percent, self.ms = act[1:6]
+
+    def __eq__(self, other):
+        return (super().__eq__(other) and self.kind == other.kind and self.target == other.target
+                and self.value == other.value and self.percent == other.percent and self.ms == other.ms)
+
+    def __repr__(self):
+        return "{}<kind={} target={} value={} {}% {}ms>".format(
+            self.tag, self.kind, self.target, self.value, self.percent, self.ms)

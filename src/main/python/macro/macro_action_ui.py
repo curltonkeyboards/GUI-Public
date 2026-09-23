@@ -9,7 +9,10 @@ from macro.macro_action import (text_to_actions, ActionText, ActionSequence, Act
                                 ActionDelay, ActionBPMDelay,
                                 ActionMixingControl, MIXING_CURRENT_VALUE,
                                 ActionMouseMove, MOUSE_COORD_MAX, MOUSE_CLICK_NONE,
-                                MOUSE_CLICK_LEFT, MOUSE_CLICK_DOUBLE, MOUSE_CLICK_RIGHT)
+                                MOUSE_CLICK_LEFT, MOUSE_CLICK_DOUBLE, MOUSE_CLICK_RIGHT,
+                                ActionGamepad, GAMEPAD_BUTTONS, GAMEPAD_DIRECTIONS, GAMEPAD_MS_MAX,
+                                GAMEPAD_TAP, GAMEPAD_PRESS, GAMEPAD_RELEASE, GAMEPAD_TRIGGER,
+                                GAMEPAD_TRIGGER_RELEASE, GAMEPAD_STICK, GAMEPAD_STICK_RELEASE)
 from widgets.keycode_button import (KeycodeButton, DropGap, reorder_list, keycode_button_px,
                                     drag_accepted_from, palette_keycode_from)
 
@@ -968,6 +971,190 @@ MOUSE_UI_BY_CLICK = {
 }
 
 
+class ActionGamepadUI(BasicActionUI):
+    """Shared UI for the gamepad macro line types. Each subclass fixes which
+    controls are shown and the action kind / target it writes."""
+
+    actcls = ActionGamepad
+    # subclass configuration
+    kinds = [GAMEPAD_TAP]          # selectable kinds (mode combo when > 1)
+    kind_names = ["Tap"]
+    fixed_target = None            # stick / trigger fixed by the line type
+    show_button = False
+    show_trigger = False
+    show_direction = False
+    show_percent = False           # percent only for kinds that use it
+    ms_label = "Wait (ms)"
+
+    def __init__(self, container, act=None):
+        fresh = act is None
+        super().__init__(container, act)
+        if fresh or self.act.kind not in self.kinds:
+            self.act.kind = self.kinds[0]
+        if self.fixed_target is not None:
+            self.act.target = self.fixed_target
+        self._initializing = True
+        self._widgets = []
+
+        self.layout = QHBoxLayout()
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(4)
+        self.layout_container = QWidget()
+        self.layout_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+
+        self.button_combo = None
+        if self.show_button:
+            self.button_combo = ArrowComboBox()
+            for num, name in GAMEPAD_BUTTONS:
+                self.button_combo.addItem(name, num)
+            idx = self.button_combo.findData(self.act.target)
+            self.button_combo.setCurrentIndex(max(0, idx))
+            if idx < 0:
+                self.act.target = GAMEPAD_BUTTONS[0][0]
+            self.button_combo.currentIndexChanged.connect(self.on_change)
+            self._add(self.button_combo)
+
+        self.trigger_combo = None
+        if self.show_trigger:
+            self.trigger_combo = ArrowComboBox()
+            self.trigger_combo.addItems(["Left Trigger (LT)", "Right Trigger (RT)"])
+            self.trigger_combo.setCurrentIndex(1 if self.act.target == 1 else 0)
+            self.trigger_combo.currentIndexChanged.connect(self.on_change)
+            self._add(self.trigger_combo)
+
+        self.mode_combo = None
+        if len(self.kinds) > 1:
+            self.mode_combo = ArrowComboBox()
+            self.mode_combo.addItems(self.kind_names)
+            self.mode_combo.setCurrentIndex(self.kinds.index(self.act.kind))
+            self.mode_combo.currentIndexChanged.connect(self.on_change)
+            self._add(self.mode_combo)
+
+        self.dir_combo = None
+        if self.show_direction:
+            self._add(QLabel("Direction"))
+            self.dir_combo = ArrowComboBox()
+            self.dir_combo.addItems(GAMEPAD_DIRECTIONS)
+            self.dir_combo.setCurrentIndex(self.act.value if 0 <= self.act.value < 8 else 0)
+            self.dir_combo.currentIndexChanged.connect(self.on_change)
+            self._add(self.dir_combo)
+
+        self.pct_label = None
+        self.pct_spin = None
+        if self.show_percent:
+            self.pct_label = QLabel("Amount %")
+            self._add(self.pct_label)
+            self.pct_spin = ArrowSpinBox()
+            self.pct_spin.setRange(0, 100)
+            self.pct_spin.setValue(self.act.percent if fresh is False else 100)
+            if fresh:
+                self.act.percent = 100
+            self.pct_spin.valueChanged.connect(self.on_change)
+            self._add(self.pct_spin)
+
+        self.ms_label_w = QLabel(self.ms_label)
+        self._add(self.ms_label_w)
+        self.ms_spin = ArrowSpinBox()
+        self.ms_spin.setRange(0, GAMEPAD_MS_MAX)
+        self.ms_spin.setValue(self.act.ms)
+        self.ms_spin.setToolTip("How long to wait before the next action")
+        self.ms_spin.valueChanged.connect(self.on_change)
+        self._add(self.ms_spin)
+        self.layout.addStretch()
+
+        self.layout_container.setLayout(self.layout)
+        self._update_visibility()
+        self._initializing = False
+
+    def _add(self, w):
+        self._widgets.append(w)
+        self.layout.addWidget(w)
+
+    def _update_visibility(self):
+        # Percent only means something while a trigger / stick is being set.
+        if self.pct_spin is not None:
+            on = self.act.kind in (GAMEPAD_TRIGGER, GAMEPAD_STICK)
+            self.pct_spin.setVisible(on)
+            self.pct_label.setVisible(on)
+        if self.act.kind == GAMEPAD_TAP:
+            self.ms_label_w.setText("Hold (ms)")
+        else:
+            self.ms_label_w.setText(self.ms_label)
+
+    def insert(self, row):
+        self.container.addWidget(self.layout_container, row, 3)
+
+    def remove(self):
+        self.container.removeWidget(self.layout_container)
+
+    def delete(self):
+        for w in self._widgets:
+            w.deleteLater()
+        self.layout_container.deleteLater()
+
+    def on_change(self):
+        if self._initializing:
+            return
+        if self.mode_combo is not None:
+            self.act.kind = self.kinds[self.mode_combo.currentIndex()]
+        if self.button_combo is not None:
+            self.act.target = self.button_combo.currentData()
+        if self.trigger_combo is not None:
+            self.act.target = self.trigger_combo.currentIndex()
+        if self.fixed_target is not None:
+            self.act.target = self.fixed_target
+        if self.dir_combo is not None:
+            self.act.value = self.dir_combo.currentIndex()
+        if self.pct_spin is not None:
+            self.act.percent = self.pct_spin.value()
+        self.act.ms = self.ms_spin.value()
+        self._update_visibility()
+        self.changed.emit()
+
+
+class ActionGamepadButtonUI(ActionGamepadUI):
+    kinds = [GAMEPAD_TAP, GAMEPAD_PRESS, GAMEPAD_RELEASE]
+    kind_names = ["Tap", "Press", "Release"]
+    show_button = True
+
+
+class ActionGamepadTriggerUI(ActionGamepadUI):
+    kinds = [GAMEPAD_TRIGGER, GAMEPAD_TRIGGER_RELEASE]
+    kind_names = ["Press", "Release"]
+    show_trigger = True
+    show_percent = True
+
+
+class ActionGamepadLeftStickUI(ActionGamepadUI):
+    kinds = [GAMEPAD_STICK]
+    fixed_target = 0
+    show_direction = True
+    show_percent = True
+
+
+class ActionGamepadRightStickUI(ActionGamepadLeftStickUI):
+    fixed_target = 1
+
+
+class ActionGamepadLeftStickReleaseUI(ActionGamepadUI):
+    kinds = [GAMEPAD_STICK_RELEASE]
+    fixed_target = 0
+
+
+class ActionGamepadRightStickReleaseUI(ActionGamepadLeftStickReleaseUI):
+    fixed_target = 1
+
+
+def _gamepad_ui_for(act):
+    if act.kind in (GAMEPAD_TAP, GAMEPAD_PRESS, GAMEPAD_RELEASE):
+        return ActionGamepadButtonUI
+    if act.kind in (GAMEPAD_TRIGGER, GAMEPAD_TRIGGER_RELEASE):
+        return ActionGamepadTriggerUI
+    if act.kind == GAMEPAD_STICK:
+        return ActionGamepadRightStickUI if act.target == 1 else ActionGamepadLeftStickUI
+    return ActionGamepadRightStickReleaseUI if act.target == 1 else ActionGamepadLeftStickReleaseUI
+
+
 tag_to_action = {
     "down": ActionDown,
     "up": ActionUp,
@@ -978,6 +1165,7 @@ tag_to_action = {
     "bpm_delay_repeat": ActionBPMDelay,  # Convert old repeat type to plain BPM delay
     "mixing_control": ActionMixingControl,
     "mouse_move": ActionMouseMove,
+    "gamepad": ActionGamepad,
 }
 
 ui_action = {
@@ -989,6 +1177,7 @@ ui_action = {
     ActionBPMDelay: ActionBPMDelayUI,
     ActionMixingControl: ActionMixingControlUI,
     ActionMouseMove: ActionMouseMoveUI,
+    ActionGamepad: ActionGamepadButtonUI,
 }
 
 
@@ -998,4 +1187,6 @@ def ui_for_action(act):
     the action's click field rather than its type."""
     if isinstance(act, ActionMouseMove):
         return MOUSE_UI_BY_CLICK.get(act.click, ActionMouseMoveUI)
+    if isinstance(act, ActionGamepad):
+        return _gamepad_ui_for(act)
     return ui_action[type(act)]

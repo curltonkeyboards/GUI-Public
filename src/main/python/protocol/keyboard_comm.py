@@ -75,6 +75,7 @@ HID_CMD_CHANNEL_ARTIC = 0xFF  # Get/set channel->articulation map + enable (sub 
 HID_CMD_KEYBOARD_CLONE = 0x94  # Whole-EEPROM clone (sub 0=INFO, 1=READ, 2=WRITE, 3=FINALIZE)
 HID_CMD_NAV_LAYER = 0x97  # Get/set the on-device menu navigation layer (sub 0=GET, 1=SET)
 HID_CMD_DAW = 0x99  # Get/set the default DAW (sub 0=GET, 1=SET)
+HID_CMD_GAMING_BIND = 0x9A  # Joystick functions attached to keys (sub 0=GET, 1=SET, 2=CLEAR)
 HID_CMD_SET_KEYBOARD_PARAM_SINGLE = 0xE8  # Set individual parameter (changed from 0xBD collision)
 
 # Parameter IDs for HID_CMD_SET_KEYBOARD_PARAM_SINGLE
@@ -273,6 +274,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         self.midi_config = None
         self.layer_actuations = None
         self.gaming_settings = None
+        self.gaming_binds = {}
+        self.gaming_binds_supported = False
 
     def reload(self, sideload_json=None):
         """ Load information about the keyboard: number of layers, physical key layout """
@@ -336,6 +339,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         t0 = time.time()
         self.reload_keymap()
         _startup_log(f"  Keymap loaded ({time.time()-t0:.2f}s)")
+
+        _startup_log("  Loading joystick keys...")
+        t0 = time.time()
+        self.reload_gaming_binds()
+        _startup_log(f"  Joystick keys done ({time.time()-t0:.2f}s)")
 
         _startup_log("  Loading macros (late)...")
         t0 = time.time()
@@ -1773,6 +1781,77 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
             return data[5], bool(data[6]), data[7]
         except Exception:
             return None
+
+    # ------------------------------------------------------------------
+    # Joystick bindings: one joystick function per key position per layer.
+    # Function ids 1-24 (0 = none), see keycodes.keycodes.JOYSTICK_FUNCTION_IDS.
+    # ------------------------------------------------------------------
+
+    def reload_gaming_binds(self):
+        """Read every joystick binding into self.gaming_binds
+        {(layer, row, col): function_id}. Returns False (and leaves the dict
+        empty) when the keyboard does not support joystick bindings."""
+        self.gaming_binds = {}
+        self.gaming_binds_supported = False
+        rows, cols = self.rows, self.cols
+        total = rows * cols
+        try:
+            for layer in range(self.layers):
+                first = 0
+                while first < total:
+                    packet = self._create_hid_packet(HID_CMD_GAMING_BIND, 0, [layer, first])
+                    data = self.usb_send(self.dev, packet, retries=3)
+                    if (not data or len(data) < 32 or data[3] != HID_CMD_GAMING_BIND
+                            or data[4] != 0x01 or data[5] != layer or data[6] != first
+                            or data[7] == 0):
+                        self.gaming_binds = {}
+                        return False
+                    count = data[7]
+                    for i in range(count):
+                        fn = data[8 + i]
+                        if fn:
+                            idx = first + i
+                            self.gaming_binds[(layer, idx // cols, idx % cols)] = fn
+                    first += count
+        except Exception:
+            self.gaming_binds = {}
+            return False
+        self.gaming_binds_supported = True
+        return True
+
+    def get_gaming_bind(self, layer, row, col):
+        return getattr(self, "gaming_binds", {}).get((layer, row, col), 0)
+
+    def set_gaming_bind(self, layer, row, col, function_id):
+        """Attach joystick function `function_id` (0 = remove) to a key position
+        on a layer. Saved on the keyboard immediately."""
+        try:
+            packet = self._create_hid_packet(HID_CMD_GAMING_BIND, 1,
+                                             [layer, row, col, int(function_id) & 0xFF])
+            data = self.usb_send(self.dev, packet, retries=3)
+            if (not data or len(data) < 6 or data[3] != HID_CMD_GAMING_BIND
+                    or data[4] != 0x01 or data[5] != int(function_id)):
+                return False
+        except Exception:
+            return False
+        if not hasattr(self, "gaming_binds"):
+            self.gaming_binds = {}
+        if function_id:
+            self.gaming_binds[(layer, row, col)] = int(function_id)
+        else:
+            self.gaming_binds.pop((layer, row, col), None)
+        return True
+
+    def clear_gaming_binds(self):
+        try:
+            packet = self._create_hid_packet(HID_CMD_GAMING_BIND, 2, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if not data or len(data) < 5 or data[3] != HID_CMD_GAMING_BIND or data[4] != 0x01:
+                return False
+        except Exception:
+            return False
+        self.gaming_binds = {}
+        return True
 
     def set_daw(self, index, mac=None):
         """Set the default DAW (persists immediately). mac=None keeps the
