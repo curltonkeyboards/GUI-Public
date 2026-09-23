@@ -56,7 +56,71 @@ def web_get_resource(name):
     return "/usr/local/" + name
 
 
+_open_dialogs = []  # keeps non-blocking dialogs alive until closed
+
+
+def _show_non_blocking(dlg):
+    _open_dialogs.append(dlg)
+    dlg.finished.connect(lambda _r, d=dlg: _open_dialogs.remove(d) if d in _open_dialogs else None)
+    dlg.show()
+
+
+def _make_dialogs_non_blocking():
+    """The browser build cannot run a nested event loop (exec_ would need
+    emscripten_sleep and aborts the whole page). Show dialogs without waiting
+    and hand the caller a safe answer: OK for notices, No for questions,
+    Rejected for other dialogs, no action for menus."""
+    from PyQt5.QtWidgets import QDialog, QMessageBox, QMenu
+
+    def dialog_exec(self, *args):
+        _show_non_blocking(self)
+        return QDialog.Rejected
+
+    def msgbox_exec(self, *args):
+        _show_non_blocking(self)
+        buttons = self.standardButtons()
+        if buttons & QMessageBox.No:
+            return QMessageBox.No
+        if buttons & QMessageBox.Cancel:
+            return QMessageBox.Cancel
+        return QMessageBox.Ok
+
+    def notice(icon):
+        def show(parent, title, text, *args, **kwargs):
+            box = QMessageBox(icon, title, text, QMessageBox.Ok, parent)
+            _show_non_blocking(box)
+            return QMessageBox.Ok
+        return staticmethod(show)
+
+    def question(parent, title, text, *args, **kwargs):
+        box = QMessageBox(QMessageBox.Question, title, text, QMessageBox.Ok, parent)
+        _show_non_blocking(box)
+        return QMessageBox.No
+
+    def about(parent, title, text):
+        box = QMessageBox(QMessageBox.Information, title, text, QMessageBox.Ok, parent)
+        _show_non_blocking(box)
+
+    def menu_exec(self, *args):
+        if args:
+            self.popup(args[0])
+        return None
+
+    QDialog.exec_ = dialog_exec
+    QDialog.exec = dialog_exec
+    QMessageBox.exec_ = msgbox_exec
+    QMessageBox.exec = msgbox_exec
+    QMessageBox.warning = notice(QMessageBox.Warning)
+    QMessageBox.information = notice(QMessageBox.Information)
+    QMessageBox.critical = notice(QMessageBox.Critical)
+    QMessageBox.question = staticmethod(question)
+    QMessageBox.about = staticmethod(about)
+    QMenu.exec_ = menu_exec
+    QMenu.exec = menu_exec
+
+
 def main(app):
+    _make_dialogs_non_blocking()
     font = app.font()
     font.setPointSize(10)
     app.setFont(font)
