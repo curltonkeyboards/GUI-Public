@@ -914,6 +914,9 @@ class KeyboardWidget2(QWidget):
 
         self.enabled = True
         self.scale = 1
+        # Size factor for the background photo (the keys follow self.scale;
+        # the photo is a fixed 1035x345 unless a subclass shrinks it).
+        self.bg_image_scale = 1.0
         self.padding = KEYBOARD_WIDGET_PADDING
 
         # Set fixed font size for keyboard widget to maintain original key sizes
@@ -1144,6 +1147,9 @@ class KeyboardWidget2(QWidget):
             # Define the area for the image with specific coordinates and dimensions
             image_x, image_y = 0, 0  # Adjust as needed for positioning
             image_width, image_height = 1035, 345  # Set the dimensions as desired
+            if self.bg_image_scale != 1.0:
+                image_width = round(image_width * self.bg_image_scale)
+                image_height = round(image_height * self.bg_image_scale)
             image_rect = QRect(image_x, image_y, image_width, image_height)  # Use QRect instead of QRectF
 
             # Create a rounded path for clipping

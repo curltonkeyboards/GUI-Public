@@ -245,8 +245,14 @@ class VelocityKeyboardWidget(KeyboardWidgetSimple):
     - A vertical volume bar on the right edge visualizing velocity level
     """
 
+    # The monitor is drawn at 80% of the keymap editor's size (keys, background
+    # image and the velocity / press-time text on them).
+    MONITOR_SCALE = 0.8
+
     def __init__(self, layout_editor):
         super().__init__(layout_editor)
+        self.set_scale(self.MONITOR_SCALE)
+        self.bg_image_scale = self.MONITOR_SCALE
         self.velocity_values = {}   # {(row, col): velocity}
         self.press_time_values = {} # {(row, col): travel_time_ms}
         self.midi_keys = set()      # Set of (row, col) that have MIDI notes
@@ -344,7 +350,7 @@ class VelocityKeyboardWidget(KeyboardWidgetSimple):
                 text_area_w = rect_w - bar_width - bar_margin - 2
                 vel_font = QFont()
                 vel_font.setBold(True)
-                vel_font.setPointSize(8)
+                vel_font.setPointSizeF(8 * self.MONITOR_SCALE)
                 painter.setFont(vel_font)
 
                 text_color = QColor(0, 0, 0) if is_light else QColor(255, 255, 255)
@@ -356,7 +362,7 @@ class VelocityKeyboardWidget(KeyboardWidgetSimple):
 
                 # --- Press time text at bottom of key ---
                 time_font = QFont()
-                time_font.setPointSize(6)
+                time_font.setPointSizeF(6 * self.MONITOR_SCALE)
                 painter.setFont(time_font)
 
                 time_color = QColor(80, 80, 80) if is_light else QColor(180, 180, 180)
@@ -371,7 +377,7 @@ class VelocityKeyboardWidget(KeyboardWidgetSimple):
                 painter.setPen(QPen(QColor(120, 120, 120, 100)))
                 painter.setBrush(Qt.NoBrush)
                 dim_font = QFont()
-                dim_font.setPointSize(7)
+                dim_font.setPointSizeF(7 * self.MONITOR_SCALE)
                 painter.setFont(dim_font)
                 painter.drawText(
                     rect_x, rect_y, rect_w, rect_h,
@@ -1236,24 +1242,34 @@ class VelocityTab(BasicEditor):
         scroll.setWidget(main_widget)
         self.addWidget(scroll, stretch=1)  # Allow scroll area to stretch
 
-        # Header: what this page is for
+        # Title
+        monitor_title = QLabel(tr("VelocityTab", "Velocity Monitor"))
+        monitor_title.setStyleSheet("font-weight: bold; font-size: 14pt;")
+        monitor_title.setAlignment(QtCore.Qt.AlignCenter)
+        main_layout.addWidget(monitor_title)
+
+        # Articulation header (placed below the velocity monitor, above the
+        # presets): title with its explanation tucked right under it
+        header_layout = QVBoxLayout()
+        header_layout.setSpacing(2)
         title_label = QLabel(tr("VelocityTab", "Articulation"))
         title_label.setStyleSheet("font-weight: bold; font-size: 14pt;")
         title_label.setAlignment(QtCore.Qt.AlignCenter)
-        main_layout.addWidget(title_label)
+        header_layout.addWidget(title_label)
         desc_label = QLabel(tr("VelocityTab",
             "An articulation decides how your playing turns into MIDI: how hard or fast "
             "you press sets each note's loudness (velocity), and it can also add "
             "aftertouch, legato and retrigger behaviour. Pick a preset, adjust its "
-            "settings, and watch the live velocity of each key below."))
+            "settings, and watch the live velocity of each key above."))
         desc_label.setWordWrap(True)
-        desc_label.setFixedWidth(760)
-        desc_label.setMinimumHeight(desc_label.heightForWidth(760))
         desc_label.setStyleSheet("color: gray; font-size: 9pt;")
-        desc_label.setAlignment(QtCore.Qt.AlignCenter)
-        main_layout.addWidget(desc_label, alignment=Qt.AlignHCenter)
+        desc_label.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop)
+        desc_label.setFixedWidth(760)
+        desc_label.ensurePolished()  # measure the height in the 9pt font
+        desc_label.setMinimumHeight(desc_label.heightForWidth(760))
+        header_layout.addWidget(desc_label, alignment=Qt.AlignHCenter)
 
-        # Live velocity view (keyboard); placed below the presets
+        # Live velocity view (keyboard), at the top of the page
         monitor_layout = QVBoxLayout()
         monitor_layout.setSpacing(10)
 
@@ -1268,12 +1284,12 @@ class VelocityTab(BasicEditor):
 
         # Keyboard widget
         self.keyboard_widget = VelocityKeyboardWidget(self.layout_editor)
-        self.keyboard_widget.setMinimumWidth(800)
-        # The background velocity image is painted at a fixed 345px height
-        # (keyboard_widget.py paintEvent). Reserve at least that much so the
-        # image doesn't overflow past the widget box and get covered by the
-        # separator line below it.
-        self.keyboard_widget.setMinimumHeight(350)
+        s_ = VelocityKeyboardWidget.MONITOR_SCALE
+        self.keyboard_widget.setMinimumWidth(round(800 * s_))
+        # The background image is painted at 345px x the widget's image scale;
+        # reserve at least that much so it doesn't overflow past the widget box
+        # and get covered by the separator line below it.
+        self.keyboard_widget.setMinimumHeight(round(350 * s_))
         monitor_layout.addWidget(self.keyboard_widget, alignment=Qt.AlignCenter)
 
 
@@ -1521,14 +1537,15 @@ class VelocityTab(BasicEditor):
         bottom_layout.addWidget(preset_group)
         bottom_layout.addStretch()  # Right stretch to center the group
 
-        main_layout.addLayout(bottom_layout)
+        main_layout.addLayout(monitor_layout)
 
         # Separator
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
         line.setFrameShadow(QFrame.Sunken)
         main_layout.addWidget(line)
-        main_layout.addLayout(monitor_layout)
+        main_layout.addLayout(header_layout)
+        main_layout.addLayout(bottom_layout)
         main_layout.addStretch()
 
     def valid(self):

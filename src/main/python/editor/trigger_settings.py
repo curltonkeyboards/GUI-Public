@@ -1499,7 +1499,7 @@ class TriggerSettingsTab(BasicEditor):
 
         # Left side: Description with checkboxes
         nullbind_desc_container = QWidget()
-        nullbind_desc_container.setFixedWidth(210)
+        nullbind_desc_container.setFixedWidth(420)  # twice the other tabs: more to explain
         nullbind_desc_layout = QVBoxLayout()
         nullbind_desc_layout.setContentsMargins(0, 0, 0, 0)
         nullbind_desc_title = QLabel(tr("TriggerSettings", "SOCD/Null Bind"))
@@ -1563,6 +1563,10 @@ class TriggerSettingsTab(BasicEditor):
         nullbind_scroll.setFrameShape(QFrame.NoFrame)
         nullbind_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         nullbind_scroll.setWidget(self.nullbind_container)
+        # The description column is wide on this tab, so keep the controls at
+        # their natural width and let the space come from elsewhere.
+        nullbind_scroll.setMinimumWidth(max(340, self.nullbind_container.sizeHint().width()
+                                            + nullbind_scroll.verticalScrollBar().sizeHint().width()))
         nullbind_layout.addWidget(nullbind_scroll, 1)
 
         nullbind_tab.setLayout(nullbind_layout)
