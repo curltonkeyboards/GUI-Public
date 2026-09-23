@@ -1388,15 +1388,27 @@ class KeyboardWidget2(QWidget):
                 return key
         return None
 
+    def joystick_press_target(self, ev):
+        """Key whose joystick menu this press opens: a left click on the
+        joystick overlay, or a right click anywhere on a key that has one."""
+        if ev.button() == Qt.LeftButton:
+            return self.joystick_hit_test(ev.pos())
+        if ev.button() == Qt.RightButton:
+            key = self.joystick_hit_test(ev.pos())
+            if key is None:
+                key, _ = self.hit_test(ev.pos())
+            if key is not None and getattr(key, "joystick_text", ""):
+                return key
+        return None
+
     def mousePressEvent(self, ev):
         if not self.enabled:
             return
 
-        if ev.button() == Qt.LeftButton:
-            js_key = self.joystick_hit_test(ev.pos())
-            if js_key is not None:
-                self.joystick_clicked.emit(js_key)
-                return
+        js_key = self.joystick_press_target(ev)
+        if js_key is not None:
+            self.joystick_clicked.emit(js_key)
+            return
 
         clicked_key, self.active_mask = self.hit_test(ev.pos())
         if clicked_key is not None:
@@ -1585,11 +1597,10 @@ class KeyboardWidgetSimple(KeyboardWidget2):
         if not self.enabled:
             return
 
-        if ev.button() == Qt.LeftButton:
-            js_key = self.joystick_hit_test(ev.pos())
-            if js_key is not None:
-                self.joystick_clicked.emit(js_key)
-                return
+        js_key = self.joystick_press_target(ev)
+        if js_key is not None:
+            self.joystick_clicked.emit(js_key)
+            return
 
         self.active_key, self.active_mask = self.hit_test(ev.pos())
         if self.active_key is not None:

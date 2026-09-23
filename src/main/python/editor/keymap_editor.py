@@ -2393,6 +2393,11 @@ class EncoderAssignWidget(QWidget):
         if 0 <= index < len(self.buttons):
             self.buttons[index].setText(Keycode.label(keycode))
 
+    def _on_button_context_menu(self, index):
+        overlay = self.joystick_overlays.get(index)
+        if overlay is not None and not overlay.isHidden():
+            self.joystick_clicked.emit(index)
+
     def set_joystick(self, index, text):
         """Show the joystick function attached to button `index` (the click /
         footswitch matrix keys) at 50% opacity in its bottom-right quarter;
@@ -2413,6 +2418,13 @@ class EncoderAssignWidget(QWidget):
                 "QPushButton { background: rgba(150, 60, 255, 128); color: rgba(255, 255, 255, 170);"
                 " border: none; border-radius: 4px; font-weight: bold; font-size: 8pt; padding: 0px; }")
             overlay.clicked.connect(lambda _=False, i=index: self.joystick_clicked.emit(i))
+            # Right click on the overlay or its button opens the same menu
+            overlay.setContextMenuPolicy(Qt.CustomContextMenu)
+            overlay.customContextMenuRequested.connect(
+                lambda _pos, i=index: self.joystick_clicked.emit(i))
+            btn.setContextMenuPolicy(Qt.CustomContextMenu)
+            btn.customContextMenuRequested.connect(
+                lambda _pos, i=index: self._on_button_context_menu(i))
             self.joystick_overlays[index] = overlay
         w, h = btn.width(), btn.height()
         overlay.setGeometry(w // 2, h // 2, w - w // 2, h - h // 2)
