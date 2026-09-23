@@ -266,7 +266,9 @@ class MainWindow(QMainWindow):
         self.on_click_refresh()
         _startup_log(f"Initial device refresh complete ({time.time()-t0:.2f}s)")
 
-        if sys.platform == "emscripten":
+        # webmain's demo mode loads a virtual keyboard after this and says
+        # "ready" itself once that has finished.
+        if sys.platform == "emscripten" and not getattr(appctx, "defer_ready", False):
             import vialglue
             QTimer.singleShot(100, vialglue.notify_ready)
 

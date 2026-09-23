@@ -129,6 +129,7 @@ def main(app, demo=False):
     with open(app.get_resource("build_settings.json"), "r") as inf:
         app.build_settings = json.loads(inf.read())
     qt_exception_hook = UncaughtHook()
+    app.defer_ready = demo
     window = MainWindow(app)
     window.show()
     app.processEvents()
@@ -142,3 +143,7 @@ def main(app, demo=False):
         if isinstance(definition, str):
             definition = definition.encode("utf-8")
         window.autorefresh.load_dummy(definition)
+        window.update()
+        app.processEvents()
+        import vialglue
+        vialglue.notify_ready()
