@@ -1242,14 +1242,8 @@ class VelocityTab(BasicEditor):
         scroll.setWidget(main_widget)
         self.addWidget(scroll, stretch=1)  # Allow scroll area to stretch
 
-        # Title
-        monitor_title = QLabel(tr("VelocityTab", "Velocity Monitor"))
-        monitor_title.setStyleSheet("font-weight: bold; font-size: 14pt;")
-        monitor_title.setAlignment(QtCore.Qt.AlignCenter)
-        main_layout.addWidget(monitor_title)
-
-        # Articulation header (placed below the velocity monitor, above the
-        # presets): title with its explanation tucked right under it
+        # Page header: Articulation title with its explanation tucked right
+        # under it, above the velocity monitor
         header_layout = QVBoxLayout()
         header_layout.setSpacing(2)
         title_label = QLabel(tr("VelocityTab", "Articulation"))
@@ -1260,7 +1254,7 @@ class VelocityTab(BasicEditor):
             "An articulation decides how your playing turns into MIDI: how hard or fast "
             "you press sets each note's loudness (velocity), and it can also add "
             "aftertouch, legato and retrigger behaviour. Pick a preset, adjust its "
-            "settings, and watch the live velocity of each key above."))
+            "settings, and watch the live velocity of each key below."))
         desc_label.setWordWrap(True)
         desc_label.setStyleSheet("color: gray; font-size: 9pt;")
         desc_label.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop)
@@ -1268,8 +1262,9 @@ class VelocityTab(BasicEditor):
         desc_label.ensurePolished()  # measure the height in the 9pt font
         desc_label.setMinimumHeight(desc_label.heightForWidth(760))
         header_layout.addWidget(desc_label, alignment=Qt.AlignHCenter)
+        main_layout.addLayout(header_layout)
 
-        # Live velocity view (keyboard), at the top of the page
+        # Live velocity view (keyboard), under the header
         monitor_layout = QVBoxLayout()
         monitor_layout.setSpacing(10)
 
@@ -1544,7 +1539,6 @@ class VelocityTab(BasicEditor):
         line.setFrameShape(QFrame.HLine)
         line.setFrameShadow(QFrame.Sunken)
         main_layout.addWidget(line)
-        main_layout.addLayout(header_layout)
         main_layout.addLayout(bottom_layout)
         main_layout.addStretch()
 
