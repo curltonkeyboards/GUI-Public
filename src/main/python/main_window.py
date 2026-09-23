@@ -45,7 +45,7 @@ from editor.tap_dance import TapDance
 from unlocker import Unlocker
 from util import tr, EXAMPLE_KEYBOARDS, KeycodeDisplay, EXAMPLE_KEYBOARD_PREFIX, \
     MIDISWITCH_KEYBOARD_UID, LATEST_FIRMWARE_VERSION
-from vial_device import VialKeyboard
+from vial_device import VialKeyboard, VialDummyKeyboard
 from editor.matrix_test import MatrixTest
 from editor.matrix_test import MIDIswitchSettingsConfigurator
 from editor.matrix_test import GamingConfigurator
@@ -714,7 +714,8 @@ class MainWindow(QMainWindow):
                                 "Could not open the selected keyboard. It may be in use by "
                                 "another application or was disconnected.\n\n{}").format(e))
 
-        if isinstance(self.autorefresh.current_device, VialKeyboard):
+        if isinstance(self.autorefresh.current_device, VialKeyboard) \
+                and not isinstance(self.autorefresh.current_device, VialDummyKeyboard):
             keyboard_id = self.autorefresh.current_device.keyboard.keyboard_id
             if (keyboard_id in EXAMPLE_KEYBOARDS) or ((keyboard_id & 0xFFFFFFFFFFFFFF) == EXAMPLE_KEYBOARD_PREFIX):
                 QMessageBox.warning(self, "", "An example keyboard UID was detected.\n"

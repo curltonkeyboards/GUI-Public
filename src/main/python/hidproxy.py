@@ -31,6 +31,8 @@ if sys.platform == "emscripten":
             from util import hid_send
 
             desc = json.loads(vialglue.get_device_desc())
+            if desc.get("demo"):
+                return []  # "just looking around": no real keyboard
             # WebHID does not expose the vendor/product IDs discovery keys on, so
             # probe the device with a keyboard-ID request and, if it answers
             # with a valid ID, stamp the MIDIswitch VID/PID into the descriptor.

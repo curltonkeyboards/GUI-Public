@@ -1,15 +1,31 @@
 from protocol.keyboard_comm import Keyboard
 
 
+# Layer 1 of the virtual MIDIswitch (the demo / "just looking around" mode):
+# the standard MIDIswitch keycap layout, rows 0-4 of the 5x14 key grid.
+DEMO_LAYER0 = [
+    "KC_ESCAPE KC_1 KC_2 KC_3 KC_4 KC_5 KC_6 KC_7 KC_8 KC_9 KC_0 KC_MINUS KC_EQUAL KC_BSPACE",
+    "KC_TAB KC_Q KC_W KC_E KC_R KC_T KC_Y KC_U KC_I KC_O KC_P KC_LBRACKET KC_RBRACKET KC_DELETE",
+    "KC_CAPSLOCK KC_A KC_S KC_D KC_F KC_G KC_H KC_J KC_K KC_L KC_SCOLON KC_QUOTE KC_NO KC_ENTER",
+    "KC_LSHIFT KC_NO KC_Z KC_X KC_C KC_V KC_B KC_N KC_M KC_COMMA KC_DOT KC_SLASH KC_UP KC_BSLASH",
+    "KC_LCTRL KC_LGUI KC_LALT FN_MO13 KC_SPACE KC_SPACE KC_SPACE KC_SPACE KC_SPACE KC_SPACE "
+    "KC_RCTRL KC_LEFT KC_DOWN KC_RIGHT",
+]
+
+
 class DummyKeyboard(Keyboard):
 
     def reload_layers(self):
         self.layers = 4
 
     def reload_keymap(self):
+        demo = [row.split() for row in DEMO_LAYER0]
         for layer in range(self.layers):
             for row, col in self.rowcol.keys():
-                self.layout[(layer, row, col)] = "KC_NO"
+                code = "KC_NO"
+                if layer == 0 and row < len(demo) and col < len(demo[row]):
+                    code = demo[row][col]
+                self.layout[(layer, row, col)] = code
 
         for layer in range(self.layers):
             for idx in self.encoderpos:

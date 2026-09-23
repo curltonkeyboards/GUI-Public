@@ -121,7 +121,7 @@ class VialDummyKeyboard(VialKeyboard):
         self.keyboard.reload(override_json)
 
     def title(self):
-        return "[Dummy Keyboard]"
+        return "Virtual MIDIswitch (demo)"
 
     def raise_usb_send(self, *args, **kwargs):
         raise RuntimeError("usb_send - should not be called!")

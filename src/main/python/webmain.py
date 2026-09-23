@@ -119,7 +119,7 @@ def _make_dialogs_non_blocking():
     QMenu.exec = menu_exec
 
 
-def main(app):
+def main(app, demo=False):
     _make_dialogs_non_blocking()
     font = app.font()
     font.setPointSize(10)
@@ -132,3 +132,13 @@ def main(app):
     window = MainWindow(app)
     window.show()
     app.processEvents()
+    if demo:
+        # No keyboard: open a virtual MIDIswitch built from the bundled
+        # layout definition so the app can be explored.
+        from protocol import msw_definition
+        definition = msw_definition.get_definition(1)  # the MIDIswitch model
+        if not isinstance(definition, (str, bytes)):
+            definition = json.dumps(definition)
+        if isinstance(definition, str):
+            definition = definition.encode("utf-8")
+        window.autorefresh.load_dummy(definition)
