@@ -22,7 +22,7 @@ from editor.arpeggiator import DebugConsole
 from editor.keymap_presets import (KEYMAP_PRESETS, ENCODER_PRESETS,
                                    INDIVIDUAL_ENCODER_PRESETS,
                                    PRESET_CATEGORIES,
-                                   PRESET_TYPE_TUNING, PRESET_TYPE_SINGLE_ROW,
+                                   PRESET_TYPE_TUNING, PRESET_TYPE_QB_ROW, PRESET_TYPE_QB_COLUMN,
                                    PRESET_TYPE_KEYBOARD)
 from protocol.keyboard_comm import (
     PARAM_CHANNEL_NUMBER, PARAM_TRANSPOSE_NUMBER, PARAM_TRANSPOSE_NUMBER2, PARAM_TRANSPOSE_NUMBER3,
@@ -2688,8 +2688,10 @@ class KeymapEditor(BasicEditor):
             self._apply_tuning_preset(name, description, generator)
         elif preset_type == PRESET_TYPE_KEYBOARD:
             self._apply_tuning_preset(name, description, generator)
-        elif preset_type == PRESET_TYPE_SINGLE_ROW:
-            self._apply_single_row_preset(name, description, generator)
+        elif preset_type == PRESET_TYPE_QB_ROW:
+            self._apply_quickbuild_fill(name, description, generator, column=False)
+        elif preset_type == PRESET_TYPE_QB_COLUMN:
+            self._apply_quickbuild_fill(name, description, generator, column=True)
 
     def _apply_tuning_preset(self, name, description, generator):
         """Show dialog for tuning preset with row selection checkboxes."""
@@ -2770,38 +2772,62 @@ class KeymapEditor(BasicEditor):
 
         self.refresh_layer_display()
 
-    def _apply_single_row_preset(self, name, description, generator):
-        """Show dialog for single-row preset with row picker."""
+    def _apply_quickbuild_fill(self, name, description, generator, column):
+        """Fill one row (14 keys) or one column (5 keys) with QuickBuild keys,
+        counting up from a starting QuickBuild number the user picks."""
+        rows, cols = 5, 14
+        length = rows if column else cols
+        what = "column" if column else "row"
+
         dlg = QDialog(None)
-        dlg.setWindowTitle(tr("KeymapEditor", "Apply Single-Row Preset"))
-        dlg.setMinimumWidth(300)
+        dlg.setWindowTitle(tr("KeymapEditor", "Fill {} with QuickBuild keys").format(what))
+        dlg.setMinimumWidth(340)
         layout = QVBoxLayout()
         dlg.setLayout(layout)
 
-        # Preset info
         info = QLabel(tr("KeymapEditor",
                          '<b>{}</b><br><i>{}</i>'.format(name, description)))
         info.setWordWrap(True)
         layout.addWidget(info)
         layout.addSpacing(8)
 
-        # Row picker
-        row_layout = QHBoxLayout()
-        row_layout.addWidget(QLabel(tr("KeymapEditor", "Apply to row:")))
-        row_spin = QSpinBox()
-        row_spin.setMinimum(1)
-        row_spin.setMaximum(5)
-        row_spin.setValue(1)  # Default to Row 1 (top)
-        row_spin.setToolTip("Row 1 = top, Row 5 = bottom")
-        row_layout.addWidget(row_spin)
-        row_layout.addStretch()
-        layout.addLayout(row_layout)
+        form = QGridLayout()
+        form.addWidget(QLabel(tr("KeymapEditor", "Apply to {}:").format(what)), 0, 0)
+        pos_spin = QSpinBox()
+        pos_spin.setMinimum(1)
+        pos_spin.setMaximum(cols if column else rows)
+        pos_spin.setValue(1)
+        pos_spin.setToolTip("Column 1 = left, Column 14 = right" if column
+                            else "Row 1 = top, Row 5 = bottom")
+        form.addWidget(pos_spin, 0, 1)
+        form.addWidget(QLabel(tr("KeymapEditor", "Start at QuickBuild:")), 1, 0)
+        start_spin = QSpinBox()
+        start_spin.setMinimum(1)
+        start_spin.setMaximum(100)
+        start_spin.setValue(1)
+        form.addWidget(start_spin, 1, 1)
+        form.setColumnStretch(2, 1)
+        layout.addLayout(form)
+
+        span = QLabel()
+        span.setStyleSheet("font-size: 9pt;")
+        layout.addWidget(span)
+
+        def update_span():
+            start = start_spin.value()
+            end = min(100, start + length - 1)
+            filled = end - start + 1
+            text = "Keys: QuickBuild {} to {}".format(start, end)
+            if filled < length:
+                text += " (the last {} key(s) are left unchanged)".format(length - filled)
+            span.setText(text)
+        start_spin.valueChanged.connect(update_span)
+        update_span()
 
         layout.addSpacing(8)
-
         warn = QLabel(tr("KeymapEditor",
-                         "This will overwrite the selected row on Layer {}.".format(
-                             self.current_layer + 1)))
+                         "This will overwrite the selected {} on Layer {}.".format(
+                             what, self.current_layer + 1)))
         warn.setStyleSheet("color: #c00; font-size: 9pt;")
         layout.addWidget(warn)
 
@@ -2813,13 +2839,13 @@ class KeymapEditor(BasicEditor):
         if dlg.exec_() != QDialog.Accepted:
             return
 
-        # User row 1-5 -> matrix row 0-4
-        matrix_row = row_spin.value() - 1
-        row_keycodes = generator()
-
+        pos = pos_spin.value() - 1
+        keycodes = generator(start_spin.value(), length)
         layer = self.current_layer
-        for col in range(min(14, len(row_keycodes))):
-            self.keyboard.set_key(layer, matrix_row, col, row_keycodes[col])
+        for i, kc in enumerate(keycodes):
+            # Column fills top to bottom, row fills left to right.
+            row, col = (i, pos) if column else (pos, i)
+            self.keyboard.set_key(layer, row, col, kc)
 
         self.refresh_layer_display()
 

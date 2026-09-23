@@ -4803,19 +4803,22 @@ class MusicTab(QWidget):
                                            KEYCODES_MIDI_CHORD_5, KEYCODES_MIDI_SCALES,
                                            KEYCODES_MIDI_SMARTCHORDBUTTONS+KEYCODES_MIDI_INVERSION)
         self.quickbuild_tab = SimpleTab(parent, "Quickbuild", KEYCODES_QB_MASTER)
+        self.daw_tab = DAWTab(parent)
 
         # Connect signals
         self.midiswitch_tab.keycode_changed.connect(self.on_keycode_changed)
         self.loop_control_tab.keycode_changed.connect(self.on_keycode_changed)
         self.smartchord_tab.keycode_changed.connect(self.on_keycode_changed)
         self.quickbuild_tab.keycode_changed.connect(self.on_keycode_changed)
+        self.daw_tab.keycode_changed.connect(self.on_keycode_changed)
 
         # Define sections (tab_widget, display_name)
         self.sections = [
             (self.midiswitch_tab, "MIDIswitch"),
             (self.loop_control_tab, "Loop Control"),
             (self.smartchord_tab, "SmartChord"),
-            (self.quickbuild_tab, "Quick\nBuild")
+            (self.quickbuild_tab, "Quick\nBuild"),
+            (self.daw_tab, "DAW"),
         ]
 
         # Create horizontal layout: side tabs on left, content on right
@@ -4943,9 +4946,12 @@ class MusicTab(QWidget):
         for tab_widget, _ in self.sections:
             tab_widget.relabel_buttons()
 
+    def set_keyboard(self, keyboard):
+        self.daw_tab.set_keyboard(keyboard)
+
 
 class MIDITab(midiadvancedTab):
-    """The "Advanced" tab: all MIDI advanced sections plus the DAW, DrumLIVE,
+    """The "Advanced" tab: all MIDI advanced sections plus the DrumLIVE,
     Arpeggiator, Step Sequencer and Delay sections as side tabs."""
 
     _STD_SECTIONS = ["Channel", "CC Options", "Transposition", "KeySplit",
@@ -4954,13 +4960,11 @@ class MIDITab(midiadvancedTab):
     def __init__(self, parent, label="Advanced", include_sections=None, with_external=True):
         external = []
         if with_external:
-            self.daw_tab = DAWTab(parent)
             self.drumlive_tab = DrumLIVETab(parent, "DrumLIVE", KEYCODES_DRUMLIVE)
             self.arpeggiator_tab = ArpeggiatorTab(parent, "Arpeggiator", KEYCODES_ARPEGGIATOR, KEYCODES_ARPEGGIATOR_PRESETS)
             self.step_sequencer_tab = StepSequencerTab(parent, "Step Sequencer", KEYCODES_STEP_SEQUENCER, KEYCODES_STEP_SEQUENCER_PRESETS, KEYCODES_DRUM_SLOTS)
             self.delay_music_tab = DelayMusicTab(parent, "Delay", KEYCODES_DELAY_FACTORY, KEYCODES_DELAY_USER, KEYCODES_DELAY_CLEAR)
             external = [
-                ("DAW", self.daw_tab),
                 ("DrumLIVE", self.drumlive_tab),
                 ("Arpeggiator", self.arpeggiator_tab),
                 ("Step Sequencer", self.step_sequencer_tab),
@@ -5028,9 +5032,19 @@ class SearchTab(MIDITab):
 # =============================================================================
 
 class DAWTab(QScrollArea):
-    """Unified DAW shortcut tab - one set of keycodes that adapt to the selected DAW"""
+    """Unified DAW shortcut tab - one set of keycodes that adapt to the selected
+    DAW. The "Default DAW" box at the top picks that DAW on the keyboard."""
 
     keycode_changed = pyqtSignal(str)
+
+    DAW_NAMES = ["Ableton Live", "FL Studio", "Logic Pro", "Pro Tools", "GarageBand",
+                 "Cubase", "Reaper", "Studio One", "Bitwig Studio"]
+    MAC_ONLY = (2, 4)  # Logic Pro, GarageBand
+
+    # Shared by every palette's DAW tab, so a change in one shows in all.
+    _instances = []
+    _keyboard = None
+    _state = None  # (daw_index, os_is_mac, count) or None when unsupported
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -5043,12 +5057,159 @@ class DAWTab(QScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setWidgetResizable(True)
 
+        outer = QWidget()
+        outer_layout = QVBoxLayout(outer)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+        outer_layout.setSpacing(15)
+        outer_layout.addWidget(self._build_selector())
+
         self.container = QWidget()
         self.container_layout = QVBoxLayout(self.container)
-        self.container_layout.setContentsMargins(10, 10, 10, 10)
+        self.container_layout.setContentsMargins(0, 0, 0, 0)
         self.container_layout.setSpacing(15)
+        outer_layout.addWidget(self.container, 1)
 
-        self.setWidget(self.container)
+        self.setWidget(outer)
+
+        DAWTab._instances.append(self)
+        self.destroyed.connect(lambda _=None, me=self: DAWTab._forget(me))
+        self._sync_selector()
+
+    @classmethod
+    def _forget(cls, inst):
+        if inst in cls._instances:
+            cls._instances.remove(inst)
+
+    def _build_selector(self):
+        box = QGroupBox(tr("DAWTab", "Default DAW - select this first"))
+        box.setObjectName("daw_default_box")
+        box.setStyleSheet("""
+            QGroupBox#daw_default_box {
+                font-weight: bold;
+                border: 2px solid palette(highlight);
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox#daw_default_box::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+                color: palette(highlight);
+            }
+        """)
+        lay = QVBoxLayout(box)
+        lay.setSpacing(8)
+
+        info = QLabel(tr("DAWTab",
+            "<b>Important:</b> the DAW keys below send the keyboard shortcuts of the DAW "
+            "chosen here. Pick the DAW you use, otherwise keys like Play, Record and Undo "
+            "will send the wrong shortcuts. The choice is saved to the keyboard straight "
+            "away, so there is no need to change it in Settings or on the keyboard."))
+        info.setWordWrap(True)
+        info.setTextFormat(Qt.RichText)
+        lay.addWidget(info)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel(tr("DAWTab", "DAW:")))
+        self.daw_combo = ArrowComboBox()
+        for name in self.DAW_NAMES:
+            self.daw_combo.addItem(name)
+        self.daw_combo.setMinimumWidth(180)
+        self.daw_combo.currentIndexChanged.connect(self._on_daw_chosen)
+        row.addWidget(self.daw_combo)
+        row.addSpacing(20)
+        row.addWidget(QLabel(tr("DAWTab", "Computer:")))
+        self.os_combo = ArrowComboBox()
+        self.os_combo.addItem("Windows")
+        self.os_combo.addItem("Mac")
+        self.os_combo.setMinimumWidth(110)
+        self.os_combo.currentIndexChanged.connect(self._on_os_chosen)
+        row.addWidget(self.os_combo)
+        row.addStretch(1)
+        lay.addLayout(row)
+
+        self.daw_status = QLabel()
+        self.daw_status.setWordWrap(True)
+        lay.addWidget(self.daw_status)
+        return box
+
+    # --- device state -------------------------------------------------
+
+    def set_keyboard(self, keyboard):
+        if keyboard is not DAWTab._keyboard or DAWTab._state is None:
+            DAWTab._keyboard = keyboard
+            DAWTab._refresh_state()
+        self._sync_selector()
+
+    @classmethod
+    def _refresh_state(cls):
+        kb = cls._keyboard
+        state = None
+        if kb is not None and hasattr(kb, "get_daw"):
+            try:
+                state = kb.get_daw()
+            except Exception:
+                state = None
+        cls._state = state
+        for inst in list(cls._instances):
+            inst._sync_selector()
+
+    def showEvent(self, ev):
+        super().showEvent(ev)
+        # The DAW can also be changed from the keyboard, so re-read it.
+        if DAWTab._keyboard is not None:
+            DAWTab._refresh_state()
+
+    def _sync_selector(self):
+        state = DAWTab._state
+        enabled = state is not None
+        for combo in (self.daw_combo, self.os_combo):
+            combo.blockSignals(True)
+            combo.setEnabled(enabled)
+        if enabled:
+            idx, mac, _count = state
+            if 0 <= idx < self.daw_combo.count():
+                self.daw_combo.setCurrentIndex(idx)
+            self.os_combo.setCurrentIndex(1 if mac else 0)
+            self.os_combo.setEnabled(idx not in self.MAC_ONLY)
+            self.daw_status.setText(tr("DAWTab", "Saved on the keyboard: {} ({})").format(
+                self.daw_combo.currentText(), "Mac" if mac else "Windows"))
+        elif DAWTab._keyboard is None:
+            self.daw_status.setText(tr("DAWTab", "Connect a keyboard to choose its DAW."))
+        else:
+            self.daw_status.setText(tr("DAWTab",
+                "This keyboard needs a firmware update to choose the DAW here."))
+        for combo in (self.daw_combo, self.os_combo):
+            combo.blockSignals(False)
+
+    def _apply(self, index, mac):
+        kb = DAWTab._keyboard
+        if kb is None or not hasattr(kb, "set_daw"):
+            return
+        result = None
+        try:
+            result = kb.set_daw(index, mac)
+        except Exception:
+            result = None
+        if result is not None:
+            DAWTab._state = result
+            for inst in list(DAWTab._instances):
+                inst._sync_selector()
+        else:
+            self._sync_selector()
+            self.daw_status.setText(tr("DAWTab", "Could not save the DAW to the keyboard."))
+
+    def _on_daw_chosen(self, index):
+        if index < 0:
+            return
+        mac = True if index in self.MAC_ONLY else None
+        self._apply(index, mac)
+
+    def _on_os_chosen(self, index):
+        if index < 0 or DAWTab._state is None:
+            return
+        self._apply(DAWTab._state[0], index == 1)
 
     def recreate_buttons(self, keycode_filter):
         self.current_keycode_filter = keycode_filter

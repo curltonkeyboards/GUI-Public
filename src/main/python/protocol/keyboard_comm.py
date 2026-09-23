@@ -74,6 +74,7 @@ HID_CMD_LCD_THEME = 0xFE  # Get/set global LCD colour theme (sub 0=GET, 1=SET)
 HID_CMD_CHANNEL_ARTIC = 0xFF  # Get/set channel->articulation map + enable (sub 0=GET, 1=SET)
 HID_CMD_KEYBOARD_CLONE = 0x94  # Whole-EEPROM clone (sub 0=INFO, 1=READ, 2=WRITE, 3=FINALIZE)
 HID_CMD_NAV_LAYER = 0x97  # Get/set the on-device menu navigation layer (sub 0=GET, 1=SET)
+HID_CMD_DAW = 0x99  # Get/set the default DAW (sub 0=GET, 1=SET)
 HID_CMD_SET_KEYBOARD_PARAM_SINGLE = 0xE8  # Set individual parameter (changed from 0xBD collision)
 
 # Parameter IDs for HID_CMD_SET_KEYBOARD_PARAM_SINGLE
@@ -1755,6 +1756,38 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
                     and data[4] == 0x01 and data[5] == int(layer))
         except Exception:
             return False
+
+    def get_daw(self):
+        """Get the default DAW the DAW keys send shortcuts for.
+
+        Returns (daw_index, os_is_mac, daw_count), or None when the keyboard
+        does not support the command. Response: status@4 (1 = ok), index@5,
+        os@6 (0 Windows / 1 Mac), count@7.
+        """
+        try:
+            packet = self._create_hid_packet(HID_CMD_DAW, 0, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if (not data or len(data) < 8 or data[3] != HID_CMD_DAW
+                    or data[4] != 0x01 or data[7] == 0):
+                return None
+            return data[5], bool(data[6]), data[7]
+        except Exception:
+            return None
+
+    def set_daw(self, index, mac=None):
+        """Set the default DAW (persists immediately). mac=None keeps the
+        current OS setting (Logic Pro / GarageBand always select Mac).
+        Returns the new (daw_index, os_is_mac, daw_count) or None."""
+        try:
+            os_byte = 0xFF if mac is None else (1 if mac else 0)
+            packet = self._create_hid_packet(HID_CMD_DAW, 1, [int(index) & 0xFF, os_byte])
+            data = self.usb_send(self.dev, packet, retries=3)
+            if (not data or len(data) < 8 or data[3] != HID_CMD_DAW
+                    or data[4] != 0x01 or data[5] != int(index)):
+                return None
+            return data[5], bool(data[6]), data[7]
+        except Exception:
+            return None
 
     # ------------------------------------------------------------------
     # Keyboard Clone (settings image save/restore, HID command 0x94)
