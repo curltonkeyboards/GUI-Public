@@ -2299,17 +2299,21 @@ class VelocityTab(BasicEditor):
         if idx_in_list >= len(configured_slots) - 1:
             move_down_action.setEnabled(False)
 
-        action = menu.exec_(self.preset_list_widget.mapToGlobal(pos))
-        if action == rename_action:
-            self.rename_user_preset(slot_index)
-        elif action == delete_action:
-            self.delete_user_preset(slot_index)
-        elif action == move_up_action:
-            other = configured_slots[idx_in_list - 1]
-            self.swap_user_presets(slot_index, other)
-        elif action == move_down_action:
-            other = configured_slots[idx_in_list + 1]
-            self.swap_user_presets(slot_index, other)
+        # Act on the pick instead of waiting in exec_() (the web build cannot
+        # run a nested event loop).
+        rename_action.triggered.connect(lambda _=False: self.rename_user_preset(slot_index))
+        delete_action.triggered.connect(lambda _=False: self.delete_user_preset(slot_index))
+        if idx_in_list > 0:
+            prev_slot = configured_slots[idx_in_list - 1]
+            move_up_action.triggered.connect(
+                lambda _=False: self.swap_user_presets(slot_index, prev_slot))
+        if idx_in_list < len(configured_slots) - 1:
+            next_slot = configured_slots[idx_in_list + 1]
+            move_down_action.triggered.connect(
+                lambda _=False: self.swap_user_presets(slot_index, next_slot))
+        menu.aboutToHide.connect(menu.deleteLater)
+        self._preset_menu = menu
+        menu.popup(self.preset_list_widget.mapToGlobal(pos))
 
     def rename_user_preset(self, slot_index):
         """Rename a user preset via input dialog and save to keyboard"""

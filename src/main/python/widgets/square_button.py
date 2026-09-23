@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+import sys
+
 from PyQt5.QtCore import QEvent, QSize, Qt, QMimeData
 from PyQt5.QtGui import QDrag
 from PyQt5.QtWidgets import QPushButton, QLabel, QHBoxLayout, QApplication
@@ -49,7 +51,8 @@ class SquareButton(QPushButton):
         if (self._palette_press_pos is not None and (ev.buttons() & Qt.LeftButton)
                 and (ev.pos() - self._palette_press_pos).manhattanLength() >= QApplication.startDragDistance()):
             qmk_id = self.palette_drag_qmk_id()
-            if qmk_id:
+            # The web build cannot run QDrag's nested event loop.
+            if qmk_id and sys.platform != "emscripten":
                 self._start_palette_drag(qmk_id)
                 return
         super().mouseMoveEvent(ev)

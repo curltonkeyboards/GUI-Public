@@ -2,6 +2,8 @@
 import json
 import struct
 
+import sys
+
 from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWidget,
                               QGroupBox, QSlider, QCheckBox, QPushButton, QComboBox, QFrame,
                               QSizePolicy, QScrollArea, QTabWidget, QDialog, QDialogButtonBox,
@@ -3151,10 +3153,14 @@ class KeymapEditor(BasicEditor):
         self._set_joystick(key.desc.row, key.desc.col, fid)
 
     def _joystick_remove_menu(self, row, col):
+        # Act on the pick instead of waiting in exec_(): the web build cannot
+        # run a nested event loop.
         menu = QMenu(self.container)
         act = menu.addAction(tr("KeymapEditor", "Remove Joystick button"))
-        if menu.exec_(QCursor.pos()) is act:
-            self._set_joystick(row, col, 0)
+        act.triggered.connect(lambda _=False, r=row, c=col: self._set_joystick(r, c, 0))
+        menu.aboutToHide.connect(menu.deleteLater)
+        self._joystick_menu = menu
+        menu.popup(QCursor.pos())
 
     def on_joystick_overlay_clicked(self, key):
         if key is None or isinstance(key, EncoderWidget2):
@@ -3220,6 +3226,15 @@ class KeymapEditor(BasicEditor):
         box.setDefaultButton(QMessageBox.No)
         dont_show = QCheckBox(tr("KeymapEditor", "Do not show this message again"))
         box.setCheckBox(dont_show)
+        if sys.platform == "emscripten":
+            # The web build cannot wait for the answer (no nested event
+            # loop): show the warning as a notice and let the change go ahead.
+            box.setStandardButtons(QMessageBox.Ok)
+            box.setCheckBox(None)
+            box.setModal(False)
+            box.show()
+            self._nav_notice = box
+            return True
         ret = box.exec_()
         if ret == QMessageBox.Yes and dont_show.isChecked():
             settings.setValue(suppress_key, True)

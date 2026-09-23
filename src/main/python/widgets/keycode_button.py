@@ -34,7 +34,9 @@ Optional per-sequence behaviour (enabled by the owner setting ``drag_group``):
 
 import sip
 
-from PyQt5.QtCore import Qt, QEvent, QObject, QMimeData, QPropertyAnimation, QEasingCurve, QSize, QRect, pyqtSignal, pyqtProperty
+import sys
+
+from PyQt5.QtCore import Qt, QEvent, QTimer, QObject, QMimeData, QPropertyAnimation, QEasingCurve, QSize, QRect, pyqtSignal, pyqtProperty
 from PyQt5.QtGui import QDrag, QPainter, QPen, QPalette
 from PyQt5.QtWidgets import QApplication, QMenu, QSizePolicy, QWidget
 
@@ -583,6 +585,8 @@ class KeycodeButton(SquareButton):
         super().keyPressEvent(ev)
 
     def _start_drag(self):
+        if sys.platform == "emscripten":
+            return  # the web build cannot run QDrag's nested event loop
         drag = QDrag(self)
         mime = QMimeData()
         mime.setData(KEYCODE_DRAG_MIME, str(self.keycode).encode("utf-8"))
@@ -676,6 +680,10 @@ class KeycodeButton(SquareButton):
             return
         menu = QMenu(self)
         act_dup = menu.addAction("Duplicate")
-        chosen = menu.exec_(global_pos)
-        if chosen is act_dup:
-            self.duplicate_requested.emit(self)
+        # Queued: the handler may rebuild (and delete) this button, which must
+        # not happen while the menu is still delivering its signal.
+        act_dup.triggered.connect(
+            lambda _=False: QTimer.singleShot(0, lambda: self.duplicate_requested.emit(self)))
+        menu.aboutToHide.connect(menu.deleteLater)
+        self._context_menu = menu
+        menu.popup(global_pos)
