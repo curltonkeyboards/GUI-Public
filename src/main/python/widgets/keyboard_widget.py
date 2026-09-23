@@ -12,6 +12,15 @@ import themes2
 from widgets.square_button import KEYCODE_PALETTE_MIME
 
 
+def _paint_key_icon(qp, key):
+    """Draw a gamepad control's icon centred in the key's legend area."""
+    from widgets.gamepad_icon_button import paint_gamepad_icon
+    r = key.text_rect
+    side = min(r.width(), r.height()) * 0.8
+    box = QRectF(r.center().x() - side / 2, r.center().y() - side / 2, side, side)
+    paint_gamepad_icon(qp, box, key.icon_id)
+
+
 class KeyWidget:
 
     def __init__(self, desc, scale, shift_x=0, shift_y=0):
@@ -22,6 +31,7 @@ class KeyWidget:
         self.desc = desc
         self.text = ""
         self.mask_text = ""
+        self.icon_id = None      # gamepad control drawn as an icon instead of text
         self.tooltip = ""
         self.color = None
         self.mask_color = None
@@ -511,6 +521,8 @@ class KeyboardWidget(QWidget):
                 # draw the inner legend
                 qp.setPen(key.mask_color if key.mask_color else regular_pen)
                 qp.drawText(key.mask_rect, Qt.AlignCenter, key.mask_text)
+            elif key.icon_id:
+                _paint_key_icon(qp, key)
             else:
                 # draw the legend
                 qp.setPen(key.color if key.color else regular_pen)
@@ -607,6 +619,7 @@ class KeyWidget2:
         self.desc = desc
         self.text = ""
         self.mask_text = ""
+        self.icon_id = None      # gamepad control drawn as an icon instead of text
         self.tooltip = ""
         self.color = None
         self.mask_color = None
@@ -932,8 +945,12 @@ class KeyboardWidget2(QWidget):
         if self._palette_drag_id(ev) is None:
             ev.ignore()
             return
+        # Always accept the ENTER: a drag nearly always comes in over the gap
+        # around the keys, and a rejected enter makes Qt skip every later
+        # move/drop for this widget. Per-position acceptance is dragMoveEvent's.
+        key, mask = self.hit_test(ev.pos())
+        self._set_drop_hover(key, mask)
         ev.acceptProposedAction()
-        self.dragMoveEvent(ev)
 
     def dragMoveEvent(self, ev):
         if self._palette_drag_id(ev) is None:
@@ -1250,6 +1267,8 @@ class KeyboardWidget2(QWidget):
                 smaller_font.setPointSize(smaller_font.pointSize() - 1)
                 qp.setFont(smaller_font)
                 qp.drawText(key.mask_rect, Qt.AlignCenter, key.mask_text)
+            elif key.icon_id:
+                _paint_key_icon(qp, key)
             else:
                 # draw the legend - always use regular text color, even for colored keys
                 qp.setPen(regular_pen)

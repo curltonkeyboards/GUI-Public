@@ -50,7 +50,7 @@ def get_behavior_name(behavior: int, key_count: int = 0) -> str:
     elif behavior == NULLBIND_BEHAVIOR_LAST_INPUT:
         return "Last Input Priority"
     elif behavior == NULLBIND_BEHAVIOR_DISTANCE:
-        return "Distance Priority"
+        return "Pressure Priority"
     elif behavior >= NULLBIND_BEHAVIOR_PRIORITY_BASE:
         key_idx = behavior - NULLBIND_BEHAVIOR_PRIORITY_BASE
         return f"Priority: Key {key_idx + 1}"
@@ -61,7 +61,7 @@ def get_behavior_choices(key_count: int) -> List[Tuple[int, str]]:
     choices = [
         (NULLBIND_BEHAVIOR_NEUTRAL, "Neutral (All Null)"),
         (NULLBIND_BEHAVIOR_LAST_INPUT, "Last Input Priority"),
-        (NULLBIND_BEHAVIOR_DISTANCE, "Distance Priority"),
+        (NULLBIND_BEHAVIOR_DISTANCE, "Pressure Priority"),
     ]
     # Add absolute priority options for each key in the group
     for i in range(key_count):

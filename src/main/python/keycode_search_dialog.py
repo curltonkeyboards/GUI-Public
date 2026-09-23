@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QLabel
+from PyQt5.QtCore import Qt, QEvent
+from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QApplication
 
 from keycodes.keycodes import Keycode
 from util import tr
@@ -37,6 +37,9 @@ class KeycodeSearchDialog(QDialog):
         self.setLayout(layout)
         self.resize(900, 600)
 
+        # No hover pop-ups (e.g. "KC_T") over the results in this window.
+        QApplication.instance().installEventFilter(self)
+
         bar = getattr(self.search, "adv_search_bar", None)
         if bar is not None:
             bar.setFocus(Qt.OtherFocusReason)
@@ -53,3 +56,12 @@ class KeycodeSearchDialog(QDialog):
             return
         self.value = code
         self.accept()
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.ToolTip and hasattr(obj, "window") and obj.window() is self:
+            return True
+        return super().eventFilter(obj, event)
+
+    def done(self, result):
+        QApplication.instance().removeEventFilter(self)
+        super().done(result)

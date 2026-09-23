@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Palette button that shows a gamepad control as a drawn icon (face buttons,
-Start/Back, D-pad arrows, stick directions, bumpers, triggers) instead of a
-text label.  It is a SquareButton, so it has the palette key's size, frame,
-hover/pressed styling, click and drag-to-assign behaviour; the icon is painted
-on top of that frame."""
+"""Gamepad controls drawn as icons (face buttons, Start/Back, D-pad arrows,
+stick directions, bumpers, triggers).
+
+`paint_gamepad_icon()` draws one icon into a square box; the palette button
+(`GamepadIconButton`) and the keymap view both use it, so a key assigned a
+gamepad control shows the same icon it was picked from."""
+
+import math
 
 from PyQt5.QtCore import Qt, QRectF, QPointF
 from PyQt5.QtGui import QPainter, QColor, QPen, QPainterPath, QFont, QPolygonF
@@ -11,30 +14,28 @@ from PyQt5.QtGui import QPainter, QColor, QPen, QPainterPath, QFont, QPolygonF
 from constants import KEYCODE_BTN_RATIO
 from widgets.square_button import SquareButton
 
-GREY = QColor("#7d828c")
-GREY_LIGHT = QColor("#c9ccd2")
-PILL = QColor("#e6e8eb")
-PILL_MARK = QColor("#8a8f98")
-ACCENT = QColor("#fcd34d")
+BODY = QColor("#5b616e")        # D-pad, stick caps, shoulders
+BODY_EDGE = QColor("#454a55")
+WELL = QColor("#b9bdc6")        # stick well outline
+MARK = QColor("#2f333b")        # stick direction arrows
+PANEL = QColor("#3b3f48")       # Start / Back / face button body
 WHITE = QColor("#ffffff")
 
 FACE_COLORS = {
-    "A": QColor("#22c55e"),
-    "B": QColor("#ef4444"),
-    "X": QColor("#3b82f6"),
-    "Y": QColor("#eab308"),
+    "A": QColor("#34d17a"),
+    "B": QColor("#f0585b"),
+    "X": QColor("#4c8df6"),
+    "Y": QColor("#f2bf2c"),
 }
 
-# Degrees (Qt: 0 = 3 o'clock, counter-clockwise) of the arc lit for each
-# stick direction.
-_STICK_ANGLE = {"up": 90, "left": 180, "down": 270, "right": 0}
+# Degrees (Qt: 0 = 3 o'clock, counter-clockwise) for each direction.
+_ANGLE = {"up": 90, "left": 180, "down": 270, "right": 0}
 
 # qmk_id -> (kind, arg)
 GAMEPAD_ICONS = {
     "XBOX_A": ("face", "A"), "XBOX_B": ("face", "B"),
     "XBOX_X": ("face", "X"), "XBOX_Y": ("face", "Y"),
-    "XBOX_START": ("pill", "right"), "XBOX_BACK": ("pill", "left"),
-    "GAMING_MODE": ("mode", None),
+    "XBOX_START": ("panel", "START"), "XBOX_BACK": ("panel", "BACK"),
     "DPAD_UP": ("dpad", "up"), "DPAD_DOWN": ("dpad", "down"),
     "DPAD_LEFT": ("dpad", "left"), "DPAD_RIGHT": ("dpad", "right"),
     "LS_UP": ("stick", ("L", "up")), "LS_DOWN": ("stick", ("L", "down")),
@@ -47,8 +48,8 @@ GAMEPAD_ICONS = {
     "XBOX_RB": ("shoulder", ("RB", "right", False)), "RT": ("shoulder", ("RT", "right", True)),
 }
 
-# Palette order (matches the reference sheet): face buttons, Start, Back,
-# Gaming Mode, D-pad, left stick, right stick, shoulders.
+# Palette order: face buttons, Start, Back, Gaming Mode (a plain text key),
+# D-pad, left stick, right stick, shoulders.
 GAMEPAD_ORDER = [
     "XBOX_A", "XBOX_B", "XBOX_X", "XBOX_Y", "XBOX_START", "XBOX_BACK", "GAMING_MODE",
     "DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT",
@@ -58,148 +59,184 @@ GAMEPAD_ORDER = [
 ]
 
 
+def has_gamepad_icon(qmk_id):
+    return qmk_id in GAMEPAD_ICONS
+
+
+def paint_gamepad_icon(qp, box, qmk_id):
+    """Draw the icon for `qmk_id` inside the square QRectF `box`."""
+    kind, arg = GAMEPAD_ICONS[qmk_id]
+    qp.save()
+    qp.setRenderHint(QPainter.Antialiasing)
+    _PAINTERS[kind](qp, box, arg)
+    qp.restore()
+
+
+# ---- helpers ----------------------------------------------------------------
+
+def _text(qp, rect, text, size_frac, color=WHITE, bold=True):
+    font = QFont(qp.font())
+    font.setBold(bold)
+    font.setPixelSize(max(6, int(rect.height() * size_frac)))
+    qp.setFont(font)
+    qp.setPen(color)
+    qp.drawText(rect, Qt.AlignCenter, text)
+
+
+def _triangle(center, size, angle_deg):
+    """Equilateral-ish triangle pointing at angle_deg, centred on `center`."""
+    a = math.radians(angle_deg)
+    dx, dy = math.cos(a), -math.sin(a)       # screen y grows down
+    px, py = -dy, dx                         # perpendicular
+    tip = QPointF(center.x() + dx * size, center.y() + dy * size)
+    back = QPointF(center.x() - dx * size * 0.6, center.y() - dy * size * 0.6)
+    return QPolygonF([tip,
+                      QPointF(back.x() + px * size * 0.85, back.y() + py * size * 0.85),
+                      QPointF(back.x() - px * size * 0.85, back.y() - py * size * 0.85)])
+
+
+# ---- icons ------------------------------------------------------------------
+
+def _paint_face(qp, box, letter):
+    # Dark round button with a coloured ring and a coloured letter.
+    color = FACE_COLORS[letter]
+    ring = max(1.5, box.width() * 0.08)
+    r = box.adjusted(ring, ring, -ring, -ring)
+    qp.setPen(QPen(color, ring))
+    qp.setBrush(PANEL)
+    qp.drawEllipse(r)
+    _text(qp, r, letter, 0.55, color)
+
+
+def _paint_panel(qp, box, label):
+    # Rounded slate with a small play / back glyph and the word under it.
+    h = box.height() * 0.62
+    r = QRectF(box.left(), box.center().y() - h / 2, box.width(), h)
+    radius = h * 0.28
+    qp.setPen(Qt.NoPen)
+    qp.setBrush(PANEL)
+    qp.drawRoundedRect(r, radius, radius)
+    glyph = QPointF(r.center().x(), r.top() + h * 0.33)
+    qp.setBrush(WHITE)
+    qp.drawPolygon(_triangle(glyph, h * 0.16, 0 if label == "START" else 180))
+    _text(qp, QRectF(r.left(), r.top() + h * 0.52, r.width(), h * 0.42), label, 0.72)
+
+
+def _paint_dpad(qp, box, direction):
+    arm = box.width() * 0.34
+    radius = 2.0                               # 2px rounded corners
+    c = box.center()
+    vert = QRectF(c.x() - arm / 2, box.top(), arm, box.height())
+    horz = QRectF(box.left(), c.y() - arm / 2, box.width(), arm)
+    path = QPainterPath()
+    path.setFillRule(Qt.WindingFill)
+    path.addRoundedRect(vert, radius, radius)
+    path.addRoundedRect(horz, radius, radius)
+    qp.setPen(QPen(BODY_EDGE, max(1.0, box.width() * 0.02)))
+    qp.setBrush(BODY)
+    qp.drawPath(path.simplified())
+    # the pressed arm: a lighter pad with a white arrow in it
+    half = (box.width() - arm) / 2
+    arm_rect = {
+        "up": QRectF(vert.left(), vert.top(), arm, half),
+        "down": QRectF(vert.left(), vert.bottom() - half, arm, half),
+        "left": QRectF(horz.left(), horz.top(), half, arm),
+        "right": QRectF(horz.right() - half, horz.top(), half, arm),
+    }[direction]
+    pad = arm_rect.adjusted(arm * 0.1, arm * 0.1, -arm * 0.1, -arm * 0.1)
+    qp.setPen(Qt.NoPen)
+    qp.setBrush(BODY.lighter(135))
+    qp.drawRoundedRect(pad, radius, radius)
+    qp.setBrush(WHITE)
+    qp.drawPolygon(_triangle(pad.center(), arm * 0.26, _ANGLE[direction]))
+
+
+def _paint_stick(qp, box, arg):
+    letter, direction = arg
+    c = box.center()
+    well_r = box.width() * 0.47
+    cap_r = box.width() * 0.27
+    qp.setPen(QPen(WELL, max(1.0, box.width() * 0.035)))
+    qp.setBrush(Qt.NoBrush)
+    qp.drawEllipse(c, well_r, well_r)
+    cap = QRectF(c.x() - cap_r, c.y() - cap_r, cap_r * 2, cap_r * 2)
+    qp.setPen(QPen(BODY_EDGE, max(1.0, box.width() * 0.02)))
+    qp.setBrush(BODY)
+    qp.drawEllipse(cap)
+    _text(qp, cap, letter, 0.62)
+    # small arrow(s) between the cap and the well
+    qp.setPen(Qt.NoPen)
+    qp.setBrush(MARK)
+    mid = (cap_r + well_r) / 2
+    size = box.width() * 0.075
+    if direction == "click":
+        # press: arrows on all four sides pointing in at the cap
+        for ang in (90, 180, 270, 0):
+            a = math.radians(ang)
+            p = QPointF(c.x() + math.cos(a) * mid, c.y() - math.sin(a) * mid)
+            qp.drawPolygon(_triangle(p, size, ang + 180))
+    else:
+        a = math.radians(_ANGLE[direction])
+        p = QPointF(c.x() + math.cos(a) * mid, c.y() - math.sin(a) * mid)
+        qp.drawPolygon(_triangle(p, size * 1.25, _ANGLE[direction]))
+
+
+def _paint_shoulder(qp, box, arg):
+    text, side, trigger = arg
+    if trigger:
+        # trigger: tall rounded tab, deeper on the outer side
+        h = box.height() * 0.84
+        r = QRectF(box.left() + box.width() * 0.08, box.bottom() - h, box.width() * 0.84, h)
+        big = r.width() * 0.45
+        small = r.width() * 0.12
+    else:
+        # bumper: wide low bar
+        h = box.height() * 0.46
+        r = QRectF(box.left(), box.center().y() - h / 2, box.width(), h)
+        big = h * 0.7
+        small = h * 0.2
+    tl = big if side == "left" else small
+    tr = big if side == "right" else small
+    path = QPainterPath()
+    path.moveTo(r.left() + tl, r.top())
+    path.lineTo(r.right() - tr, r.top())
+    path.quadTo(r.right(), r.top(), r.right(), r.top() + tr)
+    path.lineTo(r.right(), r.bottom() - small)
+    path.quadTo(r.right(), r.bottom(), r.right() - small, r.bottom())
+    path.lineTo(r.left() + small, r.bottom())
+    path.quadTo(r.left(), r.bottom(), r.left(), r.bottom() - small)
+    path.lineTo(r.left(), r.top() + tl)
+    path.quadTo(r.left(), r.top(), r.left() + tl, r.top())
+    qp.setPen(QPen(BODY_EDGE, max(1.0, box.width() * 0.02)))
+    qp.setBrush(BODY)
+    qp.drawPath(path)
+    _text(qp, r, text, 0.36 if trigger else 0.5)
+
+
+_PAINTERS = {
+    "face": _paint_face,
+    "panel": _paint_panel,
+    "dpad": _paint_dpad,
+    "stick": _paint_stick,
+    "shoulder": _paint_shoulder,
+}
+
+
 class GamepadIconButton(SquareButton):
+    """Palette button showing a gamepad control as its icon. It is a
+    SquareButton, so it has the palette key's size, frame, hover/pressed
+    styling, click and drag-to-assign behaviour."""
 
     def __init__(self, qmk_id, parent=None):
         super().__init__(parent)
         self.setRelSize(KEYCODE_BTN_RATIO)
-        self.icon_kind, self.icon_arg = GAMEPAD_ICONS[qmk_id]
+        self.icon_qmk_id = qmk_id
 
     def paintEvent(self, ev):
         super().paintEvent(ev)
         qp = QPainter(self)
-        qp.setRenderHint(QPainter.Antialiasing)
         side = min(self.width(), self.height())
-        # icon box: centred square, 76% of the button
-        s = side * 0.76
+        s = side * 0.74
         box = QRectF((self.width() - s) / 2, (self.height() - s) / 2, s, s)
-        getattr(self, "_draw_" + self.icon_kind)(qp, box, self.icon_arg)
+        paint_gamepad_icon(qp, box, self.icon_qmk_id)
         qp.end()
-
-    # ---- helpers ------------------------------------------------------
-
-    @staticmethod
-    def _text(qp, rect, text, size_frac, color=WHITE):
-        font = QFont(qp.font())
-        font.setBold(True)
-        font.setPixelSize(max(6, int(rect.height() * size_frac)))
-        qp.setFont(font)
-        qp.setPen(color)
-        qp.drawText(rect, Qt.AlignCenter, text)
-
-    # ---- icons --------------------------------------------------------
-
-    def _draw_face(self, qp, box, letter):
-        color = FACE_COLORS[letter]
-        qp.setPen(QPen(color.darker(125), max(1.0, box.width() * 0.05)))
-        qp.setBrush(color)
-        r = box.adjusted(box.width() * 0.04, box.height() * 0.04, -box.width() * 0.04, -box.height() * 0.04)
-        qp.drawEllipse(r)
-        self._text(qp, r, letter, 0.5)
-
-    def _draw_pill(self, qp, box, direction):
-        h = box.height() * 0.46
-        r = QRectF(box.left(), box.center().y() - h / 2, box.width(), h)
-        qp.setPen(QPen(GREY_LIGHT, max(1.0, h * 0.05)))   # keeps it visible on light themes
-        qp.setBrush(PILL)
-        qp.drawRoundedRect(r, h * 0.22, h * 0.22)
-        t = h * 0.5
-        c = r.center()
-        if direction == "right":
-            tri = [QPointF(c.x() - t * 0.4, c.y() - t / 2), QPointF(c.x() + t * 0.5, c.y()),
-                   QPointF(c.x() - t * 0.4, c.y() + t / 2)]
-        else:
-            tri = [QPointF(c.x() + t * 0.4, c.y() - t / 2), QPointF(c.x() - t * 0.5, c.y()),
-                   QPointF(c.x() + t * 0.4, c.y() + t / 2)]
-        qp.setPen(QPen(PILL_MARK, max(1.0, h * 0.07)))
-        qp.setBrush(Qt.NoBrush)
-        qp.drawPolygon(QPolygonF(tri))
-
-    def _draw_mode(self, qp, box, _arg):
-        w = box.width() * 0.08
-        r = box.adjusted(w, w, -w, -w)
-        qp.setPen(QPen(ACCENT, w))
-        qp.setBrush(GREY)
-        qp.drawEllipse(r)
-        # X across the circle, inset so it stays inside the ring
-        k = r.width() * 0.5 * 0.707
-        c = r.center()
-        qp.drawLine(QPointF(c.x() - k, c.y() - k), QPointF(c.x() + k, c.y() + k))
-        qp.drawLine(QPointF(c.x() - k, c.y() + k), QPointF(c.x() + k, c.y() - k))
-
-    def _draw_dpad(self, qp, box, direction):
-        arm = box.width() * 0.32
-        c = box.center()
-        path = QPainterPath()
-        path.setFillRule(Qt.WindingFill)   # the arms overlap in the centre
-        path.addRect(QRectF(c.x() - arm / 2, box.top(), arm, box.height()))
-        path.addRect(QRectF(box.left(), c.y() - arm / 2, box.width(), arm))
-        qp.setPen(Qt.NoPen)
-        qp.setBrush(GREY)
-        qp.drawPath(path.simplified())
-        # white arrowhead at the end of the arm for this direction
-        t = arm * 0.32
-        e = box.width() * 0.5 - t * 1.4   # distance from centre to the arrow
-        if direction == "up":
-            p = QPointF(c.x(), c.y() - e)
-            tri = [QPointF(p.x(), p.y() - t), QPointF(p.x() + t, p.y() + t * 0.6), QPointF(p.x() - t, p.y() + t * 0.6)]
-        elif direction == "down":
-            p = QPointF(c.x(), c.y() + e)
-            tri = [QPointF(p.x(), p.y() + t), QPointF(p.x() + t, p.y() - t * 0.6), QPointF(p.x() - t, p.y() - t * 0.6)]
-        elif direction == "left":
-            p = QPointF(c.x() - e, c.y())
-            tri = [QPointF(p.x() - t, p.y()), QPointF(p.x() + t * 0.6, p.y() - t), QPointF(p.x() + t * 0.6, p.y() + t)]
-        else:
-            p = QPointF(c.x() + e, c.y())
-            tri = [QPointF(p.x() + t, p.y()), QPointF(p.x() - t * 0.6, p.y() - t), QPointF(p.x() - t * 0.6, p.y() + t)]
-        qp.setBrush(WHITE)
-        qp.drawPolygon(QPolygonF(tri))
-
-    def _draw_stick(self, qp, box, arg):
-        letter, direction = arg
-        ring_w = box.width() * 0.09
-        outer = box.adjusted(ring_w / 2, ring_w / 2, -ring_w / 2, -ring_w / 2)
-        # thin outline of the stick well
-        qp.setPen(QPen(GREY_LIGHT, max(1.0, box.width() * 0.025)))
-        qp.setBrush(Qt.NoBrush)
-        qp.drawEllipse(outer)
-        # lit direction (a quarter arc) or the whole ring for the stick click
-        pen = QPen(ACCENT, ring_w)
-        pen.setCapStyle(Qt.RoundCap)
-        qp.setPen(pen)
-        if direction == "click":
-            qp.drawEllipse(outer)
-        else:
-            start = _STICK_ANGLE[direction] - 40
-            qp.drawArc(outer, int(start * 16), int(80 * 16))
-        # stick cap
-        cap = box.width() * 0.17
-        inner = box.adjusted(cap, cap, -cap, -cap)
-        qp.setPen(Qt.NoPen)
-        qp.setBrush(GREY)
-        qp.drawEllipse(inner)
-        self._text(qp, inner, letter, 0.6)
-
-    def _draw_shoulder(self, qp, box, arg):
-        text, side, trigger = arg
-        h = box.height() * (0.82 if trigger else 0.6)
-        r = QRectF(box.left(), box.bottom() - h, box.width(), h)
-        big = min(r.width(), r.height()) * (0.7 if trigger else 0.55)
-        small = r.height() * 0.12
-        # rounded rectangle with one large rounded top corner (outer side)
-        tl = big if side == "left" else small
-        tr = big if side == "right" else small
-        path = QPainterPath()
-        path.moveTo(r.left() + tl, r.top())
-        path.lineTo(r.right() - tr, r.top())
-        path.quadTo(r.right(), r.top(), r.right(), r.top() + tr)
-        path.lineTo(r.right(), r.bottom() - small)
-        path.quadTo(r.right(), r.bottom(), r.right() - small, r.bottom())
-        path.lineTo(r.left() + small, r.bottom())
-        path.quadTo(r.left(), r.bottom(), r.left(), r.bottom() - small)
-        path.lineTo(r.left(), r.top() + tl)
-        path.quadTo(r.left(), r.top(), r.left() + tl, r.top())
-        qp.setPen(Qt.NoPen)
-        qp.setBrush(GREY)
-        qp.drawPath(path)
-        self._text(qp, r, text, 0.42 if trigger else 0.5)

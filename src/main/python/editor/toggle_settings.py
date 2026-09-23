@@ -25,7 +25,7 @@ from protocol.toggle_protocol import (ProtocolToggle, ToggleSlot,
 from keycodes.keycodes import Keycode
 from widgets.keycode_button import KeycodeButton, DropGap, reorder_list, install_click_away_deselect, install_gap_drop_fallback
 from tabbed_keycodes import TabbedKeycodes, FilteredTabbedKeycodes, keycode_filter_any, keycode_filter_masked
-from tabbed_keycodes import KeyboardTab, MusicTab, GamingTab, MacroTab, LightingTab, LightingTab2, MIDITab, SearchTab, SimpleTab
+from tabbed_keycodes import KeyboardTab, MusicTab, GamingTab, MacroTab, LightingTab, LightingTab2, MIDITab, SearchTab, SimpleTab, feature_tabs
 from keycodes.keycodes import (KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE, KEYCODES_BACKLIGHT,
                                KEYCODES_RGBSAVE, KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_COLOR,
                                KEYCODES_RGB_KC_CUSTOM2, KEYCODES_CLEAR, KEYCODES_GAMING,
@@ -49,8 +49,9 @@ class FilteredTabbedKeycodesNoLayers(QTabWidget):
         # section; LightingTab2 provides the overlay-safe layer pickers)
         self.tabs = [
             KeyboardTab(self, include_layer=False),
-            MusicTab(self),
+        ] + feature_tabs(self, include_layer=False) + [
             LightingTab2(self, "Layers", KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_OSL),
+            MusicTab(self),
             MIDITab(self),
             SearchTab(self),
             SimpleTab(self, " ", KEYCODES_CLEAR),

@@ -1354,6 +1354,22 @@ class midiadvancedTab(QScrollArea):
             return False
         return any(kc not in ("KC_NO", "", None, 0) for kc in entries[idx][:4])
 
+    @staticmethod
+    def _is_macro_keycode(qmk_id):
+        return len(qmk_id) > 1 and qmk_id[0] == "M" and qmk_id[1:].isdigit()
+
+    def _macro_configured(self, qmk_id):
+        """Search offers only the macros that exist in the Macro tab: ones
+        with actions recorded, or that have been given a name."""
+        idx = int(qmk_id[1:])
+        if KeycodeDisplay.get_custom_name_label(qmk_id):
+            return True
+        data = getattr(getattr(self, "keyboard", None), "macro", None)
+        if not data:
+            return False
+        macros = data.split(b"\x00")
+        return idx < len(macros) and len(macros[idx]) > 0
+
     def _expand_search_words(self, words):
         """Expand search words with synonyms for better matching."""
         expanded = list(words)
@@ -1427,8 +1443,11 @@ class midiadvancedTab(QScrollArea):
                     return False
             return True
 
-        # Show matching categories (dropdown / value_input / cc_xy / range)
-        for cat_name, kc_list, search_terms, widget_type, val_template in categories:
+        # Show matching categories (dropdown / value_input / cc_xy / range) -
+        # first page only; later pages are just the keycode buttons.
+        first_page = self._adv_current_page == 0
+        self.adv_dropdown_container.setVisible(first_page)
+        for cat_name, kc_list, search_terms, widget_type, val_template in (categories if first_page else []):
             cat_haystack = cat_name + " " + search_terms
             if not matches_search(cat_haystack):
                 continue
@@ -1537,6 +1556,9 @@ class midiadvancedTab(QScrollArea):
                 continue
             if keycode.qmk_id in seen_ids:
                 continue
+            is_macro = self._is_macro_keycode(keycode.qmk_id)
+            if is_macro and not self._macro_configured(keycode.qmk_id):
+                continue
 
             # Force-include if keycode belongs to a matched tab section
             if keycode.qmk_id in tab_force_ids:
@@ -1548,6 +1570,11 @@ class midiadvancedTab(QScrollArea):
             if keycode.qmk_id in self._adv_dropdown_ids:
                 continue
             haystack = keycode.qmk_id + " " + (keycode.label or "").replace("\n", " ") + " " + (keycode.tooltip or "")
+            custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
+            if custom:
+                haystack += " " + custom.replace("\n", " ")
+            if is_macro:
+                haystack += " macro macros"
             if matches_search(haystack):
                 self._adv_matched_keycodes.append(keycode)
                 seen_ids.add(keycode.qmk_id)
@@ -1567,7 +1594,13 @@ class midiadvancedTab(QScrollArea):
         for keycode in self._adv_matched_keycodes[start:end]:
             btn = SquareButton()
             btn.setRelSize(KEYCODE_BTN_RATIO)
-            btn.setText(keycode.label if keycode.label else keycode.qmk_id)
+            custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
+            if custom:
+                btn.setText(custom)
+            elif self._is_macro_keycode(keycode.qmk_id):
+                btn.setText("Macro\n{}".format(int(keycode.qmk_id[1:]) + 1))
+            else:
+                btn.setText(keycode.label if keycode.label else keycode.qmk_id)
             btn.setToolTip(Keycode.tooltip(keycode.qmk_id) or keycode.qmk_id)
             btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
             btn.keycode = keycode
@@ -3128,7 +3161,7 @@ class LightingTab2(QScrollArea):
         return True  # Always has dropdowns
 
 class MacroSubTab(QScrollArea):
-    """Sub-tab for displaying keycode buttons (Macro, Tapdance, DKS, or Toggle)"""
+    """Sub-tab for displaying keycode buttons (Macro, Tap/Hold, DKS, or Toggle)"""
     keycode_changed = pyqtSignal(str)
 
     def __init__(self, parent, tab_type):
@@ -3215,16 +3248,20 @@ class MacroSubTab(QScrollArea):
 
 
 class MacroTab(QScrollArea):
-    """Macros tab: Macro / Tapdance / DKS / Toggle shown as stacked sections in
+    """Macros tab: Macro / Tap/Hold / DKS / Toggle shown as stacked sections in
     a single scrolling window (no inner side-tabs). Layers is its own side-tab
     under Keyboard now, so callers pass include_layer=False; the optional Layers
     section is retained for back-compat but is unused by the Keyboard tab."""
     keycode_changed = pyqtSignal(str)
 
+    ALL_SECTIONS = ("macro", "tapdance", "dks", "toggle")
+
     def __init__(self, parent, label, inversion_keycodes, smartchord_LSB, smartchord_MSB,
-                 layer_df=None, layer_mo=None, layer_osl=None, include_layer=True):
+                 layer_df=None, layer_mo=None, layer_osl=None, include_layer=True,
+                 sections=ALL_SECTIONS):
         super().__init__(parent)
         self.label = label
+        self.shown_sections = tuple(sections)
         self.inversion_keycodes = inversion_keycodes
         self.smartchord_LSB = smartchord_LSB
         self.smartchord_MSB = smartchord_MSB
@@ -3338,17 +3375,18 @@ class MacroTab(QScrollArea):
         return btn
 
     def _add_button_section(self, title, keycodes, keycode_filter, extra_keycodes=None):
-        group = QGroupBox(title)
+        # A single-section tab is already named by its tab: no heading.
+        group = QGroupBox(title if len(self.shown_sections) > 1 else "")
         flow = FlowLayout()
         flow.setContentsMargins(10, 10, 10, 10)
         for keycode in keycodes:
-            if keycode_filter is None or keycode_filter(keycode):
+            if keycode_filter is None or keycode_filter(keycode.qmk_id):
                 btn = self._make_button(keycode)
                 flow.addWidget(btn)
                 self.buttons.append(btn)
         if extra_keycodes:
             for keycode in extra_keycodes:
-                if keycode is not None and (keycode_filter is None or keycode_filter(keycode)):
+                if keycode is not None and (keycode_filter is None or keycode_filter(keycode.qmk_id)):
                     btn = self._make_button(keycode)
                     flow.addWidget(btn)
                     self.buttons.append(btn)
@@ -3394,12 +3432,13 @@ class MacroTab(QScrollArea):
         self.oneshot_layer_dropdown = None
 
         # Macro section (+ "All Macros Off")
-        macro_kcs = KEYCODES_MACRO[:self.macro_count] if self.macro_count > 0 else []
-        all_off_kc = Keycode.find_by_qmk_id("QK_MACRO_ALL_OFF")
-        self._add_button_section("Macro", macro_kcs, keycode_filter,
-                                 extra_keycodes=[all_off_kc] if all_off_kc else None)
+        if "macro" in self.shown_sections:
+            macro_kcs = KEYCODES_MACRO[:self.macro_count] if self.macro_count > 0 else []
+            all_off_kc = Keycode.find_by_qmk_id("QK_MACRO_ALL_OFF")
+            self._add_button_section("Macro", macro_kcs, keycode_filter,
+                                     extra_keycodes=[all_off_kc] if all_off_kc else None)
 
-        # Layers section (folded in here, directly below Macro; no standalone side tab)
+        # Layers section (only for callers that still fold it in here)
         if self.include_layer:
             layer_group = QGroupBox("Layers")
             layer_row = QHBoxLayout()
@@ -3414,15 +3453,18 @@ class MacroTab(QScrollArea):
             layer_group.setLayout(layer_row)
             self.main_layout.addWidget(layer_group)
 
-        # Tapdance / DKS / Toggle sections
-        td_kcs = KEYCODES_TAP_DANCE[:self.tapdance_count] if self.tapdance_count > 0 else []
-        self._add_button_section("Tapdance", td_kcs, keycode_filter)
-        dks_kcs = KEYCODES_DKS[:self.dks_count] if self.dks_count > 0 else []
-        self._add_button_section("DKS", dks_kcs, keycode_filter)
-        tog_kcs = KEYCODES_TOGGLE[:self.toggle_count] if self.toggle_count > 0 else []
-        # Bulk-reset actions always shown alongside the slot buttons
-        tog_kcs = tog_kcs + KEYCODES_TOGGLE_ACTIONS
-        self._add_button_section("Toggle", tog_kcs, keycode_filter)
+        # Tap/Hold / Dynamic Keystroke / Toggle sections
+        if "tapdance" in self.shown_sections:
+            td_kcs = KEYCODES_TAP_DANCE[:self.tapdance_count] if self.tapdance_count > 0 else []
+            self._add_button_section("Tap/Hold", td_kcs, keycode_filter)
+        if "dks" in self.shown_sections:
+            dks_kcs = KEYCODES_DKS[:self.dks_count] if self.dks_count > 0 else []
+            self._add_button_section("Dynamic Keystroke", dks_kcs, keycode_filter)
+        if "toggle" in self.shown_sections:
+            tog_kcs = KEYCODES_TOGGLE[:self.toggle_count] if self.toggle_count > 0 else []
+            # Bulk-reset actions always shown alongside the slot buttons
+            tog_kcs = tog_kcs + KEYCODES_TOGGLE_ACTIONS
+            self._add_button_section("Toggle", tog_kcs, keycode_filter)
 
         self.main_layout.addStretch(1)
 
@@ -3430,6 +3472,10 @@ class MacroTab(QScrollArea):
         self.keycode_changed.emit(code)
 
     def has_buttons(self):
+        # A single-section tab disappears from a palette whose filter hides
+        # everything in it (e.g. the basic-keys-only picker).
+        if len(self.shown_sections) < len(self.ALL_SECTIONS):
+            return len(self.buttons) > 0
         return True
 
     def relabel_buttons(self):
@@ -3437,6 +3483,25 @@ class MacroTab(QScrollArea):
             if hasattr(btn, 'keycode') and btn.keycode:
                 custom = KeycodeDisplay.get_custom_name_label(btn.keycode.qmk_id)
                 btn.setText(custom if custom else btn.keycode.label)
+
+
+def feature_tabs(parent, include_layer=True):
+    """Top-level palette tabs for the user-configured features, each its own
+    tab next to Music / Advanced / Search."""
+    def macro_tab(label, section):
+        return MacroTab(parent, label, KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE,
+                        include_layer=False, sections=(section,))
+    tabs = [
+        macro_tab("Macro", "macro"),
+        macro_tab("Tap/Hold", "tapdance"),
+        macro_tab("Dynamic Keystroke", "dks"),
+        macro_tab("Toggle", "toggle"),
+    ]
+    if include_layer:
+        tabs.append(LayerTab(parent, "Layers", KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_OSL))
+    tabs.append(LightingTab(parent, "Lighting", KEYCODES_BACKLIGHT, KEYCODES_RGBSAVE,
+                            KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_COLOR, KEYCODES_RGB_KC_CUSTOM2))
+    return tabs
 
 
 class KeySplitTab(QScrollArea):
@@ -4237,7 +4302,7 @@ class GamingTab(QScrollArea):
 
     def recreate_buttons(self, keycode_filter=None):
         """One palette-sized button per gamepad control, drawn as an icon."""
-        from widgets.gamepad_icon_button import GamepadIconButton, GAMEPAD_ORDER
+        from widgets.gamepad_icon_button import GamepadIconButton, GAMEPAD_ORDER, has_gamepad_icon
         self.current_keycode_filter = keycode_filter
 
         while self.main_layout.count():
@@ -4256,7 +4321,13 @@ class GamingTab(QScrollArea):
                 continue
             if keycode_filter is not None and not keycode_filter(kc.qmk_id):
                 continue
-            btn = GamepadIconButton(qmk_id)
+            if has_gamepad_icon(qmk_id):
+                btn = GamepadIconButton(qmk_id)
+            else:
+                # Gaming Mode is an ordinary labelled key
+                btn = SquareButton()
+                btn.setRelSize(KEYCODE_BTN_RATIO)
+                btn.setText("Gaming\nMode")
             btn.keycode = kc
             btn.setToolTip(kc.tooltip or Keycode.label(kc.qmk_id).replace("\n", " "))
             btn.clicked.connect(lambda _, k=kc.qmk_id: self.keycode_changed.emit(k))
@@ -4320,29 +4391,34 @@ class LanguageTab(Tab):
         self.relabel_buttons()
 
 
-class LanguagesTab(QWidget):
-    """Keyboard & Macro > Languages: German, French, Spanish, Russian and
-    Japanese boards, each labelled for its layout."""
+class BasicTab(QWidget):
+    """Keyboard > Basic: the standard (US) board first, then ISO/JIS and the
+    language boards (German, French, Spanish, Russian, Japanese), each
+    labelled for its layout. The application / media keys sit below the
+    board on every page."""
 
     keycode_changed = pyqtSignal(str)
 
     def __init__(self, parent):
         super().__init__(parent)
         from keymap import german, french, spanish, russian, japanese
-        self.label = "Languages"
-        iso = [
-            (iso_100, KEYCODES_SPECIAL + KEYCODES_ISO_KR),
-            (iso_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_ISO_KR),
-            (iso_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV + KEYCODES_ISO_KR),
-            (None, KEYCODES_ISO),
-        ]
+        self.label = "Basic"
+        app = KEYCODES_MEDIA
         ansi = [
-            (ansi_100, KEYCODES_SPECIAL),
-            (ansi_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD),
-            (ansi_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV),
-            (None, KEYCODES_SPECIAL + KEYCODES_BASIC),
+            (ansi_100, KEYCODES_SPECIAL + app),
+            (ansi_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + app),
+            (ansi_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV + app),
+            (None, KEYCODES_SPECIAL + KEYCODES_BASIC + app),
+        ]
+        iso = [
+            (iso_100, KEYCODES_SPECIAL + KEYCODES_ISO_KR + app),
+            (iso_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_ISO_KR + app),
+            (iso_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV + KEYCODES_ISO_KR + app),
+            (None, KEYCODES_ISO + app),
         ]
         self.pages = [
+            Tab(parent, "Basic", ansi),
+            Tab(parent, "ISO/JIS", iso),
             LanguageTab(parent, "German", iso, german.keymap),
             LanguageTab(parent, "French", iso, french.keymap),
             LanguageTab(parent, "Spanish", iso, spanish.keymap),
@@ -4371,7 +4447,9 @@ class LanguagesTab(QWidget):
 
 
 class KeyboardTab(QWidget):
-    """Nested tab container for Keyboard-related tabs with side-tab style"""
+    """Keyboard tab: Basic (all key boards) and Gaming, with side-tab style.
+    Macros, Tap/Hold, Dynamic Keystroke, Toggle, Layers and Lighting are
+    top-level tabs of their own (see feature_tabs)."""
 
     keycode_changed = pyqtSignal(str)
 
@@ -4381,65 +4459,16 @@ class KeyboardTab(QWidget):
         self.parent_widget = parent
         self.current_keycode_filter = keycode_filter_any
 
-        # Create the individual tabs
-        self.basic_tab = Tab(parent, "Basic", [
-            (ansi_100, KEYCODES_SPECIAL),
-            (ansi_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD),
-            (ansi_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV),
-            (None, KEYCODES_SPECIAL + KEYCODES_BASIC),
-        ])
-
-        self.iso_tab = Tab(parent, "ISO/JIS", [
-            (iso_100, KEYCODES_SPECIAL + KEYCODES_ISO_KR),
-            (iso_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_ISO_KR),
-            (iso_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV +
-             KEYCODES_ISO_KR),
-            (None, KEYCODES_ISO),
-        ])
-
-        self.app_tab = SimpleTab(parent, "App", KEYCODES_MEDIA)
-        self.languages_tab = LanguagesTab(parent)
-
-        # Feature tabs folded into Keyboard as side sections. Layers are their
-        # own side-tab (directly below Macros), NOT folded into the Macros
-        # window -- the MacroTab therefore never renders the Layers section.
-        self.macro_tab = MacroTab(parent, "Macros", KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE,
-                                  KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_OSL,
-                                  include_layer=False)
-        # include_layer gates the standalone Layers side-tab (the Toggle-settings
-        # picker passes include_layer=False and supplies layers via LightingTab2).
-        self.layer_tab = LayerTab(parent, "Layers", KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO,
-                                  KEYCODES_LAYERS_OSL) if include_layer else None
-        self.lighting_tab = LightingTab(parent, "Lighting", KEYCODES_BACKLIGHT, KEYCODES_RGBSAVE, KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_COLOR, KEYCODES_RGB_KC_CUSTOM2)
+        self.basic_tab = BasicTab(parent)
         self.gaming_tab = GamingTab(parent, "Gaming", KEYCODES_GAMING)
 
-        # Connect signals
         self.basic_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.iso_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.app_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.languages_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.macro_tab.keycode_changed.connect(self.on_keycode_changed)
-        if self.layer_tab is not None:
-            self.layer_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.lighting_tab.keycode_changed.connect(self.on_keycode_changed)
         self.gaming_tab.keycode_changed.connect(self.on_keycode_changed)
 
-        # Define sections (tab_widget, display_name). Layers is its own side-tab
-        # directly below Macros; ISO/App/Advanced sit below Gaming.
         self.sections = [
             (self.basic_tab, "Basic"),
-            (self.macro_tab, "Macros"),
-        ]
-        if self.layer_tab is not None:
-            self.sections.append((self.layer_tab, "Layers"))
-        self.sections += [
-            (self.lighting_tab, "Lighting"),
             (self.gaming_tab, "Gaming"),
-            (self.iso_tab, "ISO/JIS"),
-            (self.languages_tab, "Languages"),
-            (self.app_tab, "App"),
         ]
-
         # Create horizontal layout: side tabs on left, content on right
         main_layout_h = QHBoxLayout()
         main_layout_h.setSpacing(0)
@@ -4566,14 +4595,7 @@ class KeyboardTab(QWidget):
             tab_widget.relabel_buttons()
 
     def set_keyboard(self, keyboard):
-        self.macro_tab.set_keyboard(keyboard)
         self.gaming_tab.keyboard = keyboard
-
-    def set_editors(self, macro_recorder=None, tap_dance_editor=None, dks_settings=None, toggle_settings=None, delay_settings=None):
-        self.macro_tab.set_editors(macro_recorder, tap_dance_editor, dks_settings, toggle_settings, delay_settings=delay_settings)
-
-    def refresh_buttons(self):
-        self.macro_tab.refresh_buttons()
 
 
 class ArpeggiatorTab(QScrollArea):
@@ -5273,8 +5295,7 @@ class FilteredTabbedKeycodes(QTabWidget):
 
         self.keycode_filter = keycode_filter
 
-        self.tabs = [
-            KeyboardTab(self),
+        self.tabs = [KeyboardTab(self)] + feature_tabs(self) + [
             MusicTab(self),
             MIDITab(self),
             SearchTab(self),

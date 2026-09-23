@@ -383,6 +383,8 @@ class KeycodeDisplay:
         if mask and not custom:
             text = text.split("\n")[0]
         widget.masked = mask if not custom else False
+        from widgets.gamepad_icon_button import has_gamepad_icon
+        widget.icon_id = code if (not custom and has_gamepad_icon(code)) else None
         widget.setText(text)
         widget.setMaskText(mask_text if not custom else "")
         widget.setToolTip(tooltip)

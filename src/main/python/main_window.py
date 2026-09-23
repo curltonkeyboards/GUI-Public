@@ -144,7 +144,7 @@ class MainWindow(QMainWindow):
         self.matrix_tester = MatrixTest(self.layout_editor)
         self.velocity_tab = VelocityTab(self.layout_editor)
         self.rgb_configurator = RGBConfigurator()
-        _startup_log(f"  Core editors (Firmware, Macro, TapDance, etc) ({time.time()-t0:.2f}s)")
+        _startup_log(f"  Core editors (Firmware, Macro, Tap/Hold, etc) ({time.time()-t0:.2f}s)")
 
         # Connect keymap_editor to matrix_tester for status value adjustments
         self.keymap_editor.set_matrix_test_reference(self.matrix_tester)

@@ -774,11 +774,11 @@ class TriggerSettingsTab(BasicEditor):
 
         # Checkboxes for enable modes (will be placed left of keyboard)
         self.enable_checkbox = QCheckBox(tr("TriggerSettings", "Enable Per-Key Actuation"))
-        self.enable_checkbox.setStyleSheet("QCheckBox { font-weight: bold; }")
+        self.enable_checkbox.setStyleSheet("QCheckBox { font-weight: bold; font-size: 9pt; }")
         self.enable_checkbox.clicked.connect(self.on_enable_changed)
 
         self.per_layer_checkbox = QCheckBox(tr("TriggerSettings", "Enable Per-Layer Actuation"))
-        self.per_layer_checkbox.setStyleSheet("QCheckBox { font-weight: bold; }")
+        self.per_layer_checkbox.setStyleSheet("QCheckBox { font-weight: bold; font-size: 9pt; }")
         self.per_layer_checkbox.clicked.connect(self.on_per_layer_changed)
 
         # Selection buttons column (left of keyboard)
@@ -984,6 +984,14 @@ class TriggerSettingsTab(BasicEditor):
         self.global_midi_slider.setMinimumHeight(50)
         global_actuation_layout.addWidget(self.global_midi_slider)
 
+        midi_warning = QLabel(tr("TriggerSettings",
+            "Tip: a very shallow MIDI actuation leaves less travel for measuring how "
+            "hard you play, so note loudness gets less precise. Deeper actuation points "
+            "usually give more accurate, expressive velocity."))
+        midi_warning.setWordWrap(True)
+        midi_warning.setStyleSheet("QLabel { color: #b45309; font-size: 8pt; }")
+        global_actuation_layout.addWidget(midi_warning)
+
         self.global_actuation_widget.setLayout(global_actuation_layout)
         self.global_actuation_widget.setVisible(True)
         layout.addWidget(self.global_actuation_widget)
@@ -1171,22 +1179,14 @@ class TriggerSettingsTab(BasicEditor):
         layout.setSpacing(8)
         layout.setContentsMargins(8, 8, 8, 8)
 
-        # Header row with global enable toggle
-        header_row = QHBoxLayout()
-        header_label = QLabel(tr("TriggerSettings", "Null Bind (SOCD Handling)"))
-        header_label.setStyleSheet("QLabel { font-weight: bold; font-size: 11pt; }")
-        header_row.addWidget(header_label)
-        header_row.addStretch()
-
         # Global enable/disable for all SOCD handling (persisted on the device).
+        # Shown in the left-hand panel of the SOCD tab.
         self.nullbind_enable_checkbox = QCheckBox(tr("TriggerSettings", "Enable SOCD"))
         self.nullbind_enable_checkbox.setChecked(True)
         self.nullbind_enable_checkbox.setToolTip(
             tr("TriggerSettings", "Master switch for all Null Bind / SOCD groups. "
                "When off, every group is inactive without having to clear it."))
         self.nullbind_enable_checkbox.stateChanged.connect(self.on_nullbind_enable_toggled)
-        header_row.addWidget(self.nullbind_enable_checkbox)
-        layout.addLayout(header_row)
 
         # --- Selected Keys box (live from the keyboard selection above) ---
         sel_frame = QFrame()
@@ -1214,6 +1214,7 @@ class TriggerSettingsTab(BasicEditor):
         sel_layout.addWidget(self.nullbind_selected_display)
 
         sel_frame.setLayout(sel_layout)
+        sel_frame.setMinimumHeight(sel_frame.sizeHint().height())
         layout.addWidget(sel_frame)
 
         # --- Behavior + Active Layer (authoring inputs for the group to Save) ---
@@ -1226,24 +1227,24 @@ class TriggerSettingsTab(BasicEditor):
         form.addWidget(behavior_label, 0, 0)
 
         self.nullbind_behavior_combo = QComboBox()
-        self.nullbind_behavior_combo.setMinimumWidth(210)
+        self.nullbind_behavior_combo.setMinimumWidth(150)
         self.nullbind_behavior_combo.currentIndexChanged.connect(self.on_nullbind_behavior_changed)
-        form.addWidget(self.nullbind_behavior_combo, 0, 1)
+        form.addWidget(self.nullbind_behavior_combo, 1, 0)
 
         layer_label = QLabel(tr("TriggerSettings", "Active Layer:"))
         layer_label.setStyleSheet("QLabel { font-weight: bold; }")
         layer_label.setToolTip(tr("TriggerSettings", "This group only activates on this layer"))
-        form.addWidget(layer_label, 1, 0)
+        form.addWidget(layer_label, 2, 0)
 
         self.nullbind_layer_combo = QComboBox()
         for i in range(12):
             self.nullbind_layer_combo.addItem(f"Layer {i + 1}", i)
         self.nullbind_layer_combo.currentIndexChanged.connect(self.on_nullbind_layer_changed)
-        self.nullbind_layer_combo.setMinimumWidth(210)
+        self.nullbind_layer_combo.setMinimumWidth(150)
         self.nullbind_layer_combo.setToolTip(tr("TriggerSettings", "This group only activates on this layer"))
-        form.addWidget(self.nullbind_layer_combo, 1, 1)
+        form.addWidget(self.nullbind_layer_combo, 3, 0)
 
-        form.setColumnStretch(2, 1)
+        form.setVerticalSpacing(3)
         layout.addLayout(form)
 
         # --- Save / Overwrite buttons (above the Group Viewer) ---
@@ -1252,12 +1253,14 @@ class TriggerSettingsTab(BasicEditor):
 
         self.nullbind_save_btn = QPushButton(tr("TriggerSettings", "Save"))
         self.nullbind_save_btn.setMinimumHeight(30)
+        self.nullbind_save_btn.setMinimumWidth(90)
         self.nullbind_save_btn.setStyleSheet("QPushButton { font-weight: bold; color: palette(highlight); }")
         self.nullbind_save_btn.clicked.connect(self.on_nullbind_save)
         button_row.addWidget(self.nullbind_save_btn)
 
         self.nullbind_overwrite_btn = QPushButton(tr("TriggerSettings", "Overwrite"))
         self.nullbind_overwrite_btn.setMinimumHeight(30)
+        self.nullbind_overwrite_btn.setMinimumWidth(90)
         self.nullbind_overwrite_btn.clicked.connect(self.on_nullbind_overwrite)
         button_row.addWidget(self.nullbind_overwrite_btn)
 
@@ -1283,9 +1286,6 @@ class TriggerSettingsTab(BasicEditor):
         self.nullbind_group_combo.currentIndexChanged.connect(self.on_nullbind_group_changed)
         gv_header.addWidget(self.nullbind_group_combo)
         gv_header.addStretch()
-        self.nullbind_clear_btn = QPushButton(tr("TriggerSettings", "Clear Group"))
-        self.nullbind_clear_btn.clicked.connect(self.on_nullbind_clear_group)
-        gv_header.addWidget(self.nullbind_clear_btn)
         gv_layout.addLayout(gv_header)
 
         self.nullbind_group_view = QLabel(tr("TriggerSettings", "(No groups configured)"))
@@ -1294,8 +1294,18 @@ class TriggerSettingsTab(BasicEditor):
         self.nullbind_group_view.setMinimumHeight(44)
         gv_layout.addWidget(self.nullbind_group_view)
 
+        clear_row = QHBoxLayout()
+        clear_row.addStretch()
+        self.nullbind_clear_btn = QPushButton(tr("TriggerSettings", "Clear Group"))
+        self.nullbind_clear_btn.setMinimumHeight(28)
+        self.nullbind_clear_btn.clicked.connect(self.on_nullbind_clear_group)
+        clear_row.addWidget(self.nullbind_clear_btn)
+        gv_layout.addLayout(clear_row)
+
 
         gv_frame.setLayout(gv_layout)
+        # Never let the scroll area squeeze the box below its content
+        gv_frame.setMinimumHeight(gv_frame.sizeHint().height())
         layout.addWidget(gv_frame)
 
         # Behavior explanation
@@ -1349,7 +1359,7 @@ class TriggerSettingsTab(BasicEditor):
 
         # Left side: Description with checkboxes
         actuation_desc_container = QWidget()
-        actuation_desc_container.setFixedWidth(210)
+        actuation_desc_container.setFixedWidth(228)
         actuation_desc_layout = QVBoxLayout()
         actuation_desc_layout.setContentsMargins(0, 0, 0, 0)
         actuation_desc_title = QLabel(tr("TriggerSettings", "Actuation"))
@@ -1416,29 +1426,16 @@ class TriggerSettingsTab(BasicEditor):
 
         rapidfire_desc_layout.addSpacing(10)
 
-        # Per-Key checkbox with description
-        self.rf_enable_checkbox = QCheckBox(tr("TriggerSettings", "Enable Per-Key Actuation"))
-        self.rf_enable_checkbox.setStyleSheet("QCheckBox { font-weight: bold; }")
-        self.rf_enable_checkbox.clicked.connect(self.on_enable_changed)
-        rapidfire_desc_layout.addWidget(self.rf_enable_checkbox)
-        rf_per_key_desc = QLabel(tr("TriggerSettings",
-            "Per-Key: Each key can have its own RapidTrigger settings."))
-        rf_per_key_desc.setWordWrap(True)
-        rf_per_key_desc.setStyleSheet("color: gray; font-size: 8pt; margin-left: 18px;")
-        rapidfire_desc_layout.addWidget(rf_per_key_desc)
-
-        rapidfire_desc_layout.addSpacing(5)
-
-        # Per-Layer checkbox with description
-        self.rf_per_layer_checkbox = QCheckBox(tr("TriggerSettings", "Enable Per-Layer Actuation"))
-        self.rf_per_layer_checkbox.setStyleSheet("QCheckBox { font-weight: bold; }")
-        self.rf_per_layer_checkbox.clicked.connect(self.on_per_layer_changed)
-        rapidfire_desc_layout.addWidget(self.rf_per_layer_checkbox)
-        rf_per_layer_desc = QLabel(tr("TriggerSettings",
-            "Per-Layer: Settings change based on the active keyboard layer."))
-        rf_per_layer_desc.setWordWrap(True)
-        rf_per_layer_desc.setStyleSheet("color: gray; font-size: 8pt; margin-left: 18px;")
-        rapidfire_desc_layout.addWidget(rf_per_layer_desc)
+        rf_howto_title = QLabel(tr("TriggerSettings", "How to use"))
+        rf_howto_title.setStyleSheet("font-weight: bold;")
+        rapidfire_desc_layout.addWidget(rf_howto_title)
+        rf_howto = QLabel(tr("TriggerSettings",
+            "Click or drag across the virtual keyboard to pick the keys you want. "
+            "Then switch Rapid Trigger on and fine-tune its press and release "
+            "sensitivity - the settings apply to just those keys."))
+        rf_howto.setWordWrap(True)
+        rf_howto.setStyleSheet("color: gray; font-size: 9pt;")
+        rapidfire_desc_layout.addWidget(rf_howto)
 
         rapidfire_desc_layout.addStretch()
         rapidfire_desc_container.setLayout(rapidfire_desc_layout)
@@ -1466,38 +1463,34 @@ class TriggerSettingsTab(BasicEditor):
         nullbind_desc_title.setStyleSheet("font-weight: bold; font-size: 11pt;")
         nullbind_desc_layout.addWidget(nullbind_desc_title)
         nullbind_desc_text = QLabel(tr("TriggerSettings",
-            "Configure SOCD (Simultaneous Opposing Cardinal Directions) handling. "
-            "Define how the keyboard resolves conflicting key presses. "
-            "Each group is layer-specific - assign a layer where the group is active."))
+            "Decide what happens when opposing keys (e.g. A and D) are held at the "
+            "same time. Each group works on the layer you choose."))
         nullbind_desc_text.setWordWrap(True)
         nullbind_desc_text.setStyleSheet("color: gray; font-size: 9pt;")
         nullbind_desc_layout.addWidget(nullbind_desc_text)
 
-        nullbind_desc_layout.addSpacing(10)
+        nullbind_desc_layout.addSpacing(8)
 
-        # Per-Key checkbox with description
-        self.nb_enable_checkbox = QCheckBox(tr("TriggerSettings", "Enable Per-Key Actuation"))
-        self.nb_enable_checkbox.setStyleSheet("QCheckBox { font-weight: bold; }")
-        self.nb_enable_checkbox.clicked.connect(self.on_enable_changed)
-        nullbind_desc_layout.addWidget(self.nb_enable_checkbox)
-        nb_per_key_desc = QLabel(tr("TriggerSettings",
-            "Per-Key: Each key can have its own null bind settings."))
-        nb_per_key_desc.setWordWrap(True)
-        nb_per_key_desc.setStyleSheet("color: gray; font-size: 8pt; margin-left: 18px;")
-        nullbind_desc_layout.addWidget(nb_per_key_desc)
+        # "Enable SOCD" (when this build has the master switch) is added here
+        # once the controls container exists.
+        nb_enable_slot = QVBoxLayout()
+        nb_enable_slot.setContentsMargins(0, 0, 0, 0)
+        nullbind_desc_layout.addLayout(nb_enable_slot)
 
-        nullbind_desc_layout.addSpacing(5)
-
-        # Per-Layer checkbox with description
-        self.nb_per_layer_checkbox = QCheckBox(tr("TriggerSettings", "Enable Per-Layer Actuation"))
-        self.nb_per_layer_checkbox.setStyleSheet("QCheckBox { font-weight: bold; }")
-        self.nb_per_layer_checkbox.clicked.connect(self.on_per_layer_changed)
-        nullbind_desc_layout.addWidget(self.nb_per_layer_checkbox)
-        nb_per_layer_desc = QLabel(tr("TriggerSettings",
-            "Per-Layer: Settings change based on the active keyboard layer."))
-        nb_per_layer_desc.setWordWrap(True)
-        nb_per_layer_desc.setStyleSheet("color: gray; font-size: 8pt; margin-left: 18px;")
-        nullbind_desc_layout.addWidget(nb_per_layer_desc)
+        nb_guide_title = QLabel(tr("TriggerSettings", "Behaviors"))
+        nb_guide_title.setStyleSheet("font-weight: bold;")
+        nullbind_desc_layout.addWidget(nb_guide_title)
+        nb_guide = QLabel(tr("TriggerSettings",
+            "<b>Neutral</b> - pressing two or more keys cancels them all; nothing is "
+            "sent until only one is held.<br>"
+            "<b>Last Input</b> - the most recent key wins. Let go of it and the key "
+            "you are still holding takes over.<br>"
+            "<b>Pressure</b> - whichever key is pressed deepest wins.<br>"
+            "<b>Absolute Priority</b> - the chosen key always wins while it is held."))
+        nb_guide.setWordWrap(True)
+        nb_guide.setTextFormat(Qt.RichText)
+        nb_guide.setStyleSheet("color: gray; font-size: 8pt;")
+        nullbind_desc_layout.addWidget(nb_guide)
 
         nullbind_desc_layout.addStretch()
         nullbind_desc_container.setLayout(nullbind_desc_layout)
@@ -1505,6 +1498,10 @@ class TriggerSettingsTab(BasicEditor):
 
         # Right side: Controls
         self.nullbind_container = self.create_nullbind_container()
+        if hasattr(self, 'nullbind_enable_checkbox'):
+            self.nullbind_enable_checkbox.setStyleSheet("QCheckBox { font-weight: bold; font-size: 9pt; }")
+            nb_enable_slot.addWidget(self.nullbind_enable_checkbox)
+            nb_enable_slot.addSpacing(8)
         # Scroll rather than squeeze when the settings area is short
         nullbind_scroll = QScrollArea()
         nullbind_scroll.setWidgetResizable(True)
@@ -2705,27 +2702,26 @@ class TriggerSettingsTab(BasicEditor):
     def sync_all_tab_checkboxes(self):
         """Sync all tab checkboxes to the shared mode_enabled and per_layer_enabled state.
 
-        Each tab (Actuation, Rapidfire, SOCD/Null Bind) has its own checkbox
-        widgets, but they all control the same shared state. This method ensures all
+        Only the Actuation tab carries the checkboxes; they control shared state. This method ensures all
         checkboxes visually reflect the current state.
 
         Uses blockSignals to prevent re-entrant stateChanged signals when
         reverting checkbox state (e.g. after user cancels a confirmation dialog).
         """
         # Guard: checkboxes may not exist yet during early initialization
-        if not hasattr(self, 'rf_enable_checkbox'):
+        if not hasattr(self, 'enable_checkbox'):
             return
 
         self.syncing = True
 
         # Sync all per-key enable checkboxes (blockSignals prevents re-entrant issues)
-        for cb in [self.enable_checkbox, self.rf_enable_checkbox, self.nb_enable_checkbox]:
+        for cb in [self.enable_checkbox]:
             cb.blockSignals(True)
             cb.setChecked(self.mode_enabled)
             cb.blockSignals(False)
 
         # Sync all per-layer checkboxes
-        for cb in [self.per_layer_checkbox, self.rf_per_layer_checkbox, self.nb_per_layer_checkbox]:
+        for cb in [self.per_layer_checkbox]:
             cb.blockSignals(True)
             cb.setChecked(self.per_layer_enabled)
             cb.blockSignals(False)
@@ -2733,8 +2729,6 @@ class TriggerSettingsTab(BasicEditor):
         # Per-layer stays user-toggleable in BOTH modes: with per-key ON and
         # per-layer OFF, per-key edits apply to that key on ALL 12 layers.
         self.per_layer_checkbox.setEnabled(True)
-        self.rf_per_layer_checkbox.setEnabled(True)
-        self.nb_per_layer_checkbox.setEnabled(True)
 
         self.syncing = False
 
