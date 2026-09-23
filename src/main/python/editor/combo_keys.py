@@ -55,8 +55,15 @@ def entry_to_model(ko):
     An all-zero entry (the "unused" state) reads as an enabled,
     empty combo — not as a disabled one — so fresh tabs come up ready to
     edit."""
-    model = (_kc(ko.trigger), _kc(ko.replacement), ko.trigger_mods & 0xFF,
-             (ko.layers >> FN_SHIFT) & 0x3, False)
+    tapped, output = _kc(ko.trigger), _kc(ko.replacement)
+    mods = ko.trigger_mods & 0xFF
+    if tapped == "KC_NO" and output == "KC_NO" and mods == 0:
+        # No keys and no held modifier: an empty slot, whatever its layer /
+        # Fn bits say (a freshly reset keyboard fills every slot's layer word
+        # with ones, which would otherwise read as "Fn 1 + Fn 2" and make all
+        # 100 slots look configured).
+        return EMPTY
+    model = (tapped, output, mods, (ko.layers >> FN_SHIFT) & 0x3, False)
     if model_is_used(model):
         model = model[:4] + (not ko.options.enabled,)
     return model

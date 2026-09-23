@@ -265,8 +265,13 @@ class ToggleEntryUI(QWidget):
         layout.addLayout(header_layout)
 
         # Description
-        desc = QLabel("Configure the target keycode that will be toggled when this key is pressed.\n"
-                      "Assign this TGL keycode to a physical key in your keymap.")
+        desc = QLabel(
+            "<b>Toggle</b> - works as if you were holding the target key down yourself: "
+            "one press turns it on (held), the next press turns it off (released).<br>"
+            "<b>Multi Key Toggle</b> - each press taps the next keycode in the list "
+            "(press and release), cycling back to the first after the last.<br>"
+            "Assign this TGL keycode to a key on your keymap.")
+        desc.setTextFormat(Qt.RichText)
         desc.setWordWrap(True)
         desc.setStyleSheet("color: gray; font-size: 9pt;")
         layout.addWidget(desc)

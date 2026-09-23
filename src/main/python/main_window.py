@@ -168,7 +168,7 @@ class MainWindow(QMainWindow):
         # Gaming Settings is a sub-tab of Settings, not a tab of its own
         self.MIDIswitchSettingsConfigurator.add_sub_editor(self.gaming_configurator, "Gaming Settings")
 
-        self.editors = [(self.keymap_editor, "Keymap"), (self.trigger_settings, "Advanced Keymap"),
+        self.editors = [(self.keymap_editor, "Keymap"), (self.trigger_settings, "Advanced"),
                         (self.velocity_tab, "Articulation"), (self.rgb_configurator, "Lighting"),
                         (self.macro_recorder, "Macros"), (self.toggle_settings, "Toggle"),
                         (self.tap_dance, "Tap/Hold"), (self.combo_keys, "Key Combos"),

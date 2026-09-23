@@ -1236,11 +1236,26 @@ class VelocityTab(BasicEditor):
         scroll.setWidget(main_widget)
         self.addWidget(scroll, stretch=1)  # Allow scroll area to stretch
 
-        # Title
-        title_label = QLabel(tr("VelocityTab", "Velocity Monitor"))
+        # Header: what this page is for
+        title_label = QLabel(tr("VelocityTab", "Articulation"))
         title_label.setStyleSheet("font-weight: bold; font-size: 14pt;")
         title_label.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(title_label)
+        desc_label = QLabel(tr("VelocityTab",
+            "An articulation decides how your playing turns into MIDI: how hard or fast "
+            "you press sets each note's loudness (velocity), and it can also add "
+            "aftertouch, legato and retrigger behaviour. Pick a preset, adjust its "
+            "settings, and watch the live velocity of each key below."))
+        desc_label.setWordWrap(True)
+        desc_label.setFixedWidth(760)
+        desc_label.setMinimumHeight(desc_label.heightForWidth(760))
+        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
+        desc_label.setAlignment(QtCore.Qt.AlignCenter)
+        main_layout.addWidget(desc_label, alignment=Qt.AlignHCenter)
+
+        # Live velocity view (keyboard); placed below the presets
+        monitor_layout = QVBoxLayout()
+        monitor_layout.setSpacing(10)
 
         # NOTE: the description, "Active Layer" indicator and "MIDI keys on
         # layer" count were removed from the Velocity Monitor — it now shows just
@@ -1259,13 +1274,8 @@ class VelocityTab(BasicEditor):
         # image doesn't overflow past the widget box and get covered by the
         # separator line below it.
         self.keyboard_widget.setMinimumHeight(350)
-        main_layout.addWidget(self.keyboard_widget, alignment=Qt.AlignCenter)
+        monitor_layout.addWidget(self.keyboard_widget, alignment=Qt.AlignCenter)
 
-        # Separator
-        line = QFrame()
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        main_layout.addWidget(line)
 
         # Bottom section: Combined Velocity Preset configuration (centered)
         bottom_layout = QHBoxLayout()
@@ -1512,6 +1522,13 @@ class VelocityTab(BasicEditor):
         bottom_layout.addStretch()  # Right stretch to center the group
 
         main_layout.addLayout(bottom_layout)
+
+        # Separator
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Sunken)
+        main_layout.addWidget(line)
+        main_layout.addLayout(monitor_layout)
         main_layout.addStretch()
 
     def valid(self):

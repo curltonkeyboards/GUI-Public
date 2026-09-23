@@ -207,7 +207,7 @@ class QuickActuationWidget(QWidget):
         self.enable_per_key_checkbox = QCheckBox(tr("QuickActuationWidget", "Enable Per-Key"))
         self.enable_per_key_checkbox.setStyleSheet("QCheckBox { font-weight: bold; font-size: 10px; } QCheckBox::indicator { border: 1px solid palette(mid); background-color: palette(button); width: 13px; height: 13px; } QCheckBox::indicator:checked { border: 1px solid palette(highlight); background-color: palette(highlight); }")
         self.enable_per_key_checkbox.stateChanged.connect(self.on_enable_per_key_toggled)
-        top_row_layout.addWidget(self.create_help_label("Enable individual actuation point per key.\nConfigure in the Advanced Keymap tab."))
+        top_row_layout.addWidget(self.create_help_label("Enable individual actuation point per key.\nConfigure in the Advanced tab."))
         top_row_layout.addWidget(self.enable_per_key_checkbox)
 
         top_row_layout.addWidget(self.create_help_label("Enable different actuation points per layer.\nWhen off, same actuation applies to all layers."))
@@ -232,7 +232,7 @@ class QuickActuationWidget(QWidget):
         layout.addWidget(line)
 
         # Per-key mode message (shown when per-key actuation is enabled)
-        self.per_key_message = QLabel(tr("QuickActuationWidget", "Per-key actuation enabled.\nChange per key actuation in the Advanced Keymap tab."))
+        self.per_key_message = QLabel(tr("QuickActuationWidget", "Per-key actuation enabled.\nChange per key actuation in the Advanced tab."))
         self.per_key_message.setStyleSheet("QLabel { font-style: italic; font-size: 10px; color: #888; padding: 10px; }")
         self.per_key_message.setAlignment(Qt.AlignCenter)
         self.per_key_message.setVisible(False)
@@ -1029,7 +1029,7 @@ class QuickActuationWidget(QWidget):
             QMessageBox.information(
                 self,
                 tr("QuickActuationWidget", "Per-Key Actuation Enabled"),
-                tr("QuickActuationWidget", "Per-key actuation is now enabled.\nUse the Advanced Keymap tab to configure individual keys.")
+                tr("QuickActuationWidget", "Per-key actuation is now enabled.\nUse the Advanced tab to configure individual keys.")
             )
             # Emit signal to request tab switch
             self.enable_per_key_requested.emit()

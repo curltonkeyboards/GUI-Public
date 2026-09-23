@@ -3188,6 +3188,24 @@ class TriggerSettingsTab(BasicEditor):
             QMessageBox.Save)
         if ret == QMessageBox.Save:
             self.on_save()
+        else:
+            self._discard_changes()
+
+    def _discard_changes(self):
+        """Throw away unsaved edits: reload everything on this tab from the
+        keyboard so the edited values are gone and nothing is left pending."""
+        layer = self.current_layer
+        try:
+            self.rebuild(self.device)
+        except Exception as e:
+            print(f"TriggerSettingsTab: reload after discard failed: {e}")
+        self.pending_per_key_keys.clear()
+        self.pending_layer_data = None
+        self.has_unsaved_changes = False
+        self.nullbind_pending_changes = False
+        self.save_btn.setEnabled(False)
+        if self.valid() and 0 <= layer < self.keyboard.layers and layer != self.current_layer:
+            self.switch_layer(layer)
 
     def _load_per_key_data(self):
         """Load all per-key actuation data from device"""

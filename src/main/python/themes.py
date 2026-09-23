@@ -377,6 +377,13 @@ class Theme:
                 border-color: palette(highlight);
             }
 
+            /* Dialog buttons (Save / Discard / OK ...) - room for their text */
+            QMessageBox QPushButton, QDialogButtonBox QPushButton {
+                min-width: 96px;
+                min-height: 30px;
+                padding: 4px 16px;
+            }
+
             /* Rounded Keycode Buttons - Using object name selector */
             QPushButton[keycode_button="true"] {
                 border-radius: 8px;

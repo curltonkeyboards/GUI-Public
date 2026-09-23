@@ -2338,6 +2338,9 @@ class CustomLightsHandler(BasicHandler):
         self.overlay_override = False
         # Set by RGBConfigurator: called with the slot picked in the dropdown
         self.slot_chosen_cb = None
+        # Set by RGBConfigurator: also save the rest of the lighting settings
+        # when this tab's Save is pressed
+        self.extra_save_cb = None
 
         # Track the currently active slot (for parameter changes)
         self.current_active_slot = None
@@ -3216,8 +3219,10 @@ class CustomLightsHandler(BasicHandler):
         try:
             if hasattr(self.device.keyboard, 'save_rgb'):
                 self.device.keyboard.save_rgb()
+            if self.extra_save_cb is not None:
+                self.extra_save_cb()
         except Exception as e:
-            print(f"Error saving basic RGB settings: {e}")
+            print(f"Error saving lighting settings: {e}")
         try:
             # Get current GUI state for this tab
             widgets = self.slot_widgets[slot]
@@ -3913,6 +3918,7 @@ class RGBConfigurator(BasicEditor):
         self.handler_custom_lights = CustomLightsHandler(self.custom_lights_container)
         self.handler_custom_lights.update.connect(self.update_from_keyboard)
         self.handler_custom_lights.slot_chosen_cb = self._on_custom_slot_chosen
+        self.handler_custom_lights.extra_save_cb = self._save_other_lighting
 
         # Key Indicators handler (Tab 3)
         self.handler_adv_key_lighting = AdvancedKeyLightingHandler(self.adv_key_lighting_container)
@@ -4117,6 +4123,11 @@ class RGBConfigurator(BasicEditor):
         if slot is not None and slot != cl.get_current_slot_index():
             cl.select_slot(slot)
         cl.set_overlay_visible(slot is None and not cl.overlay_override)
+
+    def _save_other_lighting(self):
+        """Custom Lights' Save also saves the Lighting Configurator settings."""
+        if self.handler_per_key_rgb.valid():
+            self.handler_per_key_rgb.on_save()
 
     def _on_custom_slot_chosen(self, slot):
         """A slot was picked in the Custom Lights dropdown: make the Basic RGB
