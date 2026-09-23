@@ -119,8 +119,49 @@ def _make_dialogs_non_blocking():
     QMenu.exec = menu_exec
 
 
+# Startup log milestones -> (progress %, text shown on the loading page).
+_PROGRESS_STEPS = [
+    ("MainWindow.__init__ starting", 5, "Starting Switchstation"),
+    ("Creating UI editors", 8, "Building the editors"),
+    ("TriggerSettingsTab (", 15, "Building the editors"),
+    ("Core editors", 25, "Building the editors"),
+    ("MIDI configurators", 40, "Building the MIDI tools"),
+    ("Starting initial device refresh", 45, "Looking for your MIDIswitch"),
+    ("Keyboard reload starting", 50, "Reading the keyboard"),
+    ("Loading keymap", 55, "Reading the keymap"),
+    ("Keyboard reload complete", 62, "Keyboard loaded"),
+    ("MainWindow.rebuild() starting", 65, "Preparing the pages"),
+    ("rebuild trigger_settings", 72, "Preparing the pages"),
+    ("rebuild macro_recorder", 78, "Preparing the pages"),
+    ("rebuild() total", 82, "Opening the pages"),
+    ("refresh_tabs()", 99, "Almost ready"),
+]
+
+
+def _hook_progress():
+    """Forward the startup log to the loading page as a progress bar."""
+    try:
+        import vialglue
+        from startup_dialog import StartupLogger
+    except ImportError:
+        return
+    if not hasattr(vialglue, "notify_progress"):
+        return
+    state = {"pct": 0}
+
+    def on_message(msg):
+        for key, pct, text in _PROGRESS_STEPS:
+            if key in msg and pct > state["pct"]:
+                state["pct"] = pct
+                vialglue.notify_progress(pct, text)
+                break
+
+    StartupLogger.get_instance().message_logged.connect(on_message)
+
+
 def main(app, demo=False):
     _make_dialogs_non_blocking()
+    _hook_progress()
     font = app.font()
     font.setPointSize(10)
     app.setFont(font)
