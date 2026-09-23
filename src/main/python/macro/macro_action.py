@@ -575,7 +575,11 @@ class ActionMouseMove(BasicAction):
         return "{}<{},{} click={}>".format(self.tag, self.x, self.y, self.click)
 
 
-SS_GAMEPAD_CODE = 12
+SS_GAMEPAD_CODE = 12       # older form, still read
+SS_GAMEPAD2_CODE = 13      # current form: duration + wait
+GAMEPAD_KIND_TIED = 0x40   # kind byte flag: wait follows duration
+GAMEPAD_DEFAULT_DURATION = 1
+GAMEPAD_TAP_DEFAULT_DURATION = 20
 
 GAMEPAD_TAP = 0
 GAMEPAD_PRESS = 1
@@ -599,39 +603,78 @@ class ActionGamepad(BasicAction):
     """Gamepad output from a macro (works with Gaming Mode on or off).
     kind: GAMEPAD_*; target: button number / trigger (0 LT, 1 RT) / stick
     (0 left, 1 right); value: stick direction 0-7 (clockwise from Up);
-    percent: trigger / stick amount; ms: wait before the next action (the
-    hold time of a tap)."""
+    percent: trigger / stick amount.
+    duration: how long the action takes - a trigger / stick moves from where
+    it is to the new position over this time (a release moves it back to
+    rest), a button tap is held for it. Button press / release ignore it.
+    wait: delay before the next action. While `tied` it follows duration."""
 
     tag = "gamepad"
 
-    def __init__(self, kind=GAMEPAD_TAP, target=0, value=0, percent=100, ms=0):
+    def __init__(self, kind=GAMEPAD_TAP, target=0, value=0, percent=100,
+                 duration=GAMEPAD_DEFAULT_DURATION, wait=None, tied=True):
         super().__init__()
         self.kind = kind
         self.target = target
         self.value = value
         self.percent = percent
-        self.ms = ms
+        self.duration = duration
+        self.tied = tied
+        self.wait = duration if wait is None else wait
+
+    @property
+    def uses_duration(self):
+        return self.kind not in (GAMEPAD_PRESS, GAMEPAD_RELEASE)
+
+    def effective_wait(self):
+        if self.tied and self.uses_duration:
+            return self.duration
+        return self.wait
+
+    @classmethod
+    def from_legacy(cls, kind, target, value, percent, ms):
+        """The older form had one ms field: the wait (and a tap's hold time,
+        0 = 20 ms); triggers and sticks moved instantly."""
+        if kind == GAMEPAD_TAP:
+            dur = ms if ms > 0 else 20
+            return cls(kind, target, value, percent, dur, ms, ms == dur)
+        if kind in (GAMEPAD_PRESS, GAMEPAD_RELEASE):
+            return cls(kind, target, value, percent, 1, ms, False)
+        return cls(kind, target, value, percent, 1, ms, ms == 1)
 
     def serialize(self, vial_protocol):
         if vial_protocol < VIAL_PROTOCOL_ADVANCED_MACROS:
             raise RuntimeError("ActionGamepad can only be used with vial_protocol>=2")
-        ms = max(0, min(GAMEPAD_MS_MAX, int(self.ms)))
-        payload = [int(self.kind) + 1, int(self.target) + 1, int(self.value) + 1,
+        dur = max(1, min(GAMEPAD_MS_MAX, int(self.duration)))
+        wait = max(0, min(GAMEPAD_MS_MAX, int(self.effective_wait())))
+        kind = int(self.kind) | (GAMEPAD_KIND_TIED if self.tied else 0)
+        payload = [kind + 1, int(self.target) + 1, int(self.value) + 1,
                    max(0, min(100, int(self.percent))) + 1,
-                   (ms & 0x7F) + 1, ((ms >> 7) & 0x7F) + 1]
-        return struct.pack("BB", SS_QMK_PREFIX, SS_GAMEPAD_CODE) + bytes(payload)
+                   (dur & 0x7F) + 1, ((dur >> 7) & 0x7F) + 1,
+                   (wait & 0x7F) + 1, ((wait >> 7) & 0x7F) + 1]
+        return struct.pack("BB", SS_QMK_PREFIX, SS_GAMEPAD2_CODE) + bytes(payload)
 
     def save(self):
-        return super().save() + [self.kind, self.target, self.value, self.percent, self.ms]
+        return super().save() + [self.kind, self.target, self.value, self.percent,
+                                 self.duration, self.effective_wait(), bool(self.tied)]
 
     def restore(self, act):
         super().restore(act)
-        self.kind, self.target, self.value, self.percent, self.ms = act[1:6]
+        if len(act) >= 8:
+            self.kind, self.target, self.value, self.percent, self.duration, self.wait = act[1:7]
+            self.tied = bool(act[7])
+        else:  # older export: [tag, kind, target, value, percent, ms]
+            legacy = ActionGamepad.from_legacy(*act[1:6])
+            self.__dict__.update({k: getattr(legacy, k) for k in
+                                  ("kind", "target", "value", "percent", "duration", "wait", "tied")})
 
     def __eq__(self, other):
         return (super().__eq__(other) and self.kind == other.kind and self.target == other.target
-                and self.value == other.value and self.percent == other.percent and self.ms == other.ms)
+                and self.value == other.value and self.percent == other.percent
+                and self.duration == other.duration and self.effective_wait() == other.effective_wait()
+                and bool(self.tied) == bool(other.tied))
 
     def __repr__(self):
-        return "{}<kind={} target={} value={} {}% {}ms>".format(
-            self.tag, self.kind, self.target, self.value, self.percent, self.ms)
+        return "{}<kind={} target={} value={} {}% dur={}ms wait={}ms{}>".format(
+            self.tag, self.kind, self.target, self.value, self.percent, self.duration,
+            self.effective_wait(), " tied" if self.tied else "")

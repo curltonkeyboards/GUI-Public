@@ -12,7 +12,8 @@ from macro.macro_action import (text_to_actions, ActionText, ActionSequence, Act
                                 MOUSE_CLICK_LEFT, MOUSE_CLICK_DOUBLE, MOUSE_CLICK_RIGHT,
                                 ActionGamepad, GAMEPAD_BUTTONS, GAMEPAD_DIRECTIONS, GAMEPAD_MS_MAX,
                                 GAMEPAD_TAP, GAMEPAD_PRESS, GAMEPAD_RELEASE, GAMEPAD_TRIGGER,
-                                GAMEPAD_TRIGGER_RELEASE, GAMEPAD_STICK, GAMEPAD_STICK_RELEASE)
+                                GAMEPAD_TRIGGER_RELEASE, GAMEPAD_STICK, GAMEPAD_STICK_RELEASE,
+                                GAMEPAD_DEFAULT_DURATION, GAMEPAD_TAP_DEFAULT_DURATION)
 from widgets.keycode_button import (KeycodeButton, DropGap, reorder_list, keycode_button_px,
                                     drag_accepted_from, palette_keycode_from)
 
@@ -984,7 +985,6 @@ class ActionGamepadUI(BasicActionUI):
     show_trigger = False
     show_direction = False
     show_percent = False           # percent only for kinds that use it
-    ms_label = "Wait (ms)"
 
     def __init__(self, container, act=None):
         fresh = act is None
@@ -1052,11 +1052,33 @@ class ActionGamepadUI(BasicActionUI):
             self.pct_spin.valueChanged.connect(self.on_change)
             self._add(self.pct_spin)
 
-        self.ms_label_w = QLabel(self.ms_label)
+        # Duration: how long the move / tap takes. Wait: delay before the
+        # next action, tied to the duration unless the user unties it.
+        if fresh:
+            self.act.duration = (GAMEPAD_TAP_DEFAULT_DURATION if self.act.kind == GAMEPAD_TAP
+                                 else GAMEPAD_DEFAULT_DURATION)
+            self.act.tied = self.act.uses_duration
+            self.act.wait = self.act.duration if self.act.tied else 0
+        self.dur_label = QLabel("Duration (ms)")
+        self._add(self.dur_label)
+        self.dur_spin = ArrowSpinBox()
+        self.dur_spin.setRange(1, GAMEPAD_MS_MAX)
+        self.dur_spin.setValue(max(1, self.act.duration))
+        self.dur_spin.valueChanged.connect(self.on_change)
+        self._add(self.dur_spin)
+
+        self.tie_check = QCheckBox("Tie wait to action duration")
+        self.tie_check.setToolTip("When ticked, the next action starts once this one has finished. "
+                                  "Untick to set a different wait.")
+        self.tie_check.setChecked(bool(self.act.tied))
+        self.tie_check.toggled.connect(self.on_change)
+        self._add(self.tie_check)
+
+        self.ms_label_w = QLabel("Wait (ms)")
         self._add(self.ms_label_w)
         self.ms_spin = ArrowSpinBox()
         self.ms_spin.setRange(0, GAMEPAD_MS_MAX)
-        self.ms_spin.setValue(self.act.ms)
+        self.ms_spin.setValue(self.act.effective_wait())
         self.ms_spin.setToolTip("How long to wait before the next action")
         self.ms_spin.valueChanged.connect(self.on_change)
         self._add(self.ms_spin)
@@ -1076,10 +1098,20 @@ class ActionGamepadUI(BasicActionUI):
             on = self.act.kind in (GAMEPAD_TRIGGER, GAMEPAD_STICK)
             self.pct_spin.setVisible(on)
             self.pct_label.setVisible(on)
+        uses = self.act.uses_duration
+        for w in (self.dur_label, self.dur_spin, self.tie_check):
+            w.setVisible(uses)
         if self.act.kind == GAMEPAD_TAP:
-            self.ms_label_w.setText("Hold (ms)")
+            self.dur_spin.setToolTip("How long the button is held down")
         else:
-            self.ms_label_w.setText(self.ms_label)
+            self.dur_spin.setToolTip("How long the move takes: 1 ms is instant, 2000 ms moves "
+                                     "it gradually over two seconds from where it is now")
+        tied = uses and self.tie_check.isChecked()
+        self.ms_spin.setEnabled(not tied)
+        if tied:
+            self.ms_spin.blockSignals(True)
+            self.ms_spin.setValue(self.dur_spin.value())
+            self.ms_spin.blockSignals(False)
 
     def insert(self, row):
         self.container.addWidget(self.layout_container, row, 3)
@@ -1107,8 +1139,10 @@ class ActionGamepadUI(BasicActionUI):
             self.act.value = self.dir_combo.currentIndex()
         if self.pct_spin is not None:
             self.act.percent = self.pct_spin.value()
-        self.act.ms = self.ms_spin.value()
+        self.act.duration = self.dur_spin.value()
+        self.act.tied = self.act.uses_duration and self.tie_check.isChecked()
         self._update_visibility()
+        self.act.wait = self.ms_spin.value()
         self.changed.emit()
 
 
