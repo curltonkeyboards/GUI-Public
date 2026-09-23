@@ -147,10 +147,16 @@ def _hook_progress():
         return
     if not hasattr(vialglue, "notify_progress"):
         return
-    state = {"pct": 0}
+    state = {"pct": 0, "keyboard": False}
 
     def on_message(msg):
+        if "Keyboard reload complete" in msg:
+            state["keyboard"] = True
         for key, pct, text in _PROGRESS_STEPS:
+            # The window's first, keyboard-less pass also rebuilds and
+            # refreshes the pages; only the pass with a keyboard counts.
+            if pct >= 65 and not state["keyboard"]:
+                continue
             if key in msg and pct > state["pct"]:
                 state["pct"] = pct
                 vialglue.notify_progress(pct, text)
