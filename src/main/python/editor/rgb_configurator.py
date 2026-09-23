@@ -4,7 +4,7 @@ from PyQt5.QtCore import pyqtSignal, QObject, Qt
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QWidget, QPushButton, QHBoxLayout, QSizePolicy, QGridLayout, QLabel, QSlider, \
     QComboBox, QColorDialog, QCheckBox, QTabWidget, QMenu, QAction, QScrollArea, QVBoxLayout, QGroupBox, \
-    QStackedWidget
+    QStackedWidget, QToolButton
 
 from widgets.combo_box import ArrowComboBox
 from widgets.keyboard_widget import KeyboardWidget2, KeyboardWidgetSimple, KeyboardWidgetNoHighlight
@@ -968,8 +968,9 @@ class BasicHandler(QObject):
             self.hide()
 
     def show(self):
+        from widgets.debug_windows import DebugWindows
         for w in self.widgets:
-            w.show()
+            w.setVisible(DebugWindows.allowed(w))
 
     def hide(self):
         for w in self.widgets:
@@ -1163,6 +1164,9 @@ class VialRGBHandler(BasicHandler):
 
     def on_rgb_effect_changed(self, index):
         self.keyboard.set_vialrgb_mode(self.effects[index].idx)
+        cb = getattr(self, 'effect_changed_cb', None)
+        if cb is not None:
+            cb(self.effects[index].idx)
 
     def on_rgb_color(self):
         self.dlg_color = QColorDialog()
@@ -1232,7 +1236,7 @@ class RescanButtonHandler(BasicHandler):
         # Save Settings button (90px wide, same height as rescan button)
         self.save_button = QPushButton(tr("RGBConfigurator", "Save Settings"))
         self.save_button.clicked.connect(self.on_save_settings)
-        self.save_button.setFixedWidth(90)
+        self.save_button.setMinimumWidth(110)
         self.save_button.setMinimumHeight(30)
         self.save_button.setStyleSheet("QPushButton { border-radius: 5px; padding: 8px; }")
         button_layout.addWidget(self.save_button)
@@ -1670,27 +1674,21 @@ class PerKeyRGBHandler(BasicHandler):
             self.palette_layout.addWidget(button, r, c)
             self.palette_buttons.append(button)
 
-        # Change Color button (below palette) - with rounded edges, 35px tall
-        self.btn_change_color = QPushButton(tr("RGBConfigurator", "Change Color"))
-        self.btn_change_color.clicked.connect(self.on_change_color_clicked)
-        self.btn_change_color.setFixedHeight(35)
-        self.btn_change_color.setStyleSheet("QPushButton { border-radius: 5px; }")
-        palette_container_layout.addWidget(self.btn_change_color)
 
-        # Action buttons (below Change Color button) - with rounded edges, 35px tall
+        # Action buttons (below the palette) - with rounded edges, 35px tall
         self.btn_change_all_layers = QPushButton(tr("RGBConfigurator", "Change ALL Layers to Per Key"))
         self.btn_change_all_layers.clicked.connect(self.on_change_all_layers)
         self.btn_change_all_layers.setFixedHeight(35)
         self.btn_change_all_layers.setStyleSheet("QPushButton { border-radius: 5px; }")
         palette_container_layout.addWidget(self.btn_change_all_layers)
 
-        self.btn_save = QPushButton(tr("RGBConfigurator", "Save to EEPROM"))
+        self.btn_save = QPushButton(tr("RGBConfigurator", "Save"))
         self.btn_save.clicked.connect(self.on_save)
         self.btn_save.setFixedHeight(35)
         self.btn_save.setStyleSheet("QPushButton { border-radius: 5px; }")
         palette_container_layout.addWidget(self.btn_save)
 
-        self.btn_load = QPushButton(tr("RGBConfigurator", "Load from EEPROM"))
+        self.btn_load = QPushButton(tr("RGBConfigurator", "Load from Device"))
         self.btn_load.clicked.connect(self.on_load)
         self.btn_load.setFixedHeight(35)
         self.btn_load.setStyleSheet("QPushButton { border-radius: 5px; }")
@@ -1736,6 +1734,9 @@ class PerKeyRGBHandler(BasicHandler):
         self.debug_output.setFixedHeight(150)
         self.debug_output.setStyleSheet("font-family: monospace; font-size: 10pt;")
         container.addWidget(self.debug_output, row, 0, 1, 2)
+        from widgets.debug_windows import DebugWindows
+        DebugWindows.register(self.lbl_debug)
+        DebugWindows.register(self.debug_output)
         row += 1
 
         # State variables
@@ -2234,6 +2235,40 @@ class PerKeyRGBHandler(BasicHandler):
         return isinstance(self.device, VialKeyboard)
 
 
+class FrostOverlay(QWidget):
+    """Frosted cover laid over a widget with a centred message. It tracks the
+    parent's size and swallows clicks so the controls under it can't be used."""
+
+    def __init__(self, parent, text):
+        super().__init__(parent)
+        self.text = text
+        self.setAttribute(Qt.WA_StyledBackground, False)
+        parent.installEventFilter(self)
+        self.setGeometry(parent.rect())
+        self.hide()
+
+    def eventFilter(self, obj, ev):
+        if obj is self.parent() and ev.type() == QtCore.QEvent.Resize:
+            self.setGeometry(obj.rect())
+        return False
+
+    def paintEvent(self, ev):
+        qp = QtGui.QPainter(self)
+        bg = self.palette().color(QtGui.QPalette.Window)
+        bg.setAlpha(225)
+        qp.fillRect(self.rect(), bg)
+        font = qp.font()
+        font.setBold(True)
+        font.setPointSizeF(font.pointSizeF() * 1.2)
+        qp.setFont(font)
+        qp.setPen(self.palette().color(QtGui.QPalette.WindowText))
+        qp.drawText(self.rect().adjusted(20, 0, -20, 0), Qt.AlignCenter | Qt.TextWordWrap, self.text)
+        qp.end()
+
+    def mousePressEvent(self, ev):
+        ev.accept()
+
+
 class CustomLightsHandler(BasicHandler):
     """Handler for custom animation slot configuration - uses VialKeyboard infrastructure"""
 
@@ -2270,70 +2305,128 @@ class CustomLightsHandler(BasicHandler):
 
         row = container.rowCount()
 
-        # Custom Lights label
-        self.lbl_custom_lights = QLabel(tr("RGBConfigurator", "Custom Lights"))
-        container.addWidget(self.lbl_custom_lights, row, 0, 1, 2)
+        # Slot selector: "Select Custom Lights slot" + a sectioned dropdown
+        # (1-9, 10-19, ...) + up/down arrows to step through the slots.
+        self.lbl_custom_lights = QLabel(tr("RGBConfigurator", "Select Custom Lights slot"))
+        self.lbl_custom_lights.setStyleSheet("font-weight: bold;")
+        self.slot_combo = ArrowComboBox()
+        self.slot_combo.setMaxVisibleItems(20)
+        self.slot_combo.setMinimumWidth(160)
+        self.slot_up_btn = QToolButton()
+        self.slot_up_btn.setArrowType(Qt.UpArrow)
+        self.slot_down_btn = QToolButton()
+        self.slot_down_btn.setArrowType(Qt.DownArrow)
+        selector_row = QHBoxLayout()
+        selector_row.setContentsMargins(0, 0, 0, 0)
+        selector_row.addWidget(self.lbl_custom_lights)
+        selector_row.addWidget(self.slot_combo, 1)
+        selector_row.addWidget(self.slot_up_btn)
+        selector_row.addWidget(self.slot_down_btn)
+        self.selector_widget = QWidget()
+        self.selector_widget.setLayout(selector_row)
+        container.addWidget(self.selector_widget, row, 0, 1, 2)
 
-        # Create main tab widget for groups
-        self.main_tab_widget = QTabWidget()
-        container.addWidget(self.main_tab_widget, row + 1, 0, 1, 2)
-        
+        # One page per slot; the dropdown picks the page shown
+        self.slot_stack = QStackedWidget()
+        container.addWidget(self.slot_stack, row + 1, 0, 1, 2)
+        self._stack_index = {}
+
+        # Frosted cover over the slot controls while the Basic RGB effect is
+        # not a custom slot (and no slot has been picked from the dropdown)
+        self.frost_overlay = FrostOverlay(self.slot_stack, tr(
+            "RGBConfigurator", "Select a custom slot to change custom animations"))
+        self.overlay_override = False
+        # Set by RGBConfigurator: called with the slot picked in the dropdown
+        self.slot_chosen_cb = None
+
         # Track the currently active slot (for parameter changes)
         self.current_active_slot = None
         self.current_randomize_slot = None
-        # Slots whose widget values were actually populated from the device
-        # (update_slot_widgets). Widget init defaults (hue 0 / sat 255 = red)
-        # must never be pushed to the keyboard as if they were real data.
         self.slots_loaded_from_device = set()
-        # Placeholder tab pages; real controls are built on first visit
         self._slot_tab_placeholders = {}
-        
-        # Create grouped tabs
+
         self.slot_tabs = []
         self.slot_widgets = {}
-        self.group_tab_widgets = {}  # Store sub-tab widgets for each group
-        
-        # Define groups: 1-9, 10-19, 20-29, 30-39, 40-49 (removed the single "50" group)
+
+        # Dropdown sections: 1-9, 10-19, 20-29, 30-39, 40-50
         self.groups = [
             ("1-9", 0, 9),
-            ("10-19", 9, 19), 
+            ("10-19", 9, 19),
             ("20-29", 19, 29),
             ("30-39", 29, 39),
-            ("40-49", 39, 50)  # Changed to go up to 50 (slots 39-49)
+            ("40-50", 39, 50)
         ]
-        
-        # Connect main tab change to load lowest slot in group
-        self.main_tab_widget.currentChanged.connect(self.on_main_tab_changed)
-        
         for group_name, start_idx, end_idx in self.groups:
-            self.create_group_tab(group_name, start_idx, end_idx)
+            self.slot_combo.addItem("\u2014 {} \u2014".format(group_name), -1)
+            self.slot_combo.model().item(self.slot_combo.count() - 1).setEnabled(False)
+            for slot in range(start_idx, end_idx):
+                self.slot_combo.addItem(tr("RGBConfigurator", "Slot {}").format(slot + 1), slot)
+                self.create_slot_tab(slot, None)
+        self._set_combo_slot(0)
+        self._show_slot(0)
+        self.slot_combo.currentIndexChanged.connect(self._on_slot_combo_changed)
+        self.slot_up_btn.clicked.connect(lambda: self._step_slot(-1))
+        self.slot_down_btn.clicked.connect(lambda: self._step_slot(1))
 
-        self.widgets = [self.lbl_custom_lights, self.main_tab_widget]
+        self.widgets = [self.selector_widget, self.slot_stack]
 
-    def create_group_tab(self, group_name, start_idx, end_idx):
-        """Create a main tab containing sub-tabs for a group of slots"""
-        # Create the main tab widget
-        group_widget = QWidget()
-        self.main_tab_widget.addTab(group_widget, group_name)
-        
-        # Create layout for the group
-        group_layout = QHBoxLayout(group_widget)
-        group_layout.setContentsMargins(5, 5, 5, 5)
-        
-        # Create sub-tab widget for individual slots in this group
-        sub_tab_widget = QTabWidget()
-        group_layout.addWidget(sub_tab_widget)
-        
-        # Store reference to sub-tab widget
-        self.group_tab_widgets[group_name] = sub_tab_widget
-        
-        # Connect tab change signal for this sub-tab widget
-        sub_tab_widget.currentChanged.connect(lambda index, start=start_idx: self.on_sub_tab_changed(index, start))
-        
-        # Create individual slot tabs within this group
-        for slot in range(start_idx, end_idx):
-            self.create_slot_tab(slot, sub_tab_widget)
-        
+    def _set_combo_slot(self, slot):
+        """Point the dropdown at `slot` without firing its change handler."""
+        idx = self.slot_combo.findData(slot)
+        if idx >= 0:
+            self.slot_combo.blockSignals(True)
+            self.slot_combo.setCurrentIndex(idx)
+            self.slot_combo.blockSignals(False)
+
+    def _show_slot(self, slot):
+        if hasattr(self, '_ensure_slot_tab'):
+            self._ensure_slot_tab(slot)
+        if slot in self._stack_index:
+            self.slot_stack.setCurrentIndex(self._stack_index[slot])
+
+    def _add_slot_page(self, slot, page):
+        self._stack_index[slot] = self.slot_stack.addWidget(page)
+
+    def _step_slot(self, direction):
+        i = self.slot_combo.currentIndex() + direction
+        while 0 <= i < self.slot_combo.count():
+            data = self.slot_combo.itemData(i)
+            if data is not None and data >= 0:
+                self.slot_combo.setCurrentIndex(i)
+                return
+            i += direction
+
+    def _on_slot_combo_changed(self, index):
+        slot = self.slot_combo.itemData(index)
+        if slot is None or slot < 0:
+            return
+        self.select_slot(slot, user=True)
+
+    def select_slot(self, slot, user=False):
+        """Show `slot`'s controls and load its saved values. user=True means
+        it was picked in the dropdown: the device previews it and the Basic
+        RGB effect follows."""
+        self._set_combo_slot(slot)
+        self._show_slot(slot)
+        if user:
+            self.overlay_override = True
+        if self.device is None or not hasattr(self.device, 'keyboard'):
+            return
+        self.block_signals()
+        self.load_slot_from_eeprom(slot)
+        if user:
+            self._apply_slot_rgb_to_keyboard(slot)
+            if hasattr(self, '_preview_slot_on_keyboard'):
+                self._preview_slot_on_keyboard(slot)
+        self.unblock_signals()
+        if user and self.slot_chosen_cb is not None:
+            self.slot_chosen_cb(slot)
+
+    def set_overlay_visible(self, visible):
+        self.frost_overlay.setVisible(visible)
+        if visible:
+            self.frost_overlay.raise_()
+
     def create_slot_tab(self, slot, parent_tab_widget):
         """Register a placeholder tab for a slot. The actual controls (a
         dozen dropdowns/sliders each, x50 slots) are built on the first visit
@@ -2344,7 +2437,7 @@ class CustomLightsHandler(BasicHandler):
         # synchronously, which routes to _ensure_slot_tab for that slot — this
         # builds each group's initially-visible slot so it is never blank.
         self._slot_tab_placeholders[slot] = tab_widget
-        parent_tab_widget.addTab(tab_widget, str(slot + 1))  # Tab names: "1", "2", "3", etc.
+        self._add_slot_page(slot, tab_widget)
 
     def _ensure_slot_tab(self, slot):
         """Build a slot tab's real content on first use."""
@@ -2601,33 +2694,6 @@ class CustomLightsHandler(BasicHandler):
 
         self.slot_tabs.append(tab_widget)
 
-    def on_main_tab_changed(self, index):
-        """Handle main tab change - load EEPROM for lowest slot in group"""
-        if index >= len(self.groups):
-            return
-
-        group_name, start_idx, end_idx = self.groups[index]
-        lowest_slot = start_idx
-
-        print(f"Main tab changed to {group_name}, loading EEPROM for lowest slot {lowest_slot}")
-        self._ensure_slot_tab(lowest_slot)
-        self.block_signals()
-        self.load_slot_from_eeprom(lowest_slot)
-        self._apply_slot_rgb_to_keyboard(lowest_slot)
-        self._preview_slot_on_keyboard(lowest_slot)
-        self.unblock_signals()
-
-    def on_sub_tab_changed(self, index, start_slot):
-        """Handle sub-tab switching within a group"""
-        actual_slot = start_slot + index
-        print(f"Sub-tab changed to {index}, actual slot {actual_slot}, loading EEPROM state")
-        self._ensure_slot_tab(actual_slot)
-        self.block_signals()
-        self.load_slot_from_eeprom(actual_slot)
-        self._apply_slot_rgb_to_keyboard(actual_slot)
-        self._preview_slot_on_keyboard(actual_slot)
-        self.unblock_signals()
-
     def _preview_slot_on_keyboard(self, slot):
         """Switch the device's live RGB mode to this slot so it previews the tab
         being edited. Non-persistent on the firmware side (restored on power
@@ -2680,21 +2746,11 @@ class CustomLightsHandler(BasicHandler):
             self.device.keyboard.set_vialrgb_color(h, s)
         
     def get_current_slot_index(self):
-        """Get the currently selected slot index across all groups"""
-        # Get current main tab (group)
-        main_tab_index = self.main_tab_widget.currentIndex()
-        if main_tab_index >= len(self.groups):
+        """The slot currently picked in the dropdown."""
+        slot = self.slot_combo.currentData()
+        if slot is None or slot < 0:
             return 0
-            
-        group_name, start_idx, end_idx = self.groups[main_tab_index]
-        
-        # Get current sub-tab within the group
-        sub_tab_widget = self.group_tab_widgets[group_name]
-        sub_tab_index = sub_tab_widget.currentIndex()
-        
-        # Calculate actual slot index
-        actual_slot = start_idx + sub_tab_index
-        return min(actual_slot, 49)  # Ensure we don't exceed slot 49
+        return min(slot, 49)
             
     def get_currently_active_slot(self):
         """Get the slot number that is currently active - FIXED to use current slot"""
@@ -3156,7 +3212,12 @@ class CustomLightsHandler(BasicHandler):
         self._update_rgb_color_swatch(current_slot)
 
     def on_save_slot(self, slot):
-        """Save current GUI configuration to the tab slot's EEPROM"""
+        """Save this slot's settings, and the Basic RGB settings with them."""
+        try:
+            if hasattr(self.device.keyboard, 'save_rgb'):
+                self.device.keyboard.save_rgb()
+        except Exception as e:
+            print(f"Error saving basic RGB settings: {e}")
         try:
             # Get current GUI state for this tab
             widgets = self.slot_widgets[slot]
@@ -3447,7 +3508,7 @@ class AdvancedKeyLightingHandler(QObject):
         layout = self.container
 
         # Title
-        title = QLabel("Advanced Key Lighting")
+        title = QLabel("Key Indicators")
         title.setStyleSheet("font-weight: bold; font-size: 14pt;")
         title.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(title, 0, 0, 1, 2)
@@ -3816,59 +3877,34 @@ class RGBConfigurator(BasicEditor):
         self.tabs_widget = QTabWidget()
         self.addWidget(self.tabs_widget)
 
-        # Tab 1: Basic - for basic RGB controls (with title/description)
-        self.basic_container = QGridLayout()
-        self.basic_tab = self._create_tab_with_title(
-            self.basic_container,
-            "Basic RGB",
-            "Configure global RGB lighting settings including brightness,\n"
-            "effects, speed, and color. Changes apply to all keys."
-        )
-        self.tabs_widget.addTab(self.basic_tab, tr("RGBConfigurator", "Basic"))
+        # Tab 1: Custom Lights (replaces the old Basic tab) - Basic RGB
+        # functions on the left, custom animation slots on the right
+        self.custom_basic_container = QGridLayout()
+        self.custom_lights_container = QGridLayout()
+        self.custom_tab = self._create_custom_lights_tab()
+        self.tabs_widget.addTab(self.custom_tab, tr("RGBConfigurator", "Custom Lights"))
 
         # Tab 2: Lighting Configurator - for per-key RGB
         self.lighting_container = QGridLayout()
         self.lighting_tab = self._create_tab_with_scroll(self.lighting_container)
         self.tabs_widget.addTab(self.lighting_tab, tr("RGBConfigurator", "Lighting Configurator"))
 
-        # Tab 3: Custom Lights - side by side layout (Basic left, Custom right)
-        self.custom_basic_container = QGridLayout()
-        self.custom_lights_container = QGridLayout()
-        self.custom_tab = self._create_custom_lights_tab()
-        self.tabs_widget.addTab(self.custom_tab, tr("RGBConfigurator", "Custom Lights"))
-
-        # Tab 4: Advanced Key Lighting - configurable functional LED colors
+        # Tab 3: Key Indicators - configurable functional LED colors
         self.adv_key_lighting_container = QGridLayout()
         self.adv_key_lighting_tab = self._create_tab_with_scroll(self.adv_key_lighting_container)
-        self.tabs_widget.addTab(self.adv_key_lighting_tab, tr("RGBConfigurator", "Advanced Key Lighting"))
-
-        # Initialize handlers for Basic tab
-        self.handler_backlight = QmkBacklightHandler(self.basic_container)
-        self.handler_backlight.update.connect(self.update_from_keyboard)
-        self.handler_rgblight = QmkRgblightHandler(self.basic_container)
-        self.handler_rgblight.update.connect(self.update_from_keyboard)
-        self.handler_vialrgb = VialRGBHandler(self.basic_container)
-        self.handler_vialrgb.update.connect(self.update_from_keyboard)
-
-        # Add the rescan button handler - NO UPDATE CONNECTION
-        self.handler_rescan = RescanButtonHandler(self.basic_container)
-        # REMOVED: self.handler_rescan.update.connect(self.update_from_keyboard)
-
-        # Add the per-layer RGB handler
-        self.handler_layer_rgb = LayerRGBHandler(self.basic_container)
-        self.handler_layer_rgb.update.connect(self.update_from_keyboard)
+        self.tabs_widget.addTab(self.adv_key_lighting_tab, tr("RGBConfigurator", "Key Indicators"))
 
         # Initialize handler for Lighting Configurator tab (per-key RGB)
         self.handler_per_key_rgb = PerKeyRGBHandler(self.lighting_container)
-        # No update connection needed for per-key handler
 
-        # Initialize handlers for Custom Lights tab - Basic side (left)
+        # Custom Lights tab - Basic side (left)
         self.handler_backlight_custom = QmkBacklightHandler(self.custom_basic_container)
         self.handler_backlight_custom.update.connect(self.update_from_keyboard)
         self.handler_rgblight_custom = QmkRgblightHandler(self.custom_basic_container)
         self.handler_rgblight_custom.update.connect(self.update_from_keyboard)
         self.handler_vialrgb_custom = VialRGBHandler(self.custom_basic_container)
         self.handler_vialrgb_custom.update.connect(self.update_from_keyboard)
+        self.handler_vialrgb_custom.effect_changed_cb = self._on_basic_effect_changed
         self.handler_rescan_custom = RescanButtonHandler(self.custom_basic_container)
         self.handler_layer_rgb_custom = LayerRGBHandler(self.custom_basic_container)
         self.handler_layer_rgb_custom.update.connect(self.update_from_keyboard)
@@ -3876,19 +3912,17 @@ class RGBConfigurator(BasicEditor):
         # Custom Lights handler (right side)
         self.handler_custom_lights = CustomLightsHandler(self.custom_lights_container)
         self.handler_custom_lights.update.connect(self.update_from_keyboard)
+        self.handler_custom_lights.slot_chosen_cb = self._on_custom_slot_chosen
 
-        # Advanced Key Lighting handler (Tab 4)
+        # Key Indicators handler (Tab 3)
         self.handler_adv_key_lighting = AdvancedKeyLightingHandler(self.adv_key_lighting_container)
 
-        self.handlers = [self.handler_backlight, self.handler_rgblight,
-                        self.handler_vialrgb, self.handler_rescan,
-                        self.handler_layer_rgb, self.handler_per_key_rgb,
+        self.handlers = [self.handler_per_key_rgb,
                         self.handler_backlight_custom, self.handler_rgblight_custom,
                         self.handler_vialrgb_custom, self.handler_rescan_custom,
                         self.handler_layer_rgb_custom, self.handler_custom_lights,
                         self.handler_adv_key_lighting]
 
-        # Save button is now inside the Basic tab, after LayerRGBHandler
 
     def _create_tab_with_title(self, container, title, description):
         """Helper method to create a tab with title, description, and scroll area - centered"""
@@ -4058,6 +4092,52 @@ class RGBConfigurator(BasicEditor):
             h.update_from_keyboard()
 
         self.unblock_signals()
+        self._sync_custom_slot_ui()
+
+    # ---- Custom Lights <-> Basic RGB effect -------------------------------
+
+    CUSTOM_SLOT_EFFECT_BASE = 78   # "Custom Slot 1" in the RGB effect list
+    CUSTOM_SLOT_EFFECTS = 49       # slots 1-49 have an RGB effect
+
+    def _custom_slot_of_mode(self, mode):
+        if mode is None:
+            return None
+        slot = mode - self.CUSTOM_SLOT_EFFECT_BASE
+        return slot if 0 <= slot < self.CUSTOM_SLOT_EFFECTS else None
+
+    def _current_rgb_mode(self):
+        kb = getattr(self.device, 'keyboard', None)
+        return getattr(kb, 'rgb_mode', None) if kb is not None else None
+
+    def _sync_custom_slot_ui(self):
+        """Frost the slot controls unless the Basic RGB effect is a custom
+        slot (or one was picked in the dropdown); follow the effect's slot."""
+        cl = self.handler_custom_lights
+        slot = self._custom_slot_of_mode(self._current_rgb_mode())
+        if slot is not None and slot != cl.get_current_slot_index():
+            cl.select_slot(slot)
+        cl.set_overlay_visible(slot is None and not cl.overlay_override)
+
+    def _on_custom_slot_chosen(self, slot):
+        """A slot was picked in the Custom Lights dropdown: make the Basic RGB
+        effect that custom slot so the change is visible there too."""
+        kb = getattr(self.device, 'keyboard', None)
+        if kb is not None and slot < self.CUSTOM_SLOT_EFFECTS:
+            mode = self.CUSTOM_SLOT_EFFECT_BASE + slot
+            if mode in getattr(kb, 'rgb_supported_effects', ()):
+                if getattr(kb, 'rgb_mode', None) != mode:
+                    kb.set_vialrgb_mode(mode)
+                h = self.handler_vialrgb_custom
+                h.block_signals()
+                h.update_from_keyboard()
+                h.unblock_signals()
+        self.handler_custom_lights.set_overlay_visible(False)
+
+    def _on_basic_effect_changed(self, mode):
+        """The Basic RGB effect was changed by hand: the dropdown override no
+        longer applies, the effect decides."""
+        self.handler_custom_lights.overlay_override = False
+        self._sync_custom_slot_ui()
 
     def rebuild(self, device):
         super().rebuild(device)

@@ -688,7 +688,49 @@ class TriggerVisualizerWidget(QWidget):
                 painter.drawText(label_x, mm_y, mm_text)
 
 
+class _MirroredSaveButton(QPushButton):
+    """The editor's single Save state. It is never placed in a layout; each
+    settings tab has its own visible Save button that follows it."""
+
+    def __init__(self, text):
+        super().__init__(text)
+        self.mirrors = []
+
+    def setEnabled(self, enabled):
+        super().setEnabled(enabled)
+        for b in self.mirrors:
+            b.setEnabled(enabled)
+
+
 class TriggerSettingsTab(BasicEditor):
+
+    def _desc_column(self, desc_container):
+        """Left column of a settings tab: the description (scrolls when the
+        window is short, so nothing gets clipped) with that tab's Save
+        button pinned underneath."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(desc_container)
+        column = QWidget()
+        column.setFixedWidth(desc_container.width() + scroll.verticalScrollBar().sizeHint().width() + 2)
+        lay = QVBoxLayout(column)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+        lay.addWidget(scroll, 1)
+        lay.addWidget(self._make_tab_save_button())
+        return column
+
+    def _make_tab_save_button(self):
+        """A Save button for one settings tab, mirroring self.save_btn."""
+        btn = QPushButton(tr("TriggerSettings", "Save"))
+        btn.setMinimumHeight(32)
+        btn.setStyleSheet("QPushButton:enabled { font-weight: bold; color: palette(highlight); }")
+        btn.setEnabled(self.save_btn.isEnabled())
+        btn.clicked.connect(self.on_save)
+        self.save_btn.mirrors.append(btn)
+        return btn
     """Per-key actuation settings editor"""
 
     def __init__(self, layout_editor):
@@ -819,12 +861,13 @@ class TriggerSettingsTab(BasicEditor):
         self.reset_btn.clicked.connect(self.on_reset_all)
         selection_buttons_layout.addWidget(self.reset_btn)
 
-        self.save_btn = QPushButton(tr("TriggerSettings", "Save"))
+        # Not shown itself: its enabled state drives the Save button placed
+        # in each settings tab (Actuation / RapidTrigger / SOCD).
+        self.save_btn = _MirroredSaveButton(tr("TriggerSettings", "Save"))
         self.save_btn.setMinimumHeight(32)  # Make buttons bigger
         self.save_btn.setEnabled(False)
         self.save_btn.setStyleSheet("QPushButton:enabled { font-weight: bold; color: palette(highlight); }")
         self.save_btn.clicked.connect(self.on_save)
-        selection_buttons_layout.addWidget(self.save_btn)
 
         selection_buttons_layout.addStretch()
 
@@ -1251,7 +1294,7 @@ class TriggerSettingsTab(BasicEditor):
         button_row = QHBoxLayout()
         button_row.setSpacing(10)
 
-        self.nullbind_save_btn = QPushButton(tr("TriggerSettings", "Save"))
+        self.nullbind_save_btn = QPushButton(tr("TriggerSettings", "Save Group"))
         self.nullbind_save_btn.setMinimumHeight(30)
         self.nullbind_save_btn.setMinimumWidth(90)
         self.nullbind_save_btn.setStyleSheet("QPushButton { font-weight: bold; color: palette(highlight); }")
@@ -1394,7 +1437,7 @@ class TriggerSettingsTab(BasicEditor):
 
         actuation_desc_layout.addStretch()
         actuation_desc_container.setLayout(actuation_desc_layout)
-        actuation_layout.addWidget(actuation_desc_container)
+        actuation_layout.addWidget(self._desc_column(actuation_desc_container))
 
         # Right side: Controls
         self.trigger_container = self.create_trigger_container()
@@ -1439,7 +1482,7 @@ class TriggerSettingsTab(BasicEditor):
 
         rapidfire_desc_layout.addStretch()
         rapidfire_desc_container.setLayout(rapidfire_desc_layout)
-        rapidfire_layout.addWidget(rapidfire_desc_container)
+        rapidfire_layout.addWidget(self._desc_column(rapidfire_desc_container))
 
         # Right side: Controls
         self.rapidfire_container = self.create_rapidfire_container()
@@ -1483,7 +1526,7 @@ class TriggerSettingsTab(BasicEditor):
         nb_howto = QLabel(tr("TriggerSettings",
             "Click or drag across the virtual keyboard to pick the keys that "
             "should cancel each other out. Choose a behavior and the layer it "
-            "works on, then press Save to turn them into a group."))
+            "works on, then press Save Group to turn them into a group."))
         nb_howto.setWordWrap(True)
         nb_howto.setStyleSheet("color: gray; font-size: 9pt;")
         nullbind_desc_layout.addWidget(nb_howto)
@@ -1506,7 +1549,7 @@ class TriggerSettingsTab(BasicEditor):
 
         nullbind_desc_layout.addStretch()
         nullbind_desc_container.setLayout(nullbind_desc_layout)
-        nullbind_layout.addWidget(nullbind_desc_container)
+        nullbind_layout.addWidget(self._desc_column(nullbind_desc_container))
 
         # Right side: Controls
         self.nullbind_container = self.create_nullbind_container()

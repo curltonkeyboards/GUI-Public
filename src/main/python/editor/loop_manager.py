@@ -1121,6 +1121,8 @@ class LoopManager(BasicEditor):
         self.view_log_btn = QPushButton(tr("LoopManager", "📋 View Debug Log"))
         self.view_log_btn.setMaximumWidth(200)
         self.view_log_btn.clicked.connect(self.on_view_log)
+        from widgets.debug_windows import DebugWindows
+        DebugWindows.register(self.view_log_btn)
         log_button_layout.addWidget(self.view_log_btn)
         log_button_layout.addStretch()
         save_layout.addLayout(log_button_layout)

@@ -296,6 +296,13 @@ class MainWindow(QMainWindow):
             file_menu.addSeparator()
             file_menu.addAction(clone_load_act)
             file_menu.addAction(clone_save_act)
+            file_menu.addSeparator()
+            from widgets.debug_windows import DebugWindows
+            self.show_debug_act = QAction(tr("MenuFile", "Show debug windows"), self)
+            self.show_debug_act.setCheckable(True)
+            self.show_debug_act.setChecked(DebugWindows.visible())
+            self.show_debug_act.toggled.connect(DebugWindows.set_visible)
+            file_menu.addAction(self.show_debug_act)
 
         if sys.platform != "emscripten":
             self.theme_menu = self.menuBar().addMenu(tr("Menu", "Theme"))
