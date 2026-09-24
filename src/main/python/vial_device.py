@@ -156,7 +156,7 @@ class VialVirtualKeyboard(VialKeyboard):
         return "Virtual MIDIswitch (demo)"
 
     def get_uid(self):
-        from util import MIDISWITCH_KEYBOARD_UID
+        from protocol.virtual_midiswitch import MIDISWITCH_KEYBOARD_UID
         import struct
         return struct.pack("<Q", MIDISWITCH_KEYBOARD_UID)
 

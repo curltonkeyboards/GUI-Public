@@ -15,12 +15,13 @@ from protocol.msw_protocol import (
     MSW_CMD_IDENT, MSW_CAP_DIGITIZER, MSW_CAP_DIN_MIDI, MSW_CAP_RGB_MATRIX, MSW_CAP_CLONE,
     ALIAS_TO_VIA, ALIAS_VIAL_PREFIX, MSW_CMD_MACRO_SETTINGS, MSET_MOUSE_MARKER,
 )
-from util import MIDISWITCH_KEYBOARD_UID
 from protocol.virtual_midiswitch_lighting import LightingMixin
 from protocol.virtual_midiswitch_keys import KeysMixin
 from protocol.virtual_midiswitch_music import MusicMixin
 
 MSG_LEN = 32
+
+MIDISWITCH_KEYBOARD_UID = 0xB26D0425F36AC4F4   # model UID the keyboard reports
 
 ROWS, COLS, LAYERS = 6, 14, 12
 MACRO_COUNT = 255
