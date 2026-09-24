@@ -16,6 +16,8 @@ from protocol.msw_protocol import (
     ALIAS_TO_VIA, ALIAS_VIAL_PREFIX, MSW_CMD_MACRO_SETTINGS, MSET_MOUSE_MARKER,
 )
 from util import MIDISWITCH_KEYBOARD_UID
+from protocol.virtual_midiswitch_lighting import LightingMixin
+from protocol.virtual_midiswitch_keys import KeysMixin
 
 MSG_LEN = 32
 
@@ -64,7 +66,7 @@ def _kc(name):
     return Keycode.deserialize(name)
 
 
-class VirtualMidiswitchDevice:
+class VirtualMidiswitchDevice(LightingMixin, KeysMixin):
     """hidapi-style handle: write() takes a report (leading report-id byte),
     read() returns the next queued reply or b"" when there is none."""
 
@@ -81,6 +83,9 @@ class VirtualMidiswitchDevice:
         self.custom = {}         # (cmd, key) -> last payload set, for simple get/set pairs
         self.unhandled = collections.Counter()
         self.closed = False
+        for name in dir(self):
+            if name.startswith("_init_"):
+                getattr(self, name)()
 
     # ---- hidapi surface ------------------------------------------------
 
@@ -292,8 +297,18 @@ class VirtualMidiswitchDevice:
             else:
                 r[0] = 1
         else:
+            for hook in self._vial_hooks():
+                reply = hook(sub, msg)
+                if reply is not None:
+                    return reply
             self.unhandled["vial %02X" % sub] += 1
         return r
+
+    def _vial_hooks(self):
+        return [getattr(self, n) for n in ("_vial_lighting", "_vial_keys", "_vial_music") if hasattr(self, n)]
+
+    def _custom_hooks(self):
+        return [getattr(self, n) for n in ("_custom_lighting", "_custom_keys", "_custom_music") if hasattr(self, n)]
 
     def _custom(self, msg):
         cmd = msg[3]
@@ -319,6 +334,10 @@ class VirtualMidiswitchDevice:
             struct.pack_into("<HHHHH", r, 5, self.settings[7], self.settings[18], self.settings[6], *self.mouse)
             r[15] = MSET_MOUSE_MARKER
             return r
+        for hook in self._custom_hooks():
+            reply = hook(cmd, msg)
+            if reply is not None:
+                return reply
         self.unhandled["custom %02X" % cmd] += 1
         return self._custom_default(cmd, msg)
 
