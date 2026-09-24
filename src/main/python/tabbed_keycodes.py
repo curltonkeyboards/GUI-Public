@@ -1403,6 +1403,18 @@ class midiadvancedTab(QScrollArea):
         self._adv_current_page += 1
         self._update_advanced_keys(self.adv_search_bar.text())
 
+    def _arrange_adv_areas(self, keys_first):
+        """Order the dropdown area and the key buttons in the results."""
+        lay = self.adv_keys_layout
+        order = [self.adv_btn_container, self.adv_dropdown_container] if keys_first \
+            else [self.adv_dropdown_container, self.adv_btn_container]
+        if [lay.itemAt(i).widget() for i in range(lay.count())] == order:
+            return
+        for w in order:
+            lay.removeWidget(w)
+        for w in order:
+            lay.addWidget(w)
+
     def _update_advanced_keys(self, search_text):
         """Rebuild advanced keys display based on search filter."""
         # Clear dropdowns
@@ -1523,6 +1535,14 @@ class midiadvancedTab(QScrollArea):
                 wl.addWidget(label)
                 wl.addWidget(dropdown)
                 self.adv_dropdown_flow.addWidget(wrapper)
+
+        # While searching, the matching keys come first and any matching
+        # dropdowns follow; an empty dropdown area takes no space at all
+        # (a hidden-but-stale FlowLayout kept its old height as a gap).
+        self._arrange_adv_areas(keys_first=bool(words))
+        self.adv_dropdown_container.setVisible(first_page and shown_dropdowns > 0)
+        self.adv_dropdown_flow.invalidate()
+        self.adv_dropdown_container.updateGeometry()
 
         # Build set of qmk_ids force-included from matched tab sections
         tab_force_ids = set()
