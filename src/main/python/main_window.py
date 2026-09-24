@@ -918,9 +918,12 @@ class MainWindow(QMainWindow):
 
 
     def get_theme(self):
-        theme = self.settings.value("theme", "Lavender Dream")
+        # The web app (midiswitch.app) opens in Sky Serenity to match its
+        # blue landing page; the desktop app keeps Lavender Dream.
+        default = "Sky Serenity" if sys.platform == "emscripten" else "Lavender Dream"
+        theme = self.settings.value("theme", default)
         if theme not in [name for name, _ in themes.themes]:
-            theme = "Lavender Dream"
+            theme = default
         return theme
 
     def set_theme(self, theme):
