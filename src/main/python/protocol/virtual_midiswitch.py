@@ -18,6 +18,7 @@ from protocol.msw_protocol import (
 from util import MIDISWITCH_KEYBOARD_UID
 from protocol.virtual_midiswitch_lighting import LightingMixin
 from protocol.virtual_midiswitch_keys import KeysMixin
+from protocol.virtual_midiswitch_music import MusicMixin
 
 MSG_LEN = 32
 
@@ -66,7 +67,7 @@ def _kc(name):
     return Keycode.deserialize(name)
 
 
-class VirtualMidiswitchDevice(LightingMixin, KeysMixin):
+class VirtualMidiswitchDevice(LightingMixin, KeysMixin, MusicMixin):
     """hidapi-style handle: write() takes a report (leading report-id byte),
     read() returns the next queued reply or b"" when there is none."""
 
