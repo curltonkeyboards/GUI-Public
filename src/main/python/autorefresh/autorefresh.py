@@ -64,6 +64,9 @@ class Autorefresh(QObject):
     def load_dummy(self, data):
         self.thread.load_dummy(data)
 
+    def load_virtual(self):
+        self.thread.load_virtual()
+
     def sideload_via_json(self, data):
         self.thread.sideload_via_json(data)
 

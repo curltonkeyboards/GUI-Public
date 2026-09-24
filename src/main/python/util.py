@@ -185,8 +185,12 @@ def is_rawhid(desc, quiet):
     return True
 
 
+# sideload vid/pid pair that selects the virtual MIDIswitch (see load_virtual)
+VIRTUAL_KEYBOARD_ID = -2
+
+
 def find_vial_devices(via_stack_json, sideload_vid=None, sideload_pid=None, quiet=False):
-    from vial_device import VialBootloader, VialKeyboard, VialDummyKeyboard
+    from vial_device import VialBootloader, VialKeyboard, VialDummyKeyboard, VialVirtualKeyboard
 
     # Startup logging
     try:
@@ -232,6 +236,8 @@ def find_vial_devices(via_stack_json, sideload_vid=None, sideload_pid=None, quie
 
     if sideload_vid == sideload_pid == 0:
         filtered.append(VialDummyKeyboard())
+    elif sideload_vid == sideload_pid == VIRTUAL_KEYBOARD_ID:
+        filtered.append(VialVirtualKeyboard())
 
     startup_log(f"Found {len(filtered)} MIDIswitch device(s)")
     return filtered

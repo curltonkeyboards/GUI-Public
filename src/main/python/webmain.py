@@ -181,15 +181,9 @@ def main(app, demo=False):
     window.show()
     app.processEvents()
     if demo:
-        # No keyboard: open a virtual MIDIswitch built from the bundled
-        # layout definition so the app can be explored.
-        from protocol import msw_definition
-        definition = msw_definition.get_definition(1)  # the MIDIswitch model
-        if not isinstance(definition, (str, bytes)):
-            definition = json.dumps(definition)
-        if isinstance(definition, str):
-            definition = definition.encode("utf-8")
-        window.autorefresh.load_dummy(definition)
+        # No keyboard: open the software MIDIswitch, which answers the app
+        # exactly like a factory-fresh keyboard.
+        window.autorefresh.load_virtual()
         window.update()
         app.processEvents()
         import vialglue

@@ -45,7 +45,7 @@ from editor.tap_dance import TapDance
 from unlocker import Unlocker
 from util import tr, EXAMPLE_KEYBOARDS, KeycodeDisplay, EXAMPLE_KEYBOARD_PREFIX, \
     MIDISWITCH_KEYBOARD_UID, LATEST_FIRMWARE_VERSION
-from vial_device import VialKeyboard, VialDummyKeyboard
+from vial_device import VialKeyboard, VialDummyKeyboard, VialVirtualKeyboard
 from editor.matrix_test import MatrixTest
 from editor.matrix_test import MIDIswitchSettingsConfigurator
 from editor.matrix_test import GamingConfigurator
@@ -736,7 +736,7 @@ class MainWindow(QMainWindow):
             if keyboard_id != MIDISWITCH_KEYBOARD_UID:
                 QMessageBox.warning(self, "", "This does not appear to be a MIDIswitch keyboard.\n"
                                               "Some features may not work correctly.")
-            else:
+            elif not isinstance(self.autorefresh.current_device, VialVirtualKeyboard):
                 self._check_firmware_update(self.autorefresh.current_device.keyboard)
 
         t0 = time.time()
