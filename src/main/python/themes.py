@@ -4,147 +4,6 @@ from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QPalette, QColor
 
 themes = [
-    ("Light", {
-        QPalette.Window: "#ffefebe7",
-        QPalette.WindowText: "#ff000000",
-        QPalette.Base: "#ffffffff",
-        QPalette.AlternateBase: "#fff7f5f3",
-        QPalette.ToolTipBase: "#ffffffdc",
-        QPalette.ToolTipText: "#ff000000",
-        QPalette.Text: "#ff000000",
-        QPalette.Button: "#ffefebe7",
-        QPalette.ButtonText: "#ff000000",
-        QPalette.BrightText: "#ffffffff",
-        QPalette.Link: "#ff0000ff",
-        QPalette.Highlight: "#ff308cc6",
-        QPalette.HighlightedText: "#ffffffff",
-        (QPalette.Active, QPalette.Button): "#ffefebe7",
-        (QPalette.Disabled, QPalette.ButtonText): "#ffbebebe",
-        (QPalette.Disabled, QPalette.WindowText): "#ffbebebe",
-        (QPalette.Disabled, QPalette.Text): "#ffbebebe",
-        (QPalette.Disabled, QPalette.Light): "#ffffffff",
-    }),
-    ("Dark", {
-        QPalette.Window: "#353535",
-        QPalette.WindowText: "#ffffff",
-        QPalette.Base: "#232323",
-        QPalette.AlternateBase: "#353535",
-        QPalette.ToolTipBase: "#191919",
-        QPalette.ToolTipText: "#ffffff",
-        QPalette.Text: "#ffffff",
-        QPalette.Button: "#353535",
-        QPalette.ButtonText: "#ffffff",
-        QPalette.BrightText: "#ff0000",
-        QPalette.Link: "#f7a948",
-        QPalette.Highlight: "#bababa",
-        QPalette.HighlightedText: "#232323",
-        (QPalette.Active, QPalette.Button): "#353535",
-        (QPalette.Disabled, QPalette.ButtonText): "#808080",
-        (QPalette.Disabled, QPalette.WindowText): "#808080",
-        (QPalette.Disabled, QPalette.Text): "#808080",
-        (QPalette.Disabled, QPalette.Light): "#353535",
-    }),
-    ("Arc", {
-        QPalette.Window: "#333333",
-        QPalette.WindowText: "#cc5200",
-        QPalette.Base: "#61574a",
-        QPalette.AlternateBase: "#baaa93",
-        QPalette.ToolTipBase: "#3e2308",
-        QPalette.ToolTipText: "#cc5200",
-        QPalette.Text: "#cc5200",
-        QPalette.Button: "#baaa93",
-        QPalette.ButtonText: "#cc5200",
-        QPalette.BrightText: "#cc5200",
-        QPalette.Link: "#baaa93",
-        QPalette.Highlight: "#a59783",
-        QPalette.HighlightedText: "#cc5200",
-        (QPalette.Active, QPalette.Button): "#baaa93",
-        (QPalette.Disabled, QPalette.ButtonText): "#cc5200",
-        (QPalette.Disabled, QPalette.WindowText): "#cc5200",
-        (QPalette.Disabled, QPalette.Text): "#baaa93",
-        (QPalette.Disabled, QPalette.Light): "#baaa93",
-    }),
-    ("Nord", {
-        QPalette.Window: "#4b3832",
-        QPalette.WindowText: "#fff4e6",
-        QPalette.Base: "#be9b7b",
-        QPalette.AlternateBase: "#434c5e",
-        QPalette.ToolTipBase: "#4c566a",
-        QPalette.ToolTipText: "#3c2f2f",
-        QPalette.Text: "#eceff4",
-        QPalette.Button: "#4b3832",
-        QPalette.ButtonText: "#eceff4",
-        QPalette.BrightText: "#88c0d0",
-        QPalette.Link: "#88c0d0",
-        QPalette.Highlight: "#88c0d0",
-        QPalette.HighlightedText: "#eceff4",
-        (QPalette.Active, QPalette.Button): "#4b3832",
-        (QPalette.Disabled, QPalette.ButtonText): "#eceff4",
-        (QPalette.Disabled, QPalette.WindowText): "#eceff4",
-        (QPalette.Disabled, QPalette.Text): "#eceff4",
-        (QPalette.Disabled, QPalette.Light): "#88c0d0",
-    }),
-    ("Olivia", {
-        QPalette.Window: "#181818",
-        QPalette.WindowText: "#d9d9d9",
-        QPalette.Base: "#181818",
-        QPalette.AlternateBase: "#2c2c2c",
-        QPalette.ToolTipBase: "#363636 ",
-        QPalette.ToolTipText: "#d9d9d9",
-        QPalette.Text: "#d9d9d9",
-        QPalette.Button: "#181818",
-        QPalette.ButtonText: "#d9d9d9",
-        QPalette.BrightText: "#fabcad",
-        QPalette.Link: "#fabcad",
-        QPalette.Highlight: "#fabcad",
-        QPalette.HighlightedText: "#2c2c2c",
-        (QPalette.Active, QPalette.Button): "#181818",
-        (QPalette.Disabled, QPalette.ButtonText): "#d9d9d9",
-        (QPalette.Disabled, QPalette.WindowText): "#d9d9d9",
-        (QPalette.Disabled, QPalette.Text): "#d9d9d9",
-        (QPalette.Disabled, QPalette.Light): "#fabcad",
-    }),
-    ("Dracula", {
-        QPalette.Window: "#282a36",
-        QPalette.WindowText: "#f8f8f2",
-        QPalette.Base: "#282a36",
-        QPalette.AlternateBase: "#44475a",
-        QPalette.ToolTipBase: "#6272a4",
-        QPalette.ToolTipText: "#f8f8f2",
-        QPalette.Text: "#f8f8f2",
-        QPalette.Button: "#282a36",
-        QPalette.ButtonText: "#f8f8f2",
-        QPalette.BrightText: "#8be9fd",
-        QPalette.Link: "#8be9fd",
-        QPalette.Highlight: "#8be9fd",
-        QPalette.HighlightedText: "#f8f8f2",
-        (QPalette.Active, QPalette.Button): "#282a36",
-        (QPalette.Disabled, QPalette.ButtonText): "#f8f8f2",
-        (QPalette.Disabled, QPalette.WindowText): "#f8f8f2",
-        (QPalette.Disabled, QPalette.Text): "#f8f8f2",
-        (QPalette.Disabled, QPalette.Light): "#8be9fd",
-    }),
-    ("Bliss", {
-        QPalette.Window: "#343434",
-        QPalette.WindowText: "#cbc8c9",
-        QPalette.Base: "#343434",
-        QPalette.AlternateBase: "#3b3b3b",
-        QPalette.ToolTipBase: "#424242",
-        QPalette.ToolTipText: "#cbc8c9",
-        QPalette.Text: "#cbc8c9",
-        QPalette.Button: "#343434",
-        QPalette.ButtonText: "#cbc8c9",
-        QPalette.BrightText: "#f5d1c8",
-        QPalette.Link: "#f5d1c8",
-        QPalette.Highlight: "#f5d1c8",
-        QPalette.HighlightedText: "#424242",
-        (QPalette.Active, QPalette.Button): "#343434",
-        (QPalette.Disabled, QPalette.ButtonText): "#cbc8c9",
-        (QPalette.Disabled, QPalette.WindowText): "#cbc8c9",
-        (QPalette.Disabled, QPalette.Text): "#cbc8c9",
-        (QPalette.Disabled, QPalette.Light): "#f5d1c8",
-    }),
-    # Modern 2025 Pastel Themes
     ("Lavender Dream", {
         QPalette.Window: "#f5f3ff",
         QPalette.WindowText: "#4a4458",
@@ -370,8 +229,30 @@ themes = [
 
 palettes = dict()
 
+# 3D shade roles every theme must pin. The light themes never set them, so
+# they came from the host system's palette - on some Windows setups Light
+# resolves to black, and every "hover: palette(light)" rule turned buttons,
+# tabs and keys black. Derive them from the theme's own button colour instead.
+_SHADE_ROLES = (QPalette.Light, QPalette.Midlight, QPalette.Mid, QPalette.Dark, QPalette.Shadow)
+
+
+def _derived_shades(button):
+    return {
+        QPalette.Light: QColor("#ffffff"),
+        QPalette.Midlight: button.lighter(104),
+        QPalette.Mid: button.darker(135),
+        QPalette.Dark: button.darker(200),
+        QPalette.Shadow: button.darker(300),
+    }
+
+
 for name, colors in themes:
     palette = QPalette()
+    explicit = {role for role in colors if not hasattr(type(role), '__iter__')}
+    button = QColor(colors.get(QPalette.Button, "#f0f0f0"))
+    for role, color in _derived_shades(button).items():
+        if role not in explicit:
+            palette.setColor(role, color)
     for role, color in colors.items():
         if not hasattr(type(role), '__iter__'):
             role = [role]
@@ -384,12 +265,38 @@ class Theme:
     theme = ""
 
     @classmethod
+    def _arrow_images(cls, color):
+        """Write the spin-box arrow images in this theme's text colour and
+        return their paths (a stylesheet can only show arrows as images)."""
+        from PyQt5.QtCore import QStandardPaths, QDir, QPoint, Qt
+        from PyQt5.QtGui import QPixmap, QPainter, QPolygon
+        base = QStandardPaths.writableLocation(QStandardPaths.TempLocation)
+        folder = QDir(base).filePath("switchstation_arrows")
+        QDir().mkpath(folder)
+        paths = []
+        for name, pts in (("up", [(0, 6), (10, 6), (5, 0)]), ("down", [(0, 0), (10, 0), (5, 6)])):
+            pix = QPixmap(10, 6)
+            pix.fill(Qt.transparent)
+            qp = QPainter(pix)
+            qp.setRenderHint(QPainter.Antialiasing)
+            qp.setPen(Qt.NoPen)
+            qp.setBrush(color)
+            qp.drawPolygon(QPolygon([QPoint(x, y) for x, y in pts]))
+            qp.end()
+            path = QDir(folder).filePath("spin_{}_{}.png".format(name, color.name()[1:]))
+            pix.save(path, "PNG")
+            paths.append(QDir.fromNativeSeparators(path))
+        return paths
+
+    @classmethod
     def set_theme(cls, theme):
         cls.theme = theme
         if theme in palettes:
             QApplication.setPalette(palettes[theme])
             QApplication.setStyle("Fusion")
-            QApplication.instance().setStyleSheet(cls.get_stylesheet())
+            up, down = cls._arrow_images(palettes[theme].color(QPalette.Active, QPalette.ButtonText))
+            sheet = cls.get_stylesheet().replace("__SPIN_UP__", up).replace("__SPIN_DOWN__", down)
+            QApplication.instance().setStyleSheet(sheet)
         # For default/system theme, do nothing
         # User will have to restart the application for it to be applied
 
@@ -399,7 +306,7 @@ class Theme:
 
     @classmethod
     def mask_light_factor(cls):
-        light_themes = ["Light", "Lavender Dream", "Mint Fresh", "Peachy Keen", "Sky Serenity", "Rose Garden"]
+        light_themes = ["Lavender Dream", "Mint Fresh", "Peachy Keen", "Sky Serenity", "Rose Garden"]
         if cls.theme in light_themes:
             return 103
         return 150
@@ -470,6 +377,13 @@ class Theme:
                 border-color: palette(highlight);
             }
 
+            /* Dialog buttons (Save / Discard / OK ...) - room for their text */
+            QMessageBox QPushButton, QDialogButtonBox QPushButton {
+                min-width: 96px;
+                min-height: 30px;
+                padding: 4px 16px;
+            }
+
             /* Rounded Keycode Buttons - Using object name selector */
             QPushButton[keycode_button="true"] {
                 border-radius: 8px;
@@ -501,8 +415,9 @@ class Theme:
             QComboBox {
                 border: 1px solid palette(mid);
                 border-radius: 6px;
-                padding: 6px 12px;
+                padding: 2px 12px;
                 padding-right: 28px;
+                min-height: 20px;
                 background: palette(button);
                 min-width: 80px;
             }
@@ -519,6 +434,15 @@ class Theme:
 
             QComboBox:on {
                 background: palette(button);
+            }
+
+            /* The read-only text field inside editable (centred) combos:
+               no box of its own, so it can't eat the combo's height */
+            QComboBox QLineEdit, QComboBox QLineEdit:hover, QComboBox QLineEdit:focus {
+                padding: 0px;
+                margin: 0px;
+                border: none;
+                background: transparent;
             }
 
             QComboBox::drop-down {
@@ -682,10 +606,21 @@ class Theme:
                 border-color: palette(highlight);
             }
 
-            QSpinBox::up-arrow, QSpinBox::down-arrow {
-                /* Arrows drawn programmatically by ArrowSpinBox */
+            QSpinBox::up-arrow {
+                image: url(__SPIN_UP__);
                 width: 10px;
                 height: 6px;
+            }
+
+            QSpinBox::down-arrow {
+                image: url(__SPIN_DOWN__);
+                width: 10px;
+                height: 6px;
+            }
+
+            /* ArrowSpinBox paints its own arrows */
+            ArrowSpinBox::up-arrow, ArrowSpinBox::down-arrow {
+                image: none;
             }
 
             QCheckBox::indicator {

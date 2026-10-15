@@ -9,7 +9,7 @@ from widgets.display_keyboard import DisplayKeyboard
 from widgets.display_keyboard_defs import ansi_100, ansi_80, ansi_70, iso_100, iso_80, iso_70, mods, mods_narrow, midi_layout
 from widgets.combo_box import ArrowComboBox
 from widgets.flowlayout import FlowLayout
-from keycodes.keycodes import KEYCODES_BASIC, KEYCODES_ISO, KEYCODES_MACRO, KEYCODES_MACRO_BASE, KEYCODES_LAYERS, KEYCODES_QUANTUM, \
+from keycodes.keycodes import unsupported_ids, KEYCODES_BASIC, KEYCODES_ISO, KEYCODES_MACRO, KEYCODES_MACRO_BASE, KEYCODES_LAYERS, KEYCODES_QUANTUM, \
     KEYCODES_BOOT, KEYCODES_MODIFIERS, KEYCODES_CLEAR, KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_CUSTOM2, KEYCODES_RGBSAVE, KEYCODES_EXWHEEL, KEYCODES_RGB_KC_COLOR, KEYCODES_MIDI_SPLIT_BUTTONS, KEYCODES_SETTINGS1, KEYCODES_SETTINGS2, KEYCODES_SETTINGS3, KEYCODES_BASIC, KEYCODES_SHIFTED, KEYCODES_CHORD_PROG_CONTROLS, KEYCODES_MIDI_CHANNEL_OS, KEYCODES_MIDI_CHANNEL_HOLD, KEYCODES_CPROG_SLOTS, \
     KEYCODES_BACKLIGHT, KEYCODES_MEDIA, KEYCODES_SPECIAL, KEYCODES_SHIFTED, KEYCODES_USER, Keycode, KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_TG, KEYCODES_LAYERS_TT, KEYCODES_LAYERS_OSL, KEYCODES_LAYERS_TO, KEYCODES_LAYERS_LT, KEYCODES_VELOCITY_SHUFFLE, KEYCODES_CC_ENCODERVALUE, KEYCODES_LOOP_BUTTONS, KEYCODES_DRUMLIVE, KEYCODES_GAMING, \
     KEYCODES_DAW, \
@@ -1340,6 +1340,36 @@ class midiadvancedTab(QScrollArea):
         # Initial populate
         self._update_advanced_keys("")
 
+    def _tap_hold_configured(self, qmk_id):
+        """Search offers only Tap/Hold slots that have at least one action set
+        (read live from the keyboard, so a newly saved slot shows up)."""
+        entries = getattr(getattr(self, "keyboard", None), "tap_dance_entries", None)
+        if not entries:
+            return False
+        try:
+            idx = int(qmk_id[3:-1])
+        except ValueError:
+            return False
+        if idx >= len(entries):
+            return False
+        return any(kc not in ("KC_NO", "", None, 0) for kc in entries[idx][:4])
+
+    @staticmethod
+    def _is_macro_keycode(qmk_id):
+        return len(qmk_id) > 1 and qmk_id[0] == "M" and qmk_id[1:].isdigit()
+
+    def _macro_configured(self, qmk_id):
+        """Search offers only the macros that exist in the Macro tab: ones
+        with actions recorded, or that have been given a name."""
+        idx = int(qmk_id[1:])
+        if KeycodeDisplay.get_custom_name_label(qmk_id):
+            return True
+        data = getattr(getattr(self, "keyboard", None), "macro", None)
+        if not data:
+            return False
+        macros = data.split(b"\x00")
+        return idx < len(macros) and len(macros[idx]) > 0
+
     def _expand_search_words(self, words):
         """Expand search words with synonyms for better matching."""
         expanded = list(words)
@@ -1372,6 +1402,18 @@ class midiadvancedTab(QScrollArea):
     def _adv_next_page(self):
         self._adv_current_page += 1
         self._update_advanced_keys(self.adv_search_bar.text())
+
+    def _arrange_adv_areas(self, keys_first):
+        """Order the dropdown area and the key buttons in the results."""
+        lay = self.adv_keys_layout
+        order = [self.adv_btn_container, self.adv_dropdown_container] if keys_first \
+            else [self.adv_dropdown_container, self.adv_btn_container]
+        if [lay.itemAt(i).widget() for i in range(lay.count())] == order:
+            return
+        for w in order:
+            lay.removeWidget(w)
+        for w in order:
+            lay.addWidget(w)
 
     def _update_advanced_keys(self, search_text):
         """Rebuild advanced keys display based on search filter."""
@@ -1413,8 +1455,11 @@ class midiadvancedTab(QScrollArea):
                     return False
             return True
 
-        # Show matching categories (dropdown / value_input / cc_xy / range)
-        for cat_name, kc_list, search_terms, widget_type, val_template in categories:
+        # Show matching categories (dropdown / value_input / cc_xy / range) -
+        # first page only; later pages are just the keycode buttons.
+        first_page = self._adv_current_page == 0
+        self.adv_dropdown_container.setVisible(first_page)
+        for cat_name, kc_list, search_terms, widget_type, val_template in (categories if first_page else []):
             cat_haystack = cat_name + " " + search_terms
             if not matches_search(cat_haystack):
                 continue
@@ -1491,6 +1536,14 @@ class midiadvancedTab(QScrollArea):
                 wl.addWidget(dropdown)
                 self.adv_dropdown_flow.addWidget(wrapper)
 
+        # While searching, the matching keys come first and any matching
+        # dropdowns follow; an empty dropdown area takes no space at all
+        # (a hidden-but-stale FlowLayout kept its old height as a gap).
+        self._arrange_adv_areas(keys_first=bool(words))
+        self.adv_dropdown_container.setVisible(first_page and shown_dropdowns > 0)
+        self.adv_dropdown_flow.invalidate()
+        self.adv_dropdown_container.updateGeometry()
+
         # Build set of qmk_ids force-included from matched tab sections
         tab_force_ids = set()
         if words:
@@ -1513,10 +1566,18 @@ class midiadvancedTab(QScrollArea):
         # Build list of ALL matching keycodes (for pagination)
         self._adv_matched_keycodes = []
         seen_ids = set()
+        unsupported = unsupported_ids()
         for keycode in KEYCODES:
             if not keycode.qmk_id or keycode.qmk_id == "KC_NO":
                 continue
+            if keycode.qmk_id in unsupported:
+                continue
+            if keycode.qmk_id.startswith("TD(") and not self._tap_hold_configured(keycode.qmk_id):
+                continue
             if keycode.qmk_id in seen_ids:
+                continue
+            is_macro = self._is_macro_keycode(keycode.qmk_id)
+            if is_macro and not self._macro_configured(keycode.qmk_id):
                 continue
 
             # Force-include if keycode belongs to a matched tab section
@@ -1529,6 +1590,11 @@ class midiadvancedTab(QScrollArea):
             if keycode.qmk_id in self._adv_dropdown_ids:
                 continue
             haystack = keycode.qmk_id + " " + (keycode.label or "").replace("\n", " ") + " " + (keycode.tooltip or "")
+            custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
+            if custom:
+                haystack += " " + custom.replace("\n", " ")
+            if is_macro:
+                haystack += " macro macros"
             if matches_search(haystack):
                 self._adv_matched_keycodes.append(keycode)
                 seen_ids.add(keycode.qmk_id)
@@ -1548,8 +1614,14 @@ class midiadvancedTab(QScrollArea):
         for keycode in self._adv_matched_keycodes[start:end]:
             btn = SquareButton()
             btn.setRelSize(KEYCODE_BTN_RATIO)
-            btn.setText(keycode.label if keycode.label else keycode.qmk_id)
-            btn.setToolTip("{}\n{}".format(keycode.qmk_id, keycode.tooltip or ""))
+            custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
+            if custom:
+                btn.setText(custom)
+            elif self._is_macro_keycode(keycode.qmk_id):
+                btn.setText("Macro\n{}".format(int(keycode.qmk_id[1:]) + 1))
+            else:
+                btn.setText(keycode.label if keycode.label else keycode.qmk_id)
+            btn.setToolTip(Keycode.tooltip(keycode.qmk_id) or keycode.qmk_id)
             btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
             btn.keycode = keycode
             self.adv_keys_flow.addWidget(btn)
@@ -3109,7 +3181,7 @@ class LightingTab2(QScrollArea):
         return True  # Always has dropdowns
 
 class MacroSubTab(QScrollArea):
-    """Sub-tab for displaying keycode buttons (Macro, Tapdance, DKS, or Toggle)"""
+    """Sub-tab for displaying keycode buttons (Macro, Tap/Hold, DKS, or Toggle)"""
     keycode_changed = pyqtSignal(str)
 
     def __init__(self, parent, tab_type):
@@ -3196,16 +3268,20 @@ class MacroSubTab(QScrollArea):
 
 
 class MacroTab(QScrollArea):
-    """Macros tab: Macro / Tapdance / DKS / Toggle shown as stacked sections in
+    """Macros tab: Macro / Tap/Hold / DKS / Toggle shown as stacked sections in
     a single scrolling window (no inner side-tabs). Layers is its own side-tab
     under Keyboard now, so callers pass include_layer=False; the optional Layers
     section is retained for back-compat but is unused by the Keyboard tab."""
     keycode_changed = pyqtSignal(str)
 
+    ALL_SECTIONS = ("macro", "tapdance", "dks", "toggle")
+
     def __init__(self, parent, label, inversion_keycodes, smartchord_LSB, smartchord_MSB,
-                 layer_df=None, layer_mo=None, layer_osl=None, include_layer=True):
+                 layer_df=None, layer_mo=None, layer_osl=None, include_layer=True,
+                 sections=ALL_SECTIONS):
         super().__init__(parent)
         self.label = label
+        self.shown_sections = tuple(sections)
         self.inversion_keycodes = inversion_keycodes
         self.smartchord_LSB = smartchord_LSB
         self.smartchord_MSB = smartchord_MSB
@@ -3319,17 +3395,18 @@ class MacroTab(QScrollArea):
         return btn
 
     def _add_button_section(self, title, keycodes, keycode_filter, extra_keycodes=None):
-        group = QGroupBox(title)
+        # A single-section tab is already named by its tab: no heading.
+        group = QGroupBox(title if len(self.shown_sections) > 1 else "")
         flow = FlowLayout()
         flow.setContentsMargins(10, 10, 10, 10)
         for keycode in keycodes:
-            if keycode_filter is None or keycode_filter(keycode):
+            if keycode_filter is None or keycode_filter(keycode.qmk_id):
                 btn = self._make_button(keycode)
                 flow.addWidget(btn)
                 self.buttons.append(btn)
         if extra_keycodes:
             for keycode in extra_keycodes:
-                if keycode is not None and (keycode_filter is None or keycode_filter(keycode)):
+                if keycode is not None and (keycode_filter is None or keycode_filter(keycode.qmk_id)):
                     btn = self._make_button(keycode)
                     flow.addWidget(btn)
                     self.buttons.append(btn)
@@ -3375,12 +3452,13 @@ class MacroTab(QScrollArea):
         self.oneshot_layer_dropdown = None
 
         # Macro section (+ "All Macros Off")
-        macro_kcs = KEYCODES_MACRO[:self.macro_count] if self.macro_count > 0 else []
-        all_off_kc = Keycode.find_by_qmk_id("QK_MACRO_ALL_OFF")
-        self._add_button_section("Macro", macro_kcs, keycode_filter,
-                                 extra_keycodes=[all_off_kc] if all_off_kc else None)
+        if "macro" in self.shown_sections:
+            macro_kcs = KEYCODES_MACRO[:self.macro_count] if self.macro_count > 0 else []
+            all_off_kc = Keycode.find_by_qmk_id("QK_MACRO_ALL_OFF")
+            self._add_button_section("Macro", macro_kcs, keycode_filter,
+                                     extra_keycodes=[all_off_kc] if all_off_kc else None)
 
-        # Layers section (folded in here, directly below Macro; no standalone side tab)
+        # Layers section (only for callers that still fold it in here)
         if self.include_layer:
             layer_group = QGroupBox("Layers")
             layer_row = QHBoxLayout()
@@ -3395,15 +3473,18 @@ class MacroTab(QScrollArea):
             layer_group.setLayout(layer_row)
             self.main_layout.addWidget(layer_group)
 
-        # Tapdance / DKS / Toggle sections
-        td_kcs = KEYCODES_TAP_DANCE[:self.tapdance_count] if self.tapdance_count > 0 else []
-        self._add_button_section("Tapdance", td_kcs, keycode_filter)
-        dks_kcs = KEYCODES_DKS[:self.dks_count] if self.dks_count > 0 else []
-        self._add_button_section("DKS", dks_kcs, keycode_filter)
-        tog_kcs = KEYCODES_TOGGLE[:self.toggle_count] if self.toggle_count > 0 else []
-        # Bulk-reset actions always shown alongside the slot buttons
-        tog_kcs = tog_kcs + KEYCODES_TOGGLE_ACTIONS
-        self._add_button_section("Toggle", tog_kcs, keycode_filter)
+        # Tap/Hold / Dynamic Keystroke / Toggle sections
+        if "tapdance" in self.shown_sections:
+            td_kcs = KEYCODES_TAP_DANCE[:self.tapdance_count] if self.tapdance_count > 0 else []
+            self._add_button_section("Tap/Hold", td_kcs, keycode_filter)
+        if "dks" in self.shown_sections:
+            dks_kcs = KEYCODES_DKS[:self.dks_count] if self.dks_count > 0 else []
+            self._add_button_section("Dynamic Keystroke", dks_kcs, keycode_filter)
+        if "toggle" in self.shown_sections:
+            tog_kcs = KEYCODES_TOGGLE[:self.toggle_count] if self.toggle_count > 0 else []
+            # Bulk-reset actions always shown alongside the slot buttons
+            tog_kcs = tog_kcs + KEYCODES_TOGGLE_ACTIONS
+            self._add_button_section("Toggle", tog_kcs, keycode_filter)
 
         self.main_layout.addStretch(1)
 
@@ -3411,6 +3492,10 @@ class MacroTab(QScrollArea):
         self.keycode_changed.emit(code)
 
     def has_buttons(self):
+        # A single-section tab disappears from a palette whose filter hides
+        # everything in it (e.g. the basic-keys-only picker).
+        if len(self.shown_sections) < len(self.ALL_SECTIONS):
+            return len(self.buttons) > 0
         return True
 
     def relabel_buttons(self):
@@ -3418,6 +3503,32 @@ class MacroTab(QScrollArea):
             if hasattr(btn, 'keycode') and btn.keycode:
                 custom = KeycodeDisplay.get_custom_name_label(btn.keycode.qmk_id)
                 btn.setText(custom if custom else btn.keycode.label)
+
+
+def palette_tabs(parent, layer_tab=None):
+    """Top-level palette tabs in display order: Keyboard, Music, Layers,
+    Lighting, Gaming, Macro, Toggle, Tap/Hold, Dynamic Keystroke, Advanced,
+    Search. `layer_tab` replaces the default Layers tab (the toggle editor
+    passes its overlay-safe LightingTab2)."""
+    def macro_tab(label, section):
+        return MacroTab(parent, label, KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE,
+                        include_layer=False, sections=(section,))
+    if layer_tab is None:
+        layer_tab = LayerTab(parent, "Layers", KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_OSL)
+    return [
+        KeyboardTab(parent),
+        MusicTab(parent),
+        layer_tab,
+        LightingTab(parent, "Lighting", KEYCODES_BACKLIGHT, KEYCODES_RGBSAVE,
+                    KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_COLOR, KEYCODES_RGB_KC_CUSTOM2),
+        GamingTab(parent, "Gaming", KEYCODES_GAMING),
+        macro_tab("Macro", "macro"),
+        macro_tab("Toggle", "toggle"),
+        macro_tab("Tap/Hold", "tapdance"),
+        macro_tab("Dynamic Keystroke", "dks"),
+        MIDITab(parent),
+        SearchTab(parent),
+    ]
 
 
 class KeySplitTab(QScrollArea):
@@ -4187,12 +4298,12 @@ class GamingTab(QScrollArea):
         self.scroll_content = QWidget()
         self.main_layout = QVBoxLayout(self.scroll_content)
         self.main_layout.setSpacing(20)
-        self.main_layout.setContentsMargins(20, 0, 20, 20)  # Remove top margin to eliminate gap
-        self.main_layout.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
+        self.main_layout.setContentsMargins(10, 10, 10, 10)
+        self.main_layout.setAlignment(Qt.AlignTop)
 
         self.setWidget(self.scroll_content)
         self.setWidgetResizable(True)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         self.recreate_buttons()
@@ -4217,10 +4328,10 @@ class GamingTab(QScrollArea):
         return btn
 
     def recreate_buttons(self, keycode_filter=None):
-        """Recreate all buttons for the gaming controller layout"""
+        """One palette-sized button per gamepad control, drawn as an icon."""
+        from widgets.gamepad_icon_button import GamepadIconButton, GAMEPAD_ORDER, has_gamepad_icon
         self.current_keycode_filter = keycode_filter
 
-        # Clear existing layout
         while self.main_layout.count():
             item = self.main_layout.takeAt(0)
             if item.widget():
@@ -4228,231 +4339,35 @@ class GamingTab(QScrollArea):
             elif item.layout():
                 self.clear_layout(item.layout())
 
-        # Create gamepad widget with drawn outline
-        gamepad_widget = GamepadWidget()
-        gamepad_widget.setFixedSize(750, 560)  # Increased height to accommodate repositioned buttons
+        hint = QLabel(tr("GamingTab",
+            "Drag a joystick function onto a key on the Keymap tab (or select the key "
+            "and click the function). It is attached to that key on the current layer "
+            "and only acts while Gaming Mode is on; click it on the key to remove it."))
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: gray; font-size: 9pt;")
+        self.main_layout.addWidget(hint)
 
-        # Use absolute positioning for buttons on the gamepad
-        # We'll position buttons using move() after creating them as children of gamepad_widget
-
-        # Triggers (LT and RT) - LT moved 23px left, RT moved 13px right, both up 15px
-        lt_btn = self.create_button("LT", 60, 35)
-        if lt_btn:
-            lt_btn.setParent(gamepad_widget)
-            lt_btn.move(177, 25)  # Moved 23px left from 200, 15px up
-
-        rt_btn = self.create_button("RT", 60, 35)
-        if rt_btn:
-            rt_btn.setParent(gamepad_widget)
-            rt_btn.move(503, 25)  # Moved 13px right from 490, 15px up
-
-        # Gaming Mode Toggle (in middle of shoulder buttons) - moved up 10px only
-        gaming_mode_btn = self.create_button("GAMING_MODE", 100, 40)
-        if gaming_mode_btn:
-            gaming_mode_btn.setParent(gamepad_widget)
-            gaming_mode_btn.move(325, 75)  # Moved up 10px from 85
-
-        # Bumpers (LB and RB) - LB moved 23px left, RB moved 13px right, both up 15px
-        lb_btn = self.create_button("XBOX_LB", 60, 30)
-        if lb_btn:
-            lb_btn.setParent(gamepad_widget)
-            lb_btn.move(177, 65)  # Moved 23px left from 200, 15px up
-
-        rb_btn = self.create_button("XBOX_RB", 60, 30)
-        if rb_btn:
-            rb_btn.setParent(gamepad_widget)
-            rb_btn.move(503, 65)  # Moved 13px right from 490, 15px up
-
-        # D-pad (left side) - tapered arrow-shaped buttons, moved up 60px
-        # Create custom polygon buttons for dpad with tapered ends
-
-        # D-pad up: curved top (outside), tapers to point at bottom (inside, 25px taper)
-        kc = self.get_keycode("DPAD_UP")
-        if kc:
-            dpad_up = DpadButton(Keycode.label(kc.qmk_id))
-            dpad_up.setFixedSize(56, 58)
-            dpad_up.clicked.connect(lambda: self.keycode_changed.emit(kc.qmk_id))
-            dpad_up.keycode = kc
-            dpad_up.setText("↑")
-            dpad_up.setParent(gamepad_widget)
-            dpad_up.move(180, 105)  # 2px left, 3px down
-            # Curved top edge (outside), point at bottom (inside) with 25px taper
-            path = QPainterPath()
-            path.moveTo(28, 58)  # Bottom point (inside)
-            path.lineTo(3, 33)   # Left side of taper (58-25=33)
-            path.lineTo(3, 8)    # Left straight section
-            path.quadTo(8, 3, 15, 3)   # Curved top-left corner
-            path.lineTo(41, 3)   # Top straight section (curved edge)
-            path.quadTo(48, 3, 53, 8)  # Curved top-right corner
-            path.lineTo(53, 33)  # Right straight section
-            path.lineTo(28, 58)  # Back to bottom point
-            path.closeSubpath()
-            dpad_up.setMask(QRegion(path.toFillPolygon().toPolygon()))
-            dpad_up.set_border_path(path)
-
-        # D-pad down: curved bottom (outside), tapers to point at top (inside, 25px taper)
-        kc = self.get_keycode("DPAD_DOWN")
-        if kc:
-            dpad_down = DpadButton(Keycode.label(kc.qmk_id))
-            dpad_down.setFixedSize(56, 58)
-            dpad_down.clicked.connect(lambda: self.keycode_changed.emit(kc.qmk_id))
-            dpad_down.keycode = kc
-            dpad_down.setText("↓")
-            dpad_down.setParent(gamepad_widget)
-            dpad_down.move(180, 163)  # 2px left, 3px down
-            path = QPainterPath()
-            path.moveTo(28, 0)   # Top point (inside)
-            path.lineTo(3, 25)   # Left side of taper (25px from point)
-            path.lineTo(3, 50)   # Left straight section
-            path.quadTo(8, 55, 15, 55)  # Curved bottom-left corner
-            path.lineTo(41, 55)  # Bottom straight section (curved edge)
-            path.quadTo(48, 55, 53, 50)  # Curved bottom-right corner
-            path.lineTo(53, 25)  # Right straight section
-            path.lineTo(28, 0)   # Back to top point
-            path.closeSubpath()
-            dpad_down.setMask(QRegion(path.toFillPolygon().toPolygon()))
-            dpad_down.set_border_path(path)
-
-        # D-pad left: curved left (outside), tapers to point at right (inside, 25px taper)
-        kc = self.get_keycode("DPAD_LEFT")
-        if kc:
-            dpad_left = DpadButton(Keycode.label(kc.qmk_id))
-            dpad_left.setFixedSize(58, 56)
-            dpad_left.clicked.connect(lambda: self.keycode_changed.emit(kc.qmk_id))
-            dpad_left.keycode = kc
-            dpad_left.setText("←")
-            dpad_left.setParent(gamepad_widget)
-            dpad_left.move(150, 135)  # 2px left, 3px down
-            path = QPainterPath()
-            path.moveTo(58, 28)  # Right point (inside)
-            path.lineTo(33, 3)   # Top side of taper (58-25=33)
-            path.lineTo(8, 3)    # Top straight section
-            path.quadTo(3, 8, 3, 15)   # Curved top-left corner
-            path.lineTo(3, 41)   # Left straight section (curved edge)
-            path.quadTo(3, 48, 8, 53)  # Curved bottom-left corner
-            path.lineTo(33, 53)  # Bottom straight section
-            path.lineTo(58, 28)  # Back to right point
-            path.closeSubpath()
-            dpad_left.setMask(QRegion(path.toFillPolygon().toPolygon()))
-            dpad_left.set_border_path(path)
-
-        # D-pad right: curved right (outside), tapers to point at left (inside, 25px taper)
-        kc = self.get_keycode("DPAD_RIGHT")
-        if kc:
-            dpad_right = DpadButton(Keycode.label(kc.qmk_id))
-            dpad_right.setFixedSize(58, 56)
-            dpad_right.clicked.connect(lambda: self.keycode_changed.emit(kc.qmk_id))
-            dpad_right.keycode = kc
-            dpad_right.setText("→")
-            dpad_right.setParent(gamepad_widget)
-            dpad_right.move(208, 135)  # 2px left, 3px down
-            path = QPainterPath()
-            path.moveTo(0, 28)   # Left point (inside)
-            path.lineTo(25, 3)   # Top side of taper (25px from point)
-            path.lineTo(50, 3)   # Top straight section
-            path.quadTo(55, 8, 55, 15)  # Curved top-right corner
-            path.lineTo(55, 41)  # Right straight section (curved edge)
-            path.quadTo(55, 48, 50, 53)  # Curved bottom-right corner
-            path.lineTo(25, 53)  # Bottom straight section
-            path.lineTo(0, 28)   # Back to left point
-            path.closeSubpath()
-            dpad_right.setMask(QRegion(path.toFillPolygon().toPolygon()))
-            dpad_right.set_border_path(path)
-
-        # Left Analog Stick - moved 23px left, then 8px right and 25px up
-        ls_up = self.create_button("LS_UP", 38, 38)
-        if ls_up:
-            ls_up.setParent(gamepad_widget)
-            ls_up.move(275, 185)  # Moved 23px left from 290, then 8px right and 25px up
-
-        ls_down = self.create_button("LS_DOWN", 38, 38)
-        if ls_down:
-            ls_down.setParent(gamepad_widget)
-            ls_down.move(275, 261)  # Moved 23px left from 290, then 8px right and 25px up
-
-        ls_left = self.create_button("LS_LEFT", 38, 38)
-        if ls_left:
-            ls_left.setParent(gamepad_widget)
-            ls_left.move(237, 223)  # Moved 23px left from 252, then 8px right and 25px up
-
-        ls_right = self.create_button("LS_RIGHT", 38, 38)
-        if ls_right:
-            ls_right.setParent(gamepad_widget)
-            ls_right.move(313, 223)  # Moved 23px left from 328, then 8px right and 25px up
-
-        l3_btn = self.create_button("XBOX_L3", 38, 38)
-        if l3_btn:
-            l3_btn.setParent(gamepad_widget)
-            l3_btn.move(275, 223)  # Center - moved 23px left from 290, then 8px right and 25px up
-
-        # Center buttons (Back and Start) - moved up 20px
-        back_btn = self.create_button("XBOX_BACK", 50, 30)
-        if back_btn:
-            back_btn.setParent(gamepad_widget)
-            back_btn.move(320, 170)  # Moved up 20px
-
-        start_btn = self.create_button("XBOX_START", 50, 30)
-        if start_btn:
-            start_btn.setParent(gamepad_widget)
-            start_btn.move(380, 170)  # Moved up 20px
-
-        # Right Analog Stick - moved 13px right, then 25px up
-        rs_up = self.create_button("RS_UP", 38, 38)
-        if rs_up:
-            rs_up.setParent(gamepad_widget)
-            rs_up.move(439, 185)  # Moved 13px right from 426, then 25px up
-
-        rs_down = self.create_button("RS_DOWN", 38, 38)
-        if rs_down:
-            rs_down.setParent(gamepad_widget)
-            rs_down.move(439, 261)  # Moved 13px right from 426, then 25px up
-
-        rs_left = self.create_button("RS_LEFT", 38, 38)
-        if rs_left:
-            rs_left.setParent(gamepad_widget)
-            rs_left.move(401, 223)  # Moved 13px right from 388, then 25px up
-
-        rs_right = self.create_button("RS_RIGHT", 38, 38)
-        if rs_right:
-            rs_right.setParent(gamepad_widget)
-            rs_right.move(477, 223)  # Moved 13px right from 464, then 25px up
-
-        r3_btn = self.create_button("XBOX_R3", 38, 38)
-        if r3_btn:
-            r3_btn.setParent(gamepad_widget)
-            r3_btn.move(439, 223)  # Center - moved 13px right from 426, then 25px up
-
-        # Face Buttons (right side) - Button 1-4, 20% bigger (50x50) and repositioned
-        btn4 = self.create_button("XBOX_Y", 50, 50)
-        if btn4:
-            btn4.setText("Button\n4")
-            btn4.setParent(gamepad_widget)
-            btn4.setStyleSheet("border-radius: 25px;")  # Make circular
-            btn4.move(517, 103)  # Centered between btn3 and btn2, up 4px
-
-        btn3 = self.create_button("XBOX_X", 50, 50)
-        if btn3:
-            btn3.setText("Button\n3")
-            btn3.setParent(gamepad_widget)
-            btn3.setStyleSheet("border-radius: 25px;")  # Make circular
-            btn3.move(481, 139)  # Size adjusted to keep center
-
-        btn2 = self.create_button("XBOX_B", 50, 50)
-        if btn2:
-            btn2.setText("Button\n2")
-            btn2.setParent(gamepad_widget)
-            btn2.setStyleSheet("border-radius: 25px;")  # Make circular
-            btn2.move(553, 139)  # Same vertical as btn3, size adjusted
-
-        btn1 = self.create_button("XBOX_A", 50, 50)
-        if btn1:
-            btn1.setText("Button\n1")
-            btn1.setParent(gamepad_widget)
-            btn1.setStyleSheet("border-radius: 25px;")  # Make circular
-            btn1.move(517, 178)  # Centered between btn3 and btn2, down 6px
-
-        # Add gamepad widget centered
-        self.main_layout.addWidget(gamepad_widget, alignment=Qt.AlignHCenter)
+        container = QWidget()
+        flow = FlowLayout()
+        container.setLayout(flow)
+        for qmk_id in GAMEPAD_ORDER:
+            kc = self.get_keycode(qmk_id)
+            if kc is None:
+                continue
+            if keycode_filter is not None and not keycode_filter(kc.qmk_id):
+                continue
+            if has_gamepad_icon(qmk_id):
+                btn = GamepadIconButton(qmk_id)
+            else:
+                # Gaming Mode is an ordinary labelled key
+                btn = SquareButton()
+                btn.setRelSize(KEYCODE_BTN_RATIO)
+                btn.setText("Gaming\nMode")
+            btn.keycode = kc
+            btn.setToolTip(kc.tooltip or Keycode.label(kc.qmk_id).replace("\n", " "))
+            btn.clicked.connect(lambda _, k=kc.qmk_id: self.keycode_changed.emit(k))
+            flow.addWidget(btn)
+        self.main_layout.addWidget(container)
         self.main_layout.addStretch()
 
     def clear_layout(self, layout):
@@ -4474,210 +4389,113 @@ class GamingTab(QScrollArea):
 
 
 
-class KeyboardTab(QWidget):
-    """Nested tab container for Keyboard-related tabs with side-tab style"""
+class LanguageTab(Tab):
+    """One language page of the Languages section: the same keys as the Basic
+    / ISO boards, labelled with what that language's layout prints on them.
+    The keycodes are the ordinary key positions - only the legends change."""
+
+    # Japanese-only keys the shared ISO/JIS board carries; hidden elsewhere.
+    JIS_ONLY = {"KC_RO", "KC_JYEN", "KC_HENK", "KC_MHEN", "KC_KANA", "KC_LANG1", "KC_LANG2"}
+
+    def __init__(self, parent, label, alts, labels, show_jis=False):
+        self.language_labels = labels
+        self.show_jis = show_jis
+        super().__init__(parent, label, alts)
+
+    def _language_buttons(self):
+        for alt in self.alternatives:
+            btns = list(alt.buttons)
+            if alt.kb_display:
+                btns += alt.kb_display.buttons
+            for btn in btns:
+                yield btn
+
+    def relabel_buttons(self):
+        super().relabel_buttons()
+        for btn in self._language_buttons():
+            qmk_id = getattr(getattr(btn, "keycode", None), "qmk_id", None)
+            if not self.show_jis and qmk_id in self.JIS_ONLY:
+                btn.hide()
+                continue
+            if qmk_id in self.language_labels:
+                btn.setStyleSheet("QPushButton {}")
+                btn.setText(self.language_labels[qmk_id].replace("&", "&&"))
+
+    def recreate_buttons(self, keycode_filter):
+        super().recreate_buttons(keycode_filter)
+        self.relabel_buttons()
+
+
+class BasicTab(QWidget):
+    """Keyboard > Basic: the standard (US) board first, then ISO/JIS and the
+    language boards (German, French, Spanish, Russian, Japanese), each
+    labelled for its layout. The application / media keys sit below the
+    board on every page."""
 
     keycode_changed = pyqtSignal(str)
 
-    def __init__(self, parent, include_layer=True):
+    def __init__(self, parent):
         super().__init__(parent)
-        self.label = "Keyboard"
-        self.parent_widget = parent
-        self.current_keycode_filter = keycode_filter_any
-
-        # Create the individual tabs
-        self.basic_tab = Tab(parent, "Basic", [
-            (ansi_100, KEYCODES_SPECIAL + KEYCODES_SHIFTED),
-            (ansi_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_SHIFTED),
-            (ansi_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV + KEYCODES_SHIFTED),
-            (None, KEYCODES_SPECIAL + KEYCODES_BASIC + KEYCODES_SHIFTED),
-        ], prefix_buttons=[("Any", -1)])
-
-        self.iso_tab = Tab(parent, "ISO/JIS", [
-            (iso_100, KEYCODES_SPECIAL + KEYCODES_SHIFTED + KEYCODES_ISO_KR),
-            (iso_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_SHIFTED + KEYCODES_ISO_KR),
-            (iso_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV + KEYCODES_SHIFTED +
-             KEYCODES_ISO_KR),
-            (None, KEYCODES_ISO),
-        ], prefix_buttons=[("Any", -1)])
-
-        self.app_tab = SimpleTab(parent, "App", KEYCODES_MEDIA)
-        self.advanced_tab = SimpleTab(parent, "Advanced", KEYCODES_BOOT + KEYCODES_MODIFIERS + KEYCODES_QUANTUM)
-
-        # Feature tabs folded into Keyboard as side sections. Layers are their
-        # own side-tab (directly below Macros), NOT folded into the Macros
-        # window -- the MacroTab therefore never renders the Layers section.
-        self.macro_tab = MacroTab(parent, "Macros", KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE,
-                                  KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_OSL,
-                                  include_layer=False)
-        # include_layer gates the standalone Layers side-tab (the Toggle-settings
-        # picker passes include_layer=False and supplies layers via LightingTab2).
-        self.layer_tab = LayerTab(parent, "Layers", KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO,
-                                  KEYCODES_LAYERS_OSL) if include_layer else None
-        self.lighting_tab = LightingTab(parent, "Lighting", KEYCODES_BACKLIGHT, KEYCODES_RGBSAVE, KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_COLOR, KEYCODES_RGB_KC_CUSTOM2)
-        self.gaming_tab = GamingTab(parent, "Gaming", KEYCODES_GAMING)
-
-        # Connect signals
-        self.basic_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.iso_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.app_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.advanced_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.macro_tab.keycode_changed.connect(self.on_keycode_changed)
-        if self.layer_tab is not None:
-            self.layer_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.lighting_tab.keycode_changed.connect(self.on_keycode_changed)
-        self.gaming_tab.keycode_changed.connect(self.on_keycode_changed)
-
-        # Define sections (tab_widget, display_name). Layers is its own side-tab
-        # directly below Macros; ISO/App/Advanced sit below Gaming.
-        self.sections = [
-            (self.basic_tab, "Basic"),
-            (self.macro_tab, "Macros"),
+        from keymap import german, french, spanish, russian, japanese
+        self.label = "Basic"
+        app = KEYCODES_MEDIA
+        ansi = [
+            (ansi_100, KEYCODES_SPECIAL + app),
+            (ansi_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + app),
+            (ansi_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV + app),
+            (None, KEYCODES_SPECIAL + KEYCODES_BASIC + app),
         ]
-        if self.layer_tab is not None:
-            self.sections.append((self.layer_tab, "Layers"))
-        self.sections += [
-            (self.lighting_tab, "Lighting"),
-            (self.gaming_tab, "Gaming"),
-            (self.iso_tab, "ISO/JIS"),
-            (self.app_tab, "App"),
-            (self.advanced_tab, "Advanced"),
+        iso = [
+            (iso_100, KEYCODES_SPECIAL + KEYCODES_ISO_KR + app),
+            (iso_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_ISO_KR + app),
+            (iso_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV + KEYCODES_ISO_KR + app),
+            (None, KEYCODES_ISO + app),
         ]
-
-        # Create horizontal layout: side tabs on left, content on right
-        main_layout_h = QHBoxLayout()
-        main_layout_h.setSpacing(0)
-        main_layout_h.setContentsMargins(0, 0, 0, 0)
-
-        # Create side tabs container
-        side_tabs_container = QWidget()
-        side_tabs_container.setObjectName("side_tabs_container")
-        side_tabs_container.setStyleSheet("""
-            QWidget#side_tabs_container {
-                background: palette(window);
-                border: 1px solid palette(mid);
-                border-right: none;
-            }
-        """)
-        side_tabs_layout = QVBoxLayout(side_tabs_container)
-        side_tabs_layout.setSpacing(0)
-        side_tabs_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.side_tab_buttons = {}
-        for tab_widget, display_name in self.sections:
-            btn = QPushButton(display_name)
-            btn.setCheckable(True)
-            btn.setMinimumHeight(40)
-            btn.setMinimumWidth(120)
-            btn.setStyleSheet("""
-                QPushButton {
-                    border: 1px solid palette(mid);
-                    border-radius: 0px;
-                    border-right: none;
-                    background: palette(button);
-                    text-align: left;
-                    padding-left: 15px;
-                    font-size: 9pt;
-                }
-                QPushButton:hover:!checked {
-                    background: palette(light);
-                }
-                QPushButton:checked {
-                    background: palette(base);
-                    font-weight: 600;
-                    border-right: 1px solid palette(base);
-                }
-            """)
-            btn.clicked.connect(lambda checked, dn=display_name: self.show_section(dn))
-            side_tabs_layout.addWidget(btn)
-            self.side_tab_buttons[display_name] = btn
-
-        side_tabs_layout.addStretch(1)
-        main_layout_h.addWidget(side_tabs_container)
-
-        # Create content container
-        self.content_wrapper = QWidget()
-        self.content_wrapper.setObjectName("content_wrapper")
-        self.content_wrapper.setStyleSheet("""
-            QWidget#content_wrapper {
-                border: 1px solid palette(mid);
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 0.1,
-                                           stop: 0 palette(alternate-base),
-                                           stop: 1 palette(base));
-            }
-        """)
-        self.content_layout = QVBoxLayout(self.content_wrapper)
-        self.content_layout.setSpacing(0)
-        self.content_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Add all section widgets to content area
-        self.section_widgets = {}
-        for tab_widget, display_name in self.sections:
-            tab_widget.hide()
-            self.content_layout.addWidget(tab_widget)
-            self.section_widgets[display_name] = tab_widget
-
-        main_layout_h.addWidget(self.content_wrapper)
-        self.setLayout(main_layout_h)
-
-        # Show first section by default
-        self.show_section("Basic")
-
-    def show_section(self, section_name):
-        """Show the specified section and update tab button states"""
-        # Hide all section widgets
-        for widget in self.section_widgets.values():
-            widget.hide()
-
-        # Uncheck all tab buttons
-        for btn in self.side_tab_buttons.values():
-            btn.setChecked(False)
-
-        # Show the selected section widget and check its tab button
-        if section_name in self.section_widgets:
-            self.section_widgets[section_name].show()
-            if section_name in self.side_tab_buttons:
-                self.side_tab_buttons[section_name].setChecked(True)
-
-    def on_keycode_changed(self, code):
-        self.keycode_changed.emit(code)
+        self.pages = [
+            Tab(parent, "Basic", ansi),
+            Tab(parent, "ISO/JIS", iso),
+            LanguageTab(parent, "German", iso, german.keymap),
+            LanguageTab(parent, "French", iso, french.keymap),
+            LanguageTab(parent, "Spanish", iso, spanish.keymap),
+            LanguageTab(parent, "Russian", ansi, russian.keymap),
+            LanguageTab(parent, "Japanese", iso, japanese.keymap, show_jis=True),
+        ]
+        self.tabs = QTabWidget()
+        for page in self.pages:
+            page.keycode_changed.connect(self.keycode_changed)
+            self.tabs.addTab(page, page.label)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self.tabs)
 
     def recreate_buttons(self, keycode_filter):
-        self.current_keycode_filter = keycode_filter
-
-        # Store currently selected section before recreating
-        current_section = None
-        for section_name, widget in self.section_widgets.items():
-            if widget.isVisible():
-                current_section = section_name
-                break
-
-        # Recreate buttons for each tab
-        for tab_widget, display_name in self.sections:
-            tab_widget.recreate_buttons(keycode_filter)
-
-        # Restore the previously selected section, or default to first
-        if current_section and current_section in self.section_widgets:
-            self.show_section(current_section)
-        else:
-            self.show_section("Basic")
-
-    def has_buttons(self):
-        return any(tab.has_buttons() for tab, _ in self.sections)
+        for page in self.pages:
+            page.recreate_buttons(keycode_filter)
+            page.setVisible(True)
 
     def relabel_buttons(self):
-        for tab_widget, _ in self.sections:
-            tab_widget.relabel_buttons()
+        for page in self.pages:
+            page.relabel_buttons()
 
-    def set_keyboard(self, keyboard):
-        self.macro_tab.set_keyboard(keyboard)
-        self.gaming_tab.keyboard = keyboard
+    def has_buttons(self):
+        return any(page.has_buttons() for page in self.pages)
 
-    def set_editors(self, macro_recorder=None, tap_dance_editor=None, dks_settings=None, toggle_settings=None, delay_settings=None):
-        self.macro_tab.set_editors(macro_recorder, tap_dance_editor, dks_settings, toggle_settings, delay_settings=delay_settings)
 
-    def refresh_buttons(self):
-        self.macro_tab.refresh_buttons()
+class KeyboardTab(Tab):
+    """Keyboard tab: the standard (US) board with the application / media
+    keys below it. (Language boards are not offered for now; BasicTab still
+    holds them.)"""
+
+    def __init__(self, parent, include_layer=True):
+        # Gaming Mode toggle sits with the application keys (it is a normal key;
+        # the joystick functions themselves live in the Gaming tab).
+        app = KEYCODES_MEDIA + [kc for kc in KEYCODES_GAMING if kc.qmk_id == "GAMING_MODE"]
+        super().__init__(parent, "Keyboard", [
+            (ansi_100, KEYCODES_SPECIAL + app),
+            (ansi_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + app),
+            (ansi_70, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV + app),
+            (None, KEYCODES_SPECIAL + KEYCODES_BASIC + app),
+        ])
 
 
 class ArpeggiatorTab(QScrollArea):
@@ -5015,19 +4833,22 @@ class MusicTab(QWidget):
                                            KEYCODES_MIDI_CHORD_5, KEYCODES_MIDI_SCALES,
                                            KEYCODES_MIDI_SMARTCHORDBUTTONS+KEYCODES_MIDI_INVERSION)
         self.quickbuild_tab = SimpleTab(parent, "Quickbuild", KEYCODES_QB_MASTER)
+        self.daw_tab = DAWTab(parent)
 
         # Connect signals
         self.midiswitch_tab.keycode_changed.connect(self.on_keycode_changed)
         self.loop_control_tab.keycode_changed.connect(self.on_keycode_changed)
         self.smartchord_tab.keycode_changed.connect(self.on_keycode_changed)
         self.quickbuild_tab.keycode_changed.connect(self.on_keycode_changed)
+        self.daw_tab.keycode_changed.connect(self.on_keycode_changed)
 
         # Define sections (tab_widget, display_name)
         self.sections = [
             (self.midiswitch_tab, "MIDIswitch"),
             (self.loop_control_tab, "Loop Control"),
             (self.smartchord_tab, "SmartChord"),
-            (self.quickbuild_tab, "Quick\nBuild")
+            (self.quickbuild_tab, "Quick\nBuild"),
+            (self.daw_tab, "DAW"),
         ]
 
         # Create horizontal layout: side tabs on left, content on right
@@ -5155,9 +4976,12 @@ class MusicTab(QWidget):
         for tab_widget, _ in self.sections:
             tab_widget.relabel_buttons()
 
+    def set_keyboard(self, keyboard):
+        self.daw_tab.set_keyboard(keyboard)
+
 
 class MIDITab(midiadvancedTab):
-    """The "Advanced" tab: all MIDI advanced sections plus the DAW, DrumLIVE,
+    """The "Advanced" tab: all MIDI advanced sections plus the DrumLIVE,
     Arpeggiator, Step Sequencer and Delay sections as side tabs."""
 
     _STD_SECTIONS = ["Channel", "CC Options", "Transposition", "KeySplit",
@@ -5166,13 +4990,11 @@ class MIDITab(midiadvancedTab):
     def __init__(self, parent, label="Advanced", include_sections=None, with_external=True):
         external = []
         if with_external:
-            self.daw_tab = DAWTab(parent)
             self.drumlive_tab = DrumLIVETab(parent, "DrumLIVE", KEYCODES_DRUMLIVE)
             self.arpeggiator_tab = ArpeggiatorTab(parent, "Arpeggiator", KEYCODES_ARPEGGIATOR, KEYCODES_ARPEGGIATOR_PRESETS)
             self.step_sequencer_tab = StepSequencerTab(parent, "Step Sequencer", KEYCODES_STEP_SEQUENCER, KEYCODES_STEP_SEQUENCER_PRESETS, KEYCODES_DRUM_SLOTS)
             self.delay_music_tab = DelayMusicTab(parent, "Delay", KEYCODES_DELAY_FACTORY, KEYCODES_DELAY_USER, KEYCODES_DELAY_CLEAR)
             external = [
-                ("DAW", self.daw_tab),
                 ("DrumLIVE", self.drumlive_tab),
                 ("Arpeggiator", self.arpeggiator_tab),
                 ("Step Sequencer", self.step_sequencer_tab),
@@ -5220,9 +5042,19 @@ class MIDITab(midiadvancedTab):
 class SearchTab(MIDITab):
     """Top-level Search tab: the searchable browser over every keycode."""
 
+    # Last connected keyboard, so a search window opened later (double-click)
+    # can also tell which Tap/Hold slots are configured.
+    last_keyboard = None
+
     def __init__(self, parent):
+        self.keyboard = SearchTab.last_keyboard
         super().__init__(parent, label="Search",
                          include_sections=["Advanced Keys"], with_external=False)
+
+    def set_keyboard(self, keyboard):
+        # No arp/seq sections here: just remember the keyboard.
+        self.keyboard = keyboard
+        SearchTab.last_keyboard = keyboard
 
 
 # =============================================================================
@@ -5230,9 +5062,19 @@ class SearchTab(MIDITab):
 # =============================================================================
 
 class DAWTab(QScrollArea):
-    """Unified DAW shortcut tab - one set of keycodes that adapt to the selected DAW"""
+    """Unified DAW shortcut tab - one set of keycodes that adapt to the selected
+    DAW. The "Default DAW" box at the top picks that DAW on the keyboard."""
 
     keycode_changed = pyqtSignal(str)
+
+    DAW_NAMES = ["Ableton Live", "FL Studio", "Logic Pro", "Pro Tools", "GarageBand",
+                 "Cubase", "Reaper", "Studio One", "Bitwig Studio"]
+    MAC_ONLY = (2, 4)  # Logic Pro, GarageBand
+
+    # Shared by every palette's DAW tab, so a change in one shows in all.
+    _instances = []
+    _keyboard = None
+    _state = None  # (daw_index, os_is_mac, count) or None when unsupported
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -5245,12 +5087,159 @@ class DAWTab(QScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setWidgetResizable(True)
 
+        outer = QWidget()
+        outer_layout = QVBoxLayout(outer)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+        outer_layout.setSpacing(15)
+        outer_layout.addWidget(self._build_selector())
+
         self.container = QWidget()
         self.container_layout = QVBoxLayout(self.container)
-        self.container_layout.setContentsMargins(10, 10, 10, 10)
+        self.container_layout.setContentsMargins(0, 0, 0, 0)
         self.container_layout.setSpacing(15)
+        outer_layout.addWidget(self.container, 1)
 
-        self.setWidget(self.container)
+        self.setWidget(outer)
+
+        DAWTab._instances.append(self)
+        self.destroyed.connect(lambda _=None, me=self: DAWTab._forget(me))
+        self._sync_selector()
+
+    @classmethod
+    def _forget(cls, inst):
+        if inst in cls._instances:
+            cls._instances.remove(inst)
+
+    def _build_selector(self):
+        box = QGroupBox(tr("DAWTab", "Default DAW - select this first"))
+        box.setObjectName("daw_default_box")
+        box.setStyleSheet("""
+            QGroupBox#daw_default_box {
+                font-weight: bold;
+                border: 2px solid palette(highlight);
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox#daw_default_box::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+                color: palette(highlight);
+            }
+        """)
+        lay = QVBoxLayout(box)
+        lay.setSpacing(8)
+
+        info = QLabel(tr("DAWTab",
+            "<b>Important:</b> the DAW keys below send the keyboard shortcuts of the DAW "
+            "chosen here. Pick the DAW you use, otherwise keys like Play, Record and Undo "
+            "will send the wrong shortcuts. The choice is saved to the keyboard straight "
+            "away, so there is no need to change it in Settings or on the keyboard."))
+        info.setWordWrap(True)
+        info.setTextFormat(Qt.RichText)
+        lay.addWidget(info)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel(tr("DAWTab", "DAW:")))
+        self.daw_combo = ArrowComboBox()
+        for name in self.DAW_NAMES:
+            self.daw_combo.addItem(name)
+        self.daw_combo.setMinimumWidth(180)
+        self.daw_combo.currentIndexChanged.connect(self._on_daw_chosen)
+        row.addWidget(self.daw_combo)
+        row.addSpacing(20)
+        row.addWidget(QLabel(tr("DAWTab", "Computer:")))
+        self.os_combo = ArrowComboBox()
+        self.os_combo.addItem("Windows")
+        self.os_combo.addItem("Mac")
+        self.os_combo.setMinimumWidth(110)
+        self.os_combo.currentIndexChanged.connect(self._on_os_chosen)
+        row.addWidget(self.os_combo)
+        row.addStretch(1)
+        lay.addLayout(row)
+
+        self.daw_status = QLabel()
+        self.daw_status.setWordWrap(True)
+        lay.addWidget(self.daw_status)
+        return box
+
+    # --- device state -------------------------------------------------
+
+    def set_keyboard(self, keyboard):
+        if keyboard is not DAWTab._keyboard or DAWTab._state is None:
+            DAWTab._keyboard = keyboard
+            DAWTab._refresh_state()
+        self._sync_selector()
+
+    @classmethod
+    def _refresh_state(cls):
+        kb = cls._keyboard
+        state = None
+        if kb is not None and hasattr(kb, "get_daw"):
+            try:
+                state = kb.get_daw()
+            except Exception:
+                state = None
+        cls._state = state
+        for inst in list(cls._instances):
+            inst._sync_selector()
+
+    def showEvent(self, ev):
+        super().showEvent(ev)
+        # The DAW can also be changed from the keyboard, so re-read it.
+        if DAWTab._keyboard is not None:
+            DAWTab._refresh_state()
+
+    def _sync_selector(self):
+        state = DAWTab._state
+        enabled = state is not None
+        for combo in (self.daw_combo, self.os_combo):
+            combo.blockSignals(True)
+            combo.setEnabled(enabled)
+        if enabled:
+            idx, mac, _count = state
+            if 0 <= idx < self.daw_combo.count():
+                self.daw_combo.setCurrentIndex(idx)
+            self.os_combo.setCurrentIndex(1 if mac else 0)
+            self.os_combo.setEnabled(idx not in self.MAC_ONLY)
+            self.daw_status.setText(tr("DAWTab", "Saved on the keyboard: {} ({})").format(
+                self.daw_combo.currentText(), "Mac" if mac else "Windows"))
+        elif DAWTab._keyboard is None:
+            self.daw_status.setText(tr("DAWTab", "Connect a keyboard to choose its DAW."))
+        else:
+            self.daw_status.setText(tr("DAWTab",
+                "This keyboard needs a firmware update to choose the DAW here."))
+        for combo in (self.daw_combo, self.os_combo):
+            combo.blockSignals(False)
+
+    def _apply(self, index, mac):
+        kb = DAWTab._keyboard
+        if kb is None or not hasattr(kb, "set_daw"):
+            return
+        result = None
+        try:
+            result = kb.set_daw(index, mac)
+        except Exception:
+            result = None
+        if result is not None:
+            DAWTab._state = result
+            for inst in list(DAWTab._instances):
+                inst._sync_selector()
+        else:
+            self._sync_selector()
+            self.daw_status.setText(tr("DAWTab", "Could not save the DAW to the keyboard."))
+
+    def _on_daw_chosen(self, index):
+        if index < 0:
+            return
+        mac = True if index in self.MAC_ONLY else None
+        self._apply(index, mac)
+
+    def _on_os_chosen(self, index):
+        if index < 0 or DAWTab._state is None:
+            return
+        self._apply(DAWTab._state[0], index == 1)
 
     def recreate_buttons(self, keycode_filter):
         self.current_keycode_filter = keycode_filter
@@ -5367,13 +5356,7 @@ class FilteredTabbedKeycodes(QTabWidget):
 
         self.keycode_filter = keycode_filter
 
-        self.tabs = [
-            KeyboardTab(self),
-            MusicTab(self),
-            MIDITab(self),
-            SearchTab(self),
-            SimpleTab(self, " ", KEYCODES_CLEAR),
-        ]
+        self.tabs = palette_tabs(self) + [SimpleTab(self, " ", KEYCODES_CLEAR)]
 
         for tab in self.tabs:
             tab.keycode_changed.connect(self.on_keycode_changed)

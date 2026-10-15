@@ -13,7 +13,7 @@ Supports two modes:
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                               QComboBox, QGroupBox, QMessageBox, QFrame, QCheckBox,
                               QSizePolicy, QScrollArea, QTabWidget, QGridLayout, QInputDialog)
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QSize
 
 from editor.basic_editor import BasicEditor
 from editor.arpeggiator import DebugConsole
@@ -23,9 +23,9 @@ from protocol.toggle_protocol import (ProtocolToggle, ToggleSlot,
                                        TOGGLE_MULTI_COLOR_NAMES, TOGGLE_FLAG_MULTI_KEY,
                                        slot_to_toggle_keycode)
 from keycodes.keycodes import Keycode
-from widgets.key_widget import KeyWidget
+from widgets.keycode_button import KeycodeButton, DropGap, reorder_list, install_click_away_deselect, install_gap_drop_fallback
 from tabbed_keycodes import TabbedKeycodes, FilteredTabbedKeycodes, keycode_filter_any, keycode_filter_masked
-from tabbed_keycodes import KeyboardTab, MusicTab, GamingTab, MacroTab, LightingTab, LightingTab2, MIDITab, SearchTab, SimpleTab
+from tabbed_keycodes import KeyboardTab, MusicTab, GamingTab, MacroTab, LightingTab, LightingTab2, MIDITab, SearchTab, SimpleTab, palette_tabs
 from keycodes.keycodes import (KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE, KEYCODES_BACKLIGHT,
                                KEYCODES_RGBSAVE, KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_COLOR,
                                KEYCODES_RGB_KC_CUSTOM2, KEYCODES_CLEAR, KEYCODES_GAMING,
@@ -47,12 +47,8 @@ class FilteredTabbedKeycodesNoLayers(QTabWidget):
 
         # Create tabs WITHOUT LayerTab (Keyboard & Macro skips its Layer
         # section; LightingTab2 provides the overlay-safe layer pickers)
-        self.tabs = [
-            KeyboardTab(self, include_layer=False),
-            MusicTab(self),
-            LightingTab2(self, "Layers", KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_OSL),
-            MIDITab(self),
-            SearchTab(self),
+        self.tabs = palette_tabs(self, layer_tab=LightingTab2(
+            self, "Layers", KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_OSL)) + [
             SimpleTab(self, " ", KEYCODES_CLEAR),
         ]
 
@@ -212,43 +208,12 @@ class TabbedKeycodesNoLayers(QWidget):
                 opt.recreate_keycode_buttons()
 
 
-class ToggleKeyWidget(KeyWidget):
-    """Custom KeyWidget that doesn't open tray - parent will handle keycode selection"""
+class ToggleKeyWidget(KeycodeButton):
+    """Keycode button styled like the palette buttons. Doesn't open the tray -
+    the entry feeds the palette pick to the selected button."""
 
-    selected = pyqtSignal(object)  # Emits self when clicked
-
-    def __init__(self):
-        super().__init__()
-        self.is_selected = False
-
-    def mousePressEvent(self, ev):
-        # Set active_key to the actual widget so KeyboardWidget draws the highlight
-        if len(self.widgets) > 0:
-            self.active_key = self.widgets[0]
-            self.active_mask = False
-
-        # Emit that we're selected (don't call parent which opens tray)
-        self.selected.emit(self)
-        self.update()  # Force repaint to show highlight
-        ev.accept()
-
-    def mouseReleaseEvent(self, ev):
-        # Override to prevent any tray behavior
-        ev.accept()
-
-    def set_selected(self, selected):
-        """Visual feedback for selection"""
-        self.is_selected = selected
-        if selected:
-            # Set active_key to show native KeyboardWidget highlighting
-            if len(self.widgets) > 0:
-                self.active_key = self.widgets[0]
-                self.active_mask = False
-        else:
-            # Clear active_key to remove highlighting
-            self.active_key = None
-        self.update()
-
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
 class ToggleEntryUI(QWidget):
     """UI for a single toggle slot"""
@@ -300,8 +265,13 @@ class ToggleEntryUI(QWidget):
         layout.addLayout(header_layout)
 
         # Description
-        desc = QLabel("Configure the target keycode that will be toggled when this key is pressed.\n"
-                      "Assign this TGL keycode to a physical key in your keymap.")
+        desc = QLabel(
+            "<b>Toggle</b> - works as if you were holding the target key down yourself: "
+            "one press turns it on (held), the next press turns it off (released).<br>"
+            "<b>Multi Key Toggle</b> - each press taps the next keycode in the list "
+            "(press and release), cycling back to the first after the last.<br>"
+            "Assign this TGL keycode to a key on your keymap.")
+        desc.setTextFormat(Qt.RichText)
         desc.setWordWrap(True)
         desc.setStyleSheet("color: gray; font-size: 9pt;")
         layout.addWidget(desc)
@@ -323,6 +293,8 @@ class ToggleEntryUI(QWidget):
 
         self.target_key = ToggleKeyWidget()
         self.target_key.selected.connect(lambda w: self._on_key_selected(0))
+        # a key dragged from the palette onto the target slot assigns it
+        self.target_key.assign_requested.connect(self._on_target_key_assigned)
         standard_layout.addWidget(self.target_key)
 
         standard_layout.addWidget(QLabel("<- Click to select, then choose from keycodes below"))
@@ -343,6 +315,13 @@ class ToggleEntryUI(QWidget):
         self.multi_color_labels = []
         self.multi_key_spacers = []
         self._visible_multi_keys = 2  # Start with 2 visible
+        # The "push" preview of a drag: an empty cell inserted where the
+        # dragged step would land, so the other steps slide aside (DropGap)
+        self._gap = DropGap()
+        self._gap.drag_group = self
+        self._gap.dropped.connect(self._on_multi_key_reorder)
+        self._gap.inserted.connect(self._on_multi_key_insert)
+        self._gap_slot = None
 
         for i in range(TOGGLE_MULTI_MAX_KEYS):
             # Colour indicator (compact)
@@ -362,6 +341,15 @@ class ToggleEntryUI(QWidget):
             key_widget = ToggleKeyWidget()
             key_idx = i  # Capture for lambda
             key_widget.selected.connect(lambda w, idx=key_idx: self._on_key_selected(idx))
+            # Steps can be dragged onto each other to reorder the cycle, and
+            # right-click -> Duplicate inserts a copy of a step after itself
+            key_widget.set_drag_group(self)
+            key_widget.reorder_requested.connect(self._on_multi_key_reorder)
+            key_widget.duplicate_requested.connect(self._on_multi_key_duplicate)
+            key_widget.drop_hover.connect(self._on_multi_key_hover)
+            key_widget.insert_requested.connect(self._on_multi_key_insert)
+            key_widget.drag_started.connect(self._on_multi_key_drag_started)
+            key_widget.drag_finished.connect(self._on_multi_key_drag_finished)
             self.multi_key_widgets.append(key_widget)
             self.multi_keys_layout.addWidget(key_widget)
 
@@ -399,6 +387,7 @@ class ToggleEntryUI(QWidget):
         multi_outer_layout.addLayout(multi_btn_layout)
 
         self.multi_group.setLayout(multi_outer_layout)
+        install_gap_drop_fallback(self.multi_group)
         self.multi_group.setVisible(False)
         layout.addWidget(self.multi_group)
 
@@ -506,6 +495,141 @@ class ToggleEntryUI(QWidget):
             self.slot.set_keycode(i, self.slot.get_keycode(i + 1))
         self.slot.set_keycode(TOGGLE_MULTI_MAX_KEYS - 1, 0)
         self._visible_multi_keys -= 1
+        self.slot.num_keys = max(2, self._visible_multi_keys)
+        self._deselect_all_keys()
+        self._update_multi_key_visibility()
+        self._update_display()
+        self.pending_changes = True
+        self.save_btn.setEnabled(True)
+        self.changed.emit()
+
+    def _on_multi_key_reorder(self, source, target, before):
+        """A step button was dropped onto another step: move it there. The
+        widgets stay put (only their keycodes are re-dealt from the slot), so
+        nothing is destroyed while the drag's own event loop is still up."""
+        try:
+            src_idx = self.multi_key_widgets.index(source)
+            dst_idx = self.multi_key_widgets.index(target)
+        except ValueError:
+            return
+        n = self._visible_multi_keys
+        if src_idx == dst_idx or src_idx >= n or dst_idx >= n:
+            return
+        keycodes = [self.slot.get_keycode(i) for i in range(n)]
+        new_idx = reorder_list(keycodes, src_idx, dst_idx, before)
+        for i, kc in enumerate(keycodes):
+            self.slot.set_keycode(i, kc)
+        self.slot.num_keys = max(2, n)
+        self._update_display()
+        # keep the selection on the step that was dragged
+        if self.selected_key_index == src_idx:
+            self._deselect_all_keys()
+            self._on_key_selected(new_idx)
+        else:
+            self._deselect_all_keys()
+        self.pending_changes = True
+        self.save_btn.setEnabled(True)
+        self.changed.emit()
+
+    # ---- drop preview ("push" the other steps aside) --------------------
+
+    def _on_multi_key_drag_started(self, source):
+        """The dragged step is hidden for the drag; hide its number badge and
+        the spacer after it too, so its whole cell collapses out of the row."""
+        try:
+            idx = self.multi_key_widgets.index(source)
+        except ValueError:
+            return
+        self.multi_color_labels[idx].hide()
+        if idx < len(self.multi_key_spacers):
+            self.multi_key_spacers[idx].hide()
+
+    def _on_multi_key_drag_finished(self, source):
+        self._gap.close()
+        self._update_multi_key_visibility()
+
+    def _on_multi_key_hover(self, source, target, before):
+        """A drag hovers a step: insert the gap on that side of its cell
+        (badge + key + spacer).  Slots are counted over the VISIBLE steps (the
+        dragged one is hidden), so "after 2" and "before 3" — the same place —
+        don't re-open the gap and restart its animation."""
+        n = self._visible_multi_keys
+        vis = [w for w in self.multi_key_widgets[:n] if not w.isHidden()]
+        if target not in vis:
+            return
+        slot = vis.index(target) + (0 if before else 1)
+        if self._gap.is_open() and self._gap_slot == slot:
+            self._gap.target, self._gap.before = target, before   # equivalent position
+            return
+        self._gap_slot = slot
+        self.multi_keys_layout.removeWidget(self._gap)
+        if slot < len(vis):
+            anchor = self.multi_color_labels[self.multi_key_widgets.index(vis[slot])]
+            pos = self.multi_keys_layout.indexOf(anchor)
+        else:
+            pos = self.multi_keys_layout.indexOf(vis[-1]) + 1
+        self.multi_keys_layout.insertWidget(pos, self._gap)
+        key_size = self.multi_key_widgets[0].sizeHint()   # (a palette source is smaller)
+        cell_w = self.multi_color_labels[0].width() + key_size.width() + 60   # badge + key + spacer
+        self._gap.open_at(target, before, QSize(cell_w, key_size.height()),
+                          key_size=key_size, key_offset=self.multi_color_labels[0].width())
+
+    def _on_target_key_assigned(self, qmk_id, widget):
+        """Palette key dropped on the single target slot."""
+        self._on_key_selected(0)
+        self.on_keycode_selected(qmk_id)
+
+    def _on_multi_key_insert(self, qmk_id, target, before):
+        """A key dragged from the palette was dropped on the cycle (on a
+        step or in the gap): insert it as a NEW step there, shifting the later
+        steps up (needs a free step)."""
+        n = self._visible_multi_keys
+        if n >= TOGGLE_MULTI_MAX_KEYS:
+            QMessageBox.information(
+                self, "Insert Key",
+                f"The cycle already has the maximum of {TOGGLE_MULTI_MAX_KEYS} keys.")
+            return
+        try:
+            idx = self.multi_key_widgets.index(target) + (0 if before else 1)
+        except ValueError:
+            idx = n
+        idx = max(0, min(idx, n))
+        try:
+            keycode_value = Keycode.deserialize(qmk_id)
+        except Exception:
+            keycode_value = 0
+        for i in range(TOGGLE_MULTI_MAX_KEYS - 1, idx, -1):
+            self.slot.set_keycode(i, self.slot.get_keycode(i - 1))
+        self.slot.set_keycode(idx, keycode_value)
+        self._visible_multi_keys = n + 1
+        self.slot.num_keys = max(2, self._visible_multi_keys)
+        self._gap.close()
+        self._deselect_all_keys()
+        self._update_multi_key_visibility()
+        self._update_display()
+        self.pending_changes = True
+        self.save_btn.setEnabled(True)
+        self.changed.emit()
+
+    def _on_multi_key_duplicate(self, widget):
+        """Right-click -> Duplicate: insert a copy of this step right after it,
+        shifting the later steps up (needs a free step in the cycle)."""
+        try:
+            idx = self.multi_key_widgets.index(widget)
+        except ValueError:
+            return
+        n = self._visible_multi_keys
+        if idx >= n:
+            return
+        if n >= TOGGLE_MULTI_MAX_KEYS:
+            QMessageBox.information(
+                self, "Duplicate Key",
+                f"The cycle already has the maximum of {TOGGLE_MULTI_MAX_KEYS} keys.")
+            return
+        for i in range(TOGGLE_MULTI_MAX_KEYS - 1, idx + 1, -1):
+            self.slot.set_keycode(i, self.slot.get_keycode(i - 1))
+        self.slot.set_keycode(idx + 1, self.slot.get_keycode(idx))
+        self._visible_multi_keys = n + 1
         self.slot.num_keys = max(2, self._visible_multi_keys)
         self._deselect_all_keys()
         self._update_multi_key_visibility()
@@ -722,6 +846,7 @@ class ToggleSettingsTab(BasicEditor):
 
         # Add TabbedKeycodes at the bottom
         self.tabbed_keycodes = TabbedKeycodesNoLayers()
+        install_click_away_deselect(self.tabs, self._clear_key_selection)
         self.tabbed_keycodes.keycode_changed.connect(self.on_keycode_selected)
         self.addWidget(self.tabbed_keycodes)
 
@@ -768,6 +893,11 @@ class ToggleSettingsTab(BasicEditor):
         """Handle name change - update tab titles and refresh keycode labels"""
         self.on_entry_changed()
         self.tabbed_keycodes.recreate_keycode_buttons()
+
+    def _clear_key_selection(self):
+        """Click on empty space in the editor: unselect the selected key."""
+        for entry in self._entries.values():
+            entry._deselect_all_keys()
 
     def on_keycode_selected(self, keycode):
         """Called when a keycode is selected from TabbedKeycodes"""

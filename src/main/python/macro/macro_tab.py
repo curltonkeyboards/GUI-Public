@@ -8,8 +8,10 @@ from PyQt5.QtWidgets import (QPushButton, QGridLayout, QHBoxLayout, QToolButton,
 
 from keycodes.keycodes import Keycode
 from macro.macro_action import ActionTap
-from macro.macro_action_ui import ActionTextUI, ActionTapUI, ui_action, tag_to_action
+from macro.macro_action import text_to_actions, expand_text_actions
+from macro.macro_action_ui import ActionTextUI, ActionTapUI, ui_action, tag_to_action, ui_for_action
 from macro.macro_line import MacroLine
+from widgets.keycode_button import install_gap_drop_fallback
 from protocol.constants import VIAL_PROTOCOL_EXT_MACROS
 from tabbed_keycodes import keycode_filter_masked
 from util import tr
@@ -108,6 +110,7 @@ class MacroTab(QVBoxLayout):
         actions_layout.addLayout(loop_layout)
 
         actions_group.setLayout(actions_layout)
+        install_gap_drop_fallback(actions_group)
 
         # Scroll area for actions
         scroll = QScrollArea()
@@ -204,19 +207,92 @@ class MacroTab(QVBoxLayout):
             self.name_changed.emit()  # trigger save enable + tab title update
             self.changed.emit()  # trigger tab title update
 
-    def add_action(self, act):
+    def _make_line(self, act):
         if self.parent.keyboard.vial_protocol < VIAL_PROTOCOL_EXT_MACROS:
             act.set_keycode_filter(keycode_filter_masked)
         line = MacroLine(self, act)
         line.changed.connect(self.on_change)
         line.key_selected.connect(self.on_key_selected)
+        line.cross_move_requested.connect(self.on_cross_key_move)
+        line.expand_requested.connect(self.on_expand_line)
+        return line
+
+    def add_action(self, act):
+        # Text arriving from the keyboard, the recorder or an import is shown
+        # as the keys that type it: macros never keep raw text.
+        if isinstance(act, ActionTextUI) and act.act.text:
+            act.delete()
+            for key_act in text_to_actions(act.act.text)[0]:
+                self.add_action(ui_for_action(key_act)(self.container, key_act))
+            return
+        line = self._make_line(act)
         self.lines.append(line)
         line.insert(len(self.lines) - 1)
+        self.changed.emit()
+
+    def on_expand_line(self, line, actions):
+        """A "Type Text" line generated its keys: replace it with them."""
+        if line not in self.lines:
+            return
+        index = self.lines.index(line)
+        for existing in self.lines:
+            existing.remove()
+        line.delete()
+        new_lines = [self._make_line(ui_for_action(a)(self.container, a)) for a in actions]
+        self.lines[index:index + 1] = new_lines
+        for x, existing in enumerate(self.lines):
+            existing.insert(x)
         self.changed.emit()
 
     def on_key_selected(self, widget):
         """Bubble up key selection to parent MacroRecorder"""
         self.key_selected.emit(widget)
+
+    def on_cross_key_move(self, source, dst_action, ins_idx):
+        """A key button was dragged from one action line and dropped on another
+        (or on its "+" button).  The drop is delivered inside the drag's own
+        event loop, where the buttons must not be destroyed, so the move is
+        only RECORDED here and applied when the dragged button reports that
+        its drag has finished."""
+        src_action = None
+        for line in self.lines:
+            widgets = getattr(line.action, "widgets", None)
+            if widgets and source in widgets:
+                src_action = line.action
+                break
+        if src_action is None or src_action is dst_action:
+            return
+        self._pending_key_move = (src_action, src_action.widgets.index(source),
+                                  dst_action, ins_idx, source.is_selected)
+        source.drag_finished.connect(self._apply_pending_key_move)
+
+    def _apply_pending_key_move(self, source):
+        try:
+            source.drag_finished.disconnect(self._apply_pending_key_move)
+        except TypeError:
+            pass
+        pending = getattr(self, "_pending_key_move", None)
+        self._pending_key_move = None
+        if pending is None:
+            return
+        src_action, src_idx, dst_action, ins_idx, was_selected = pending
+        if src_action not in [l.action for l in self.lines] or dst_action not in [l.action for l in self.lines]:
+            return
+        if src_idx >= len(src_action.act.sequence):
+            return
+        kc = src_action.act.sequence.pop(src_idx)
+        ins_idx = max(0, min(ins_idx, len(dst_action.act.sequence)))
+        dst_action.act.sequence.insert(ins_idx, kc)
+        # both lines rebuild their buttons: let the recorder drop stale references
+        for action in (src_action, dst_action):
+            for w in action.widgets:
+                self.widget_deleted.emit(w)
+        src_action.recreate_sequence()
+        dst_action.recreate_sequence()
+        if was_selected and ins_idx < len(dst_action.widgets):
+            w = dst_action.widgets[ins_idx]
+            w.selected.emit(w)
+        self.changed.emit()
 
     def on_add(self):
         self.add_action(ActionTextUI(self.container))
@@ -274,7 +350,7 @@ class MacroTab(QVBoxLayout):
         # serialize all actions in this tab to a json
         macro_text = json.dumps([act.save() for act in self.actions()])
 
-        self.dlg_textbox = TextboxWindow(macro_text, "vim", "Vial macro")
+        self.dlg_textbox = TextboxWindow(macro_text, "vim", "SwitchStation macro")
         self.dlg_textbox.setModal(True)
         self.dlg_textbox.finished.connect(self.on_dlg_finished)
         self.dlg_textbox.show()
@@ -297,7 +373,7 @@ class MacroTab(QVBoxLayout):
             for act in macro_load:
                 if act[0] in tag_to_action:
                     obj = tag_to_action[act[0]]()
-                    actionUI = ui_action[type(obj)]
+                    actionUI = ui_for_action(obj)
                     obj.restore(act)
                     self.add_action(actionUI(self.container, obj))
 
@@ -468,7 +544,7 @@ class MacroTab(QVBoxLayout):
             # Replace this tab's actions.
             self.clear()
             for obj in restored:
-                self.add_action(ui_action[type(obj)](self.container, obj))
+                self.add_action(ui_for_action(obj)(self.container, obj))
             self.set_loop_mode(loop_mode)
             self.set_sync_to_bpm(sync_to_bpm)
             self.changed.emit()
@@ -523,4 +599,5 @@ class MacroTab(QVBoxLayout):
         self.changed.emit()
 
     def actions(self):
-        return [line.action.act for line in self.lines]
+        # Any text still typed into a "Type Text" line is saved as its keys.
+        return expand_text_actions([line.action.act for line in self.lines])

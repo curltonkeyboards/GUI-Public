@@ -4,7 +4,9 @@ from keycodes.keycodes import Keycode
 from macro.macro_action import (SS_TAP_CODE, SS_DOWN_CODE, SS_UP_CODE, ActionText, ActionTap, ActionDown, ActionUp,
     SS_QMK_PREFIX, SS_DELAY_CODE, ActionDelay, VIAL_MACRO_EXT_TAP, VIAL_MACRO_EXT_DOWN, VIAL_MACRO_EXT_UP,
     SS_BPM_DELAY_CODE, ActionBPMDelay, SS_BPM_DELAY_REPEAT_CODE,
-    SS_MIXING_CONTROL_CODE, ActionMixingControl)
+    SS_MIXING_CONTROL_CODE, ActionMixingControl,
+    SS_MOUSE_MOVE_CODE, ActionMouseMove, mouse_coord_from_bytes,
+    SS_GAMEPAD_CODE, SS_GAMEPAD2_CODE, GAMEPAD_KIND_TIED, ActionGamepad)
 from macro.macro_action_ui import tag_to_action
 from protocol.base_protocol import BaseProtocol
 from protocol.constants import CMD_VIA_MACRO_GET_COUNT, CMD_VIA_MACRO_GET_BUFFER_SIZE, CMD_VIA_MACRO_GET_BUFFER, \
@@ -152,6 +154,34 @@ def macro_deserialize_v2(data):
 
                 for x in range(9):
                     data.pop(0)
+            elif act == SS_MOUSE_MOVE_CODE:
+                if len(data) < 9:
+                    break
+                mx = mouse_coord_from_bytes(data[2], data[3], data[4])
+                my = mouse_coord_from_bytes(data[5], data[6], data[7])
+                click = data[8] - 1
+                sequence.append([SS_MOUSE_MOVE_CODE, mx, my, click])
+                for x in range(9):
+                    data.pop(0)
+            elif act == SS_GAMEPAD_CODE:
+                if len(data) < 8:
+                    break
+                kind, target, value, pct = (b - 1 for b in data[2:6])
+                ms = (data[6] - 1) | ((data[7] - 1) << 7)
+                sequence.append([SS_GAMEPAD_CODE, kind, target, value, pct, ms])
+                for x in range(8):
+                    data.pop(0)
+            elif act == SS_GAMEPAD2_CODE:
+                if len(data) < 10:
+                    break
+                kind, target, value, pct = (b - 1 for b in data[2:6])
+                dur = (data[6] - 1) | ((data[7] - 1) << 7)
+                wait = (data[8] - 1) | ((data[9] - 1) << 7)
+                tied = bool(kind & GAMEPAD_KIND_TIED)
+                kind &= ~GAMEPAD_KIND_TIED
+                sequence.append([SS_GAMEPAD2_CODE, kind, target, value, pct, dur, wait, tied])
+                for x in range(10):
+                    data.pop(0)
             else:
                 # it is clearly malformed, just skip this byte and hope for the best
                 data.pop(0)
@@ -181,6 +211,12 @@ def macro_deserialize_v2(data):
                 out.append(a)
             elif s[0] == SS_MIXING_CONTROL_CODE:
                 out.append(ActionMixingControl(s[1], s[2], s[3], s[4], s[5], s[6]))
+            elif s[0] == SS_MOUSE_MOVE_CODE:
+                out.append(ActionMouseMove(s[1], s[2], s[3]))
+            elif s[0] == SS_GAMEPAD_CODE:
+                out.append(ActionGamepad.from_legacy(*s[1:6]))
+            elif s[0] == SS_GAMEPAD2_CODE:
+                out.append(ActionGamepad(*s[1:8]))
             else:
                 args = None
                 if s[0] in [SS_TAP_CODE, SS_DOWN_CODE, SS_UP_CODE]:

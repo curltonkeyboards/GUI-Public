@@ -9,6 +9,41 @@ from constants import KEY_SIZE_RATIO, KEY_SPACING_RATIO, KEYBOARD_WIDGET_PADDING
     KEYBOARD_WIDGET_NONMASK_PADDING
 from themes import Theme
 import themes2
+from widgets.square_button import KEYCODE_PALETTE_MIME
+
+
+def _paint_key_icon(qp, key):
+    """Draw a gamepad control's icon centred in the key's legend area."""
+    from widgets.gamepad_icon_button import paint_gamepad_icon
+    r = key.text_rect
+    side = min(r.width(), r.height()) * 0.8
+    box = QRectF(r.center().x() - side / 2, r.center().y() - side / 2, side, side)
+    paint_gamepad_icon(qp, box, key.icon_id)
+
+
+def _paint_joystick_overlay(qp, key, base_point_size):
+    """The joystick function attached to a key: its gamepad icon (or a short
+    label) at 50% opacity in the key's bottom-right quarter."""
+    from widgets.gamepad_icon_button import paint_gamepad_icon, has_gamepad_icon
+    jr = key.joystick_rect
+    qp.save()
+    qp.setOpacity(0.5)
+    qp.setPen(Qt.NoPen)
+    qp.setBrush(QColor(150, 60, 255))
+    qp.drawRoundedRect(jr, key.corner * 0.6, key.corner * 0.6)
+    icon = getattr(key, "joystick_icon", None)
+    if icon and has_gamepad_icon(icon):
+        side = min(jr.width(), jr.height()) * 0.9
+        box = QRectF(jr.center().x() - side / 2, jr.center().y() - side / 2, side, side)
+        paint_gamepad_icon(qp, box, icon)
+    else:
+        font = qp.font()
+        font.setPointSize(max(6, base_point_size - 1))
+        font.setBold(True)
+        qp.setFont(font)
+        qp.setPen(QColor(255, 255, 255))
+        qp.drawText(jr, Qt.AlignCenter, key.joystick_text)
+    qp.restore()
 
 
 class KeyWidget:
@@ -21,6 +56,7 @@ class KeyWidget:
         self.desc = desc
         self.text = ""
         self.mask_text = ""
+        self.icon_id = None      # gamepad control drawn as an icon instead of text
         self.tooltip = ""
         self.color = None
         self.mask_color = None
@@ -510,6 +546,8 @@ class KeyboardWidget(QWidget):
                 # draw the inner legend
                 qp.setPen(key.mask_color if key.mask_color else regular_pen)
                 qp.drawText(key.mask_rect, Qt.AlignCenter, key.mask_text)
+            elif key.icon_id:
+                _paint_key_icon(qp, key)
             else:
                 # draw the legend
                 qp.setPen(key.color if key.color else regular_pen)
@@ -606,11 +644,16 @@ class KeyWidget2:
         self.desc = desc
         self.text = ""
         self.mask_text = ""
+        self.icon_id = None      # gamepad control drawn as an icon instead of text
         self.tooltip = ""
         self.color = None
         self.mask_color = None
         self.scale = 0
         self.adc_value = None  # ADC value for matrix tester (None = not shown, 0-4095 = value)
+        # Joystick function attached to this key (keymap editor): short label
+        # drawn at 50% opacity in the bottom-right quarter, "" = none.
+        self.joystick_text = ""
+        self.joystick_icon = None   # gamepad icon id (qmk_id) for the overlay
 
         self.rotation_angle = desc.rotation_angle
 
@@ -686,6 +729,16 @@ class KeyWidget2:
             )
             self.mask_bbox = self.calculate_bbox(self.mask_rect)
             self.mask_polygon = QPolygonF(self.mask_bbox + [self.mask_bbox[0]])
+
+            # Bottom-right quarter of the key: the joystick overlay
+            self.joystick_rect = QRect(
+                round(self.x + self.w / 2),
+                round(self.y + self.h / 2),
+                round(self.w / 2),
+                round(self.h / 2)
+            )
+            self.joystick_bbox = self.calculate_bbox(self.joystick_rect)
+            self.joystick_polygon = QPolygonF(self.joystick_bbox + [self.joystick_bbox[0]])
 
     def calculate_bbox(self, rect):
         x1 = rect.topLeft().x()
@@ -849,12 +902,21 @@ class KeyboardWidget2(QWidget):
     clicked = pyqtSignal()
     deselected = pyqtSignal()
     anykey = pyqtSignal()
+    # A keycode dragged out of the keycode palette (SquareButton drag, see
+    # KEYCODE_PALETTE_MIME) was dropped on a key: (key widget, hit the masked
+    # inner part, qmk_id). Only emitted once set_drop_assign_enabled(True).
+    keycode_dropped = pyqtSignal(object, bool, str)
+    # The joystick overlay in a key's corner was clicked (key widget).
+    joystick_clicked = pyqtSignal(object)
 
     def __init__(self, layout_editor):
         super().__init__()
 
         self.enabled = True
         self.scale = 1
+        # Size factor for the background photo (the keys follow self.scale;
+        # the photo is a fixed 1035x345 unless a subclass shrinks it).
+        self.bg_image_scale = 1.0
         self.padding = KEYBOARD_WIDGET_PADDING
 
         # Set fixed font size for keyboard widget to maintain original key sizes
@@ -889,6 +951,75 @@ class KeyboardWidget2(QWidget):
         # translucent fill over the whole keycap in addition to the outline.
         # Off by default so only tabs that request it (trigger settings) change.
         self.highlight_selected_fill = False
+
+        # Opt-in drop target for palette keycode drags (keymap editor only):
+        # the key under the cursor is outlined like the active key while a
+        # palette drag hovers it, and a drop emits keycode_dropped.
+        self.drop_assign_enabled = False
+        self.drop_hover_key = None
+        self.drop_hover_mask = False
+
+    def set_drop_assign_enabled(self, enabled):
+        """Accept keycode-palette drags (see SquareButton) and report drops
+        through keycode_dropped. Off by default so the lighting / layout /
+        matrix-test tabs, which share this widget, are unaffected."""
+        self.drop_assign_enabled = bool(enabled)
+        self.setAcceptDrops(self.drop_assign_enabled)
+
+    def _palette_drag_id(self, ev):
+        """qmk_id carried by a palette drag event, or None."""
+        if not self.drop_assign_enabled or not self.enabled:
+            return None
+        mime = ev.mimeData()
+        if mime is None or not mime.hasFormat(KEYCODE_PALETTE_MIME):
+            return None
+        try:
+            qmk_id = bytes(mime.data(KEYCODE_PALETTE_MIME)).decode("utf-8")
+        except Exception:
+            return None
+        return qmk_id or None
+
+    def _set_drop_hover(self, key, mask):
+        if key is not self.drop_hover_key or mask != self.drop_hover_mask:
+            self.drop_hover_key = key
+            self.drop_hover_mask = mask
+            self.update()
+
+    def dragEnterEvent(self, ev):
+        if self._palette_drag_id(ev) is None:
+            ev.ignore()
+            return
+        # Always accept the ENTER: a drag nearly always comes in over the gap
+        # around the keys, and a rejected enter makes Qt skip every later
+        # move/drop for this widget. Per-position acceptance is dragMoveEvent's.
+        key, mask = self.hit_test(ev.pos())
+        self._set_drop_hover(key, mask)
+        ev.acceptProposedAction()
+
+    def dragMoveEvent(self, ev):
+        if self._palette_drag_id(ev) is None:
+            ev.ignore()
+            return
+        key, mask = self.hit_test(ev.pos())
+        self._set_drop_hover(key, mask)
+        if key is None:
+            ev.ignore()
+        else:
+            ev.acceptProposedAction()
+
+    def dragLeaveEvent(self, ev):
+        self._set_drop_hover(None, False)
+        ev.accept()
+
+    def dropEvent(self, ev):
+        qmk_id = self._palette_drag_id(ev)
+        key, mask = self.hit_test(ev.pos())
+        self._set_drop_hover(None, False)
+        if qmk_id is None or key is None:
+            ev.ignore()
+            return
+        ev.acceptProposedAction()
+        self.keycode_dropped.emit(key, mask, qmk_id)
 
     def set_keys(self, keys, encoders):
         self.common_widgets = []
@@ -1016,6 +1147,9 @@ class KeyboardWidget2(QWidget):
             # Define the area for the image with specific coordinates and dimensions
             image_x, image_y = 0, 0  # Adjust as needed for positioning
             image_width, image_height = 1035, 345  # Set the dimensions as desired
+            if self.bg_image_scale != 1.0:
+                image_width = round(image_width * self.bg_image_scale)
+                image_height = round(image_height * self.bg_image_scale)
             image_rect = QRect(image_x, image_y, image_width, image_height)  # Use QRect instead of QRectF
 
             # Create a rounded path for clipping
@@ -1093,7 +1227,8 @@ class KeyboardWidget2(QWidget):
             qp.translate(-key.rotation_x, -key.rotation_y)
 
             # Check if key is active (selected or is the current active key)
-            active = key.active or (self.active_key == key and not self.active_mask) or (key in self.selected_keys)
+            active = key.active or (self.active_key == key and not self.active_mask) or (key in self.selected_keys) \
+                or (self.drop_hover_key is key and not self.drop_hover_mask)
 
             # If this key has a custom color set (from per-key RGB painting), use it for entire key
             if key.color:
@@ -1167,7 +1302,9 @@ class KeyboardWidget2(QWidget):
                 qp.drawText(key.nonmask_rect, Qt.AlignCenter, key.text)
 
                 # draw the inner highlight rect
-                qp.setPen(active_pen if self.active_key == key and self.active_mask else Qt.NoPen)
+                mask_hit = (self.active_key == key and self.active_mask) or \
+                    (self.drop_hover_key is key and self.drop_hover_mask)
+                qp.setPen(active_pen if mask_hit else Qt.NoPen)
                 qp.setBrush(mask_brush)
                 qp.drawRoundedRect(key.mask_rect, key.corner, key.corner)
 
@@ -1177,6 +1314,8 @@ class KeyboardWidget2(QWidget):
                 smaller_font.setPointSize(smaller_font.pointSize() - 1)
                 qp.setFont(smaller_font)
                 qp.drawText(key.mask_rect, Qt.AlignCenter, key.mask_text)
+            elif key.icon_id:
+                _paint_key_icon(qp, key)
             else:
                 # draw the legend - always use regular text color, even for colored keys
                 qp.setPen(regular_pen)
@@ -1184,6 +1323,10 @@ class KeyboardWidget2(QWidget):
                 smaller_font.setPointSize(smaller_font.pointSize() - 1)
                 qp.setFont(smaller_font)
                 qp.drawText(key.text_rect, Qt.AlignCenter, key.text)
+
+            # draw the attached joystick function (50% opacity, bottom-right quarter)
+            if getattr(key, "joystick_text", ""):
+                _paint_joystick_overlay(qp, key, self.font().pointSize())
 
             # draw ADC value if set (for matrix tester)
             if key.adc_value is not None:
@@ -1236,9 +1379,35 @@ class KeyboardWidget2(QWidget):
 
         return None, False
 
+    def joystick_hit_test(self, pos):
+        """Key whose joystick overlay is under pos, else None."""
+        adjusted_pos = pos / (self.scale * 1.3)
+        for key in self.widgets:
+            if getattr(key, "joystick_text", "") and key.joystick_polygon.containsPoint(
+                    adjusted_pos - QPointF(key.shift_x, key.shift_y), Qt.OddEvenFill):
+                return key
+        return None
+
+    def joystick_press_target(self, ev):
+        """Key whose joystick menu this press opens: a left click on the
+        joystick overlay, or a right click anywhere on a key that has one."""
+        if ev.button() == Qt.LeftButton:
+            return self.joystick_hit_test(ev.pos())
+        if ev.button() == Qt.RightButton:
+            key = self.joystick_hit_test(ev.pos())
+            if key is None:
+                key, _ = self.hit_test(ev.pos())
+            if key is not None and getattr(key, "joystick_text", ""):
+                return key
+        return None
 
     def mousePressEvent(self, ev):
         if not self.enabled:
+            return
+
+        js_key = self.joystick_press_target(ev)
+        if js_key is not None:
+            self.joystick_clicked.emit(js_key)
             return
 
         clicked_key, self.active_mask = self.hit_test(ev.pos())
@@ -1426,6 +1595,11 @@ class KeyboardWidgetSimple(KeyboardWidget2):
     def mousePressEvent(self, ev):
         """Original simple mouse press behavior: click to select, drag to paint"""
         if not self.enabled:
+            return
+
+        js_key = self.joystick_press_target(ev)
+        if js_key is not None:
+            self.joystick_clicked.emit(js_key)
             return
 
         self.active_key, self.active_mask = self.hit_test(ev.pos())

@@ -80,7 +80,7 @@ class VialKeyboard(VialDevice):
         if self.sideload:
             s += " [sideload]"
         elif self.via_stack:
-            s += " [VIA]"
+            s += " [layout file]"
         return s
 
     def get_uid(self):
@@ -97,7 +97,7 @@ class VialKeyboard(VialDevice):
 class VialBootloader(VialDevice):
 
     def title(self):
-        return "Vial Bootloader [{:04X}:{:04X}]".format(self.desc["vendor_id"], self.desc["product_id"])
+        return "MIDIswitch Bootloader [{:04X}:{:04X}]".format(self.desc["vendor_id"], self.desc["product_id"])
 
     def get_uid(self):
         try:
@@ -121,10 +121,44 @@ class VialDummyKeyboard(VialKeyboard):
         self.keyboard.reload(override_json)
 
     def title(self):
-        return "[Dummy Keyboard]"
+        return "Virtual MIDIswitch (demo)"
 
     def raise_usb_send(self, *args, **kwargs):
         raise RuntimeError("usb_send - should not be called!")
+
+    def close(self):
+        pass
+
+
+class VialVirtualKeyboard(VialKeyboard):
+    """A software MIDIswitch: the real Keyboard code talking to
+    protocol.virtual_midiswitch instead of a USB device."""
+
+    def __init__(self):
+        self.desc = {"path": "/virtual/midiswitch", "vendor_id": 0, "product_id": 0,
+                     "manufacturer_string": "MIDIswitch", "product_string": "MIDIswitch"}
+        self.dev = None
+        self.sideload = False
+        self.via_stack = False
+        self.via_id = "0"
+        self.keyboard = None
+        self.hid_lock = threading.RLock()
+
+    def open(self, override_json=None):
+        from protocol.virtual_midiswitch import VirtualMidiswitchDevice
+        if self.dev is None:
+            self.dev = VirtualMidiswitchDevice()
+        self.hid_lock = hid_lock_for(self.dev)
+        self.keyboard = Keyboard(self.dev)
+        self.keyboard.reload(override_json)
+
+    def title(self):
+        return "Virtual MIDIswitch (demo)"
+
+    def get_uid(self):
+        from protocol.virtual_midiswitch import MIDISWITCH_KEYBOARD_UID
+        import struct
+        return struct.pack("<Q", MIDISWITCH_KEYBOARD_UID)
 
     def close(self):
         pass

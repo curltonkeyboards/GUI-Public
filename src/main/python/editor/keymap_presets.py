@@ -13,7 +13,7 @@ Grid convention:
 
 Preset types:
   - TUNING: Multi-row note layouts that scale to selected rows
-  - SINGLE_ROW: Function key rows (loop, arp, etc.) applied to one row
+  - QB_ROW / QB_COLUMN: fill one row / column with QuickBuild keys
   - ENCODER: Encoder assignments (separate from the grid)
 
 Zone prefixes:
@@ -30,7 +30,10 @@ COLS = 14
 
 # Preset type constants
 PRESET_TYPE_TUNING = "tuning"
-PRESET_TYPE_SINGLE_ROW = "single_row"
+PRESET_TYPE_QB_ROW = "qb_row"
+PRESET_TYPE_QB_COLUMN = "qb_column"
+
+QB_MASTER_COUNT = 100
 PRESET_TYPE_KEYBOARD = "keyboard"
 
 
@@ -419,80 +422,14 @@ def preset_fifths_ts(num_rows=5):
     return _apply_zone_triple(preset_fifths(num_rows))
 
 
-# ── Single-Row Function Presets ───────────────────────────────────────────────
-# Each returns a single list of 14 keycodes.
+# ── QuickBuild Row / Column ───────────────────────────────────────────────────
 
 
-def preset_row_loop_control():
-    """Loop/macro control row."""
-    return [
-        "DM_MACRO_1", "DM_MACRO_2", "DM_MACRO_3", "DM_MACRO_4",
-        "DM_MUTE", "DM_OVERDUB", "DM_PLAY_PAUSE", "DM_UNSYNC",
-        "DM_SPEED_ALL", "DM_SLOW_ALL", "DM_RESET_SPEED",
-        "DM_SAVE_ALL", "DM_COPY", "DM_SAMPLE",
-    ]
-
-
-def preset_row_smart_chord():
-    """Smart chord row - 13 chord presets + cycle down."""
-    return [
-        "MI_CHORD_0", "MI_CHORD_1", "MI_CHORD_2", "MI_CHORD_3",
-        "MI_CHORD_4", "MI_CHORD_5", "MI_CHORD_6", "MI_CHORD_7",
-        "MI_CHORD_8", "MI_CHORD_9", "MI_CHORD_10", "MI_CHORD_11",
-        "MI_CHORD_12", "SMARTCHORD_DOWN",
-    ]
-
-
-def preset_row_arpeggiator():
-    """Arpeggiator control row."""
-    return [
-        "ARP_PLAY", "ARP_NEXT_PRESET", "ARP_PREV_PRESET",
-        "ARP_RATE_UP", "ARP_RATE_DOWN", "ARP_GATE_UP", "ARP_GATE_DOWN",
-        "ARP_RATE_EIGHTH", "ARP_RATE_SIXTEENTH", "ARP_RATE_QUARTER",
-        "ARP_MODE_SINGLE", "ARP_MODE_CHORD_BASIC",
-        "ARP_SYNC_MODE", "ARP_RESET_OVERRIDES",
-    ]
-
-
-def preset_row_step_sequencer():
-    """Step sequencer control row."""
-    return [
-        "SEQ_PLAY", "SEQ_STOP_ALL", "SEQ_NEXT_PRESET", "SEQ_PREV_PRESET",
-        "SEQ_RATE_UP", "SEQ_RATE_DOWN", "SEQ_GATE_UP", "SEQ_GATE_DOWN",
-        "SEQ_RATE_EIGHTH", "SEQ_RATE_SIXTEENTH", "SEQ_RATE_QUARTER",
-        "SEQ_SYNC_MODE", "SEQ_RESET_OVERRIDES",
-    ]
-
-
-def preset_row_ear_training():
-    """Ear training row - grouped by type, levels 1-3."""
-    return [
-        "MI_ET_1", "MI_ET_2", "MI_ET_13",
-        "MI_ET_4", "MI_ET_5", "MI_ET_14",
-        "MI_ET_7", "MI_ET_8", "MI_ET_15",
-        "MI_ET_10", "MI_ET_11", "MI_ET_16",
-        "KC_NO", "KC_NO",
-    ]
-
-
-def preset_row_chord_training():
-    """Chord training row - grouped by type, levels 1-4."""
-    return [
-        "MI_CET_1", "MI_CET_6", "MI_CET_11", "MI_CET_16",
-        "MI_CET_2", "MI_CET_7", "MI_CET_12", "MI_CET_17",
-        "MI_CET_3", "MI_CET_8", "MI_CET_13", "MI_CET_18",
-        "MI_CET_4", "MI_CET_9",
-    ]
-
-
-def preset_row_transport():
-    """Transport / utility control row."""
-    return [
-        "MI_ALLOFF", "MI_SUS", "MI_SOFT", "MI_SOST",
-        "MI_PORT", "MI_LEG",
-        "MI_OCTU", "MI_OCTD", "MI_TRNSU", "MI_TRNSD",
-        "MI_CHU", "MI_CHD", "MI_BENDU", "MI_BENDD",
-    ]
+def qb_keycodes(start, count):
+    """QuickBuild keycodes start..start+count-1 (1-based), stopping at the
+    last QuickBuild slot."""
+    last = min(QB_MASTER_COUNT, start + count - 1)
+    return ["QB_MASTER_{}".format(n) for n in range(start, last + 1)]
 
 
 # ── Encoder Presets ───────────────────────────────────────────────────────────
@@ -805,30 +742,6 @@ TS_PRESETS = [
      preset_fifths_ts),
 ]
 
-SINGLE_ROW_PRESETS = [
-    ("Loop Control",
-     "Loop macros 1-4, mute, overdub, play/pause, sync, speed, save.",
-     preset_row_loop_control),
-    ("Smart Chord",
-     "13 smart chord presets (one per root note) + cycle chord type.",
-     preset_row_smart_chord),
-    ("Arpeggiator",
-     "Arp play, preset nav, rate/gate controls, modes, sync.",
-     preset_row_arpeggiator),
-    ("Step Sequencer",
-     "Seq play/stop, preset nav, rate/gate controls, sync, mod.",
-     preset_row_step_sequencer),
-    ("Ear Training",
-     "12 ear training modes: Basic/Octave/Extended/All intervals, levels 1-3.",
-     preset_row_ear_training),
-    ("Chord Training",
-     "14 chord training modes: Triads/7ths/All 7ths/Combined, levels 1-4.",
-     preset_row_chord_training),
-    ("Transport / Utility",
-     "All notes off, sustain, soft, sostenuto, octave, transpose, channel, bend.",
-     preset_row_transport),
-]
-
 KEYBOARD_LAYOUT_PRESETS = [
     ("QWERTY",
      "Standard QWERTY keyboard layout. Esc+numbers on top, arrows on bottom-right.",
@@ -863,8 +776,14 @@ PRESET_CATEGORIES = [
         for name, desc, gen in TS_PRESETS
     ]),
     ("Single Row", [
-        (name, desc, gen, PRESET_TYPE_SINGLE_ROW)
-        for name, desc, gen in SINGLE_ROW_PRESETS
+        ("QuickBuild 1-x",
+         "Fill one row with QuickBuild keys, counting up from the number you choose.",
+         qb_keycodes, PRESET_TYPE_QB_ROW),
+    ]),
+    ("Single Column", [
+        ("QuickBuild 1-x",
+         "Fill one column with QuickBuild keys, counting up from the number you choose.",
+         qb_keycodes, PRESET_TYPE_QB_COLUMN),
     ]),
 ]
 

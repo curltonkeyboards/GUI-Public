@@ -140,6 +140,215 @@ class ActionTap(ActionSequence):
         return b"\x01"
 
 
+# Typed text -> key actions. Macros never store raw text: a typed string is
+# turned into ordinary Keypress / Hold / Release lines, so it plays back
+# through the same key path as any hand-built macro. The keys depend on the
+# key that carries each character differs per language, so each language has
+# its own table; they are merged into one lookup below.
+# Table value = (qmk_id, mods): "" plain, "S" Shift, "A" AltGr (Right Alt),
+# "SA" Shift+AltGr. Dead keys (accents that wait for the next key) are left
+# out - they cannot be typed as a single character.
+TEXT_SHIFT_KEY = "KC_LSHIFT"
+TEXT_ALTGR_KEY = "KC_RALT"
+
+_ROW_NUM = ["KC_1", "KC_2", "KC_3", "KC_4", "KC_5", "KC_6", "KC_7", "KC_8", "KC_9", "KC_0"]
+
+
+def _letters(table, swaps=None):
+    swaps = swaps or {}
+    for c in "abcdefghijklmnopqrstuvwxyz":
+        kc = swaps.get(c, "KC_" + c.upper())
+        table.setdefault(c, (kc, ""))
+        table.setdefault(c.upper(), (kc, "S"))
+
+
+def _pairs(table, pairs, mods):
+    for ch, kc in pairs:
+        table.setdefault(ch, (kc, mods))
+
+
+def _common(table):
+    _pairs(table, [(" ", "KC_SPACE"), ("\n", "KC_ENTER"), ("\t", "KC_TAB")], "")
+
+
+def _us():
+    t = {}
+    _common(t)
+    _letters(t)
+    _pairs(t, zip("1234567890", _ROW_NUM), "")
+    _pairs(t, zip("!@#$%^&*()", _ROW_NUM), "S")
+    _pairs(t, [("-", "KC_MINUS"), ("=", "KC_EQUAL"), ("[", "KC_LBRACKET"), ("]", "KC_RBRACKET"),
+               ("\\", "KC_BSLASH"), (";", "KC_SCOLON"), ("'", "KC_QUOTE"), ("`", "KC_GRAVE"),
+               (",", "KC_COMMA"), (".", "KC_DOT"), ("/", "KC_SLASH")], "")
+    _pairs(t, [("_", "KC_MINUS"), ("+", "KC_EQUAL"), ("{", "KC_LBRACKET"), ("}", "KC_RBRACKET"),
+               ("|", "KC_BSLASH"), (":", "KC_SCOLON"), ('"', "KC_QUOTE"), ("~", "KC_GRAVE"),
+               ("<", "KC_COMMA"), (">", "KC_DOT"), ("?", "KC_SLASH")], "S")
+    return t
+
+
+def _german():
+    t = {}
+    _common(t)
+    _letters(t, {"y": "KC_Z", "z": "KC_Y"})
+    _pairs(t, zip("1234567890", _ROW_NUM), "")
+    _pairs(t, zip('!"§$%&/()=', _ROW_NUM), "S")
+    _pairs(t, [("²", "KC_2"), ("³", "KC_3"), ("{", "KC_7"), ("[", "KC_8"), ("]", "KC_9"),
+               ("}", "KC_0"), ("\\", "KC_MINUS"), ("~", "KC_RBRACKET"), ("|", "KC_NONUS_BSLASH"),
+               ("@", "KC_Q"), ("€", "KC_E"), ("µ", "KC_M")], "A")
+    _pairs(t, [("ß", "KC_MINUS"), ("ü", "KC_LBRACKET"), ("+", "KC_RBRACKET"), ("ö", "KC_SCOLON"),
+               ("ä", "KC_QUOTE"), ("#", "KC_NONUS_HASH"), (",", "KC_COMMA"), (".", "KC_DOT"),
+               ("-", "KC_SLASH"), ("<", "KC_NONUS_BSLASH")], "")
+    _pairs(t, [("?", "KC_MINUS"), ("Ü", "KC_LBRACKET"), ("*", "KC_RBRACKET"), ("Ö", "KC_SCOLON"),
+               ("Ä", "KC_QUOTE"), ("'", "KC_NONUS_HASH"), (";", "KC_COMMA"), (":", "KC_DOT"),
+               ("_", "KC_SLASH"), (">", "KC_NONUS_BSLASH"), ("°", "KC_GRAVE")], "S")
+    return t
+
+
+def _french():
+    t = {}
+    _common(t)
+    _letters(t, {"a": "KC_Q", "q": "KC_A", "z": "KC_W", "w": "KC_Z", "m": "KC_SCOLON"})
+    _pairs(t, zip("1234567890", _ROW_NUM), "S")
+    _pairs(t, zip('&é"\'(-è_çà', _ROW_NUM), "")
+    _pairs(t, [("#", "KC_3"), ("{", "KC_4"), ("[", "KC_5"), ("|", "KC_6"), ("\\", "KC_8"),
+               ("^", "KC_9"), ("@", "KC_0"), ("]", "KC_MINUS"), ("}", "KC_EQUAL"),
+               ("¤", "KC_RBRACKET"), ("€", "KC_E")], "A")
+    _pairs(t, [(")", "KC_MINUS"), ("=", "KC_EQUAL"), ("$", "KC_RBRACKET"), ("ù", "KC_QUOTE"),
+               ("*", "KC_NONUS_HASH"), (",", "KC_M"), (";", "KC_COMMA"), (":", "KC_DOT"),
+               ("!", "KC_SLASH"), ("<", "KC_NONUS_BSLASH"), ("²", "KC_GRAVE")], "")
+    _pairs(t, [("°", "KC_MINUS"), ("+", "KC_EQUAL"), ("£", "KC_RBRACKET"), ("%", "KC_QUOTE"),
+               ("µ", "KC_NONUS_HASH"), ("?", "KC_M"), (".", "KC_COMMA"), ("/", "KC_DOT"),
+               ("§", "KC_SLASH"), (">", "KC_NONUS_BSLASH")], "S")
+    return t
+
+
+def _spanish():
+    t = {}
+    _common(t)
+    _letters(t)
+    _pairs(t, zip("1234567890", _ROW_NUM), "")
+    _pairs(t, zip('!"·$%&/()=', _ROW_NUM), "S")
+    _pairs(t, [("|", "KC_1"), ("@", "KC_2"), ("#", "KC_3"), ("~", "KC_4"), ("€", "KC_5"),
+               ("¬", "KC_6"), ("[", "KC_LBRACKET"), ("]", "KC_RBRACKET"), ("{", "KC_QUOTE"),
+               ("}", "KC_NONUS_HASH"), ("\\", "KC_GRAVE")], "A")
+    _pairs(t, [("'", "KC_MINUS"), ("¡", "KC_EQUAL"), ("+", "KC_RBRACKET"), ("ñ", "KC_SCOLON"),
+               ("ç", "KC_NONUS_HASH"), ("º", "KC_GRAVE"), (",", "KC_COMMA"), (".", "KC_DOT"),
+               ("-", "KC_SLASH"), ("<", "KC_NONUS_BSLASH")], "")
+    _pairs(t, [("?", "KC_MINUS"), ("¿", "KC_EQUAL"), ("*", "KC_RBRACKET"), ("Ñ", "KC_SCOLON"),
+               ("Ç", "KC_NONUS_HASH"), ("ª", "KC_GRAVE"), (";", "KC_COMMA"), (":", "KC_DOT"),
+               ("_", "KC_SLASH"), (">", "KC_NONUS_BSLASH")], "S")
+    return t
+
+
+def _russian():
+    t = {}
+    _common(t)
+    rows = [
+        ("йцукенгшщзхъ", ["KC_Q", "KC_W", "KC_E", "KC_R", "KC_T", "KC_Y", "KC_U", "KC_I", "KC_O",
+                          "KC_P", "KC_LBRACKET", "KC_RBRACKET"]),
+        ("фывапролджэ", ["KC_A", "KC_S", "KC_D", "KC_F", "KC_G", "KC_H", "KC_J", "KC_K", "KC_L",
+                         "KC_SCOLON", "KC_QUOTE"]),
+        ("ячсмитьбю", ["KC_Z", "KC_X", "KC_C", "KC_V", "KC_B", "KC_N", "KC_M", "KC_COMMA", "KC_DOT"]),
+        ("ё", ["KC_GRAVE"]),
+    ]
+    for chars, kcs in rows:
+        for ch, kc in zip(chars, kcs):
+            t.setdefault(ch, (kc, ""))
+            t.setdefault(ch.upper(), (kc, "S"))
+    _pairs(t, zip("1234567890", _ROW_NUM), "")
+    _pairs(t, zip('!"№;%:?*()', _ROW_NUM), "S")
+    _pairs(t, [("-", "KC_MINUS"), ("=", "KC_EQUAL"), ("\\", "KC_BSLASH"), (".", "KC_SLASH")], "")
+    _pairs(t, [("_", "KC_MINUS"), ("+", "KC_EQUAL"), ("/", "KC_BSLASH"), (",", "KC_SLASH")], "S")
+    return t
+
+
+def _japanese():
+    t = {}
+    _common(t)
+    _letters(t)
+    _pairs(t, zip("1234567890", _ROW_NUM), "")
+    _pairs(t, zip("!\"#$%&'()", _ROW_NUM[:9]), "S")
+    _pairs(t, [("-", "KC_MINUS"), ("^", "KC_EQUAL"), ("¥", "KC_JYEN"), ("@", "KC_LBRACKET"),
+               ("[", "KC_RBRACKET"), (";", "KC_SCOLON"), (":", "KC_QUOTE"), ("]", "KC_NONUS_HASH"),
+               (",", "KC_COMMA"), (".", "KC_DOT"), ("/", "KC_SLASH"), ("\\", "KC_RO")], "")
+    _pairs(t, [("=", "KC_MINUS"), ("~", "KC_EQUAL"), ("|", "KC_JYEN"), ("`", "KC_LBRACKET"),
+               ("{", "KC_RBRACKET"), ("+", "KC_SCOLON"), ("*", "KC_QUOTE"), ("}", "KC_NONUS_HASH"),
+               ("<", "KC_COMMA"), (">", "KC_DOT"), ("?", "KC_SLASH"), ("_", "KC_RO")], "S")
+    return t
+
+
+TEXT_LAYOUT_DEFAULT = "English (US)"
+TEXT_LAYOUTS = {
+    "English (US)": _us(),
+    "German": _german(),
+    "French": _french(),
+    "Spanish": _spanish(),
+    "Russian": _russian(),
+    "Japanese": _japanese(),
+}
+
+# One table for Type Text: every character maps to the key that carries it.
+# Plain ASCII uses the US keys; a character only another language has (ü, é,
+# ñ, Cyrillic, ¥ ...) uses that language's key. Where several languages share
+# a non-US character, the first in this order wins.
+_TEXT_ORDER = ["English (US)", "German", "French", "Spanish", "Russian", "Japanese"]
+TEXT_KEYS = {}
+for _name in _TEXT_ORDER:
+    for _ch, _key in TEXT_LAYOUTS[_name].items():
+        TEXT_KEYS.setdefault(_ch, _key)
+
+
+def char_to_key(ch):
+    """(qmk_id, mods) of the key that types ``ch``, or None."""
+    return TEXT_KEYS.get(ch)
+
+
+def text_to_actions(text):
+    """Turn typed text into key actions: each character becomes the key that
+    carries it, one Keypress line per run of characters needing the same
+    modifiers, with Hold / Release lines for Shift and AltGr around the runs
+    that need them ("happy" -> Keypress H, A, P, P, Y). Returns (actions,
+    skipped_chars); characters no key carries are skipped."""
+    actions = []
+    skipped = []
+    run, run_mods = [], None
+
+    def flush():
+        if not run:
+            return
+        mods = [kc for flag, kc in (("S", TEXT_SHIFT_KEY), ("A", TEXT_ALTGR_KEY)) if flag in run_mods]
+        if mods:
+            actions.append(ActionDown(list(mods)))
+        actions.append(ActionTap(list(run)))
+        if mods:
+            actions.append(ActionUp(list(reversed(mods))))
+
+    for ch in text:
+        key = char_to_key(ch)
+        if key is None:
+            skipped.append(ch)
+            continue
+        kc, mods = key
+        if run and mods != run_mods:
+            flush()
+            run = []
+        run_mods = mods
+        run.append(kc)
+    flush()
+    return actions, skipped
+
+
+def expand_text_actions(actions):
+    """Replace every ActionText in ``actions`` with its key actions."""
+    out = []
+    for act in actions:
+        if isinstance(act, ActionText):
+            out.extend(text_to_actions(act.text)[0])
+        else:
+            out.append(act)
+    return out
+
+
 class ActionDelay(BasicAction):
 
     tag = "delay"
@@ -297,3 +506,175 @@ class ActionMixingControl(BasicAction):
                 and self.channel == other.channel and self.start_val == other.start_val
                 and self.end_val == other.end_val and self.duration_type == other.duration_type
                 and self.duration == other.duration)
+
+
+# ---------------------------------------------------------------------------
+# Mouse Move (absolute pointer position via the keyboard's HID digitizer)
+# ---------------------------------------------------------------------------
+SS_MOUSE_MOVE_CODE = 11
+
+# Coordinates are stored as 0..MOUSE_COORD_MAX over the WHOLE host desktop
+# (the digitizer's logical range), so a macro is resolution independent: the
+# GUI converts to/from pixels of the desktop it is running on.
+MOUSE_COORD_MAX = 32767
+
+MOUSE_CLICK_NONE = 0
+MOUSE_CLICK_LEFT = 1
+MOUSE_CLICK_DOUBLE = 2
+MOUSE_CLICK_RIGHT = 3
+MOUSE_CLICK_NAMES = {
+    MOUSE_CLICK_NONE: "Mouse Move",
+    MOUSE_CLICK_LEFT: "Mouse Move + Click",
+    MOUSE_CLICK_DOUBLE: "Mouse Move + Double Click",
+    MOUSE_CLICK_RIGHT: "Mouse Move + Right Click",
+}
+
+
+def _mouse_coord_bytes(v):
+    """0..32767 -> three +1-encoded 7-bit groups (no byte may be 0 in a macro)."""
+    v = max(0, min(MOUSE_COORD_MAX, int(v)))
+    return [(v & 0x7F) + 1, ((v >> 7) & 0x7F) + 1, ((v >> 14) & 0x01) + 1]
+
+
+def mouse_coord_from_bytes(b0, b1, b2):
+    return ((b0 - 1) | ((b1 - 1) << 7) | ((b2 - 1) << 14)) & MOUSE_COORD_MAX
+
+
+class ActionMouseMove(BasicAction):
+    """Move the host pointer to an absolute desktop position, optionally
+    clicking there. x / y are 0..MOUSE_COORD_MAX; click is MOUSE_CLICK_*."""
+
+    tag = "mouse_move"
+
+    def __init__(self, x=0, y=0, click=MOUSE_CLICK_NONE):
+        super().__init__()
+        self.x = x
+        self.y = y
+        self.click = click
+
+    def serialize(self, vial_protocol):
+        if vial_protocol < VIAL_PROTOCOL_ADVANCED_MACROS:
+            raise RuntimeError("ActionMouseMove can only be used with vial_protocol>=2")
+        payload = _mouse_coord_bytes(self.x) + _mouse_coord_bytes(self.y) + [int(self.click) + 1]
+        return struct.pack("BB", SS_QMK_PREFIX, SS_MOUSE_MOVE_CODE) + bytes(payload)
+
+    def save(self):
+        return super().save() + [self.x, self.y, self.click]
+
+    def restore(self, act):
+        super().restore(act)
+        self.x = act[1]
+        self.y = act[2]
+        self.click = act[3] if len(act) > 3 else MOUSE_CLICK_NONE
+
+    def __eq__(self, other):
+        return (super().__eq__(other) and self.x == other.x and self.y == other.y
+                and self.click == other.click)
+
+    def __repr__(self):
+        return "{}<{},{} click={}>".format(self.tag, self.x, self.y, self.click)
+
+
+SS_GAMEPAD_CODE = 12       # older form, still read
+SS_GAMEPAD2_CODE = 13      # current form: duration + wait
+GAMEPAD_KIND_TIED = 0x40   # kind byte flag: wait follows duration
+GAMEPAD_DEFAULT_DURATION = 1
+GAMEPAD_TAP_DEFAULT_DURATION = 20
+
+GAMEPAD_TAP = 0
+GAMEPAD_PRESS = 1
+GAMEPAD_RELEASE = 2
+GAMEPAD_TRIGGER = 3
+GAMEPAD_TRIGGER_RELEASE = 4
+GAMEPAD_STICK = 5
+GAMEPAD_STICK_RELEASE = 6
+GAMEPAD_MS_MAX = 16383
+
+# (button number sent to the host, label)
+GAMEPAD_BUTTONS = [
+    (0, "Button 1"), (1, "Button 2"), (2, "Button 3"), (3, "Button 4"),
+    (4, "LB"), (5, "RB"), (6, "Back"), (7, "Start"), (8, "L3"), (9, "R3"),
+    (12, "D-pad Up"), (13, "D-pad Down"), (14, "D-pad Left"), (15, "D-pad Right"),
+]
+GAMEPAD_DIRECTIONS = ["Up", "Up-Right", "Right", "Down-Right", "Down", "Down-Left", "Left", "Up-Left"]
+
+
+class ActionGamepad(BasicAction):
+    """Gamepad output from a macro (works with Gaming Mode on or off).
+    kind: GAMEPAD_*; target: button number / trigger (0 LT, 1 RT) / stick
+    (0 left, 1 right); value: stick direction 0-7 (clockwise from Up);
+    percent: trigger / stick amount.
+    duration: how long the action takes - a trigger / stick moves from where
+    it is to the new position over this time (a release moves it back to
+    rest), a button tap is held for it. Button press / release ignore it.
+    wait: delay before the next action. While `tied` it follows duration."""
+
+    tag = "gamepad"
+
+    def __init__(self, kind=GAMEPAD_TAP, target=0, value=0, percent=100,
+                 duration=GAMEPAD_DEFAULT_DURATION, wait=None, tied=True):
+        super().__init__()
+        self.kind = kind
+        self.target = target
+        self.value = value
+        self.percent = percent
+        self.duration = duration
+        self.tied = tied
+        self.wait = duration if wait is None else wait
+
+    @property
+    def uses_duration(self):
+        return self.kind not in (GAMEPAD_PRESS, GAMEPAD_RELEASE)
+
+    def effective_wait(self):
+        if self.tied and self.uses_duration:
+            return self.duration
+        return self.wait
+
+    @classmethod
+    def from_legacy(cls, kind, target, value, percent, ms):
+        """The older form had one ms field: the wait (and a tap's hold time,
+        0 = 20 ms); triggers and sticks moved instantly."""
+        if kind == GAMEPAD_TAP:
+            dur = ms if ms > 0 else 20
+            return cls(kind, target, value, percent, dur, ms, ms == dur)
+        if kind in (GAMEPAD_PRESS, GAMEPAD_RELEASE):
+            return cls(kind, target, value, percent, 1, ms, False)
+        return cls(kind, target, value, percent, 1, ms, ms == 1)
+
+    def serialize(self, vial_protocol):
+        if vial_protocol < VIAL_PROTOCOL_ADVANCED_MACROS:
+            raise RuntimeError("ActionGamepad can only be used with vial_protocol>=2")
+        dur = max(1, min(GAMEPAD_MS_MAX, int(self.duration)))
+        wait = max(0, min(GAMEPAD_MS_MAX, int(self.effective_wait())))
+        kind = int(self.kind) | (GAMEPAD_KIND_TIED if self.tied else 0)
+        payload = [kind + 1, int(self.target) + 1, int(self.value) + 1,
+                   max(0, min(100, int(self.percent))) + 1,
+                   (dur & 0x7F) + 1, ((dur >> 7) & 0x7F) + 1,
+                   (wait & 0x7F) + 1, ((wait >> 7) & 0x7F) + 1]
+        return struct.pack("BB", SS_QMK_PREFIX, SS_GAMEPAD2_CODE) + bytes(payload)
+
+    def save(self):
+        return super().save() + [self.kind, self.target, self.value, self.percent,
+                                 self.duration, self.effective_wait(), bool(self.tied)]
+
+    def restore(self, act):
+        super().restore(act)
+        if len(act) >= 8:
+            self.kind, self.target, self.value, self.percent, self.duration, self.wait = act[1:7]
+            self.tied = bool(act[7])
+        else:  # older export: [tag, kind, target, value, percent, ms]
+            legacy = ActionGamepad.from_legacy(*act[1:6])
+            self.__dict__.update({k: getattr(legacy, k) for k in
+                                  ("kind", "target", "value", "percent", "duration", "wait", "tied")})
+
+    def __eq__(self, other):
+        return (super().__eq__(other) and self.kind == other.kind and self.target == other.target
+                and self.value == other.value and self.percent == other.percent
+                and self.duration == other.duration and self.effective_wait() == other.effective_wait()
+                and bool(self.tied) == bool(other.tied))
+
+    def __repr__(self):
+        return "{}<kind={} target={} value={} {}% dur={}ms wait={}ms{}>".format(
+            self.tag, self.kind, self.target, self.value, self.percent, self.duration,
+            self.effective_wait(), " tied" if self.tied else "")

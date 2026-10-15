@@ -16,7 +16,6 @@ def _startup_log(msg):
     except ImportError:
         pass
 from kle_serial import Serial as KleSerial, Key
-from protocol.combo import ProtocolCombo
 from protocol.constants import CMD_VIA_GET_PROTOCOL_VERSION, CMD_VIA_GET_KEYBOARD_VALUE, CMD_VIA_SET_KEYBOARD_VALUE, \
     CMD_VIA_SET_KEYCODE, CMD_VIA_LIGHTING_SET_VALUE, CMD_VIA_LIGHTING_GET_VALUE, CMD_VIA_LIGHTING_SAVE, \
     CMD_VIA_GET_LAYER_COUNT, CMD_VIA_KEYMAP_GET_BUFFER, CMD_VIA_VIAL_PREFIX, VIA_LAYOUT_OPTIONS, \
@@ -38,6 +37,11 @@ from protocol.key_override import ProtocolKeyOverride
 from protocol.macro import ProtocolMacro
 from protocol.tap_dance import ProtocolTapDance
 from unlocker import Unlocker
+from protocol.msw_protocol import build_ident_request, parse_ident, encode_request, decode_response, \
+    MSW_PROTOCOL_MAJOR_SUPPORTED, MSW1_VIA_LEVEL, MSW1_VIAL_LEVEL, MSW_CAP_DEFINITION, \
+    MACRO_SETTINGS_QSIDS, MOUSE_SETTINGS_IDS, MSW_MSET_GET, MSW_MSET_SET, MSW_MSET_RESET, \
+    build_macro_settings_request, parse_macro_settings
+from protocol import msw_definition
 from util import MSG_LEN, hid_lock_for, hid_send
 
 SUPPORTED_VIA_PROTOCOL = [-1, 9]
@@ -70,6 +74,8 @@ HID_CMD_LCD_THEME = 0xFE  # Get/set global LCD colour theme (sub 0=GET, 1=SET)
 HID_CMD_CHANNEL_ARTIC = 0xFF  # Get/set channel->articulation map + enable (sub 0=GET, 1=SET)
 HID_CMD_KEYBOARD_CLONE = 0x94  # Whole-EEPROM clone (sub 0=INFO, 1=READ, 2=WRITE, 3=FINALIZE)
 HID_CMD_NAV_LAYER = 0x97  # Get/set the on-device menu navigation layer (sub 0=GET, 1=SET)
+HID_CMD_DAW = 0x99  # Get/set the default DAW (sub 0=GET, 1=SET)
+HID_CMD_GAMING_BIND = 0x9A  # Joystick functions attached to keys (sub 0=GET, 1=SET, 2=CLEAR)
 HID_CMD_SET_KEYBOARD_PARAM_SINGLE = 0xE8  # Set individual parameter (changed from 0xBD collision)
 
 # Parameter IDs for HID_CMD_SET_KEYBOARD_PARAM_SINGLE
@@ -208,12 +214,21 @@ def _hid_transaction(fn):
     wrapper.__doc__ = fn.__doc__
     return wrapper
 
-class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, ProtocolKeyOverride):
+class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOverride):
     """ Low-level communication with a vial-enabled keyboard """
 
     def __init__(self, dev, usb_send=hid_send):
         self.dev = dev
-        self.usb_send = usb_send
+        # Every packet leaves through usb_send. It is wrapped so the
+        # MIDIswitch command aliases can be applied in one place once IDENT
+        # has answered (see protocol/msw_protocol.py); callers keep using
+        # the byte-0 ids they always have.
+        self._usb_send_raw = usb_send
+        self.usb_send = self._usb_send_codec
+        self.msw_ident = None       # dict from parse_ident(), or None on a keyboard without IDENT
+        self.settings = dict()      # Macro Settings values by setting id (filled by reload_settings)
+        self.supported_settings = set()
+        self.hid_codec = "legacy"   # "legacy" | "msw"
         self.definition = None
 
         # n.b. using OrderedDict here to make order of layout requests consistent for tests
@@ -222,6 +237,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.encoder_count = 0
         self.layout = dict()
         self.encoder_layout = dict()
+        # RAM-rescan bookkeeping (send_keymap_for_ram_rescan): (layer, row)
+        # chunks written since the last upload, and whether the firmware's
+        # RAM keymap has ever received the full keymap this session.
+        self._rescan_dirty_rows = set()
+        self._rescan_full_sent = False
         self.rows = self.cols = self.layers = 0
         self.layout_labels = None
         self.layout_options = -1
@@ -254,6 +274,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.midi_config = None
         self.layer_actuations = None
         self.gaming_settings = None
+        self.gaming_binds = {}
+        self.gaming_binds_supported = False
 
     def reload(self, sideload_json=None):
         """ Load information about the keyboard: number of layers, physical key layout """
@@ -318,6 +340,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.reload_keymap()
         _startup_log(f"  Keymap loaded ({time.time()-t0:.2f}s)")
 
+        _startup_log("  Loading joystick keys...")
+        t0 = time.time()
+        self.reload_gaming_binds()
+        _startup_log(f"  Joystick keys done ({time.time()-t0:.2f}s)")
+
         _startup_log("  Loading macros (late)...")
         t0 = time.time()
         self.reload_macros_late()
@@ -327,11 +354,6 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         t0 = time.time()
         self.reload_tap_dance()
         _startup_log(f"  Tap dance done ({time.time()-t0:.2f}s)")
-
-        _startup_log("  Loading combos...")
-        t0 = time.time()
-        self.reload_combo()
-        _startup_log(f"  Combos done ({time.time()-t0:.2f}s)")
 
         _startup_log("  Loading key overrides...")
         t0 = time.time()
@@ -362,6 +384,37 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         total_time = time.time() - reload_start
         _startup_log(f"Keyboard reload complete! Total time: {total_time:.2f}s")
 
+    def _usb_send_codec(self, dev, msg, retries=1):
+        """usb_send with the command-alias codec applied."""
+        if self.hid_codec != "msw":
+            return self._usb_send_raw(dev, msg, retries)
+        response = self._usb_send_raw(dev, encode_request(msg), retries)
+        return decode_response(msg, response)
+
+    def probe_ident(self):
+        """Send IDENT ("who are you"). On a MIDIswitch this fills
+        self.msw_ident and switches the codec to the alias form; on a
+        keyboard that predates IDENT the request comes back as an error echo
+        and the legacy form stays in use. Returns the ident dict or None."""
+        self.msw_ident = None
+        self.hid_codec = "legacy"
+        try:
+            data = self._usb_send_raw(self.dev, build_ident_request(), 3)
+        except RuntimeError:
+            return None
+        ident = parse_ident(data)
+        if ident is None:
+            return None
+        if ident["protocol"][0] != MSW_PROTOCOL_MAJOR_SUPPORTED:
+            # A future protocol major the app does not speak: do not switch
+            # codecs, the legacy form is what such a firmware guarantees to
+            # keep answering until the app is updated.
+            self.msw_ident = ident
+            return ident
+        self.msw_ident = ident
+        self.hid_codec = "msw"
+        return ident
+
     def reload_layers(self):
         """ Get how many layers the keyboard has """
         self.layers = self.usb_send(self.dev, struct.pack("B", CMD_VIA_GET_LAYER_COUNT), retries=20)[1]
@@ -370,6 +423,25 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         data = self.usb_send(self.dev, struct.pack("B", CMD_VIA_GET_PROTOCOL_VERSION), retries=20)
         self.via_protocol = struct.unpack(">H", data[1:3])[0]
 
+    def _download_definition(self):
+        """Fetch the layout definition from the keyboard (size, then 32-byte
+        pages of compressed JSON)."""
+        data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_SIZE), retries=20)
+        sz = struct.unpack("<I", data[0:4])[0]
+
+        payload = b""
+        block = 0
+        while sz > 0:
+            data = self.usb_send(self.dev, struct.pack("<BBI", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_DEFINITION, block),
+                                 retries=20)
+            if sz < MSG_LEN:
+                data = data[:sz]
+            payload += data
+            block += 1
+            sz -= MSG_LEN
+
+        return json.loads(lzma.decompress(payload))
+
     def check_protocol_version(self):
         if self.via_protocol not in SUPPORTED_VIA_PROTOCOL or self.vial_protocol not in SUPPORTED_VIAL_PROTOCOL:
             raise ProtocolError()
@@ -377,7 +449,14 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def reload_layout(self, sideload_json=None):
         """ Requests layout data from the current device """
 
-        self.reload_via_protocol()
+        # IDENT first: a MIDIswitch answers with its protocol/firmware
+        # versions and model UID, and from here on every command goes out in
+        # its alias form. Without an answer the legacy probes below run.
+        ident = self.probe_ident()
+        if ident is not None and self.hid_codec == "msw":
+            self.via_protocol = MSW1_VIA_LEVEL
+        else:
+            self.reload_via_protocol()
 
         self.sideload = False
         if sideload_json is not None:
@@ -385,26 +464,22 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             payload = sideload_json
         else:
             # get keyboard identification
-            data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_KEYBOARD_ID), retries=20)
-            self.vial_protocol, self.keyboard_id = struct.unpack("<IQ", data[0:12])
+            if ident is not None and self.hid_codec == "msw":
+                self.vial_protocol = MSW1_VIAL_LEVEL
+                self.keyboard_id = ident["model_uid"]
+            else:
+                data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_KEYBOARD_ID), retries=20)
+                self.vial_protocol, self.keyboard_id = struct.unpack("<IQ", data[0:12])
 
-            # get the size
-            data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_SIZE), retries=20)
-            sz = struct.unpack("<I", data[0:4])[0]
-
-            # get the payload
-            payload = b""
-            block = 0
-            while sz > 0:
-                data = self.usb_send(self.dev, struct.pack("<BBI", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_DEFINITION, block),
-                                     retries=20)
-                if sz < MSG_LEN:
-                    data = data[:sz]
-                payload += data
-                block += 1
-                sz -= MSG_LEN
-
-            payload = json.loads(lzma.decompress(payload))
+            if ident is not None and self.hid_codec == "msw" and msw_definition.has_definition(ident["model_id"]):
+                # The app carries this model's layout definition; nothing to download.
+                payload = msw_definition.get_definition(ident["model_id"])
+            elif ident is not None and self.hid_codec == "msw" and not (ident["capabilities"] & MSW_CAP_DEFINITION):
+                # A model this app does not know, and the keyboard cannot
+                # describe itself either: the app needs updating.
+                raise ProtocolError()
+            else:
+                payload = self._download_definition()
 
         self.check_protocol_version()
 
@@ -554,7 +629,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                                  retries=20)[2:]
             self.rgb_version = data[0] | (data[1] << 8)
             if self.rgb_version != 1:
-                raise RuntimeError("Unsupported VialRGB protocol ({}), update your Vial version to latest"
+                raise RuntimeError("Unsupported lighting protocol ({}), update SwitchStation to the latest version"
                                    .format(self.rgb_version))
             self.rgb_maximum_brightness = data[2]
 
@@ -594,6 +669,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def reload_settings(self):
         self.settings = dict()
         self.supported_settings = set()
+        if self.hid_codec == "msw":
+            self._macro_settings_cmd(MSW_MSET_GET)
+            return
         if self.vial_protocol < VIAL_PROTOCOL_QMK_SETTINGS:
             return
         cur = 0
@@ -623,7 +701,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 break
 
         for qsid in self.supported_settings:
-            from editor.qmk_settings import QmkSettings
+            from editor.qmk_settings import QmkSettingsDefs as QmkSettings
 
             if not QmkSettings.is_qsid_supported(qsid):
                 continue
@@ -652,6 +730,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 self.usb_send(self.dev, struct.pack(">BBBBH", CMD_VIA_SET_KEYCODE, layer, row, col,
                                                     Keycode.deserialize(code)), retries=20)
                 self.layout[key] = code
+                self._rescan_dirty_rows.add((layer, row))
 
     def set_encoder(self, layer, index, direction, code):
         key = (layer, index, direction)
@@ -732,7 +811,6 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         data["vial_protocol"] = self.vial_protocol
         data["via_protocol"] = self.via_protocol
         data["tap_dance"] = self.save_tap_dance()
-        data["combo"] = self.save_combo()
         data["key_override"] = self.save_key_override()
         data["settings"] = self.settings
 
@@ -760,11 +838,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.restore_macros(data.get("macro"))
 
         self.restore_tap_dance(data.get("tap_dance", []))
-        self.restore_combo(data.get("combo", []))
         self.restore_key_override(data.get("key_override", []))
+        # "combo" blocks in older layout files are ignored: combos no longer exist
 
         for qsid, value in data.get("settings", dict()).items():
-            from editor.qmk_settings import QmkSettings
+            from editor.qmk_settings import QmkSettingsDefs as QmkSettings
 
             qsid = int(qsid)
             if QmkSettings.is_qsid_supported(qsid):
@@ -776,13 +854,21 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
     def get_uid(self):
         """ Retrieve UID from the keyboard, explicitly sending a query packet """
+        ident = self.probe_ident()
+        if ident is not None:
+            return struct.pack("<Q", ident["model_uid"])
         data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_KEYBOARD_ID), retries=20)
         keyboard_id = data[4:12]
         return keyboard_id
 
+    def _msw_unlocked(self):
+        # A keyboard that answered IDENT has no unlock step: everything is
+        # always editable, so the unlock commands are never sent to it.
+        return self.hid_codec == "msw"
+
     def get_unlock_status(self, retries=20):
         # VIA keyboards are always unlocked
-        if self.vial_protocol < 0:
+        if self.vial_protocol < 0 or self._msw_unlocked():
             return 1
 
         data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_UNLOCK_STATUS),
@@ -791,7 +877,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
     def get_unlock_in_progress(self):
         # VIA keyboards are never being unlocked
-        if self.vial_protocol < 0:
+        if self.vial_protocol < 0 or self._msw_unlocked():
             return 0
 
         data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_UNLOCK_STATUS), retries=20)
@@ -801,7 +887,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         """ Return keys users have to hold to unlock the keyboard as a list of rowcols """
 
         # VIA keyboards don't have unlock keys
-        if self.vial_protocol < 0:
+        if self.vial_protocol < 0 or self._msw_unlocked():
             return []
 
         data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_UNLOCK_STATUS), retries=20)
@@ -814,20 +900,20 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         return rowcol
 
     def unlock_start(self):
-        if self.vial_protocol < 0:
+        if self.vial_protocol < 0 or self._msw_unlocked():
             return
 
         self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_UNLOCK_START), retries=20)
 
     def unlock_poll(self):
-        if self.vial_protocol < 0:
+        if self.vial_protocol < 0 or self._msw_unlocked():
             return b""
 
         data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_UNLOCK_POLL), retries=20)
         return data
 
     def lock(self):
-        if self.vial_protocol < 0:
+        if self.vial_protocol < 0 or self._msw_unlocked():
             return
 
         self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LOCK), retries=20)
@@ -1147,8 +1233,29 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception:
             return False
 
+    def _macro_settings_cmd(self, sub, values=None):
+        """Send one Macro Settings command and refresh self.settings /
+        self.supported_settings from its reply. Returns True on success."""
+        data = self.usb_send(self.dev, build_macro_settings_request(sub, values), retries=20)
+        parsed = parse_macro_settings(data)
+        if parsed is None:
+            return False
+        self.settings.update(parsed)
+        self.supported_settings = set(parsed.keys())
+        return True
+
     def qmk_settings_set(self, qsid, value):
-        from editor.qmk_settings import QmkSettings
+        from editor.qmk_settings import QmkSettingsDefs as QmkSettings
+        if self.hid_codec == "msw":
+            if qsid not in MACRO_SETTINGS_QSIDS + MOUSE_SETTINGS_IDS:
+                return 1
+            if any(q not in self.settings for q in MACRO_SETTINGS_QSIDS):
+                # the SET carries all three: fetch the ones we do not hold yet
+                if not self._macro_settings_cmd(MSW_MSET_GET):
+                    return 1
+            values = dict(self.settings)
+            values[qsid] = value
+            return 0 if self._macro_settings_cmd(MSW_MSET_SET, values) else 1
         self.settings[qsid] = value
         data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_SET, qsid)
                              + QmkSettings.qsid_serialize(qsid, value),
@@ -1156,6 +1263,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         return data[0]
 
     def qmk_settings_reset(self):
+        if self.hid_codec == "msw":
+            self._macro_settings_cmd(MSW_MSET_RESET)
+            return
         self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_RESET))
 
     def _vialrgb_set_mode(self):
@@ -1386,31 +1496,47 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
             # Send keymap in chunks: 1 chunk = 1 row of 1 layer (14 keycodes × 2 bytes = 28 bytes)
             # chunk_index = layer * firmware_rows + row
-            for layer in range(self.layers):
-                for row in range(firmware_rows):
-                    chunk_index = layer * firmware_rows + row
-                    # Build 28 bytes of keycode data for this row
-                    keycode_data = bytearray()
-                    for col in range(firmware_cols):
-                        key = (layer, row, col)
-                        code_str = self.layout.get(key, "KC_NO")
-                        code_int = Keycode.deserialize(code_str)
-                        keycode_data += struct.pack(">H", code_int)
+            #
+            # Each chunk is a blocking HID round trip on the GUI thread, and
+            # the firmware's RAM keymap persists between uploads — so only the
+            # FIRST upload of a session sends every layer*row chunk; later
+            # ones send just the rows written since (set_key marks them).
+            # This is what turned the post-edit "computing" freeze (~60 round
+            # trips a second after every assignment) into 1-2 round trips.
+            if self._rescan_full_sent:
+                chunks = sorted(self._rescan_dirty_rows)
+            else:
+                chunks = [(layer, row) for layer in range(self.layers) for row in range(firmware_rows)]
+            for layer, row in chunks:
+                if layer >= self.layers or row >= firmware_rows:
+                    continue
+                chunk_index = layer * firmware_rows + row
+                # Build 28 bytes of keycode data for this row
+                keycode_data = bytearray()
+                for col in range(firmware_cols):
+                    key = (layer, row, col)
+                    code_str = self.layout.get(key, "KC_NO")
+                    code_int = Keycode.deserialize(code_str)
+                    keycode_data += struct.pack(">H", code_int)
 
-                    # Pad if fewer than 14 cols (shouldn't happen for 5×14, but be safe)
-                    while len(keycode_data) < 28:
-                        keycode_data += b'\x00\x00'
+                # Pad if fewer than 14 cols (shouldn't happen for 5×14, but be safe)
+                while len(keycode_data) < 28:
+                    keycode_data += b'\x00\x00'
 
-                    # Send chunk: [0xFE, 0xE9, 0x00 (sub_cmd), chunk_index, data[28]]
-                    msg = struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_KEYMAP_RAM_RESCAN, 0x00, chunk_index)
-                    msg += bytes(keycode_data[:28])
-                    data = self.usb_send(self.dev, msg, retries=5)
-                    if not data or data[0] != 0x01:
-                        return False
+                # Send chunk: [0xFE, 0xE9, 0x00 (sub_cmd), chunk_index, data[28]]
+                msg = struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_KEYMAP_RAM_RESCAN, 0x00, chunk_index)
+                msg += bytes(keycode_data[:28])
+                data = self.usb_send(self.dev, msg, retries=5)
+                if not data or data[0] != 0x01:
+                    return False
 
             # All chunks sent - trigger RAM-based rescan
             data = self.usb_send(self.dev, struct.pack("BBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_KEYMAP_RAM_RESCAN, 0x01), retries=5)
-            return data and len(data) > 0 and data[0] == 0x01
+            ok = bool(data and len(data) > 0 and data[0] == 0x01)
+            if ok:
+                self._rescan_full_sent = True
+                self._rescan_dirty_rows.clear()
+            return ok
         except Exception as e:
             return False
 
@@ -1639,19 +1765,121 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         except Exception:
             return False
 
+    def get_daw(self):
+        """Get the default DAW the DAW keys send shortcuts for.
+
+        Returns (daw_index, os_is_mac, daw_count), or None when the keyboard
+        does not support the command. Response: status@4 (1 = ok), index@5,
+        os@6 (0 Windows / 1 Mac), count@7.
+        """
+        try:
+            packet = self._create_hid_packet(HID_CMD_DAW, 0, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if (not data or len(data) < 8 or data[3] != HID_CMD_DAW
+                    or data[4] != 0x01 or data[7] == 0):
+                return None
+            return data[5], bool(data[6]), data[7]
+        except Exception:
+            return None
+
     # ------------------------------------------------------------------
-    # Keyboard Clone (whole-EEPROM save/restore, HID command 0x94)
+    # Joystick bindings: one joystick function per key position per layer.
+    # Function ids 1-24 (0 = none), see keycodes.keycodes.JOYSTICK_FUNCTION_IDS.
+    # ------------------------------------------------------------------
+
+    def reload_gaming_binds(self):
+        """Read every joystick binding into self.gaming_binds
+        {(layer, row, col): function_id}. Returns False (and leaves the dict
+        empty) when the keyboard does not support joystick bindings."""
+        self.gaming_binds = {}
+        self.gaming_binds_supported = False
+        rows, cols = self.rows, self.cols
+        total = rows * cols
+        try:
+            for layer in range(self.layers):
+                first = 0
+                while first < total:
+                    packet = self._create_hid_packet(HID_CMD_GAMING_BIND, 0, [layer, first])
+                    data = self.usb_send(self.dev, packet, retries=3)
+                    if (not data or len(data) < 32 or data[3] != HID_CMD_GAMING_BIND
+                            or data[4] != 0x01 or data[5] != layer or data[6] != first
+                            or data[7] == 0):
+                        self.gaming_binds = {}
+                        return False
+                    count = data[7]
+                    for i in range(count):
+                        fn = data[8 + i]
+                        if fn:
+                            idx = first + i
+                            self.gaming_binds[(layer, idx // cols, idx % cols)] = fn
+                    first += count
+        except Exception:
+            self.gaming_binds = {}
+            return False
+        self.gaming_binds_supported = True
+        return True
+
+    def get_gaming_bind(self, layer, row, col):
+        return getattr(self, "gaming_binds", {}).get((layer, row, col), 0)
+
+    def set_gaming_bind(self, layer, row, col, function_id):
+        """Attach joystick function `function_id` (0 = remove) to a key position
+        on a layer. Saved on the keyboard immediately."""
+        try:
+            packet = self._create_hid_packet(HID_CMD_GAMING_BIND, 1,
+                                             [layer, row, col, int(function_id) & 0xFF])
+            data = self.usb_send(self.dev, packet, retries=3)
+            if (not data or len(data) < 6 or data[3] != HID_CMD_GAMING_BIND
+                    or data[4] != 0x01 or data[5] != int(function_id)):
+                return False
+        except Exception:
+            return False
+        if not hasattr(self, "gaming_binds"):
+            self.gaming_binds = {}
+        if function_id:
+            self.gaming_binds[(layer, row, col)] = int(function_id)
+        else:
+            self.gaming_binds.pop((layer, row, col), None)
+        return True
+
+    def clear_gaming_binds(self):
+        try:
+            packet = self._create_hid_packet(HID_CMD_GAMING_BIND, 2, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if not data or len(data) < 5 or data[3] != HID_CMD_GAMING_BIND or data[4] != 0x01:
+                return False
+        except Exception:
+            return False
+        self.gaming_binds = {}
+        return True
+
+    def set_daw(self, index, mac=None):
+        """Set the default DAW (persists immediately). mac=None keeps the
+        current OS setting (Logic Pro / GarageBand always select Mac).
+        Returns the new (daw_index, os_is_mac, daw_count) or None."""
+        try:
+            os_byte = 0xFF if mac is None else (1 if mac else 0)
+            packet = self._create_hid_packet(HID_CMD_DAW, 1, [int(index) & 0xFF, os_byte])
+            data = self.usb_send(self.dev, packet, retries=3)
+            if (not data or len(data) < 8 or data[3] != HID_CMD_DAW
+                    or data[4] != 0x01 or data[5] != int(index)):
+                return None
+            return data[5], bool(data[6]), data[7]
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
+    # Keyboard Clone (settings image save/restore, HID command 0x94)
     # ------------------------------------------------------------------
 
     def get_clone_info(self):
-        """Query the firmware's keyboard-clone (whole-EEPROM) capabilities.
+        """Query the keyboard's clone capabilities.
 
         Returns {'layout_version', 'eeprom_size', 'chunk_size',
-        'fw_version': (major, minor, patch)} or None when the firmware
-        predates the clone command. Old firmware ECHOes the request with an
-        error flag instead of answering: its echo never carries status 0x01
-        at byte 4 nor a non-zero chunk size at byte 11, so both are checked.
-        Response: status@4, layout_ver u16 LE @5-6, eeprom size u32 LE @7-10,
+        'fw_version': (major, minor, patch)} or None when the keyboard does
+        not support cloning (its error echo never carries status 0x01 at
+        byte 4 nor a non-zero chunk size at byte 11, so both are checked).
+        Response: status@4, layout_ver u16 LE @5-6, image size u32 LE @7-10,
         chunk @11, fw version @12-14."""
         try:
             packet = self._create_hid_packet(HID_CMD_KEYBOARD_CLONE, 0, None)
@@ -1673,7 +1901,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             return None
 
     def clone_read_chunk(self, addr, length):
-        """Read `length` EEPROM bytes at `addr` (one HID round-trip).
+        """Read `length` bytes of the settings image at `addr` (one HID round-trip).
 
         Returns bytes or None. The response echoes addr+length so a stale
         packet from an earlier request can't be mistaken for this chunk."""
@@ -1691,10 +1919,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             return None
 
     def clone_write_chunk(self, addr, chunk):
-        """Write a chunk of EEPROM bytes at `addr` (one HID round-trip).
+        """Write a chunk of the settings image at `addr` (one HID round-trip).
 
-        The firmware only burns bytes that actually differ, and silently
-        preserves its own boot-magic bytes. Returns True on success."""
+        Returns True on success."""
         try:
             payload = [addr & 0xFF, (addr >> 8) & 0xFF, len(chunk) & 0xFF] + list(chunk)
             packet = self._create_hid_packet(HID_CMD_KEYBOARD_CLONE, 2, payload)
@@ -1706,9 +1933,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             return False
 
     def clone_finalize(self):
-        """Commit a restore: firmware flushes deferred EEPROM writes, re-stamps
-        its boot magics and reboots ~0.5s after acknowledging (so every
-        subsystem reloads the restored data). Returns True when acked."""
+        """Commit a restore: the keyboard applies the image and reboots
+        ~0.5s after acknowledging. Returns True when acked."""
         try:
             packet = self._create_hid_packet(HID_CMD_KEYBOARD_CLONE, 3, None)
             data = self.usb_send(self.dev, packet, retries=3)

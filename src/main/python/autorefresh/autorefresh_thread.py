@@ -13,7 +13,7 @@ else:
 
 from PyQt5.QtCore import pyqtSignal, QThread
 
-from util import find_vial_devices
+from util import find_vial_devices, VIRTUAL_KEYBOARD_ID
 
 
 class AutorefreshThread(QThread):
@@ -94,6 +94,12 @@ class AutorefreshThread(QThread):
         with self.mutex:
             self.sideload_json = json.loads(data)
             self.sideload_vid = self.sideload_pid = 0
+        self.update()
+
+    def load_virtual(self):
+        with self.mutex:
+            self.sideload_json = None
+            self.sideload_vid = self.sideload_pid = VIRTUAL_KEYBOARD_ID
         self.update()
 
     def sideload_via_json(self, data):

@@ -25,7 +25,7 @@ import math
 NUM_LOOPS = 8
 
 # Setup logging to file for standalone builds
-LOG_FILE = os.path.join(os.path.expanduser("~"), "vial-loop-manager.log")
+LOG_FILE = os.path.join(os.path.expanduser("~"), "switchstation-loop-manager.log")
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s [%(levelname)s] %(message)s',
@@ -1020,20 +1020,8 @@ class LoopManager(BasicEditor):
         main_widget.setLayout(main_layout)
         scroll.setWidget(main_widget)
 
-        # Create tab widget
-        self.tabs = QTabWidget()
-
-        # Tab 1: Loop Control (existing content)
-        self.tabs.addTab(scroll, "Loop Control")
-
-        # Tab 2: ThruLoop
-        from editor.matrix_test import ThruLoopConfigurator
-        self.thruloop_tab = ThruLoopConfigurator()
-        thruloop_container = QWidget()
-        thruloop_container.setLayout(self.thruloop_tab)
-        self.tabs.addTab(thruloop_container, "ThruLoop")
-
-        self.addWidget(self.tabs)
+        # The ThruLoop configuration lives in MIDI Settings > Loop Settings now
+        self.addWidget(scroll)
 
         # Title
         title = QLabel(tr("LoopManager", "Loop Manager"))
@@ -1133,6 +1121,8 @@ class LoopManager(BasicEditor):
         self.view_log_btn = QPushButton(tr("LoopManager", "📋 View Debug Log"))
         self.view_log_btn.setMaximumWidth(200)
         self.view_log_btn.clicked.connect(self.on_view_log)
+        from widgets.debug_windows import DebugWindows
+        DebugWindows.register(self.view_log_btn)
         log_button_layout.addWidget(self.view_log_btn)
         log_button_layout.addStretch()
         save_layout.addLayout(log_button_layout)
@@ -3105,11 +3095,6 @@ class LoopManager(BasicEditor):
         if not self.valid():
             self.stop_hid_listener()
             return
-
-        # Rebuild ThruLoop tab
-        if hasattr(self, 'thruloop_tab'):
-            self.thruloop_tab.device = self.device
-            self.thruloop_tab.rebuild(device)
 
         # Don't start HID listener automatically - only start when needed during transfers
         # This prevents continuous polling that blocks other HID operations

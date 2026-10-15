@@ -7,46 +7,19 @@ from PyQt5.QtWidgets import QTabWidget, QWidget, QSizePolicy, QGridLayout, QVBox
     QPushButton, QSpinBox, QScrollArea, QGroupBox
 
 from protocol.constants import VIAL_PROTOCOL_DYNAMIC
-from widgets.key_widget import KeyWidget
+from widgets.keycode_button import KeycodeButton, install_click_away_deselect
 from tabbed_keycodes import TabbedKeycodes
 from util import tr
 from vial_device import VialKeyboard
 from editor.basic_editor import BasicEditor
 
 
-class TapDanceKeyWidget(KeyWidget):
-    """Custom KeyWidget that doesn't open tray - parent will handle keycode selection"""
-
-    selected = pyqtSignal(object)  # Emits self when clicked
+class TapDanceKeyWidget(KeycodeButton):
+    """Keycode button styled like the palette buttons. Doesn't open the tray -
+    the editor feeds the palette pick to the selected button."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.is_selected = False
-
-    def mousePressEvent(self, ev):
-        # Set active_key to the actual widget so KeyboardWidget draws the highlight
-        if len(self.widgets) > 0:
-            self.active_key = self.widgets[0]
-            self.active_mask = False
-
-        # Emit that we're selected (don't call parent which opens tray)
-        self.selected.emit(self)
-        self.update()
-        ev.accept()
-
-    def mouseReleaseEvent(self, ev):
-        ev.accept()
-
-    def set_selected(self, selected):
-        """Visual feedback for selection"""
-        self.is_selected = selected
-        if selected:
-            if len(self.widgets) > 0:
-                self.active_key = self.widgets[0]
-                self.active_mask = False
-        else:
-            self.active_key = None
-        self.update()
 
 
 class TapDanceEntryUI(QObject):
@@ -79,15 +52,16 @@ class TapDanceEntryUI(QObject):
 
         # Header with tap dance name
         header_layout = QHBoxLayout()
-        self.title_label = QLabel(f"<b>TD({idx})</b>")
+        self.title_label = QLabel(f"<b>Tap/Hold {idx}</b>")
         self.title_label.setStyleSheet("font-size: 14pt;")
         header_layout.addWidget(self.title_label)
         header_layout.addStretch()
         main_layout.addLayout(header_layout)
 
         # Description
-        desc = QLabel("Configure what happens when this tap dance key is tapped, held, or double-tapped.\n"
-                      "Assign this tap dance to a key using TD({}) in your keymap.".format(idx))
+        desc = QLabel("Configure what happens when this Tap/Hold key is tapped, held, or double-tapped.\n"
+                      "Assign it in the keymap with the \"Tap/Hold {}\" key "
+                      "(Keyboard & Macro > Macro > Tap/Hold).".format(idx))
         desc.setWordWrap(True)
         desc.setStyleSheet("color: gray; font-size: 9pt;")
         main_layout.addWidget(desc)
@@ -97,7 +71,7 @@ class TapDanceEntryUI(QObject):
         keys_layout = QVBoxLayout()
 
         # Instruction text
-        instruction = QLabel("← Click a key to select, then choose from keycodes below")
+        instruction = QLabel("Click a key to select, then choose from keycodes below")
         instruction.setStyleSheet("color: gray; font-style: italic;")
         keys_layout.addWidget(instruction)
 
@@ -106,16 +80,14 @@ class TapDanceEntryUI(QObject):
         self.populate_container()
         keys_layout.addLayout(self.container)
 
-        # Tapping term
-        timing_layout = QHBoxLayout()
-        timing_layout.addWidget(QLabel("Tapping term (ms):"))
-        self.txt_tapping_term = QSpinBox()
-        self.txt_tapping_term.valueChanged.connect(self.on_timing_changed)
-        self.txt_tapping_term.setMinimum(0)
-        self.txt_tapping_term.setMaximum(10000)
-        timing_layout.addWidget(self.txt_tapping_term)
-        timing_layout.addStretch()
-        keys_layout.addLayout(timing_layout)
+        # Hold time is global (Advanced Settings), not per entry. The entry's
+        # stored term is kept only so a save round-trips it unchanged.
+        self._tapping_term = 0
+        timing_note = QLabel("Hold time: set by \"Key press duration for hold in Tap/Hold Keys\" "
+                             "in MIDI Settings > Advanced Settings.")
+        timing_note.setWordWrap(True)
+        timing_note.setStyleSheet("color: gray; font-size: 9pt;")
+        keys_layout.addWidget(timing_note)
 
         keys_layout.addStretch()
         keys_group.setLayout(keys_layout)
@@ -159,9 +131,13 @@ class TapDanceEntryUI(QObject):
         self.key_widgets.append(self.kc_on_tap_hold)
 
         widgets = [self.kc_on_tap, self.kc_on_hold, self.kc_on_double_tap, self.kc_on_tap_hold]
+        # the key column takes the spare width, so the labels stay tight to the keys
+        self.container.setColumnStretch(1, 1)
         for i, (label, widget) in enumerate(zip(labels, widgets)):
             self.container.addWidget(QLabel(label), i, 0)
-            self.container.addWidget(widget, i, 1)
+            # Left-aligned: an unaligned fixed-size widget is CENTRED in the
+            # stretching column, i.e. far from its label / off the visible area
+            self.container.addWidget(widget, i, 1, Qt.AlignLeft | Qt.AlignVCenter)
 
     def _on_key_selected(self, widget):
         """Bubble up key selection"""
@@ -177,7 +153,7 @@ class TapDanceEntryUI(QObject):
             self._apply_data(data)
 
     def _apply_data(self, data):
-        objs = [self.kc_on_tap, self.kc_on_hold, self.kc_on_double_tap, self.kc_on_tap_hold, self.txt_tapping_term]
+        objs = [self.kc_on_tap, self.kc_on_hold, self.kc_on_double_tap, self.kc_on_tap_hold]
         for o in objs:
             o.blockSignals(True)
 
@@ -185,7 +161,7 @@ class TapDanceEntryUI(QObject):
         self.kc_on_hold.set_keycode(data[1])
         self.kc_on_double_tap.set_keycode(data[2])
         self.kc_on_tap_hold.set_keycode(data[3])
-        self.txt_tapping_term.setValue(data[4])
+        self._tapping_term = data[4]
 
         for o in objs:
             o.blockSignals(False)
@@ -202,7 +178,7 @@ class TapDanceEntryUI(QObject):
             self.kc_on_hold.keycode,
             self.kc_on_double_tap.keycode,
             self.kc_on_tap_hold.keycode,
-            self.txt_tapping_term.value()
+            self._tapping_term
         )
 
     def on_key_changed(self):
@@ -256,6 +232,7 @@ class TapDance(BasicEditor):
 
         # TabbedKeycodes always visible at bottom
         self.tabbed_keycodes = TabbedKeycodes()
+        install_click_away_deselect(self.tabs, self._clear_key_selection)
         self.tabbed_keycodes.keycode_changed.connect(self.on_keycode_selected)
         self.addWidget(self.tabbed_keycodes)
 
@@ -272,12 +249,23 @@ class TapDance(BasicEditor):
         self.selected_key_widget = widget
         widget.set_selected(True)
 
+    def _clear_key_selection(self):
+        """Click on empty space in the editor: unselect the selected key."""
+        w = self.selected_key_widget
+        self.selected_key_widget = None
+        if w is not None:
+            try:
+                if not sip.isdeleted(w):
+                    w.set_selected(False)
+            except RuntimeError:
+                pass
+
     def on_keycode_selected(self, keycode):
         """Handle keycode selection from TabbedKeycodes"""
         if self.selected_key_widget is not None:
             try:
                 if not sip.isdeleted(self.selected_key_widget):
-                    self.selected_key_widget.set_keycode(keycode)
+                    self.selected_key_widget.on_keycode_changed(keycode)
             except RuntimeError:
                 self.selected_key_widget = None
 

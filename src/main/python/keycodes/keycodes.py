@@ -21,6 +21,12 @@ def _invalidate_any_keycode_cache():
     _any_keycode_cache = None
 
 
+def _has_cjk(text):
+    return any(0x2E80 <= ord(c) <= 0x9FFF or 0xAC00 <= ord(c) <= 0xD7AF
+               or 0xF900 <= ord(c) <= 0xFAFF or 0xFF00 <= ord(c) <= 0xFFEF
+               for c in text)
+
+
 class Keycode:
 
     masked_keycodes = set()
@@ -32,8 +38,10 @@ class Keycode:
         self.qmk_id = qmk_id
         self.qmk_id_to_keycode[qmk_id] = self
         self.label = label
-        # we cannot embed full CJK fonts due to large size, workaround like this for now
-        if sys.platform == "emscripten" and not label.isascii() and qmk_id != "KC_TRNS":
+        # The web build only carries DejaVu Sans / Vera (no CJK fonts): those
+        # draw subscripts, arrows, sharps etc. fine, so only labels with
+        # Japanese / Chinese / Korean text fall back to the keycode name.
+        if sys.platform == "emscripten" and _has_cjk(label) and qmk_id != "KC_TRNS":
             self.label = qmk_id.replace("KC_", "")
 
         self.tooltip = tooltip
@@ -110,6 +118,8 @@ class Keycode:
         keycode = cls.find_outer_keycode(qmk_id)
         if keycode is None:
             return None
+        if keycode.qmk_id.startswith("TD("):
+            return keycode.label.replace("\n", " ").replace("/ ", "/")
         tooltip = keycode.qmk_id
         if keycode.tooltip:
             tooltip = "{}: {}".format(tooltip, keycode.tooltip)
@@ -530,114 +540,114 @@ KEYCODES_OLED = [
     K("OLED_1", "Screen\nKeyboard\nShift", "Momentarily turn on layer when pressed"),
     K("OLED_2", "Smart\nChord\nLight\nMode", "Momentarily turn on layer when pressed"),
    # K("OLED_3", "SmartChord\nPiano\nModes", "Momentarily turn on layer when pressed"),
-  #  K("OLED_1", "Hold\nLayer\n3", "Momentarily turn on layer when pressed"),
   #  K("OLED_1", "Hold\nLayer\n4", "Momentarily turn on layer when pressed"),
+  #  K("OLED_1", "Hold\nLayer\n5", "Momentarily turn on layer when pressed"),
 ]
 
 KEYCODES_LAYERS_MO = [
-    K("MO(0)", "Hold\nLayer\n0", "Momentarily turn on layer when pressed"),
-    K("MO(1)", "Hold\nLayer\n1", "Momentarily turn on layer when pressed"),
-    K("MO(2)", "Hold\nLayer\n2", "Momentarily turn on layer when pressed"),
-    K("MO(3)", "Hold\nLayer\n3", "Momentarily turn on layer when pressed"),
-    K("MO(4)", "Hold\nLayer\n4", "Momentarily turn on layer when pressed"),
-    K("MO(5)", "Hold\nLayer\n5", "Momentarily turn on layer when pressed"),
-    K("MO(6)", "Hold\nLayer\n6", "Momentarily turn on layer when pressed"),
-    K("MO(7)", "Hold\nLayer\n7", "Momentarily turn on layer when pressed"),
-    K("MO(8)", "Hold\nLayer\n8", "Momentarily turn on layer when pressed"),
-    K("MO(9)", "Hold\nLayer\n9", "Momentarily turn on layer when pressed"),
-    K("MO(10)", "Hold\nLayer\n10", "Momentarily turn on layer when pressed"),
-    K("MO(11)", "Hold\nLayer\n11", "Momentarily turn on layer when pressed"),
+    K("MO(0)", "Hold\nLayer\n1", "Momentarily turn on layer when pressed"),
+    K("MO(1)", "Hold\nLayer\n2", "Momentarily turn on layer when pressed"),
+    K("MO(2)", "Hold\nLayer\n3", "Momentarily turn on layer when pressed"),
+    K("MO(3)", "Hold\nLayer\n4", "Momentarily turn on layer when pressed"),
+    K("MO(4)", "Hold\nLayer\n5", "Momentarily turn on layer when pressed"),
+    K("MO(5)", "Hold\nLayer\n6", "Momentarily turn on layer when pressed"),
+    K("MO(6)", "Hold\nLayer\n7", "Momentarily turn on layer when pressed"),
+    K("MO(7)", "Hold\nLayer\n8", "Momentarily turn on layer when pressed"),
+    K("MO(8)", "Hold\nLayer\n9", "Momentarily turn on layer when pressed"),
+    K("MO(9)", "Hold\nLayer\n10", "Momentarily turn on layer when pressed"),
+    K("MO(10)", "Hold\nLayer\n11", "Momentarily turn on layer when pressed"),
+    K("MO(11)", "Hold\nLayer\n12", "Momentarily turn on layer when pressed"),
 ]
 
 
 KEYCODES_LAYERS_DF = [
-    K("DF(0)", "Default\nLayer\n0", "Set to default (active)\nLayer)"),
-    K("DF(1)", "Default\nLayer\n1", "Set to default (active)\nLayer)"),
-    K("DF(2)", "Default\nLayer\n2", "Set to default (active)\nLayer)"),
-    K("DF(3)", "Default\nLayer\n3", "Set to default (active)\nLayer)"),
-    K("DF(4)", "Default\nLayer\n4", "Set to default (active)\nLayer)"),
-    K("DF(5)", "Default\nLayer\n5", "Set to default (active)\nLayer)"),
-    K("DF(6)", "Default\nLayer\n6", "Set to default (active)\nLayer)"),
-    K("DF(7)", "Default\nLayer\n7", "Set to default (active)\nLayer)"),
-    K("DF(8)", "Default\nLayer\n8", "Set to default (active)\nLayer)"),
-    K("DF(9)", "Default\nLayer\n9", "Set to default (active)\nLayer)"),
-    K("DF(10)", "Default\nLayer\n10", "Set to default (active)\nLayer)"),
-    K("DF(11)", "Default\nLayer\n11", "Set to default (active)\nLayer)"),
+    K("DF(0)", "Default\nLayer\n1", "Set to default (active)\nLayer)"),
+    K("DF(1)", "Default\nLayer\n2", "Set to default (active)\nLayer)"),
+    K("DF(2)", "Default\nLayer\n3", "Set to default (active)\nLayer)"),
+    K("DF(3)", "Default\nLayer\n4", "Set to default (active)\nLayer)"),
+    K("DF(4)", "Default\nLayer\n5", "Set to default (active)\nLayer)"),
+    K("DF(5)", "Default\nLayer\n6", "Set to default (active)\nLayer)"),
+    K("DF(6)", "Default\nLayer\n7", "Set to default (active)\nLayer)"),
+    K("DF(7)", "Default\nLayer\n8", "Set to default (active)\nLayer)"),
+    K("DF(8)", "Default\nLayer\n9", "Set to default (active)\nLayer)"),
+    K("DF(9)", "Default\nLayer\n10", "Set to default (active)\nLayer)"),
+    K("DF(10)", "Default\nLayer\n11", "Set to default (active)\nLayer)"),
+    K("DF(11)", "Default\nLayer\n12", "Set to default (active)\nLayer)"),
 ]
 
 KEYCODES_LAYERS_TG = [
-    K("TG(0)", "Toggle\nLayer\n0", "Toggle\nLayer on or off)"),
-    K("TG(1)", "Toggle\nLayer\n1", "Toggle\nLayer on or off)"),
-    K("TG(2)", "Toggle\nLayer\n2", "Toggle\nLayer on or off)"),
-    K("TG(3)", "Toggle\nLayer\n3", "Toggle\nLayer on or off)"),
-    K("TG(4)", "Toggle\nLayer\n4", "Toggle\nLayer on or off)"),
-    K("TG(5)", "Toggle\nLayer\n5", "Toggle\nLayer on or off)"),
-    K("TG(6)", "Toggle\nLayer\n6", "Toggle\nLayer on or off)"),
-    K("TG(7)", "Toggle\nLayer\n7", "Toggle\nLayer on or off)"),
-    K("TG(8)", "Toggle\nLayer\n8", "Toggle\nLayer on or off)"),
-    K("TG(9)", "Toggle\nLayer\n9", "Toggle\nLayer on or off)"),
-    K("TG(10)", "Toggle\nLayer\n10", "Toggle\nLayer on or off)"),
-    K("TG(11)", "Toggle\nLayer\n11", "Toggle\nLayer on or off)"),
+    K("TG(0)", "Toggle\nLayer\n1", "Toggle\nLayer on or off)"),
+    K("TG(1)", "Toggle\nLayer\n2", "Toggle\nLayer on or off)"),
+    K("TG(2)", "Toggle\nLayer\n3", "Toggle\nLayer on or off)"),
+    K("TG(3)", "Toggle\nLayer\n4", "Toggle\nLayer on or off)"),
+    K("TG(4)", "Toggle\nLayer\n5", "Toggle\nLayer on or off)"),
+    K("TG(5)", "Toggle\nLayer\n6", "Toggle\nLayer on or off)"),
+    K("TG(6)", "Toggle\nLayer\n7", "Toggle\nLayer on or off)"),
+    K("TG(7)", "Toggle\nLayer\n8", "Toggle\nLayer on or off)"),
+    K("TG(8)", "Toggle\nLayer\n9", "Toggle\nLayer on or off)"),
+    K("TG(9)", "Toggle\nLayer\n10", "Toggle\nLayer on or off)"),
+    K("TG(10)", "Toggle\nLayer\n11", "Toggle\nLayer on or off)"),
+    K("TG(11)", "Toggle\nLayer\n12", "Toggle\nLayer on or off)"),
 ]
 
 KEYCODES_LAYERS_TT = [
-    K("TT(0)", "TT\nLayer\n0", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
-    K("TT(1)", "TT\nLayer\n1", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
-    K("TT(2)", "TT\nLayer\n2", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
-    K("TT(3)", "TT\nLayer\n3", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
-    K("TT(4)", "TT\nLayer\n4", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
-    K("TT(5)", "TT\nLayer\n5", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
-    K("TT(6)", "TT\nLayer\n6", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
-    K("TT(7)", "TT\nLayer\n7", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
-    K("TT(8)", "TT\nLayer\n8", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
-    K("TT(9)", "TT\nLayer\n9", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
-    K("TT(10)", "TT\nLayer\n10", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
-    K("TT(11)", "TT\nLayer\n11", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
+    K("TT(0)", "TT\nLayer\n1", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
+    K("TT(1)", "TT\nLayer\n2", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
+    K("TT(2)", "TT\nLayer\n3", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
+    K("TT(3)", "TT\nLayer\n4", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
+    K("TT(4)", "TT\nLayer\n5", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
+    K("TT(5)", "TT\nLayer\n6", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
+    K("TT(6)", "TT\nLayer\n7", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
+    K("TT(7)", "TT\nLayer\n8", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
+    K("TT(8)", "TT\nLayer\n9", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
+    K("TT(9)", "TT\nLayer\n10", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
+    K("TT(10)", "TT\nLayer\n11", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
+    K("TT(11)", "TT\nLayer\n12", "Normally acts like MO unless it's tapped multiple times, which toggles\nLayer on)"),
 ]
 
 KEYCODES_LAYERS_OSL = [
-    K("OSL(0)", "One Shot\nLayer\n0", "Momentarily activates\nLayer until a key is pressed)"),
-    K("OSL(1)", "One Shot\nLayer\n1", "Momentarily activates\nLayer until a key is pressed)"),
-    K("OSL(2)", "One Shot\nLayer\n2", "Momentarily activates\nLayer until a key is pressed)"),
-    K("OSL(3)", "One Shot\nLayer\n3", "Momentarily activates\nLayer until a key is pressed)"),
-    K("OSL(4)", "One Shot\nLayer\n4", "Momentarily activates\nLayer until a key is pressed)"),
-    K("OSL(5)", "One Shot\nLayer\n5", "Momentarily activates\nLayer until a key is pressed)"),
-    K("OSL(6)", "One Shot\nLayer\n6", "Momentarily activates\nLayer until a key is pressed)"),
-    K("OSL(7)", "One Shot\nLayer\n7", "Momentarily activates\nLayer until a key is pressed)"),
-    K("OSL(8)", "One Shot\nLayer\n8", "Momentarily activates\nLayer until a key is pressed)"),
-    K("OSL(9)", "One Shot\nLayer\n9", "Momentarily activates\nLayer until a key is pressed)"),
-    K("OSL(10)", "One Shot\nLayer\n10", "Momentarily activates\nLayer until a key is pressed)"),
-    K("OSL(11)", "One Shot\nLayer\n11", "Momentarily activates\nLayer until a key is pressed)"),
+    K("OSL(0)", "One Shot\nLayer\n1", "Momentarily activates\nLayer until a key is pressed)"),
+    K("OSL(1)", "One Shot\nLayer\n2", "Momentarily activates\nLayer until a key is pressed)"),
+    K("OSL(2)", "One Shot\nLayer\n3", "Momentarily activates\nLayer until a key is pressed)"),
+    K("OSL(3)", "One Shot\nLayer\n4", "Momentarily activates\nLayer until a key is pressed)"),
+    K("OSL(4)", "One Shot\nLayer\n5", "Momentarily activates\nLayer until a key is pressed)"),
+    K("OSL(5)", "One Shot\nLayer\n6", "Momentarily activates\nLayer until a key is pressed)"),
+    K("OSL(6)", "One Shot\nLayer\n7", "Momentarily activates\nLayer until a key is pressed)"),
+    K("OSL(7)", "One Shot\nLayer\n8", "Momentarily activates\nLayer until a key is pressed)"),
+    K("OSL(8)", "One Shot\nLayer\n9", "Momentarily activates\nLayer until a key is pressed)"),
+    K("OSL(9)", "One Shot\nLayer\n10", "Momentarily activates\nLayer until a key is pressed)"),
+    K("OSL(10)", "One Shot\nLayer\n11", "Momentarily activates\nLayer until a key is pressed)"),
+    K("OSL(11)", "One Shot\nLayer\n12", "Momentarily activates\nLayer until a key is pressed)"),
 ]
 
 KEYCODES_LAYERS_TO = [
-    K("TO(0)", "TO\nLayer\n0", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
-    K("TO(1)", "TO\nLayer\n1", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
-    K("TO(2)", "TO\nLayer\n2", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
-    K("TO(3)", "TO\nLayer\n3", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
-    K("TO(4)", "TO\nLayer\n4", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
-    K("TO(5)", "TO\nLayer\n5", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
-    K("TO(6)", "TO\nLayer\n6", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
-    K("TO(7)", "TO\nLayer\n7", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
-    K("TO(8)", "TO\nLayer\n8", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
-    K("TO(9)", "TO\nLayer\n9", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
-    K("TO(10)", "TO\nLayer\n10", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
-    K("TO(11)", "TO\nLayer\n11", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
+    K("TO(0)", "TO\nLayer\n1", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
+    K("TO(1)", "TO\nLayer\n2", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
+    K("TO(2)", "TO\nLayer\n3", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
+    K("TO(3)", "TO\nLayer\n4", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
+    K("TO(4)", "TO\nLayer\n5", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
+    K("TO(5)", "TO\nLayer\n6", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
+    K("TO(6)", "TO\nLayer\n7", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
+    K("TO(7)", "TO\nLayer\n8", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
+    K("TO(8)", "TO\nLayer\n9", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
+    K("TO(9)", "TO\nLayer\n10", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
+    K("TO(10)", "TO\nLayer\n11", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
+    K("TO(11)", "TO\nLayer\n12", "Turns on\nLayer and turns off all other\nLayers, except the default\nLayer)"),
 ]
 
 KEYCODES_LAYERS_LT = [
-    K("LT1(kc)", "LT\nLayer\n0", "kc on tap, switch to specified\nLayer while held)"),
-    K("LT1(kc)", "LT\nLayer\n1", "kc on tap, switch to specified\nLayer while held)"),
-    K("LT2(kc)", "LT\nLayer\n2", "kc on tap, switch to specified\nLayer while held)"),
-    K("LT3(kc)", "LT\nLayer\n3", "kc on tap, switch to specified\nLayer while held)"),
-    K("LT4(kc)", "LT\nLayer\n4", "kc on tap, switch to specified\nLayer while held)"),
-    K("LT5(kc)", "LT\nLayer\n5", "kc on tap, switch to specified\nLayer while held)"),
-    K("LT6(kc)", "LT\nLayer\n6", "kc on tap, switch to specified\nLayer while held)"),
-    K("LT7(kc)", "LT\nLayer\n7", "kc on tap, switch to specified\nLayer while held)"),
-    K("LT8(kc)", "LT\nLayer\n8", "kc on tap, switch to specified\nLayer while held)"),
-    K("LT9(kc)", "LT\nLayer\n9", "kc on tap, switch to specified\nLayer while held)"),
-    K("LT10(kc)", "LT\nLayer\n10", "kc on tap, switch to specified\nLayer while held)"),
-    K("LT11(kc)", "LT\nLayer\n11", "kc on tap, switch to specified\nLayer while held)"),
+    K("LT0(kc)", "LT 1\n(kc)", "kc on tap, switch to layer 1 while held", masked=True),
+    K("LT1(kc)", "LT 2\n(kc)", "kc on tap, switch to layer 2 while held", masked=True),
+    K("LT2(kc)", "LT 3\n(kc)", "kc on tap, switch to layer 3 while held", masked=True),
+    K("LT3(kc)", "LT 4\n(kc)", "kc on tap, switch to layer 4 while held", masked=True),
+    K("LT4(kc)", "LT 5\n(kc)", "kc on tap, switch to layer 5 while held", masked=True),
+    K("LT5(kc)", "LT 6\n(kc)", "kc on tap, switch to layer 6 while held", masked=True),
+    K("LT6(kc)", "LT 7\n(kc)", "kc on tap, switch to layer 7 while held", masked=True),
+    K("LT7(kc)", "LT 8\n(kc)", "kc on tap, switch to layer 8 while held", masked=True),
+    K("LT8(kc)", "LT 9\n(kc)", "kc on tap, switch to layer 9 while held", masked=True),
+    K("LT9(kc)", "LT 10\n(kc)", "kc on tap, switch to layer 10 while held", masked=True),
+    K("LT10(kc)", "LT 11\n(kc)", "kc on tap, switch to layer 11 while held", masked=True),
+    K("LT11(kc)", "LT 12\n(kc)", "kc on tap, switch to layer 12 while held", masked=True),
 ]
 
 
@@ -893,6 +903,47 @@ KEYCODES_MEDIA = [
     K("KC_LSCR", "Locking\nScroll", "Locking Scroll Lock", alias=["KC_LOCKING_SCROLL"]),
 ]
 
+# App keys this device supports; every other KEYCODES_MEDIA entry is
+# unsupported (kept below only so an existing keymap still shows a name).
+_MEDIA_SUPPORTED = {
+    "KC_F13", "KC_F14", "KC_F15", "KC_F16", "KC_F17", "KC_F18",
+    "KC_F19", "KC_F20", "KC_F21", "KC_F22", "KC_F23", "KC_F24",
+    "KC_PWR", "KC_SLEP", "KC_WAKE",
+    "KC_UNDO", "KC_CUT", "KC_COPY", "KC_PSTE", "KC_FIND",
+    "KC_CALC", "KC_MAIL", "KC_MSEL", "KC_MYCM",
+    "KC_WSCH", "KC_WHOM", "KC_WBAK", "KC_WFWD", "KC_WSTP", "KC_WREF", "KC_WFAV",
+    "KC_MPRV", "KC_MNXT", "KC_MUTE", "KC_VOLD", "KC_VOLU",
+    "KC_MS_U", "KC_MS_D", "KC_MS_L", "KC_MS_R",
+    "KC_BTN1", "KC_BTN2", "KC_BTN3", "KC_BTN4", "KC_BTN5",
+    "KC_WH_U", "KC_WH_D",
+}
+KEYCODES_MEDIA_UNSUPPORTED = [kc for kc in KEYCODES_MEDIA if kc.qmk_id not in _MEDIA_SUPPORTED]
+KEYCODES_MEDIA[:] = [kc for kc in KEYCODES_MEDIA if kc.qmk_id in _MEDIA_SUPPORTED]
+
+# Keycodes the device does not support. They are never offered (palette,
+# Search tab, on-device search) but stay registered so a keymap that already
+# holds one still displays its name instead of a raw number.
+KEYCODES_UNSUPPORTED = []
+
+
+# Also never offered: the dynamic-macro recorder keys, the USER00-15
+# placeholders and the pre-shifted symbols (Shift+key combos). Listed by id because some of these lists
+# are rebuilt per keyboard.
+_UNSUPPORTED_EXTRA_IDS = {
+    "DYN_REC_START1", "DYN_REC_START2", "DYN_MACRO_PLAY1", "DYN_MACRO_PLAY2", "DYN_REC_STOP",
+}
+
+
+def unsupported_ids():
+    """qmk_ids of every unsupported keycode (see KEYCODES_UNSUPPORTED)."""
+    ids = {kc.qmk_id for kc in KEYCODES_UNSUPPORTED}
+    ids.update(kc.qmk_id for kc in KEYCODES_SHIFTED)
+    ids.update(kc.qmk_id for kc in KEYCODES_USER)
+    ids.update("USER{:02}".format(x) for x in range(16))
+    ids.update(_UNSUPPORTED_EXTRA_IDS)
+    return ids
+
+
 KEYCODES_SAVE = [
     K("SAVE_SETTINGS", "Save as\nDefault\nSettings", "save settings"),
     K("DEFAULT_SETTINGS", "Reset to\nFactory\nSettings", "reset to factory"),
@@ -922,38 +973,38 @@ KEYCODES_SETTINGS3 = [
 ]
 
 KEYCODES_TAP_DANCE = [
-    K("TD(0)", "Tap/\nHold\n0", "TapDance0"),
-    K("TD(1)", "Tap/\nHold\n1", "TapDance1"),
-    K("TD(2)", "Tap/\nHold\n2", "TapDance2"),
-    K("TD(3)", "Tap/\nHold\n3", "TapDance3"),
-    K("TD(4)", "Tap/\nHold\n4", "TapDance4"),
-    K("TD(5)", "Tap/\nHold\n5", "TapDance5"),
-    K("TD(6)", "Tap/\nHold\n6", "TapDance6"),
-    K("TD(7)", "Tap/\nHold\n7", "TapDance7"),
-    K("TD(8)", "Tap/\nHold\n8", "TapDance8"),
-    K("TD(9)", "Tap/\nHold\n9", "TapDance9"),
-    K("TD(10)", "Tap/\nHold\n10", "TapDance10"),
-    K("TD(11)", "Tap/\nHold\n11", "TapDance11"),
-    K("TD(12)", "Tap/\nHold\n12", "TapDance12"),
-    K("TD(13)", "Tap/\nHold\n13", "TapDance13"),
-    K("TD(14)", "Tap/\nHold\n14", "TapDance14"),
-    K("TD(15)", "Tap/\nHold\n15", "TapDance15"),
-    K("TD(16)", "Tap/\nHold\n16", "TapDance16"),
-    K("TD(17)", "Tap/\nHold\n17", "TapDance17"),
-    K("TD(18)", "Tap/\nHold\n18", "TapDance18"),
-    K("TD(19)", "Tap/\nHold\n19", "TapDance19"),
-    K("TD(20)", "Tap/\nHold\n20", "TapDance20"),
-    K("TD(21)", "Tap/\nHold\n21", "TapDance21"),
-    K("TD(22)", "Tap/\nHold\n22", "TapDance22"),
-    K("TD(23)", "Tap/\nHold\n23", "TapDance23"),
-    K("TD(24)", "Tap/\nHold\n24", "TapDance24"),
-    K("TD(25)", "Tap/\nHold\n25", "TapDance25"),
-    K("TD(26)", "Tap/\nHold\n26", "TapDance26"),
-    K("TD(27)", "Tap/\nHold\n27", "TapDance27"),
-    K("TD(28)", "Tap/\nHold\n28", "TapDance28"),
-    K("TD(29)", "Tap/\nHold\n29", "TapDance29"),
-    K("TD(30)", "Tap/\nHold\n30", "TapDance30"),
-    K("TD(31)", "Tap/\nHold\n31", "TapDance31"),
+    K("TD(0)", "Tap/\nHold\n0", "Tap/Hold 0"),
+    K("TD(1)", "Tap/\nHold\n1", "Tap/Hold 1"),
+    K("TD(2)", "Tap/\nHold\n2", "Tap/Hold 2"),
+    K("TD(3)", "Tap/\nHold\n3", "Tap/Hold 3"),
+    K("TD(4)", "Tap/\nHold\n4", "Tap/Hold 4"),
+    K("TD(5)", "Tap/\nHold\n5", "Tap/Hold 5"),
+    K("TD(6)", "Tap/\nHold\n6", "Tap/Hold 6"),
+    K("TD(7)", "Tap/\nHold\n7", "Tap/Hold 7"),
+    K("TD(8)", "Tap/\nHold\n8", "Tap/Hold 8"),
+    K("TD(9)", "Tap/\nHold\n9", "Tap/Hold 9"),
+    K("TD(10)", "Tap/\nHold\n10", "Tap/Hold 10"),
+    K("TD(11)", "Tap/\nHold\n11", "Tap/Hold 11"),
+    K("TD(12)", "Tap/\nHold\n12", "Tap/Hold 12"),
+    K("TD(13)", "Tap/\nHold\n13", "Tap/Hold 13"),
+    K("TD(14)", "Tap/\nHold\n14", "Tap/Hold 14"),
+    K("TD(15)", "Tap/\nHold\n15", "Tap/Hold 15"),
+    K("TD(16)", "Tap/\nHold\n16", "Tap/Hold 16"),
+    K("TD(17)", "Tap/\nHold\n17", "Tap/Hold 17"),
+    K("TD(18)", "Tap/\nHold\n18", "Tap/Hold 18"),
+    K("TD(19)", "Tap/\nHold\n19", "Tap/Hold 19"),
+    K("TD(20)", "Tap/\nHold\n20", "Tap/Hold 20"),
+    K("TD(21)", "Tap/\nHold\n21", "Tap/Hold 21"),
+    K("TD(22)", "Tap/\nHold\n22", "Tap/Hold 22"),
+    K("TD(23)", "Tap/\nHold\n23", "Tap/Hold 23"),
+    K("TD(24)", "Tap/\nHold\n24", "Tap/Hold 24"),
+    K("TD(25)", "Tap/\nHold\n25", "Tap/Hold 25"),
+    K("TD(26)", "Tap/\nHold\n26", "Tap/Hold 26"),
+    K("TD(27)", "Tap/\nHold\n27", "Tap/Hold 27"),
+    K("TD(28)", "Tap/\nHold\n28", "Tap/Hold 28"),
+    K("TD(29)", "Tap/\nHold\n29", "Tap/Hold 29"),
+    K("TD(30)", "Tap/\nHold\n30", "Tap/Hold 30"),
+    K("TD(31)", "Tap/\nHold\n31", "Tap/Hold 31"),
 ]
 
 KEYCODES_USER = [
@@ -1241,7 +1292,7 @@ KEYCODES_MACRO_BASE = [
     K("DYN_MACRO_PLAY1", "Dynamic\nMacro 1\nPlay", "Dynamic Macro 1 Play", alias=["DM_PLY1"]),
     K("DYN_MACRO_PLAY2", "Dynamic\nMacro 2\nPlay", "Dynamic Macro 2 Play", alias=["DM_PLY2"]),
     K("DYN_REC_STOP", "Stop\nMacro\nRec", "Dynamic Macro Rec Stop", alias=["DM_RSTP"]),
-    K("QK_MACRO_ALL_OFF", "All\nMacros\nOff", "Stop all playing Vial macros"),
+    K("QK_MACRO_ALL_OFF", "All\nMacros\nOff", "Stop all playing macros"),
 ]
 
 KEYCODES_EARTRAINER = []  # removed: ear trainer is outdated / managed on-device
@@ -2516,7 +2567,7 @@ KEYCODES_LOOP_BUTTONS = [
 # toggles that target (press again to clear). The menu/reset keys round it out.
 def _build_drumlive_keycodes():
     out = [
-        K("DRUMLIVE_MENU", "DrumLIVE\nMenu", "Open the DrumLIVE filter menu on the device (Presets / Basic / Advanced)"),
+        K("DRUMLIVE_MENU", "DrumLIVE\nMenu", "Open the DrumLIVE filter menu on the device (Presets / Custom)"),
         K("DRUMLIVE_RESET", "DrumLIVE\nAll On", "Clear all DrumLIVE filters (every target back to On)"),
         K("DRUMLIVE_ALL_OFF", "DrumLIVE\nAll Off", "Mute every drum target (turn one back On for a solo)"),
     ]
@@ -2545,7 +2596,7 @@ KEYCODES_DRUMLIVE = _build_drumlive_keycodes()
 # Gaming Controller Keycodes
 KEYCODES_GAMING = [
     # Toggle gaming mode
-    K("GAMING_MODE", "Gaming\nMode", "Toggle gaming mode on/off. When on, keys assigned in the Gaming Settings tab act as gamepad inputs."),
+    K("GAMING_MODE", "Gaming\nMode", "Toggle gaming mode on/off. When on, keys with a joystick function attached act as gamepad inputs."),
 
     # Digital Buttons (Face buttons)
     K("XBOX_A", "Button\n1", "Button 1 (Button 0)"),
@@ -2587,6 +2638,28 @@ KEYCODES_GAMING = [
     K("DPAD_LEFT", "D-pad ←", "D-pad Left (Button 14)"),
     K("DPAD_RIGHT", "D-pad →", "D-pad Right (Button 15)"),
 ]
+
+
+# Joystick functions are not placed on the keymap as keycodes: dragging one onto
+# a key attaches it to that key position on the current layer. Function id =
+# keycode value - 0xCC60 (0 = none); overlay label shown in the key's corner.
+JOYSTICK_FUNCTIONS = [
+    ("XBOX_A", 1, "B1"), ("XBOX_B", 2, "B2"), ("XBOX_X", 3, "B3"), ("XBOX_Y", 4, "B4"),
+    ("XBOX_LB", 5, "LB"), ("XBOX_RB", 6, "RB"), ("XBOX_BACK", 7, "Bk"), ("XBOX_START", 8, "St"),
+    ("XBOX_L3", 9, "L3"), ("XBOX_R3", 10, "R3"),
+    ("LS_UP", 11, "L\u2191"), ("LS_DOWN", 12, "L\u2193"), ("LS_LEFT", 13, "L\u2190"), ("LS_RIGHT", 14, "L\u2192"),
+    ("RS_UP", 15, "R\u2191"), ("RS_DOWN", 16, "R\u2193"), ("RS_LEFT", 17, "R\u2190"), ("RS_RIGHT", 18, "R\u2192"),
+    ("LT", 19, "LT"), ("RT", 20, "RT"),
+    ("DPAD_UP", 21, "D\u2191"), ("DPAD_DOWN", 22, "D\u2193"), ("DPAD_LEFT", 23, "D\u2190"), ("DPAD_RIGHT", 24, "D\u2192"),
+]
+JOYSTICK_FUNCTION_IDS = {qmk_id: fid for qmk_id, fid, _ in JOYSTICK_FUNCTIONS}
+JOYSTICK_FUNCTION_LABELS = {fid: label for _, fid, label in JOYSTICK_FUNCTIONS}
+JOYSTICK_FUNCTION_NAMES = {fid: qmk_id for qmk_id, fid, _ in JOYSTICK_FUNCTIONS}
+
+
+def joystick_function_id(qmk_id):
+    """Joystick function id (1-24) for a Gaming palette keycode, else 0."""
+    return JOYSTICK_FUNCTION_IDS.get(qmk_id, 0)
 
 
 KEYCODES_ARPEGGIATOR = [
@@ -2913,7 +2986,7 @@ KEYCODES_FADER_QB = []  # removed: only Master Quick Build buttons are supported
 # / SmartChord / Fader / drum machine / chord prog / ear trainer).
 KEYCODES_QB_MASTER = [
     K("QB_MASTER_{}".format(i + 1),
-      "Quickbuild\n{}".format(i + 1),
+      "Quick\nBuild {}".format(i + 1),
       "Quickbuild slot {} - tap: picker (unconfigured) or run assigned target".format(i + 1))
     for i in range(100)
 ]
@@ -3158,6 +3231,9 @@ for x in range(128):
                               "Program change {}".format(x)))
 
 
+KEYCODES_UNSUPPORTED.extend(KEYCODES_BOOT + KEYCODES_MODIFIERS + KEYCODES_QUANTUM + KEYCODES_MEDIA_UNSUPPORTED +
+                            KEYCODES_LAYERS_TG + KEYCODES_LAYERS_TT + KEYCODES_LAYERS_TO + KEYCODES_LAYERS_LT)
+
 K = None
 
 
@@ -3170,7 +3246,7 @@ def recreate_keycodes():
 
     KEYCODES.clear()
     KEYCODES.extend(KEYCODES_SPECIAL + KEYCODES_BASIC + KEYCODES_SHIFTED + KEYCODES_ISO + KEYCODES_LAYERS + KEYCODES_LAYERS_DF + KEYCODES_LAYERS_MO + KEYCODES_LAYERS_TG + KEYCODES_LAYERS_TT + KEYCODES_LAYERS_OSL + KEYCODES_LAYERS_TO + KEYCODES_LAYERS_LT +
-                    KEYCODES_BOOT + KEYCODES_MODIFIERS + KEYCODES_QUANTUM + KEYCODES_BACKLIGHT + KEYCODES_MEDIA + KEYCODES_OLED + KEYCODES_CLEAR + KEYCODES_RGB_KC_COLOR + KEYCODES_MIDI_OCTAVE2 + KEYCODES_MIDI_OCTAVE3 + KEYCODES_MIDI_KEY2 + KEYCODES_MIDI_KEY3 + KEYCODES_MIDI_VELOCITY2 + KEYCODES_MIDI_VELOCITY3 +
+                    KEYCODES_BOOT + KEYCODES_MODIFIERS + KEYCODES_QUANTUM + KEYCODES_BACKLIGHT + KEYCODES_MEDIA + KEYCODES_MEDIA_UNSUPPORTED + KEYCODES_OLED + KEYCODES_CLEAR + KEYCODES_RGB_KC_COLOR + KEYCODES_MIDI_OCTAVE2 + KEYCODES_MIDI_OCTAVE3 + KEYCODES_MIDI_KEY2 + KEYCODES_MIDI_KEY3 + KEYCODES_MIDI_VELOCITY2 + KEYCODES_MIDI_VELOCITY3 +
                     KEYCODES_TAP_DANCE + KEYCODES_MACRO + KEYCODES_MACRO_BASE + KEYCODES_EARTRAINER + KEYCODES_SAVE + KEYCODES_SETTINGS1 + KEYCODES_SETTINGS2 + KEYCODES_SETTINGS3 + KEYCODES_CHORDTRAINER + KEYCODES_USER + KEYCODES_HIDDEN + KEYCODES_MIDI+ KEYCODES_MIDI_CHANNEL_OS + KEYCODES_MIDI_CHANNEL_HOLD + KEYCODES_RGB_KC_CUSTOM + KEYCODES_RGB_KC_CUSTOM2 + KEYCODES_RGBSAVE + KEYCODES_MIDI_CHANNEL_KEYSPLIT + KEYCODES_MIDI_CHANNEL_KEYSPLIT2 + KEYCODES_KEYSPLIT_BUTTONS + KEYCODES_KEYSPLIT_PRESETS + KEYCODES_MIDI_TRANSPOSE_SELECT + KEYCODES_MIDI_KS_TRANSPOSE_SELECT + KEYCODES_MIDI_TS_TRANSPOSE_SELECT +
                     KEYCODES_MIDI_CC_FIXED+KEYCODES_MIDI_CC+KEYCODES_MIDI_CC_DOWN+KEYCODES_MIDI_CC_UP+KEYCODES_MOD_PRESS+KEYCODES_MIDI_BANK+KEYCODES_Program_Change+KEYCODES_MIDI_SMARTCHORDBUTTONS+KEYCODES_VELOCITY_STEPSIZE+KEYCODES_VELOCITY_SHUFFLE + KEYCODES_CC_ENCODERVALUE+ KEYCODES_EXWHEEL +
                     KEYCODES_MIDI_VELOCITY+KEYCODES_CC_STEPSIZE+KEYCODES_MIDI_CHANNEL+KEYCODES_MULTICHANNEL+KEYCODES_MIDI_UPDOWN+KEYCODES_MIDI_CHORD_0+KEYCODES_MIDI_CHORD_1+KEYCODES_MIDI_CHORD_2+KEYCODES_MIDI_CHORD_3+KEYCODES_MIDI_CHORD_4+KEYCODES_MIDI_CHORD_5+KEYCODES_MIDI_SPLIT+KEYCODES_MIDI_SPLIT2+
@@ -3243,13 +3319,21 @@ def recreate_keyboard_keycodes(keyboard):
     KEYCODES_LAYERS.clear()
 
     if layers >= 4:
-        KEYCODES_LAYERS.append(Keycode("FN_MO13", "Fn1\n(Fn3)"))
-        KEYCODES_LAYERS.append(Keycode("FN_MO23", "Fn2\n(Fn3)"))
+        # Fn 1 / Fn 2 no longer change layer: they are the "held keys" for Key Combos.
+        KEYCODES_LAYERS.append(Keycode("FN_MO13", "Fn 1", "Held key for Key Combos (does not change layer)"))
+        KEYCODES_LAYERS.append(Keycode("FN_MO23", "Fn 2", "Held key for Key Combos (does not change layer)"))
 
 
+    # Layer-tap is unsupported: registered for display only (see KEYCODES_UNSUPPORTED).
+    known_lt = {kc.qmk_id for kc in KEYCODES_LAYERS_LT}
     for x in range(layers):
-        KEYCODES_LAYERS_LT.append(Keycode("LT{}(kc)".format(x), "LT {}\n(kc)".format(x),
-                                       "kc on tap, switch to layer {} while held".format(x), masked=True))
+        qmk_id = "LT{}(kc)".format(x)
+        if qmk_id in known_lt:
+            continue
+        kc = Keycode(qmk_id, "LT {}\n(kc)".format(x + 1),
+                     "kc on tap, switch to layer {} while held".format(x + 1), masked=True)
+        KEYCODES_LAYERS_LT.append(kc)
+        KEYCODES_UNSUPPORTED.append(kc)
 
     KEYCODES_MACRO.clear()
     for x in range(keyboard.macro_count):
@@ -3262,7 +3346,7 @@ def recreate_keyboard_keycodes(keyboard):
     for x in range(keyboard.tap_dance_count):
         qmk_id = "TD({})".format(x)
         label = "Tap/\nHold\n{}".format(x)
-        KEYCODES_TAP_DANCE.append(Keycode(qmk_id, label, "Tap dance keycode"))
+        KEYCODES_TAP_DANCE.append(Keycode(qmk_id, label, "Tap/Hold keycode"))
 
     # Check if custom keycodes are defined in keyboard, and if so add them to user keycodes
     if keyboard.custom_keycodes is not None and len(keyboard.custom_keycodes) > 0:

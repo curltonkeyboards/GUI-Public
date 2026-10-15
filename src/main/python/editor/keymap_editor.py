@@ -2,18 +2,21 @@
 import json
 import struct
 
+import sys
+
 from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWidget,
                               QGroupBox, QSlider, QCheckBox, QPushButton, QComboBox, QFrame,
                               QSizePolicy, QScrollArea, QTabWidget, QDialog, QDialogButtonBox,
                               QSpinBox, QGridLayout, QMenu, QToolButton, QAction, QInputDialog)
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSettings
+from PyQt5.QtGui import QCursor
 
 from widgets.combo_box import ArrowComboBox
-from any_keycode_dialog import AnyKeycodeDialog
+from keycode_search_dialog import KeycodeSearchDialog
 from editor.basic_editor import BasicEditor
 from editor.articulation_options import populate_articulation_combo, apply_articulation_visibility
 from widgets.keyboard_widget import KeyboardWidget2, KeyboardWidgetSimple, EncoderWidget, EncoderWidget2
-from keycodes.keycodes import Keycode
+from keycodes.keycodes import Keycode, joystick_function_id, JOYSTICK_FUNCTION_LABELS, JOYSTICK_FUNCTION_NAMES
 from widgets.square_button import SquareButton
 from tabbed_keycodes import TabbedKeycodes, keycode_filter_masked
 from util import tr, KeycodeDisplay
@@ -22,7 +25,7 @@ from editor.arpeggiator import DebugConsole
 from editor.keymap_presets import (KEYMAP_PRESETS, ENCODER_PRESETS,
                                    INDIVIDUAL_ENCODER_PRESETS,
                                    PRESET_CATEGORIES,
-                                   PRESET_TYPE_TUNING, PRESET_TYPE_SINGLE_ROW,
+                                   PRESET_TYPE_TUNING, PRESET_TYPE_QB_ROW, PRESET_TYPE_QB_COLUMN,
                                    PRESET_TYPE_KEYBOARD)
 from protocol.keyboard_comm import (
     PARAM_CHANNEL_NUMBER, PARAM_TRANSPOSE_NUMBER, PARAM_TRANSPOSE_NUMBER2, PARAM_TRANSPOSE_NUMBER3,
@@ -182,9 +185,9 @@ class QuickActuationWidget(QWidget):
                 background: transparent;
             }
             QPushButton:hover {
-                color: #fff;
-                background-color: #555;
-                border-color: #fff;
+                color: palette(button-text);
+                background-color: palette(light);
+                border-color: palette(highlight);
             }
         """)
         help_btn.setToolTip(tooltip_text)
@@ -207,7 +210,7 @@ class QuickActuationWidget(QWidget):
         self.enable_per_key_checkbox = QCheckBox(tr("QuickActuationWidget", "Enable Per-Key"))
         self.enable_per_key_checkbox.setStyleSheet("QCheckBox { font-weight: bold; font-size: 10px; } QCheckBox::indicator { border: 1px solid palette(mid); background-color: palette(button); width: 13px; height: 13px; } QCheckBox::indicator:checked { border: 1px solid palette(highlight); background-color: palette(highlight); }")
         self.enable_per_key_checkbox.stateChanged.connect(self.on_enable_per_key_toggled)
-        top_row_layout.addWidget(self.create_help_label("Enable individual actuation point per key.\nConfigure in Trigger Settings tab."))
+        top_row_layout.addWidget(self.create_help_label("Enable individual actuation point per key.\nConfigure in the Advanced tab."))
         top_row_layout.addWidget(self.enable_per_key_checkbox)
 
         top_row_layout.addWidget(self.create_help_label("Enable different actuation points per layer.\nWhen off, same actuation applies to all layers."))
@@ -232,7 +235,7 @@ class QuickActuationWidget(QWidget):
         layout.addWidget(line)
 
         # Per-key mode message (shown when per-key actuation is enabled)
-        self.per_key_message = QLabel(tr("QuickActuationWidget", "Per-key actuation enabled.\nChange per key actuation in Trigger Settings tab."))
+        self.per_key_message = QLabel(tr("QuickActuationWidget", "Per-key actuation enabled.\nChange per key actuation in the Advanced tab."))
         self.per_key_message.setStyleSheet("QLabel { font-style: italic; font-size: 10px; color: #888; padding: 10px; }")
         self.per_key_message.setAlignment(Qt.AlignCenter)
         self.per_key_message.setVisible(False)
@@ -994,7 +997,7 @@ class QuickActuationWidget(QWidget):
 
         # Update save button text
         if self.per_layer_enabled:
-            self.save_btn.setText(tr("QuickActuationWidget", f"Save to Layer {self.current_layer}"))
+            self.save_btn.setText(tr("QuickActuationWidget", f"Save to Layer {self.current_layer + 1}"))
             # Load current layer's settings from memory
             self.load_layer_from_memory()
         else:
@@ -1029,7 +1032,7 @@ class QuickActuationWidget(QWidget):
             QMessageBox.information(
                 self,
                 tr("QuickActuationWidget", "Per-Key Actuation Enabled"),
-                tr("QuickActuationWidget", "Per-key actuation is now enabled.\nUse Trigger Settings tab to configure individual keys.")
+                tr("QuickActuationWidget", "Per-key actuation is now enabled.\nUse the Advanced tab to configure individual keys.")
             )
             # Emit signal to request tab switch
             self.enable_per_key_requested.emit()
@@ -1731,7 +1734,7 @@ class QuickActuationWidget(QWidget):
                     raise RuntimeError(f"Failed to set actuation for layer {self.current_layer}")
 
                 QMessageBox.information(None, "Success",
-                    f"Layer {self.current_layer} actuation saved successfully!")
+                    f"Layer {self.current_layer + 1} actuation saved successfully!")
             else:
                 # Save to all 12 layers
                 vibrato_decay = global_settings.get('vibrato_decay_time', 10)
@@ -2253,6 +2256,7 @@ class EncoderAssignWidget(QWidget):
     """Widget for assigning keycodes to encoders and sustain pedal per layer"""
 
     clicked = pyqtSignal()  # Emitted when a button is clicked (for tabbed_keycodes integration)
+    joystick_clicked = pyqtSignal(int)  # joystick overlay on button index clicked
 
     def __init__(self):
         super().__init__()
@@ -2260,6 +2264,7 @@ class EncoderAssignWidget(QWidget):
         self.current_layer = 0
         self.selected_button = None
         self.buttons = []
+        self.joystick_overlays = {}
         # Single-encoder hardware: one rotary encoder (enc_idx 0) + sustain pedal.
         self.labels = [
             "Encoder Up",
@@ -2340,13 +2345,13 @@ class EncoderAssignWidget(QWidget):
         encoder_container.setStyleSheet("background: transparent;")
         encoder_container.setFixedSize(col_push + BTN, Q3 * 2 + BTN + 18)
 
-        # Up: same column (left), shifted down 3/4 of a button height
-        enc_up_btn.setParent(encoder_container)
-        enc_up_btn.move(col_up, Q3)
-
-        # Down: moved to the old Push column (right), shifted down 3/4 of a button height
+        # Down (rotate left, CCW) on the left, Up (rotate right, CW) on the
+        # right, each shifted down 3/4 of a button height.
         enc_down_btn.setParent(encoder_container)
-        enc_down_btn.move(col_push, Q3)
+        enc_down_btn.move(col_up, Q3)
+
+        enc_up_btn.setParent(encoder_container)
+        enc_up_btn.move(col_push, Q3)
 
         # Encoder rotation titles: curved rotational arrows above the left/right
         # buttons (left = rotate-left, right = rotate-right) instead of UP/DOWN.
@@ -2389,6 +2394,45 @@ class EncoderAssignWidget(QWidget):
         """Update button display with keycode"""
         if 0 <= index < len(self.buttons):
             self.buttons[index].setText(Keycode.label(keycode))
+
+    def _on_button_context_menu(self, index):
+        overlay = self.joystick_overlays.get(index)
+        if overlay is not None and not overlay.isHidden():
+            self.joystick_clicked.emit(index)
+
+    def set_joystick(self, index, text):
+        """Show the joystick function attached to button `index` (the click /
+        footswitch matrix keys) at 50% opacity in its bottom-right quarter;
+        clicking it emits joystick_clicked(index). Empty text hides it."""
+        if not (0 <= index < len(self.buttons)):
+            return
+        overlay = self.joystick_overlays.get(index)
+        if not text:
+            if overlay is not None:
+                overlay.hide()
+            return
+        btn = self.buttons[index]
+        if overlay is None:
+            overlay = QPushButton(btn)
+            overlay.setFocusPolicy(Qt.NoFocus)
+            overlay.setCursor(Qt.PointingHandCursor)
+            overlay.setStyleSheet(
+                "QPushButton { background: rgba(150, 60, 255, 128); color: rgba(255, 255, 255, 170);"
+                " border: none; border-radius: 4px; font-weight: bold; font-size: 8pt; padding: 0px; }")
+            overlay.clicked.connect(lambda _=False, i=index: self.joystick_clicked.emit(i))
+            # Right click on the overlay or its button opens the same menu
+            overlay.setContextMenuPolicy(Qt.CustomContextMenu)
+            overlay.customContextMenuRequested.connect(
+                lambda _pos, i=index: self.joystick_clicked.emit(i))
+            btn.setContextMenuPolicy(Qt.CustomContextMenu)
+            btn.customContextMenuRequested.connect(
+                lambda _pos, i=index: self._on_button_context_menu(i))
+            self.joystick_overlays[index] = overlay
+        w, h = btn.width(), btn.height()
+        overlay.setGeometry(w // 2, h // 2, w - w // 2, h - h // 2)
+        overlay.setText(text)
+        overlay.show()
+        overlay.raise_()
 
     def set_layer(self, layer, keyboard=None):
         """Update current layer and refresh button displays from keyboard"""
@@ -2505,9 +2549,9 @@ class KeymapEditor(BasicEditor):
                 background: transparent;
             }
             QPushButton:hover {
-                color: #fff;
-                background-color: #555;
-                border-color: #fff;
+                color: palette(button-text);
+                background-color: palette(light);
+                border-color: palette(highlight);
             }
         """)
         nav_help.setFocusPolicy(Qt.NoFocus)
@@ -2573,9 +2617,14 @@ class KeymapEditor(BasicEditor):
         self.container = KeyboardWidgetSimple(layout_editor)
         self.container.clicked.connect(self.on_key_clicked)
         self.container.deselected.connect(self.on_key_deselected)
+        # Keys dragged out of the keycode palette drop straight onto the layout.
+        self.container.set_drop_assign_enabled(True)
+        self.container.keycode_dropped.connect(self.on_keycode_dropped)
+        self.container.joystick_clicked.connect(self.on_joystick_overlay_clicked)
 
         # Connect encoder widget signals
         self.encoder_assign.clicked.connect(self.on_encoder_clicked)
+        self.encoder_assign.joystick_clicked.connect(self.on_encoder_joystick_clicked)
 
         # Create overlay container with encoder widget overlaying keyboard
         self.keyboard_overlay = OverlayContainer(self.container, self.encoder_assign)
@@ -2685,8 +2734,10 @@ class KeymapEditor(BasicEditor):
             self._apply_tuning_preset(name, description, generator)
         elif preset_type == PRESET_TYPE_KEYBOARD:
             self._apply_tuning_preset(name, description, generator)
-        elif preset_type == PRESET_TYPE_SINGLE_ROW:
-            self._apply_single_row_preset(name, description, generator)
+        elif preset_type == PRESET_TYPE_QB_ROW:
+            self._apply_quickbuild_fill(name, description, generator, column=False)
+        elif preset_type == PRESET_TYPE_QB_COLUMN:
+            self._apply_quickbuild_fill(name, description, generator, column=True)
 
     def _apply_tuning_preset(self, name, description, generator):
         """Show dialog for tuning preset with row selection checkboxes."""
@@ -2767,38 +2818,62 @@ class KeymapEditor(BasicEditor):
 
         self.refresh_layer_display()
 
-    def _apply_single_row_preset(self, name, description, generator):
-        """Show dialog for single-row preset with row picker."""
+    def _apply_quickbuild_fill(self, name, description, generator, column):
+        """Fill one row (14 keys) or one column (5 keys) with QuickBuild keys,
+        counting up from a starting QuickBuild number the user picks."""
+        rows, cols = 5, 14
+        length = rows if column else cols
+        what = "column" if column else "row"
+
         dlg = QDialog(None)
-        dlg.setWindowTitle(tr("KeymapEditor", "Apply Single-Row Preset"))
-        dlg.setMinimumWidth(300)
+        dlg.setWindowTitle(tr("KeymapEditor", "Fill {} with QuickBuild keys").format(what))
+        dlg.setMinimumWidth(340)
         layout = QVBoxLayout()
         dlg.setLayout(layout)
 
-        # Preset info
         info = QLabel(tr("KeymapEditor",
                          '<b>{}</b><br><i>{}</i>'.format(name, description)))
         info.setWordWrap(True)
         layout.addWidget(info)
         layout.addSpacing(8)
 
-        # Row picker
-        row_layout = QHBoxLayout()
-        row_layout.addWidget(QLabel(tr("KeymapEditor", "Apply to row:")))
-        row_spin = QSpinBox()
-        row_spin.setMinimum(1)
-        row_spin.setMaximum(5)
-        row_spin.setValue(1)  # Default to Row 1 (top)
-        row_spin.setToolTip("Row 1 = top, Row 5 = bottom")
-        row_layout.addWidget(row_spin)
-        row_layout.addStretch()
-        layout.addLayout(row_layout)
+        form = QGridLayout()
+        form.addWidget(QLabel(tr("KeymapEditor", "Apply to {}:").format(what)), 0, 0)
+        pos_spin = QSpinBox()
+        pos_spin.setMinimum(1)
+        pos_spin.setMaximum(cols if column else rows)
+        pos_spin.setValue(1)
+        pos_spin.setToolTip("Column 1 = left, Column 14 = right" if column
+                            else "Row 1 = top, Row 5 = bottom")
+        form.addWidget(pos_spin, 0, 1)
+        form.addWidget(QLabel(tr("KeymapEditor", "Start at QuickBuild:")), 1, 0)
+        start_spin = QSpinBox()
+        start_spin.setMinimum(1)
+        start_spin.setMaximum(100)
+        start_spin.setValue(1)
+        form.addWidget(start_spin, 1, 1)
+        form.setColumnStretch(2, 1)
+        layout.addLayout(form)
+
+        span = QLabel()
+        span.setStyleSheet("font-size: 9pt;")
+        layout.addWidget(span)
+
+        def update_span():
+            start = start_spin.value()
+            end = min(100, start + length - 1)
+            filled = end - start + 1
+            text = "Keys: QuickBuild {} to {}".format(start, end)
+            if filled < length:
+                text += " (the last {} key(s) are left unchanged)".format(length - filled)
+            span.setText(text)
+        start_spin.valueChanged.connect(update_span)
+        update_span()
 
         layout.addSpacing(8)
-
         warn = QLabel(tr("KeymapEditor",
-                         "This will overwrite the selected row on Layer {}.".format(
-                             self.current_layer + 1)))
+                         "This will overwrite the selected {} on Layer {}.".format(
+                             what, self.current_layer + 1)))
         warn.setStyleSheet("color: #c00; font-size: 9pt;")
         layout.addWidget(warn)
 
@@ -2810,13 +2885,13 @@ class KeymapEditor(BasicEditor):
         if dlg.exec_() != QDialog.Accepted:
             return
 
-        # User row 1-5 -> matrix row 0-4
-        matrix_row = row_spin.value() - 1
-        row_keycodes = generator()
-
+        pos = pos_spin.value() - 1
+        keycodes = generator(start_spin.value(), length)
         layer = self.current_layer
-        for col in range(min(14, len(row_keycodes))):
-            self.keyboard.set_key(layer, matrix_row, col, row_keycodes[col])
+        for i, kc in enumerate(keycodes):
+            # Column fills top to bottom, row fills left to right.
+            row, col = (i, pos) if column else (pos, i)
+            self.keyboard.set_key(layer, row, col, kc)
 
         self.refresh_layer_display()
 
@@ -2857,6 +2932,11 @@ class KeymapEditor(BasicEditor):
         self.container.update()
 
     def on_keycode_changed(self, code):
+        # Joystick functions are attached to the selected key, not placed on it.
+        fid = joystick_function_id(code)
+        if fid:
+            self._attach_joystick_to_selection(fid)
+            return
         # Check if encoder button is selected
         if self.encoder_assign.selected_button is not None:
             self.set_encoder_keycode(self.encoder_assign.selected_button, code)
@@ -2898,6 +2978,7 @@ class KeymapEditor(BasicEditor):
             self.container.set_scale(self.container.get_scale() - 0.1)
         else:
             self.container.set_scale(self.container.get_scale() + 0.1)
+        self.container.update_layout()
         self.refresh_layer_display()
 
     def rebuild(self, device):
@@ -2969,18 +3050,14 @@ class KeymapEditor(BasicEditor):
     def on_any_keycode(self):
         if self.container.active_key is None:
             return
-        current_code = self.code_for_widget(self.container.active_key)
-        if self.container.active_mask:
-            kc = Keycode.find_inner_keycode(current_code)
-            current_code = kc.qmk_id
-
-        self.dlg = AnyKeycodeDialog(current_code)
+        keycode_filter = keycode_filter_masked if self.container.active_mask else None
+        self.dlg = KeycodeSearchDialog(keycode_filter, self.container.window())
         self.dlg.finished.connect(self.on_dlg_finished)
         self.dlg.setModal(True)
         self.dlg.show()
 
     def on_dlg_finished(self, res):
-        if res > 0:
+        if res > 0 and self.dlg.value:
             self.on_keycode_changed(self.dlg.value)
 
     def code_for_widget(self, widget):
@@ -2993,7 +3070,10 @@ class KeymapEditor(BasicEditor):
     def refresh_layer_display(self):
         """ Refresh text on key widgets to display data corresponding to current layer """
 
-        self.container.update_layout()
+        # No container.update_layout() here: that re-derives every keycap's
+        # polygons/paths (~7 ms for 70 keys) and is only needed when the
+        # geometry changes (set_keys, resize, scale, layout options) — those
+        # paths call it themselves. This refresh only relabels the keys.
 
         from protocol.feature_names import get_feature_name_manager, FEATURE_LAYER
         mgr = get_feature_name_manager()
@@ -3013,8 +3093,83 @@ class KeymapEditor(BasicEditor):
         for widget in self.container.widgets:
             code = self.code_for_widget(widget)
             KeycodeDisplay.display_keycode(widget, code)
+        self._refresh_joystick_overlays()
         self.container.update()
         self.container.updateGeometry()
+
+    # ------------------------------------------------------------------
+    # Joystick functions attached to keys (active in Gaming Mode)
+    # ------------------------------------------------------------------
+
+    # Encoder-widget buttons that are real matrix keys: click, footswitch
+    ENCODER_MATRIX_KEYS = {2: (5, 0), 3: (5, 2)}
+
+    def _joystick_label(self, layer, row, col):
+        if self.keyboard is None or not hasattr(self.keyboard, "get_gaming_bind"):
+            return ""
+        return JOYSTICK_FUNCTION_LABELS.get(self.keyboard.get_gaming_bind(layer, row, col), "")
+
+    def _refresh_joystick_overlays(self):
+        layer = self.current_layer
+        for widget in self.container.widgets:
+            if isinstance(widget, EncoderWidget2) or widget.desc.row is None or widget.desc.row < 0:
+                widget.joystick_text = ""
+                widget.joystick_icon = None
+            else:
+                fid = self.keyboard.get_gaming_bind(layer, widget.desc.row, widget.desc.col) \
+                    if self.keyboard is not None and hasattr(self.keyboard, "get_gaming_bind") else 0
+                widget.joystick_text = JOYSTICK_FUNCTION_LABELS.get(fid, "")
+                widget.joystick_icon = JOYSTICK_FUNCTION_NAMES.get(fid)
+        for idx, (row, col) in self.ENCODER_MATRIX_KEYS.items():
+            self.encoder_assign.set_joystick(idx, self._joystick_label(layer, row, col))
+
+    def _set_joystick(self, row, col, fid):
+        """Attach joystick function `fid` (0 = remove) to row/col on the
+        current layer. Replaces whatever joystick the key had."""
+        if self.keyboard is None:
+            return
+        if not getattr(self.keyboard, "gaming_binds_supported", False):
+            QMessageBox.warning(None, "Joystick keys",
+                                "This keyboard needs a firmware update before joystick "
+                                "functions can be attached to keys.")
+            return
+        if not self.keyboard.set_gaming_bind(self.current_layer, row, col, fid):
+            QMessageBox.warning(None, "Joystick keys",
+                                "Could not save the joystick function to the keyboard.")
+        self._refresh_joystick_overlays()
+        self.container.update()
+
+    def _attach_joystick_to_selection(self, fid):
+        sel = self.encoder_assign.selected_button
+        if sel is not None:
+            if sel in self.ENCODER_MATRIX_KEYS:
+                self._set_joystick(*self.ENCODER_MATRIX_KEYS[sel], fid)
+            return  # encoder turns cannot hold a joystick function
+        key = self.container.active_key
+        if key is None or isinstance(key, EncoderWidget2):
+            return
+        if key.desc.row is None or key.desc.row < 0 or key.desc.col < 0:
+            return
+        self._set_joystick(key.desc.row, key.desc.col, fid)
+
+    def _joystick_remove_menu(self, row, col):
+        # Act on the pick instead of waiting in exec_(): the web build cannot
+        # run a nested event loop.
+        menu = QMenu(self.container)
+        act = menu.addAction(tr("KeymapEditor", "Remove Joystick button"))
+        act.triggered.connect(lambda _=False, r=row, c=col: self._set_joystick(r, c, 0))
+        menu.aboutToHide.connect(menu.deleteLater)
+        self._joystick_menu = menu
+        menu.popup(QCursor.pos())
+
+    def on_joystick_overlay_clicked(self, key):
+        if key is None or isinstance(key, EncoderWidget2):
+            return
+        self._joystick_remove_menu(key.desc.row, key.desc.col)
+
+    def on_encoder_joystick_clicked(self, index):
+        if index in self.ENCODER_MATRIX_KEYS:
+            self._joystick_remove_menu(*self.ENCODER_MATRIX_KEYS[index])
 
     def switch_layer(self, idx):
         self.container.deselect()
@@ -3060,7 +3215,7 @@ class KeymapEditor(BasicEditor):
         checkbox. Returns True when the action may proceed. The suppression is
         only persisted when the user proceeds (Yes), so a suppressed dialog can
         never block a later confirmation."""
-        settings = QSettings("Vial", "Vial")
+        settings = QSettings("MIDIswitch", "SwitchStation")
         if settings.value(suppress_key, False, type=bool):
             return True
         box = QMessageBox(self.widget())
@@ -3071,6 +3226,15 @@ class KeymapEditor(BasicEditor):
         box.setDefaultButton(QMessageBox.No)
         dont_show = QCheckBox(tr("KeymapEditor", "Do not show this message again"))
         box.setCheckBox(dont_show)
+        if sys.platform == "emscripten":
+            # The web build cannot wait for the answer (no nested event
+            # loop): show the warning as a notice and let the change go ahead.
+            box.setStandardButtons(QMessageBox.Ok)
+            box.setCheckBox(None)
+            box.setModal(False)
+            box.show()
+            self._nav_notice = box
+            return True
         ret = box.exec_()
         if ret == QMessageBox.Yes and dont_show.isChecked():
             settings.setValue(suppress_key, True)
@@ -3228,7 +3392,10 @@ class KeymapEditor(BasicEditor):
         # Deselect encoder buttons when keyboard is clicked
         self.encoder_assign.deselect()
 
-        self.refresh_layer_display()
+        # Selection only changed — repaint; the labels are already current
+        # (relabelling all keys here ran on every click AND every drag-paint
+        # move, on top of the relabel set_key just did).
+        self.container.update()
         if self.container.active_mask:
             self.tabbed_keycodes.set_keycode_filter(keycode_filter_masked)
         else:
@@ -3236,6 +3403,40 @@ class KeymapEditor(BasicEditor):
 
     def on_key_deselected(self):
         self.tabbed_keycodes.set_keycode_filter(None)
+
+    def on_keycode_dropped(self, key, mask, qmk_id):
+        """A palette keycode was dropped on ``key`` (see KeyboardWidget2
+        keycode_dropped): select that key and assign exactly like a palette
+        click would, then leave it selected (no select_next — the drop named
+        its target, so the next palette click still lands there)."""
+        if self.keyboard is None or key is None:
+            return
+        if joystick_function_id(qmk_id):
+            mask = False  # a joystick function attaches to the whole key
+        elif mask and not Keycode.is_basic(qmk_id):
+            return
+        # Run after the drop event returns: the drop is delivered inside the
+        # palette button's QDrag.exec_() loop, and the assignment can raise a
+        # modal warning (navigation-layer guard) that should not nest in it.
+        QTimer.singleShot(0, lambda: self._assign_dropped_keycode(key, mask, qmk_id))
+
+    def _assign_dropped_keycode(self, key, mask, qmk_id):
+        if self.keyboard is None or key not in self.container.widgets:
+            return
+        self.encoder_assign.deselect()
+        self.container.active_key = key
+        self.container.active_mask = mask
+        fid = joystick_function_id(qmk_id)
+        if fid:
+            if not isinstance(key, EncoderWidget2):
+                self._set_joystick(key.desc.row, key.desc.col, fid)
+            self.on_key_clicked()
+            return
+        if isinstance(key, EncoderWidget2):
+            self.set_key_encoder(qmk_id)
+        else:
+            self.set_key_matrix(qmk_id)
+        self.on_key_clicked()
 
     def on_encoder_clicked(self):
         """ Called when an encoder button is clicked """
@@ -3250,6 +3451,7 @@ class KeymapEditor(BasicEditor):
         if self.keyboard is None:
             return
 
+        self.container.update_layout()
         self.refresh_layer_display()
         self.keyboard.set_layout_options(self.layout_editor.pack())
 

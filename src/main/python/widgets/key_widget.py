@@ -1,7 +1,7 @@
 from PyQt5.QtCore import pyqtSignal
 
 from keycodes.keycodes import Keycode
-from any_keycode_dialog import AnyKeycodeDialog
+from keycode_search_dialog import KeycodeSearchDialog
 from widgets.keyboard_widget import KeyboardWidget
 from kle_serial import Key
 from tabbed_keycodes import TabbedKeycodes, keycode_filter_masked, keycode_filter_any
@@ -64,17 +64,14 @@ class KeyWidget(KeyboardWidget):
     def on_anykey(self):
         if self.active_key is None:
             return
-        if self.active_mask:
-            kc = Keycode.find_inner_keycode(self.keycode).qmk_id
-        else:
-            kc = self.keycode
-        self.dlg = AnyKeycodeDialog(kc)
+        keycode_filter = keycode_filter_masked if self.active_mask else self.keycode_filter
+        self.dlg = KeycodeSearchDialog(keycode_filter, self.window())
         self.dlg.finished.connect(self.on_dlg_finished)
         self.dlg.setModal(True)
         self.dlg.show()
 
     def on_dlg_finished(self, res):
-        if res > 0:
+        if res > 0 and self.dlg.value:
             self.on_keycode_changed(self.dlg.value)
 
     def update_display(self):

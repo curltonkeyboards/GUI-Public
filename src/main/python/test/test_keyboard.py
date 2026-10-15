@@ -5,6 +5,7 @@ import struct
 from keycodes.keycodes import Keycode
 from protocol.keyboard_comm import Keyboard
 from util import chunks, MSG_LEN
+from protocol.msw_protocol import build_ident_request
 
 LAYOUT_2x2 = """
 {"name":"test","vendorId":"0x0000","productId":"0x1111","lighting":"none","matrix":{"rows":2,"cols":2},"layouts":{"keymap":[["0,0","0,1"],["1,0","1,1"]]}}
@@ -34,6 +35,11 @@ class SimulatedDevice:
             out = bytes.fromhex(out)
         out += b"\x00" * (MSG_LEN - len(out))
         self.expect_data.append((inp, out))
+
+    def expect_ident_unsupported(self):
+        # a firmware without IDENT echoes the request with the error status set
+        req = build_ident_request()
+        self.expect(req, req[:5] + b"\x01")
 
     def expect_via_protocol(self, via_protocol):
         self.expect("01", struct.pack(">BH", 1, via_protocol))
@@ -100,6 +106,7 @@ class TestKeyboard(unittest.TestCase):
     @staticmethod
     def prepare_keyboard(layout, keymap, encoders=None):
         dev = SimulatedDevice()
+        dev.expect_ident_unsupported()
         dev.expect_via_protocol(9)
         dev.expect_keyboard_id(0)
         dev.expect_layout(layout)

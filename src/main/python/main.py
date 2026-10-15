@@ -62,7 +62,7 @@ class VialApplicationContext(ApplicationContext):
         result = QtWidgets.QApplication(sys.argv)
         #result.setApplicationName(self.build_settings["app_name"])
         result.setApplicationName("Curlton KeyStation")
-        result.setOrganizationDomain("vial.today")
+        result.setOrganizationDomain("midiswitch.com")
 
         #TODO: Qt sets applicationVersion on non-Linux platforms if the exe/pkg metadata is correctly configured.
         # https://doc.qt.io/qt-5/qcoreapplication.html#applicationVersion-prop

@@ -2,11 +2,11 @@
 import sys
 import sip
 
-from PyQt5.QtWidgets import QPushButton, QHBoxLayout, QWidget, QLabel, QTabWidget
+from PyQt5.QtWidgets import QPushButton, QHBoxLayout, QWidget, QLabel, QTabWidget, QProgressBar
 
 from editor.basic_editor import BasicEditor
 from macro.macro_action import ActionText, ActionTap, ActionDown, ActionUp
-from macro.macro_action_ui import ui_action
+from macro.macro_action_ui import ui_action, ui_for_action
 from macro.macro_key import KeyString, KeyDown, KeyUp, KeyTap
 from macro.macro_optimizer import macro_optimize
 from macro.macro_tab import MacroTab
@@ -15,6 +15,7 @@ from unlocker import Unlocker
 from util import tr
 from vial_device import VialKeyboard
 from tabbed_keycodes import TabbedKeycodes
+from widgets.keycode_button import install_click_away_deselect
 
 
 class MacroRecorder(BasicEditor):
@@ -58,17 +59,23 @@ class MacroRecorder(BasicEditor):
         self.tabs = QTabWidget()
         self.addWidget(self.tabs)
 
-        # Memory label
+        # Macro usage: percentage + a small bar (green, yellow above 80%, red above 90%)
         self.lbl_memory = QLabel()
+        self.bar_memory = QProgressBar()
+        self.bar_memory.setRange(0, 1000)
+        self.bar_memory.setTextVisible(False)
+        self.bar_memory.setFixedSize(140, 10)
 
         buttons = QHBoxLayout()
         buttons.addWidget(self.lbl_memory)
+        buttons.addWidget(self.bar_memory)
         buttons.addStretch()
 
         self.addLayout(buttons)
 
         # TabbedKeycodes always visible at the bottom
         self.tabbed_keycodes = TabbedKeycodes()
+        install_click_away_deselect(self.tabs, self._clear_key_selection)
         self.tabbed_keycodes.keycode_changed.connect(self.on_keycode_selected)
         self.addWidget(self.tabbed_keycodes)
 
@@ -137,13 +144,24 @@ class MacroRecorder(BasicEditor):
         self.selected_key_widget = widget
         widget.set_selected(True)
 
+    def _clear_key_selection(self):
+        """Click on empty space in the editor: unselect the selected key."""
+        w = self.selected_key_widget
+        self.selected_key_widget = None
+        if w is not None:
+            try:
+                if not sip.isdeleted(w):
+                    w.set_selected(False)
+            except RuntimeError:
+                pass
+
     def on_keycode_selected(self, keycode):
         """Handle keycode selection from TabbedKeycodes"""
         if self.selected_key_widget is not None:
             try:
                 # Check if the widget is still valid (not deleted)
                 if not sip.isdeleted(self.selected_key_widget):
-                    self.selected_key_widget.set_keycode(keycode)
+                    self.selected_key_widget.on_keycode_changed(keycode)
             except RuntimeError:
                 self.selected_key_widget = None
 
@@ -179,7 +197,7 @@ class MacroRecorder(BasicEditor):
         # merge: i.e. replace multiple instances of KeyDown with a single multi-key ActionDown, etc
         actions = self.keyboard.macro_deserialize(self.keyboard.macro_serialize(actions))
         for act in actions:
-            self.recording_tab.add_action(ui_action[type(act)](self.recording_tab.container, act))
+            self.recording_tab.add_action(ui_for_action(act)(self.recording_tab.container, act))
 
     def on_keystroke(self, keystroke):
         self.keystrokes.append(keystroke)
@@ -205,7 +223,7 @@ class MacroRecorder(BasicEditor):
 
         data = self.serialize()
         memory = len(data)
-        self.lbl_memory.setText("Memory used by macros: {}/{}".format(memory, self.keyboard.macro_memory))
+        self._show_macro_usage(memory, self.keyboard.macro_memory)
 
         # Check if anything changed: macro data, loop modes, sync flags, or names
         data_changed = data != self.keyboard.macro
@@ -218,8 +236,22 @@ class MacroRecorder(BasicEditor):
         for tab in self.macro_tabs[:self.keyboard.macro_count]:
             tab.set_save_enabled(save_enabled)
 
-        self.lbl_memory.setStyleSheet("QLabel { color: red; }" if memory > self.keyboard.macro_memory else "")
         self.update_tab_titles()
+
+    def _show_macro_usage(self, used, total):
+        pct = (100.0 * used / total) if total else 0.0
+        self.lbl_memory.setText("Macro usage: {:.0f}%".format(pct))
+        if pct > 90:
+            color = "#dc2626"
+        elif pct > 80:
+            color = "#eab308"
+        else:
+            color = "#22c55e"
+        self.lbl_memory.setStyleSheet("QLabel { color: #dc2626; font-weight: bold; }" if used > total else "")
+        self.bar_memory.setValue(min(1000, int(round(pct * 10))))
+        self.bar_memory.setStyleSheet(
+            "QProgressBar { border: 1px solid palette(mid); border-radius: 4px; background: palette(base); }"
+            "QProgressBar::chunk { background: %s; border-radius: 3px; }" % color)
 
     def serialize(self):
         macros = []
@@ -233,7 +265,7 @@ class MacroRecorder(BasicEditor):
         for macro, tab in zip(macros, self.macro_tabs[:self.keyboard.macro_count]):
             tab.clear()
             for act in macro:
-                tab.add_action(ui_action[type(act)](tab.container, act))
+                tab.add_action(ui_for_action(act)(tab.container, act))
         # Load loop modes from keyboard
         loop_modes = self.keyboard.get_macro_loop_modes()
         for x, mode in enumerate(loop_modes[:self.keyboard.macro_count]):

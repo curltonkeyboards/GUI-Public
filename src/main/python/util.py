@@ -60,8 +60,19 @@ def is_hid_transfer_active():
     return _hid_transfer_active
 
 
-# For Vial keyboard
-VIAL_SERIAL_NUMBER_MAGIC = "vial:f64c2b3c"
+# Device identity: the MIDIswitch keyboard's USB vendor/product IDs and the
+# vendor usage page/usage of its configurator HID collection. These are the
+# interface contract with the keyboard; the keyboard's serial number is a
+# per-unit hardware ID and is not used for matching.
+MIDISWITCH_USB_VID = 0xB1D7
+MIDISWITCH_USB_PID = 0x4012
+RAW_HID_USAGE_PAGE = 0xFF4D
+RAW_HID_USAGE = 0x53
+
+
+def is_midiswitch_usb_id(dev):
+    """True if an enumerated HID device carries the keyboard's VID/PID."""
+    return dev.get("vendor_id") == MIDISWITCH_USB_VID and dev.get("product_id") == MIDISWITCH_USB_PID
 
 # For bootloader
 VIBL_SERIAL_NUMBER_MAGIC = "vibl:d4f8159c"
@@ -88,7 +99,7 @@ MIDISWITCH_PRODUCT_STRING = "midiswitch"
 # Vial keyboard UID for MIDIswitch (firmware VIAL_KEYBOARD_UID, little-endian uint64)
 MIDISWITCH_KEYBOARD_UID = 0xB26D0425F36AC4F4
 # Latest firmware version bundled with this GUI release (major, minor, patch).
-# Bump in lockstep with the firmware's MIDISWITCH_FW_VERSION_* in config.h so the
+# Bump in lockstep with each keyboard firmware release so the
 # startup "update available" check stays accurate.
 LATEST_FIRMWARE_VERSION = (1, 0, 0)
 
@@ -149,7 +160,7 @@ def hid_send(dev, msg, retries=1):
 
 
 def is_rawhid(desc, quiet):
-    if desc["usage_page"] != 0xFF60 or desc["usage"] != 0x61:
+    if desc["usage_page"] != RAW_HID_USAGE_PAGE or desc["usage"] != RAW_HID_USAGE:
         if not quiet:
             logging.warning("is_rawhid: {} does not match - usage_page={:04X} usage={:02X}".format(
                 desc["path"], desc["usage_page"], desc["usage"]))
@@ -174,8 +185,12 @@ def is_rawhid(desc, quiet):
     return True
 
 
+# sideload vid/pid pair that selects the virtual MIDIswitch (see load_virtual)
+VIRTUAL_KEYBOARD_ID = -2
+
+
 def find_vial_devices(via_stack_json, sideload_vid=None, sideload_pid=None, quiet=False):
-    from vial_device import VialBootloader, VialKeyboard, VialDummyKeyboard
+    from vial_device import VialBootloader, VialKeyboard, VialDummyKeyboard, VialVirtualKeyboard
 
     # Startup logging
     try:
@@ -198,14 +213,14 @@ def find_vial_devices(via_stack_json, sideload_vid=None, sideload_pid=None, quie
                 ))
             if is_rawhid(dev, quiet):
                 filtered.append(VialKeyboard(dev, sideload=True))
-        elif VIAL_SERIAL_NUMBER_MAGIC in dev["serial_number"] and is_our_keyboard(dev):
+        elif is_midiswitch_usb_id(dev) and is_our_keyboard(dev):
             if not quiet:
-                logging.info("Matching VID={:04X}, PID={:04X}, serial={}, path={} - vial serial magic".format(
+                logging.info("Matching VID={:04X}, PID={:04X}, serial={}, path={} - MIDIswitch VID/PID".format(
                     dev["vendor_id"], dev["product_id"], dev["serial_number"], dev["path"]
                 ))
             if is_rawhid(dev, quiet):
                 filtered.append(VialKeyboard(dev))
-        elif VIBL_SERIAL_NUMBER_MAGIC in dev["serial_number"]:
+        elif VIBL_SERIAL_NUMBER_MAGIC in (dev.get("serial_number") or ""):
             if not quiet:
                 logging.info("Matching VID={:04X}, PID={:04X}, serial={}, path={} - vibl serial magic".format(
                     dev["vendor_id"], dev["product_id"], dev["serial_number"], dev["path"]
@@ -221,8 +236,10 @@ def find_vial_devices(via_stack_json, sideload_vid=None, sideload_pid=None, quie
 
     if sideload_vid == sideload_pid == 0:
         filtered.append(VialDummyKeyboard())
+    elif sideload_vid == sideload_pid == VIRTUAL_KEYBOARD_ID:
+        filtered.append(VialVirtualKeyboard())
 
-    startup_log(f"Found {len(filtered)} Vial-compatible device(s)")
+    startup_log(f"Found {len(filtered)} MIDIswitch device(s)")
     return filtered
 
 
@@ -242,7 +259,7 @@ def init_logger():
     logging.basicConfig(level=logging.INFO)
     directory = QStandardPaths.writableLocation(QStandardPaths.AppLocalDataLocation)
     pathlib.Path(directory).mkdir(parents=True, exist_ok=True)
-    path = os.path.join(directory, "vial.log")
+    path = os.path.join(directory, "switchstation.log")
     handler = RotatingFileHandler(path, maxBytes=5 * 1024 * 1024, backupCount=5)
     handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s"))
     logging.getLogger().addHandler(handler)
@@ -363,7 +380,6 @@ class KeycodeDisplay:
             text = custom
         else:
             text = cls.get_label(code)
-        tooltip = Keycode.tooltip(code)
         mask = Keycode.is_mask(code)
         mask_text = ""
         inner = Keycode.find_inner_keycode(code)
@@ -372,17 +388,17 @@ class KeycodeDisplay:
         if mask and not custom:
             text = text.split("\n")[0]
         widget.masked = mask if not custom else False
+        from widgets.gamepad_icon_button import has_gamepad_icon
+        widget.icon_id = code if (not custom and has_gamepad_icon(code)) else None
         widget.setText(text)
         widget.setMaskText(mask_text if not custom else "")
-        widget.setToolTip(tooltip)
-        if cls.code_is_overriden(code):
-            widget.setColor(QApplication.palette().color(QPalette.Link))
-        else:
-            widget.setColor(None)
-        if inner and mask and cls.code_is_overriden(inner.qmk_id):
-            widget.setMaskColor(QApplication.palette().color(QPalette.Link))
-        else:
-            widget.setMaskColor(None)
+        # No hover tooltip: keys never show their keycode id (e.g. KC_T).
+        widget.setToolTip("")
+        # Keys relabelled by a language layout keep the normal text colour: the
+        # theme's Link colour marks MIDI keys elsewhere (actuation views), so
+        # tinting the relabelled letters made them look like MIDI keys.
+        widget.setColor(None)
+        widget.setMaskColor(None)
 
     @classmethod
     def set_keymap_override(cls, override):
@@ -409,8 +425,7 @@ class KeycodeDisplay:
                 widget.setStyleSheet("QPushButton {}")
             elif qmk_id in KeycodeDisplay.keymap_override:
                 label = KeycodeDisplay.keymap_override[qmk_id]
-                highlight_color = QApplication.palette().color(QPalette.Link).getRgb()
-                widget.setStyleSheet("QPushButton {color: rgb%s;}" % str(highlight_color))
+                widget.setStyleSheet("QPushButton {}")
             else:
                 label = widget.keycode.label
                 widget.setStyleSheet("QPushButton {}")

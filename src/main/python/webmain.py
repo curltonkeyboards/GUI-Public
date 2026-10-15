@@ -56,7 +56,118 @@ def web_get_resource(name):
     return "/usr/local/" + name
 
 
-def main(app):
+_open_dialogs = []  # keeps non-blocking dialogs alive until closed
+
+
+def _show_non_blocking(dlg):
+    _open_dialogs.append(dlg)
+    dlg.finished.connect(lambda _r, d=dlg: _open_dialogs.remove(d) if d in _open_dialogs else None)
+    dlg.show()
+
+
+def _make_dialogs_non_blocking():
+    """The browser build cannot run a nested event loop (exec_ would need
+    emscripten_sleep and aborts the whole page). Show dialogs without waiting
+    and hand the caller a safe answer: OK for notices, No for questions,
+    Rejected for other dialogs, no action for menus."""
+    from PyQt5.QtWidgets import QDialog, QMessageBox, QMenu
+
+    def dialog_exec(self, *args):
+        _show_non_blocking(self)
+        return QDialog.Rejected
+
+    def msgbox_exec(self, *args):
+        _show_non_blocking(self)
+        buttons = self.standardButtons()
+        if buttons & QMessageBox.No:
+            return QMessageBox.No
+        if buttons & QMessageBox.Cancel:
+            return QMessageBox.Cancel
+        return QMessageBox.Ok
+
+    def notice(icon):
+        def show(parent, title, text, *args, **kwargs):
+            box = QMessageBox(icon, title, text, QMessageBox.Ok, parent)
+            _show_non_blocking(box)
+            return QMessageBox.Ok
+        return staticmethod(show)
+
+    def question(parent, title, text, *args, **kwargs):
+        box = QMessageBox(QMessageBox.Question, title, text, QMessageBox.Ok, parent)
+        _show_non_blocking(box)
+        return QMessageBox.No
+
+    def about(parent, title, text):
+        box = QMessageBox(QMessageBox.Information, title, text, QMessageBox.Ok, parent)
+        _show_non_blocking(box)
+
+    def menu_exec(self, *args):
+        if args:
+            self.popup(args[0])
+        return None
+
+    QDialog.exec_ = dialog_exec
+    QDialog.exec = dialog_exec
+    QMessageBox.exec_ = msgbox_exec
+    QMessageBox.exec = msgbox_exec
+    QMessageBox.warning = notice(QMessageBox.Warning)
+    QMessageBox.information = notice(QMessageBox.Information)
+    QMessageBox.critical = notice(QMessageBox.Critical)
+    QMessageBox.question = staticmethod(question)
+    QMessageBox.about = staticmethod(about)
+    QMenu.exec_ = menu_exec
+    QMenu.exec = menu_exec
+
+
+# Startup log milestones -> (progress %, text shown on the loading page).
+_PROGRESS_STEPS = [
+    ("MainWindow.__init__ starting", 5, "Starting Switchstation"),
+    ("Creating UI editors", 8, "Building the editors"),
+    ("TriggerSettingsTab (", 15, "Building the editors"),
+    ("Core editors", 25, "Building the editors"),
+    ("MIDI configurators", 40, "Building the MIDI tools"),
+    ("Starting initial device refresh", 45, "Looking for your MIDIswitch"),
+    ("Keyboard reload starting", 50, "Reading the keyboard"),
+    ("Loading keymap", 55, "Reading the keymap"),
+    ("Keyboard reload complete", 62, "Keyboard loaded"),
+    ("MainWindow.rebuild() starting", 65, "Preparing the pages"),
+    ("rebuild trigger_settings", 72, "Preparing the pages"),
+    ("rebuild macro_recorder", 78, "Preparing the pages"),
+    ("rebuild() total", 82, "Opening the pages"),
+    ("refresh_tabs()", 99, "Almost ready"),
+]
+
+
+def _hook_progress():
+    """Forward the startup log to the loading page as a progress bar."""
+    try:
+        import vialglue
+        from startup_dialog import StartupLogger
+    except ImportError:
+        return
+    if not hasattr(vialglue, "notify_progress"):
+        return
+    state = {"pct": 0, "keyboard": False}
+
+    def on_message(msg):
+        if "Keyboard reload complete" in msg:
+            state["keyboard"] = True
+        for key, pct, text in _PROGRESS_STEPS:
+            # The window's first, keyboard-less pass also rebuilds and
+            # refreshes the pages; only the pass with a keyboard counts.
+            if pct >= 65 and not state["keyboard"]:
+                continue
+            if key in msg and pct > state["pct"]:
+                state["pct"] = pct
+                vialglue.notify_progress(pct, text)
+                break
+
+    StartupLogger.get_instance().message_logged.connect(on_message)
+
+
+def main(app, demo=False):
+    _make_dialogs_non_blocking()
+    _hook_progress()
     font = app.font()
     font.setPointSize(10)
     app.setFont(font)
@@ -65,6 +176,15 @@ def main(app):
     with open(app.get_resource("build_settings.json"), "r") as inf:
         app.build_settings = json.loads(inf.read())
     qt_exception_hook = UncaughtHook()
+    app.defer_ready = demo
     window = MainWindow(app)
     window.show()
     app.processEvents()
+    if demo:
+        # No keyboard: open the software MIDIswitch, which answers the app
+        # exactly like a factory-fresh keyboard.
+        window.autorefresh.load_virtual()
+        window.update()
+        app.processEvents()
+        import vialglue
+        vialglue.notify_ready()

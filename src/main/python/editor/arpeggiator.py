@@ -33,6 +33,8 @@ class DebugConsole(QWidget):
 
     def __init__(self, title="Debug Console", parent=None):
         super().__init__(parent)
+        from widgets.debug_windows import DebugWindows
+        DebugWindows.register(self)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
@@ -4025,7 +4027,7 @@ class Arpeggiator(BasicEditor):
             # Load the currently selected preset from device
             self.load_preset()
         else:
-            self.update_status("Connect a Vial device to use arpeggiator")
+            self.update_status("Connect a MIDIswitch to use the arpeggiator")
 
     def activate(self):
         """Tab activated"""
