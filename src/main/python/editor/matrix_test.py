@@ -1402,6 +1402,13 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             combo.blockSignals(False)
             combo.setEnabled(self.stop_mode_supported)
 
+    def on_perf_mode_changed(self, index):
+        """Display smoothness changed - apply + save on the keyboard at once."""
+        if self.device and isinstance(self.device, VialKeyboard):
+            mode = self.perf_mode.currentData()
+            if mode is not None:
+                self.device.keyboard.set_perf_mode(mode)
+
     def on_lcd_theme_changed(self, index):
         """LCD colour theme changed - apply immediately to the keyboard.
 
@@ -2593,6 +2600,35 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             self.lcd_theme.addItem(_name, _idx)
         self.lcd_theme.currentIndexChanged.connect(self.on_lcd_theme_changed)
 
+        # Display smoothness — how much time the keyboard gives the screen and
+        # lights each pass vs. MIDI timing. Own HID command, applies instantly.
+        perf_label = QWidget()
+        perf_label_layout = QHBoxLayout()
+        perf_label_layout.setContentsMargins(0, 0, 0, 0)
+        perf_label_layout.setSpacing(5)
+        perf_label_layout.addWidget(self.create_help_label(
+            "How the keyboard shares its time between the screen/lights and MIDI.\n"
+            "Responsive: tightest note timing, the screen and lights update less smoothly.\n"
+            "Balanced: the default.\n"
+            "Smooth / Smoothest: smoother screen and lighting animations, notes can be\n"
+            "up to a few milliseconds later while the screen is busy.\n"
+            "Applies and saves to the keyboard instantly."
+        ))
+        perf_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Smoothness:")))
+        perf_label.setLayout(perf_label_layout)
+        self._adv_perf_label = perf_label
+        self.perf_mode = ArrowComboBox()
+        self.perf_mode.setMinimumWidth(120)
+        self.perf_mode.setMinimumHeight(25)
+        self.perf_mode.setMaximumHeight(25)
+        self.perf_mode.setEditable(True)
+        self.perf_mode.lineEdit().setReadOnly(True)
+        self.perf_mode.lineEdit().setAlignment(Qt.AlignCenter)
+        for _idx, _name in enumerate(["Responsive", "Balanced", "Smooth", "Smoothest"]):
+            self.perf_mode.addItem(_name, _idx)
+        self.perf_mode.setCurrentIndex(1)
+        self.perf_mode.currentIndexChanged.connect(self.on_perf_mode_changed)
+
         # SC Light Mode with help
         guide_lights_label = QWidget()
         guide_lights_label_layout = QHBoxLayout()
@@ -3224,15 +3260,17 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         display_layout.setHorizontalSpacing(25)
         display_layout.addWidget(self._adv_lcd_theme_label, 0, 0)
         display_layout.addWidget(self.lcd_theme, 0, 1)
+        display_layout.addWidget(self._adv_perf_label, 3, 0)
+        display_layout.addWidget(self.perf_mode, 3, 1)
         display_layout.addWidget(self._adv_guide_lights_label, 1, 0)
         display_layout.addWidget(self.smart_chord_light_mode, 1, 1)
         display_layout.addWidget(self._adv_rgb_layer_label, 2, 0)
         display_layout.addWidget(self.custom_layer_animations, 2, 1)
         note = QLabel(tr("MIDIswitchSettingsConfigurator",
-            "LCD Theme applies and saves instantly. Guide Lights and RGB Layer Mode are part of\n"
+            "LCD Theme and Smoothness apply and save instantly. Guide Lights and RGB Layer Mode are part of\n"
             "the MIDI Settings and are saved with them (Save as Default / Save to Slot)."))
         note.setStyleSheet("color: gray; font-size: 9pt;")
-        display_layout.addWidget(note, 3, 0, 1, 2)
+        display_layout.addWidget(note, 4, 0, 1, 2)
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         btn_save_default = QPushButton(tr("MIDIswitchSettingsConfigurator", "Save as Default"))
@@ -3242,7 +3280,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         btn_save_default.setStyleSheet("QPushButton { border-radius: 5px; }")
         btn_save_default.clicked.connect(lambda: self.on_save_slot(0))
         btn_row.addWidget(btn_save_default)
-        display_layout.addLayout(btn_row, 4, 0, 1, 2)
+        display_layout.addLayout(btn_row, 5, 0, 1, 2)
         display_group.setLayout(display_layout)
         display_row = QHBoxLayout()
         display_row.addStretch()
@@ -3910,6 +3948,14 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                 self.lcd_theme.blockSignals(True)
                 set_combo_by_data(self.lcd_theme, theme_idx, 0)
                 self.lcd_theme.blockSignals(False)
+            perf = self.device.keyboard.get_perf_mode()
+            self.perf_mode.blockSignals(True)
+            if perf is not None:
+                set_combo_by_data(self.perf_mode, perf[0], 1)
+            self.perf_mode.setEnabled(perf is not None)
+            self.perf_mode.setToolTip("" if perf is not None else
+                                      "Requires a firmware update")
+            self.perf_mode.blockSignals(False)
 
             # Channel Articulations enable is a global carried over its own HID
             # command (not the per-slot packet); fetch + populate without echoing.
