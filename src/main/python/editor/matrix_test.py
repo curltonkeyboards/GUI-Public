@@ -873,7 +873,11 @@ class ThruLoopConfigurator(BasicEditor):
             "Moves the notes of every new loop recording and overdub to the nearest\n"
             "grid line at the loop's tempo (note starts and ends both snap; a note\n"
             "shorter than half a step is kept one step long). CC and aftertouch are\n"
-            "not moved. Loops already recorded are not changed.\n"
+            "not moved.\n"
+            "Changing it also re-snaps loops already recorded, using their current\n"
+            "timing: a coarser grid moves their notes, a finer grid or Off leaves\n"
+            "them as they are (the original timing is not kept). A playing loop is\n"
+            "re-snapped when it next starts over.\n"
             "Applies and saves to the keyboard instantly.")
         self.loop_snap.setToolTip(self._loop_snap_help)
         self.loop_snap.currentIndexChanged.connect(self.on_loop_snap_changed)
