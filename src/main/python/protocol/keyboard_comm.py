@@ -77,6 +77,7 @@ HID_CMD_NAV_LAYER = 0x97  # Get/set the on-device menu navigation layer (sub 0=G
 HID_CMD_DAW = 0x99  # Get/set the default DAW (sub 0=GET, 1=SET)
 HID_CMD_PERF = 0x9B  # Get/set the LCD smoothness mode (sub 0=GET, 1=SET)
 HID_CMD_LOOP_SNAP = 0x9C  # Get/set the loop note snap grid (sub 0=GET, 1=SET)
+HID_CMD_UPDATE_MODE = 0x9D  # Firmware update mode (sub 0=QUERY, 1=ENTER)
 HID_CMD_GAMING_BIND = 0x9A  # Joystick functions attached to keys (sub 0=GET, 1=SET, 2=CLEAR)
 HID_CMD_SET_KEYBOARD_PARAM_SINGLE = 0xE8  # Set individual parameter (changed from 0xBD collision)
 
@@ -1793,6 +1794,41 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         except Exception:
             return False
 
+    def get_update_mode_info(self):
+        """Ask whether the keyboard can enter firmware-update mode.
+
+        Returns (bootloader_kind, busy), or None when the keyboard does not
+        support it. bootloader_kind 1 = ST DFU. busy = a loop is recording,
+        so enter_update_mode() would be refused.
+        """
+        try:
+            packet = self._create_hid_packet(HID_CMD_UPDATE_MODE, 0, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if (not data or len(data) < 7 or data[3] != HID_CMD_UPDATE_MODE
+                    or data[4] != 0x01 or data[5] == 0):
+                return None
+            return data[5], bool(data[6])
+        except Exception:
+            return None
+
+    def enter_update_mode(self):
+        """Reboot the keyboard into its bootloader.
+
+        Returns "ok" (it drops off USB shortly after this reply), "busy"
+        (a loop is recording) or None (not supported / no reply).
+        """
+        try:
+            packet = self._create_hid_packet(HID_CMD_UPDATE_MODE, 1, b"UPD")
+            data = self.usb_send(self.dev, packet, retries=3)
+            if not data or len(data) < 6 or data[3] != HID_CMD_UPDATE_MODE:
+                return None
+            if data[4] == 0x01:
+                return "ok"
+            if data[4] == 0x02:
+                return "busy"
+            return None
+        except Exception:
+            return None
     def get_perf_mode(self):
         """Get the display smoothness mode (0 Responsive .. 3 Smoothest).
 
