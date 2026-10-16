@@ -76,6 +76,7 @@ HID_CMD_KEYBOARD_CLONE = 0x94  # Whole-EEPROM clone (sub 0=INFO, 1=READ, 2=WRITE
 HID_CMD_NAV_LAYER = 0x97  # Get/set the on-device menu navigation layer (sub 0=GET, 1=SET)
 HID_CMD_DAW = 0x99  # Get/set the default DAW (sub 0=GET, 1=SET)
 HID_CMD_PERF = 0x9B  # Get/set the LCD smoothness mode (sub 0=GET, 1=SET)
+HID_CMD_LOOP_SNAP = 0x9C  # Get/set the loop note snap grid (sub 0=GET, 1=SET)
 HID_CMD_GAMING_BIND = 0x9A  # Joystick functions attached to keys (sub 0=GET, 1=SET, 2=CLEAR)
 HID_CMD_SET_KEYBOARD_PARAM_SINGLE = 0xE8  # Set individual parameter (changed from 0xBD collision)
 
@@ -1763,6 +1764,32 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
             data = self.usb_send(self.dev, packet, retries=3)
             return (bool(data) and len(data) > 5 and data[3] == HID_CMD_NAV_LAYER
                     and data[4] == 0x01 and data[5] == int(layer))
+        except Exception:
+            return False
+
+    def get_loop_snap(self):
+        """Get the loop note snap grid (0 Off, 1 = 1/64, 2 = 1/32, 3 = 1/16).
+
+        Returns the value, or None when the keyboard does not support the
+        command. Response: status@4 (1 = ok), value@5, count@6.
+        """
+        try:
+            packet = self._create_hid_packet(HID_CMD_LOOP_SNAP, 0, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if (not data or len(data) < 7 or data[3] != HID_CMD_LOOP_SNAP
+                    or data[4] != 0x01 or data[6] == 0):
+                return None
+            return data[5]
+        except Exception:
+            return None
+
+    def set_loop_snap(self, value):
+        """Set the loop note snap grid (applies + saves immediately)."""
+        try:
+            packet = self._create_hid_packet(HID_CMD_LOOP_SNAP, 1, [int(value) & 0xFF])
+            data = self.usb_send(self.dev, packet, retries=3)
+            return (bool(data) and len(data) > 5 and data[3] == HID_CMD_LOOP_SNAP
+                    and data[4] == 0x01 and data[5] == int(value))
         except Exception:
             return False
 

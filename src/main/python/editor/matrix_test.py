@@ -858,6 +858,27 @@ class ThruLoopConfigurator(BasicEditor):
         self.macro_sync_to_loop.stateChanged.connect(self.on_macro_sync_changed)
         basic_layout.addWidget(self.macro_sync_to_loop, 3, 0, 1, 2)
 
+        # Note snap grid: notes of new loop takes / overdubs move to the
+        # nearest grid line. Global for all loops; applies + saves instantly.
+        basic_layout.addWidget(QLabel(tr("ThruLoopConfigurator", "Note Snap Grid")), 4, 0)
+        self.loop_snap = ArrowComboBox()
+        self.loop_snap.setMinimumWidth(150)
+        self.loop_snap.setMaximumHeight(30)
+        self.loop_snap.setEditable(True)
+        self.loop_snap.lineEdit().setReadOnly(True)
+        self.loop_snap.lineEdit().setAlignment(Qt.AlignCenter)
+        for _val, _name in ((0, "Off"), (1, "1/64"), (2, "1/32"), (3, "1/16")):
+            self.loop_snap.addItem(_name, _val)
+        self._loop_snap_help = (
+            "Moves the notes of every new loop recording and overdub to the nearest\n"
+            "grid line at the loop's tempo (note starts and ends both snap; a note\n"
+            "shorter than half a step is kept one step long). CC and aftertouch are\n"
+            "not moved. Loops already recorded are not changed.\n"
+            "Applies and saves to the keyboard instantly.")
+        self.loop_snap.setToolTip(self._loop_snap_help)
+        self.loop_snap.currentIndexChanged.connect(self.on_loop_snap_changed)
+        basic_layout.addWidget(self.loop_snap, 4, 1)
+
         # LoopChop Settings (below Basic Settings in left column)
         self.loopchop_group = QGroupBox(tr("ThruLoopConfigurator", "LoopChop"))
         self.loopchop_group.setFixedWidth(400)
@@ -1093,6 +1114,13 @@ class ThruLoopConfigurator(BasicEditor):
             self.master_cc.setEnabled(not separate)
         if self.nav_widget:
             self.nav_widget.setEnabled(separate)
+
+    def on_loop_snap_changed(self, index):
+        """Note snap grid changed - apply + save on the keyboard at once."""
+        if self.device and isinstance(self.device, VialKeyboard):
+            value = self.loop_snap.currentData()
+            if value is not None:
+                self.device.keyboard.set_loop_snap(value)
 
     def on_macro_sync_changed(self):
         """Send macro sync to loop setting to keyboard in real-time"""
@@ -1354,6 +1382,17 @@ class ThruLoopConfigurator(BasicEditor):
         # Load ThruLoop configuration from keyboard
         if hasattr(self.device.keyboard, 'thruloop_config') and self.device.keyboard.thruloop_config:
             self.apply_config(self.device.keyboard.thruloop_config)
+
+        # Note snap grid: its own command, loaded without echoing it back.
+        snap = self.device.keyboard.get_loop_snap()
+        self.loop_snap.blockSignals(True)
+        if snap is not None:
+            idx = self.loop_snap.findData(snap)
+            self.loop_snap.setCurrentIndex(idx if idx >= 0 else 0)
+        self.loop_snap.setEnabled(snap is not None)
+        self.loop_snap.setToolTip(self._loop_snap_help if snap is not None
+                                  else "Requires a firmware update")
+        self.loop_snap.blockSignals(False)
 
 class MIDIswitchSettingsConfigurator(BasicEditor):
 
