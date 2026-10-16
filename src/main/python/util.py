@@ -190,7 +190,9 @@ VIRTUAL_KEYBOARD_ID = -2
 
 
 def find_vial_devices(via_stack_json, sideload_vid=None, sideload_pid=None, quiet=False):
-    from vial_device import VialBootloader, VialKeyboard, VialDummyKeyboard, VialVirtualKeyboard
+    from vial_device import VialBootloader, VialKeyboard, VialDummyKeyboard, VialVirtualKeyboard, \
+        MswBootloader
+    from protocol.msw_updater import is_bootloader_desc
 
     # Startup logging
     try:
@@ -206,7 +208,13 @@ def find_vial_devices(via_stack_json, sideload_vid=None, sideload_pid=None, quie
 
     filtered = []
     for dev in all_devices:
-        if dev["vendor_id"] == sideload_vid and dev["product_id"] == sideload_pid:
+        if is_bootloader_desc(dev):
+            if not quiet:
+                logging.info("Matching VID={:04X}, PID={:04X}, serial={}, path={} - update mode".format(
+                    dev["vendor_id"], dev["product_id"], dev["serial_number"], dev["path"]
+                ))
+            filtered.append(MswBootloader(dev))
+        elif dev["vendor_id"] == sideload_vid and dev["product_id"] == sideload_pid:
             if not quiet:
                 logging.info("Trying VID={:04X}, PID={:04X}, serial={}, path={} - sideload".format(
                     dev["vendor_id"], dev["product_id"], dev["serial_number"], dev["path"]
