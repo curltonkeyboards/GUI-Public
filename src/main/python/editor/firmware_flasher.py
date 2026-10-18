@@ -8,8 +8,8 @@ Update flow for a connected keyboard:
   4. wait for the keyboard to restart, then restore the backup —
      converted forward when the new firmware stores settings differently
 
-A keyboard found already in update mode (an interrupted update, or ESC held
-at power-on) can be flashed directly, and offers to restore the newest
+A keyboard found already in update mode (an interrupted update, or no
+firmware installed) can be flashed directly, and offers to restore the newest
 backup taken for it.
 """
 import datetime
