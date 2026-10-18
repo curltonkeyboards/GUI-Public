@@ -250,6 +250,19 @@ def _migrate_v8_to_v9(blob, notes):
         blob[base:base + size] = bytes(size)
     notes.append("Joystick keys: new in this firmware, start empty.")
 
+
+V10_PERF_BASE = 60528
+V10_PERF_SIZE = 3
+V10_SNAP_BASE = 60531
+V10_SNAP_SIZE = 3
+
+
+def _migrate_v9_to_v10(blob, notes):
+    blob[V10_PERF_BASE:V10_PERF_BASE + V10_PERF_SIZE] = bytes(V10_PERF_SIZE)
+    blob[V10_SNAP_BASE:V10_SNAP_BASE + V10_SNAP_SIZE] = bytes(V10_SNAP_SIZE)
+    notes.append("Display smoothness: new in this firmware, starts at Balanced.")
+    notes.append("Loop snap grid: new in this firmware, starts Off.")
+
 _MIGRATIONS = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -259,6 +272,7 @@ _MIGRATIONS = {
     6: _migrate_v6_to_v7,
     7: _migrate_v7_to_v8,
     8: _migrate_v8_to_v9,
+    9: _migrate_v9_to_v10,
 }
 
 

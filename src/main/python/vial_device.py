@@ -110,6 +110,13 @@ class VialBootloader(VialDevice):
         return data
 
 
+class MswBootloader(VialDevice):
+    """The keyboard in update mode (see protocol/msw_updater.py)."""
+
+    def title(self):
+        return "MIDIswitch (update mode)"
+
+
 class VialDummyKeyboard(VialKeyboard):
 
     def __init__(self):

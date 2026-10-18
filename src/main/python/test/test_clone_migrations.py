@@ -17,6 +17,7 @@ from protocol.clone_migrations import (
     V7_DYN_ENTRY, V7_DYN_KO_NEW_BASE, V7_DYN_KO_NEW_COUNT, V7_DYN_SPAN_END,
     V8_MOUSE_TIMING_BASE, V8_MOUSE_TIMING_SIZE,
     V9_GBIND_REGIONS,
+    V10_PERF_BASE, V10_PERF_SIZE, V10_SNAP_BASE, V10_SNAP_SIZE,
 )
 from protocol import clone_migrations
 
@@ -287,6 +288,32 @@ class TestCloneMigrationV8ToV9(unittest.TestCase):
         self.assertTrue(can_migrate(1, 9))
         v9, _notes = migrate_clone(build_v1_image(), 1, 9)
         self.assertEqual(len(v9), EEPROM_SIZE)
+
+
+class TestCloneMigrationV9ToV10(unittest.TestCase):
+
+    def setUp(self):
+        self.v9 = build_v1_image()
+        self.v10, self.notes = migrate_clone(self.v9, 9, 10)
+
+    def test_region_cleared_and_nothing_else(self):
+        self.assertEqual(bytes(self.v10[V10_PERF_BASE:V10_PERF_BASE + V10_PERF_SIZE]),
+                         bytes(V10_PERF_SIZE))
+        self.assertEqual(bytes(self.v10[V10_SNAP_BASE:V10_SNAP_BASE + V10_SNAP_SIZE]),
+                         bytes(V10_SNAP_SIZE))
+        allowed = set(range(V10_PERF_BASE, V10_PERF_BASE + V10_PERF_SIZE))
+        allowed |= set(range(V10_SNAP_BASE, V10_SNAP_BASE + V10_SNAP_SIZE))
+        changed = {i for i in range(EEPROM_SIZE) if self.v9[i] != self.v10[i]}
+        self.assertTrue(changed.issubset(allowed))
+
+    def test_snap_reset_is_reported(self):
+        self.assertTrue(any("snap grid" in n for n in self.notes), self.notes)
+
+    def test_reset_is_reported(self):
+        self.assertTrue(any("smoothness" in n for n in self.notes), self.notes)
+
+    def test_full_chain_from_v1_reaches_v10(self):
+        self.assertTrue(can_migrate(1, 10))
 
 
 if __name__ == "__main__":

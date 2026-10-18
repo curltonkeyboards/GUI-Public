@@ -774,7 +774,8 @@ class MainWindow(QMainWindow):
             self, "Firmware update available",
             "Your MIDIswitch is running firmware {}.\n"
             "The latest version is {}.\n\n"
-            "A firmware update is available — see the MIDIswitch releases page to update.".format(cur, latest))
+            "A firmware update is available — download it from the MIDIswitch releases page "
+            "and install it from the Firmware updater tab.".format(cur, latest))
 
     def rebuild(self):
         _startup_log("MainWindow.rebuild() starting...")
