@@ -200,7 +200,9 @@ class BootloaderClient:
         if pkg["size"] > info["app_max"]:
             raise UpdateError("This firmware is too large for the keyboard.")
         if pkg["key_id"] != info["key_id"]:
-            raise UpdateError("This firmware is not signed for this keyboard.")
+            raise UpdateError("This firmware is not signed for this keyboard (it was signed with a "
+                              "different key). Unplug the keyboard and plug it back in to go "
+                              "back to the firmware it has.")
         chunk = min(WRITE_MAX, info["write_max"] or WRITE_MAX)
 
         self.request(CMD_BEGIN, struct.pack("<5I", pkg["size"], pkg["crc"], pkg["version"],
