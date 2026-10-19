@@ -248,17 +248,17 @@ class MainWindow(QMainWindow):
 
         # check if the via defitions already exist
         if os.path.isfile(os.path.join(self.cache_path, "via_keyboards.json")):
-            _startup_log("Loading cached VIA definitions...")
+            _startup_log("Loading cached keyboard definitions...")
             t0 = time.time()
             with open(os.path.join(self.cache_path, "via_keyboards.json")) as vf:
                 data = vf.read()
             try:
                 self.autorefresh.load_via_stack(data)
-                _startup_log(f"  VIA definitions loaded ({time.time()-t0:.2f}s)")
+                _startup_log(f"  Keyboard definitions loaded ({time.time()-t0:.2f}s)")
             except JSONDecodeError as e:
                 # the saved file is invalid - just ignore this
                 logging.warning("Failed to parse stored via_keyboards.json: {}".format(e))
-                _startup_log(f"  VIA definitions failed to parse")
+                _startup_log(f"  Keyboard definitions failed to parse")
 
         # make sure initial state is valid
         _startup_log("Starting initial device refresh...")

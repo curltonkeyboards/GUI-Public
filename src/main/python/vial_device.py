@@ -76,7 +76,7 @@ class VialKeyboard(VialDevice):
         self.keyboard = Keyboard(self.dev)
         _startup_log("Starting keyboard data reload...")
         self.keyboard.reload(override_json)
-        _startup_log("VialKeyboard.open() complete - returning to MainWindow")
+        _startup_log("Keyboard opened - returning to main window")
 
     def title(self):
         s = "{} {}".format(self.desc["manufacturer_string"], self.desc["product_string"]).strip()
