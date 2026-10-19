@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Sign a plain firmware .bin so the keyboard's updater accepts it.
+"""Sign and encrypt a plain firmware .bin so the keyboard's updater accepts it.
 
 EdDSA on Curve25519 with BLAKE2b-512 as the hash (the scheme Monocypher 4
 calls crypto_eddsa_*). The secret key file holds 64 bytes as hex: the 32-byte
 seed followed by the 32-byte public key. Pure Python, no extra dependency;
 signing one image takes a fraction of a second.
+
+The image is encrypted with XChaCha20 under a key derived from the same key
+file (keyed BLAKE2b), so one file is all that is needed.
 """
 import hashlib
 import os
@@ -88,6 +91,60 @@ def sign(secret, msg):
     return rb + int.to_bytes((r + k * a) % _L, 32, "little")
 
 
+# ---- XChaCha20 ---------------------------------------------------------------------
+
+_M32 = 0xFFFFFFFF
+
+
+def _rounds(x):
+    def qr(a, b, c, d):
+        x[a] = (x[a] + x[b]) & _M32; t = x[d] ^ x[a]; x[d] = ((t << 16) | (t >> 16)) & _M32
+        x[c] = (x[c] + x[d]) & _M32; t = x[b] ^ x[c]; x[b] = ((t << 12) | (t >> 20)) & _M32
+        x[a] = (x[a] + x[b]) & _M32; t = x[d] ^ x[a]; x[d] = ((t << 8) | (t >> 24)) & _M32
+        x[c] = (x[c] + x[d]) & _M32; t = x[b] ^ x[c]; x[b] = ((t << 7) | (t >> 25)) & _M32
+    for _ in range(10):
+        qr(0, 4, 8, 12); qr(1, 5, 9, 13); qr(2, 6, 10, 14); qr(3, 7, 11, 15)
+        qr(0, 5, 10, 15); qr(1, 6, 11, 12); qr(2, 7, 8, 13); qr(3, 4, 9, 14)
+
+
+_SIGMA = struct.unpack("<4I", b"expand 32-byte k")
+
+
+def _hchacha20(key, nonce16):
+    x = list(_SIGMA + struct.unpack("<8I", key) + struct.unpack("<4I", nonce16))
+    _rounds(x)
+    return struct.pack("<8I", *(x[0:4] + x[12:16]))
+
+
+def xchacha20(key, nonce, data):
+    """XChaCha20 with the block counter starting at 0 (Monocypher's
+    crypto_chacha20_x with ctr 0). Encrypts and decrypts."""
+    sub = struct.unpack("<8I", _hchacha20(key, nonce[:16]))
+    n = struct.unpack("<2I", nonce[16:24])
+    out = bytearray(len(data))
+    for blk in range(0, (len(data) + 63) // 64):
+        st = list(_SIGMA + sub + (blk & _M32, blk >> 32) + n)
+        x = st[:]
+        _rounds(x)
+        ks = struct.pack("<16I", *((x[i] + st[i]) & _M32 for i in range(16)))
+        o = blk * 64
+        part = data[o:o + 64]
+        out[o:o + len(part)] = (int.from_bytes(part, "little") ^
+                                int.from_bytes(ks[:len(part)], "little")).to_bytes(len(part), "little")
+    return bytes(out)
+
+
+ENC_KDF_MSG = b"MIDIswitch firmware encryption key v1"
+
+
+def enc_key(secret):
+    return hashlib.blake2b(ENC_KDF_MSG, key=bytes(secret[:32]), digest_size=32).digest()
+
+
+def enc_key_id(key):
+    return hashlib.blake2b(b"MSWENCID" + bytes(key), digest_size=8).digest()
+
+
 # ---- Keys --------------------------------------------------------------------------
 
 DEFAULT_KEY = os.path.join(os.path.expanduser("~"), ".midiswitch", "firmware_signing_key.hex")
@@ -143,7 +200,8 @@ def check_bin(image):
 
 def package_from_bin(blob, secret):
     """Turn a plain firmware .bin into the same dict parse_package() returns,
-    signed with ``secret``."""
+    signed and encrypted with ``secret``. The plain image is kept too, for
+    keyboards whose updater cannot decrypt."""
     image = bytearray(blob)
     while len(image) % 4:
         image.append(0xFF)
@@ -153,8 +211,11 @@ def package_from_bin(blob, secret):
     size, crc = len(image), upd.stm32_crc(image)
     head = struct.pack("<8I", HDR_MAGIC, HDR_VERSION, size, crc, ver or 0, upd.MODEL_ID, 0, 0)
     sig = sign(secret, head + hashlib.blake2b(image, digest_size=64).digest())
+    key = enc_key(secret)
+    nonce = os.urandom(24)
     return {
         "model": upd.MODEL_ID, "version": ver or 0, "size": size, "crc": crc, "flags": 0,
-        "signature": sig, "key_id": secret[32:40], "image": image,
-        "version_known": ver is not None,
+        "signature": sig, "key_id": secret[32:40], "image": xchacha20(key, nonce, image),
+        "encrypted": True, "nonce": nonce, "enc_key_id": enc_key_id(key),
+        "plain_image": image, "version_known": ver is not None,
     }

@@ -6,8 +6,8 @@ needed on any OS. One request = one 64-byte output report
 [cmd, seq, args...]; one reply = one 64-byte input report
 [cmd, seq, status, data...].
 
-Firmware arrives as a signed ``.mswfw`` package. The keyboard checks the
-signature itself and only marks the new firmware bootable once every byte is
+Firmware arrives as a signed, encrypted ``.mswfw`` package. The keyboard
+decrypts it as it writes, checks the signature itself and only marks the new firmware bootable once every byte is
 on flash and the signature verifies, so an interrupted update leaves the
 keyboard in update mode, ready to try again.
 """
@@ -33,6 +33,10 @@ CMD_ERASE = 0x04
 CMD_WRITE = 0x05
 CMD_FINISH = 0x06
 CMD_REBOOT = 0x07
+CMD_NONCE = 0x08
+
+CAP_ENCRYPTION = 0x01
+CAP_ENC_REQUIRED = 0x02
 
 STATUS_TEXT = {
     0x01: "unknown command",
@@ -43,13 +47,16 @@ STATUS_TEXT = {
     0x06: "firmware signature not accepted",
     0x07: "firmware is for a different model",
     0x08: "firmware too large",
+    0x09: "this keyboard only accepts encrypted firmware",
 }
 
 WRITE_MAX = 56
 
 # ---- Package -----------------------------------------------------------------------
-PKG_MAGIC = b"MSWFWPK1"
+PKG_MAGIC = b"MSWFWPK1"         # plain image
 PKG_HEADER_SIZE = 128
+PKG2_MAGIC = b"MSWFWPK2"        # encrypted image
+PKG2_HEADER_SIZE = 160
 MODEL_ID = 1
 
 
@@ -85,19 +92,24 @@ def version_str(v):
 
 def parse_package(blob):
     """Check a .mswfw file and return its fields. Raises UpdateError."""
-    if len(blob) < PKG_HEADER_SIZE or blob[:8] != PKG_MAGIC:
+    enc = bytes(blob[:8]) == PKG2_MAGIC
+    hsize = PKG2_HEADER_SIZE if enc else PKG_HEADER_SIZE
+    if len(blob) < hsize or bytes(blob[:8]) not in (PKG_MAGIC, PKG2_MAGIC):
         raise UpdateError("This is not a MIDIswitch firmware file (.mswfw).")
-    model, ver, size, crc, flags, _ = struct.unpack_from("<6I", blob, 8)
-    image = bytes(blob[PKG_HEADER_SIZE:])
+    model, ver, size, crc, flags, stored_crc = struct.unpack_from("<6I", blob, 8)
+    image = bytes(blob[hsize:])
     if model != MODEL_ID:
         raise UpdateError("This firmware is for a different keyboard model.")
     if len(image) != size or size % 4:
         raise UpdateError("The firmware file is truncated.")
-    if stm32_crc(image) != crc:
+    if stm32_crc(image) != (stored_crc if enc else crc):
         raise UpdateError("The firmware file is damaged (checksum mismatch).")
     return {
         "model": model, "version": ver, "size": size, "crc": crc, "flags": flags,
         "signature": bytes(blob[32:96]), "key_id": bytes(blob[96:104]), "image": image,
+        "encrypted": enc,
+        "nonce": bytes(blob[104:128]) if enc else None,
+        "enc_key_id": bytes(blob[128:136]) if enc else None,
     }
 
 
@@ -190,6 +202,8 @@ class BootloaderClient:
             "key_id": bytes(d[21:29]),
             "uid": bytes(d[29:41]),
             "why": d[41],
+            "caps": d[42] if d[0] >= 2 else 0,
+            "enc_key_id": bytes(d[43:51]) if d[0] >= 2 else None,
         }
 
     def flash(self, pkg, log=lambda s: None, progress=lambda f: None):
@@ -204,11 +218,27 @@ class BootloaderClient:
                               "different key). Unplug the keyboard and plug it back in to go "
                               "back to the firmware it has.")
         chunk = min(WRITE_MAX, info["write_max"] or WRITE_MAX)
+        can_decrypt = bool(info["caps"] & CAP_ENCRYPTION)
+        if pkg.get("encrypted") and not can_decrypt:
+            # A package made here from a .bin keeps its plain image for
+            # keyboards whose updater predates encryption.
+            if pkg.get("plain_image") is None:
+                raise UpdateError("This keyboard's updater is too old for this firmware file. "
+                                  "Install the factory image once with STM32CubeProgrammer.")
+            pkg = dict(pkg, encrypted=False, image=pkg["plain_image"])
+        if pkg.get("encrypted") and pkg.get("enc_key_id") != info["enc_key_id"]:
+            raise UpdateError("This firmware is not encrypted for this keyboard (different key). "
+                              "Unplug the keyboard and plug it back in to go back to the "
+                              "firmware it has.")
+        if not pkg.get("encrypted") and info["caps"] & CAP_ENC_REQUIRED:
+            raise UpdateError("This keyboard only accepts encrypted firmware files.")
 
         self.request(CMD_BEGIN, struct.pack("<5I", pkg["size"], pkg["crc"], pkg["version"],
                                             pkg["model"], pkg["flags"]))
         self.request(CMD_SIG, b"\x00" + pkg["signature"][:32])
         self.request(CMD_SIG, b"\x01" + pkg["signature"][32:])
+        if pkg.get("encrypted"):
+            self.request(CMD_NONCE, pkg["nonce"])
 
         last = sector_of(APP_BASE + pkg["size"] - 1)
         sectors = list(range(FIRST_APP_SECTOR, last + 1))
