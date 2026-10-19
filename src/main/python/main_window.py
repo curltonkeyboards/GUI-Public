@@ -321,6 +321,17 @@ class MainWindow(QMainWindow):
             if theme_group.checkedAction() is None:
                 theme_group.actions()[0].setChecked(True)
 
+        help_menu = self.menuBar().addMenu(tr("Menu", "Help"))
+        about_act = QAction(tr("MenuHelp", "About MIDIswitch KeyStation..."), self)
+        about_act.triggered.connect(self.show_about)
+        help_menu.addAction(about_act)
+
+    def show_about(self):
+        from widgets.about_dialog import AboutDialog
+        dlg = AboutDialog(self, self.appctx)
+        dlg.setAttribute(Qt.WA_DeleteOnClose)
+        dlg.show()
+
     def on_layout_load(self):
         # Guard: a layout can only be applied to a connected keyboard.
         if not isinstance(self.autorefresh.current_device, VialKeyboard):
