@@ -4,9 +4,7 @@
 Update flow for a connected keyboard:
   1. back up every setting (keyboard clone, saved to the backups folder)
   2. put the keyboard into update mode (no buttons to hold)
-  3. install the signed .mswfw package over USB HID (no driver needed); a
-     plain firmware .bin is signed on the spot with the signing key on this
-     computer (protocol/msw_sign.py)
+  3. install the signed .mswfw package over USB HID (no driver needed)
   4. wait for the keyboard to restart, then restore the backup —
      converted forward when the new firmware stores settings differently
 
@@ -21,7 +19,7 @@ import sys
 import threading
 import time
 
-from PyQt5.QtCore import pyqtSignal, Qt, QSettings
+from PyQt5.QtCore import pyqtSignal, Qt
 from PyQt5.QtGui import QFontDatabase
 from PyQt5.QtWidgets import QHBoxLayout, QLineEdit, QToolButton, QPlainTextEdit, QProgressBar, \
     QFileDialog, QDialog, QCheckBox, QLabel, QPushButton, QMessageBox
@@ -29,7 +27,6 @@ from PyQt5.QtWidgets import QHBoxLayout, QLineEdit, QToolButton, QPlainTextEdit,
 from editor.basic_editor import BasicEditor
 from hidproxy import hid
 from protocol import clone_io
-from protocol import msw_sign
 from protocol import msw_updater as upd
 from util import tr, is_midiswitch_usb_id, RAW_HID_USAGE_PAGE, RAW_HID_USAGE
 from vial_device import VialKeyboard, VialDummyKeyboard, VialVirtualKeyboard, MswBootloader
@@ -91,7 +88,7 @@ class FirmwareFlasher(BasicEditor):
         row = QHBoxLayout()
         self.txt_file = QLineEdit()
         self.txt_file.setReadOnly(True)
-        self.txt_file.setPlaceholderText(tr("Flasher", "Choose a firmware file (.mswfw or .bin)"))
+        self.txt_file.setPlaceholderText(tr("Flasher", "Choose a firmware file (.mswfw)"))
         row.addWidget(self.txt_file)
         self.btn_select = QToolButton()
         self.btn_select.setText(tr("Flasher", "Select file..."))
@@ -211,24 +208,14 @@ class FirmwareFlasher(BasicEditor):
     def on_select_file(self):
         dialog = QFileDialog()
         dialog.setAcceptMode(QFileDialog.AcceptOpen)
-        dialog.setNameFilters(["MIDIswitch firmware (*.mswfw *.bin)",
-                               "Firmware package (*.mswfw)", "Firmware build (*.bin)"])
+        dialog.setNameFilters(["MIDIswitch firmware (*.mswfw)"])
         if dialog.exec_() != QDialog.Accepted:
             return
         path = dialog.selectedFiles()[0]
         try:
             with open(path, "rb") as f:
                 blob = f.read(4 * 1024 * 1024)
-            if blob[:len(upd.PKG_MAGIC)] == upd.PKG_MAGIC:
-                self.package = upd.parse_package(blob)
-                note = ""
-            else:
-                key = self._signing_key()
-                if key is None:
-                    return
-                self.log("Signing {}...".format(os.path.basename(path)))
-                self.package = msw_sign.package_from_bin(blob, key)
-                note = tr("Flasher", ", signed here from the .bin")
+            self.package = upd.parse_package(blob)
         except (OSError, upd.UpdateError) as e:
             self.package = None
             self.txt_file.setText("")
@@ -236,8 +223,8 @@ class FirmwareFlasher(BasicEditor):
             QMessageBox.warning(None, tr("Flasher", "Firmware file"), str(e))
         else:
             self.txt_file.setText(path)
-            self.lbl_package.setText(tr("Flasher", "Firmware {} ({} KB{})").format(
-                self._pkg_version(self.package), self.package["size"] // 1024, note))
+            self.lbl_package.setText(tr("Flasher", "Firmware {} ({} KB)").format(
+                self._pkg_version(self.package), self.package["size"] // 1024))
             self.log("Selected {}".format(path))
         self._refresh_status()
 
@@ -246,36 +233,6 @@ class FirmwareFlasher(BasicEditor):
         if pkg.get("version_known", True):
             return upd.version_str(pkg["version"])
         return tr("Flasher", "(version unknown)")
-
-    def _signing_key(self):
-        """The secret key for signing a .bin: the remembered file, the default
-        location, or one the user picks (remembered for next time)."""
-        settings = QSettings("MIDIswitch", "SwitchStation")
-        for path in (settings.value("firmware/signing_key", "", type=str), msw_sign.DEFAULT_KEY):
-            if path and os.path.isfile(path):
-                try:
-                    return msw_sign.load_key(path)
-                except upd.UpdateError as e:
-                    QMessageBox.warning(None, tr("Flasher", "Signing key"), str(e))
-        QMessageBox.information(
-            None, tr("Flasher", "Signing key"),
-            tr("Flasher", "A .bin file has to be signed before the keyboard accepts it. "
-                          "Choose your firmware signing key file "
-                          "(for example DEV-firmware_signing_key.hex). "
-                          "The app remembers it for next time."))
-        dialog = QFileDialog()
-        dialog.setAcceptMode(QFileDialog.AcceptOpen)
-        dialog.setNameFilters(["Signing key (*.hex)", "All files (*)"])
-        if dialog.exec_() != QDialog.Accepted:
-            return None
-        path = dialog.selectedFiles()[0]
-        try:
-            key = msw_sign.load_key(path)
-        except upd.UpdateError as e:
-            QMessageBox.warning(None, tr("Flasher", "Signing key"), str(e))
-            return None
-        settings.setValue("firmware/signing_key", path)
-        return key
 
     def on_show_backups(self):
         from PyQt5.QtCore import QUrl
