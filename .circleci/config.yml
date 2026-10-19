@@ -63,7 +63,7 @@ jobs:
           command: |
             source venv/bin/activate
             fbs freeze
-            hdiutil create -volname Vial -srcfolder "target/Curlton KeyStation.app" -ov -format UDZO vial-mac.dmg
+            hdiutil create -volname Vial -srcfolder "target/MIDIswitch KeyStation.app" -ov -format UDZO vial-mac.dmg
       - persist_to_workspace:
           root: .
           paths:
@@ -91,7 +91,7 @@ jobs:
           command: |
             . .\venv\Scripts\activate.ps1
             fbs freeze
-            Compress-Archive -Path "target\Curlton KeyStation" -DestinationPath vial-win.zip
+            Compress-Archive -Path "target\MIDIswitch KeyStation" -DestinationPath vial-win.zip
       - run:
           name: Create installer
           command: |
@@ -102,7 +102,7 @@ jobs:
           root: .
           paths:
             - vial-win.zip
-            - target\Curlton KeyStationSetup.exe
+            - target\MIDIswitch KeyStationSetup.exe
 
 workflows:
   version: 2

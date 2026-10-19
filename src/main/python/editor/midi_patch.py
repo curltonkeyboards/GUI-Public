@@ -197,14 +197,14 @@ class MIDIPatchBay(BasicEditor):
             output_ports = self.midi_out.get_ports()
             self.midiswitch_output = None
             for i, port in enumerate(output_ports):
-                if "midiswitch" in port.lower() or "curlton" in port.lower():
+                if "midiswitch" in port.lower():
                     self.midiswitch_output = (i, port)
                     break
 
             # Update device selector (exclude MIDIswitch from inputs to prevent feedback)
             self.device_selector.clear()
             for i, port in enumerate(input_ports):
-                if "midiswitch" not in port.lower() and "curlton" not in port.lower():
+                if "midiswitch" not in port.lower():
                     self.device_selector.addItem(port, i)
 
             # Restore selection if possible

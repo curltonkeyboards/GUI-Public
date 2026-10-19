@@ -90,7 +90,7 @@ class StartupDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Curlton KeyStation - Startup Log")
+        self.setWindowTitle("MIDIswitch KeyStation - Startup Log")
         self.setMinimumSize(600, 400)
         self.resize(700, 500)
 
@@ -113,7 +113,7 @@ class StartupDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
 
         # Title
-        title = QLabel("Curlton KeyStation")
+        title = QLabel("MIDIswitch KeyStation")
         title_font = QFont()
         title_font.setPointSize(18)
         title_font.setBold(True)
