@@ -40,6 +40,8 @@ WAIT_KEYBOARD_S = 45
 # starts shutting down and stays off USB for over a second. Wait this long for
 # it to drop off before deciding it never restarted.
 WAIT_GONE_S = 10
+WAIT_ANSWER_S = 15          # listed -> answering, after a restart
+SETTINGS_PROBE_ADDR = 41     # first keymap byte: an ordinary settings read
 
 WHY_TEXT = {
     0: "the app asked it to",
@@ -364,13 +366,20 @@ class FirmwareFlasher(BasicEditor):
         that is still starting up."""
         from protocol.keyboard_comm import Keyboard
         desc = self._wait_for(lambda ds: _keyboard_desc(ds, serial), WAIT_KEYBOARD_S, what)
-        deadline = time.monotonic() + 15
+        deadline = time.monotonic() + WAIT_ANSWER_S
+        memory_failed = False
         while time.monotonic() < deadline:
             dev = hid.device()
             try:
                 dev.open_path(desc["path"])
-                if Keyboard(dev).get_clone_info():
-                    return desc
+                kb = Keyboard(dev)
+                if kb.get_clone_info():
+                    # Answering is not enough: the keyboard must also be able to
+                    # read its settings memory, or a restore would be written
+                    # into nothing and the app would hang loading the keymap.
+                    if kb.clone_read_chunk(SETTINGS_PROBE_ADDR, 16) is not None:
+                        return desc
+                    memory_failed = True
             except Exception:
                 pass
             finally:
@@ -380,6 +389,11 @@ class FirmwareFlasher(BasicEditor):
                     pass
             time.sleep(0.5)
             desc = _keyboard_desc(list(hid.enumerate()), serial) or desc
+        if memory_failed:
+            raise upd.UpdateError(
+                "The keyboard restarted but cannot read its settings memory. Unplug the "
+                "keyboard, plug it back in, then press Refresh. If your settings were not "
+                "put back, load the backup with File > Load keyboard clone.")
         return desc
 
     def _run(self, mode, pkg, keep, restore_path):

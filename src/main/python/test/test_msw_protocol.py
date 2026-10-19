@@ -416,5 +416,46 @@ def setting_subcommands(fw):
     return [p for p in fw.wire if p[0] in (0xFE, msw.ALIAS_VIAL_PREFIX) and 0x09 <= p[1] <= 0x0C]
 
 
+class TestLateReply(unittest.TestCase):
+    """A reply that arrives after the app gave up on it must not be taken as
+    the answer to the next request (that shifted every later request by one
+    and left the keymap load stuck)."""
+
+    def _kb(self, queue):
+        class Dev:
+            def read(self, n, timeout_ms=0):
+                return queue.pop(0) if queue else b""
+        sent = []
+
+        def send(dev, msg, retries=1):
+            sent.append(bytes(msg))
+            return queue.pop(0) if queue else b""
+        kb = Keyboard(Dev(), send)
+        kb.hid_codec = "msw"
+        return kb, sent
+
+    def test_stale_buffer_reply_skipped(self):
+        alias = msw.VIA_TO_ALIAS[0x12]
+        stale = pad(bytes([alias, 0x00, 0x00, 28]) + b"\x11" * 28)    # earlier offset 0
+        real = pad(bytes([alias, 0x00, 0x1C, 28]) + b"\x22" * 28)     # this request, offset 28
+        kb, sent = self._kb([stale, real])
+        data = kb.usb_send(kb.dev, struct.pack(">BHB", 0x12, 28, 28), retries=3)
+        self.assertEqual(data[0], 0x12)
+        self.assertEqual(data[4:32], b"\x22" * 28)
+        self.assertEqual(len(sent), 1)          # found by reading on, not by resending
+
+    def test_other_command_reply_skipped(self):
+        stale = pad(bytes([msw.VIA_TO_ALIAS[0x04], 0, 0, 0, 0x12, 0x34]))
+        real = pad(bytes([msw.VIA_TO_ALIAS[0x11], 4]))
+        kb, sent = self._kb([stale, real])
+        self.assertEqual(kb.usb_send(kb.dev, struct.pack("B", 0x11))[:2], bytes([0x11, 4]))
+
+    def test_no_match_resends_then_fails(self):
+        kb, sent = self._kb([])
+        with self.assertRaises(RuntimeError):
+            kb.usb_send(kb.dev, struct.pack("B", 0x11), retries=2)
+        self.assertEqual(len(sent), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

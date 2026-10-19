@@ -37,7 +37,7 @@ from protocol.key_override import ProtocolKeyOverride
 from protocol.macro import ProtocolMacro
 from protocol.tap_dance import ProtocolTapDance
 from unlocker import Unlocker
-from protocol.msw_protocol import build_ident_request, parse_ident, encode_request, decode_response, \
+from protocol.msw_protocol import build_ident_request, parse_ident, encode_request, decode_response, VIA_TO_ALIAS, \
     MSW_PROTOCOL_MAJOR_SUPPORTED, MSW1_VIA_LEVEL, MSW1_VIAL_LEVEL, MSW_CAP_DEFINITION, \
     MACRO_SETTINGS_QSIDS, MOUSE_SETTINGS_IDS, MSW_MSET_GET, MSW_MSET_SET, MSW_MSET_RESET, \
     build_macro_settings_request, parse_macro_settings
@@ -387,12 +387,57 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         total_time = time.time() - reload_start
         _startup_log(f"Keyboard reload complete! Total time: {total_time:.2f}s")
 
+    # Requests whose reply keeps bytes 1-3 (offset + size) exactly as sent.
+    _ECHO_ARGS_CMDS = (0x0E, 0x12)   # macro / keymap get_buffer
+
     def _usb_send_codec(self, dev, msg, retries=1):
-        """usb_send with the command-alias codec applied."""
+        """usb_send with the command-alias codec applied.
+
+        On a MIDIswitch the reply to a byte-0 id command repeats that id
+        (and, for the two buffer reads, the offset and size). A reply that
+        does not is a late answer to an earlier request: it is skipped and
+        the next queued report is read, so one slow reply can no longer
+        shift every later request out of step."""
         if self.hid_codec != "msw":
             return self._usb_send_raw(dev, msg, retries)
-        response = self._usb_send_raw(dev, encode_request(msg), retries)
-        return decode_response(msg, response)
+        encoded = encode_request(msg)
+        b0 = msg[0] if msg else None
+        if b0 not in VIA_TO_ALIAS:
+            return decode_response(msg, self._usb_send_raw(dev, encoded, retries))
+        want = VIA_TO_ALIAS[b0]
+        padded = bytes(msg) + b"\x00" * max(0, MSG_LEN - len(msg))
+        check_args = b0 in self._ECHO_ARGS_CMDS
+
+        def matches(resp):
+            if not resp:
+                return False
+            if resp[0] == 0xFF:          # "unhandled" marker: a real answer
+                return True
+            if resp[0] != want:
+                return False
+            return not check_args or bytes(resp[1:4]) == padded[1:4]
+
+        error = None
+        for attempt in range(max(1, retries)):
+            if attempt:
+                time.sleep(0.5)
+            try:
+                response = self._usb_send_raw(dev, encoded, 1)
+            except RuntimeError as e:
+                error = e
+                continue
+            for _ in range(8):
+                if matches(response):
+                    return decode_response(msg, response)
+                if not hasattr(dev, "read"):
+                    break
+                try:
+                    response = bytes(dev.read(MSG_LEN, timeout_ms=100))
+                except OSError:
+                    break
+                if not response:
+                    break
+        raise error or RuntimeError("failed to communicate with the device")
 
     def probe_ident(self):
         """Send IDENT ("who are you"). On a MIDIswitch this fills
