@@ -180,6 +180,8 @@ class FirmwareFlasher(BasicEditor):
                 if self.boot_info["app_valid"]:
                     text += " " + tr("Flasher", "Installed firmware: {}.").format(
                         upd.version_str(self.boot_info["app_version"]))
+                if self.boot_info.get("rdp"):
+                    text += " " + tr("Flasher", "Firmware read-out protection: on.")
                 can = True
             else:
                 text = tr("Flasher", "The keyboard is in update mode but is not answering. "

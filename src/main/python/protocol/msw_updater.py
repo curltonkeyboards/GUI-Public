@@ -198,6 +198,7 @@ class BootloaderClient:
             "key_id": bytes(d[21:29]),
             "uid": bytes(d[29:41]),
             "why": d[41],
+            "rdp": d[42],          # read-out protection level 0 / 1 / 2
         }
 
     def flash(self, pkg, log=lambda s: None, progress=lambda f: None):
