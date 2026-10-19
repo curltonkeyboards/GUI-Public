@@ -1,10 +1,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Sign a plain firmware .bin so the keyboard's updater accepts it.
+"""Sign and encrypt a plain firmware .bin so the keyboard's updater accepts it.
 
 EdDSA on Curve25519 with BLAKE2b-512 as the hash (the scheme Monocypher 4
 calls crypto_eddsa_*). The secret key file holds 64 bytes as hex: the 32-byte
 seed followed by the 32-byte public key. Pure Python, no extra dependency;
 signing one image takes a fraction of a second.
+
+The image is then encrypted with XChaCha20 under a key derived from the same
+key file (BLAKE2b-256 of ENC_KEY_LABEL + the seed); the keyboard decrypts it
+while installing. The signature covers the decrypted image.
 """
 import hashlib
 import os
@@ -88,6 +92,48 @@ def sign(secret, msg):
     return rb + int.to_bytes((r + k * a) % _L, 32, "little")
 
 
+# ---- XChaCha20 (same output as Monocypher crypto_chacha20_x) ----------------------
+_M = 0xFFFFFFFF
+_SIGMA = (0x61707865, 0x3320646E, 0x79622D32, 0x6B206574)
+
+def _rounds(x):
+    for _ in range(10):
+        for a, b, c, d in ((0,4,8,12),(1,5,9,13),(2,6,10,14),(3,7,11,15),
+                           (0,5,10,15),(1,6,11,12),(2,7,8,13),(3,4,9,14)):
+            x[a] = (x[a] + x[b]) & _M; t = x[d] ^ x[a]; x[d] = ((t << 16) | (t >> 16)) & _M
+            x[c] = (x[c] + x[d]) & _M; t = x[b] ^ x[c]; x[b] = ((t << 12) | (t >> 20)) & _M
+            x[a] = (x[a] + x[b]) & _M; t = x[d] ^ x[a]; x[d] = ((t << 8) | (t >> 24)) & _M
+            x[c] = (x[c] + x[d]) & _M; t = x[b] ^ x[c]; x[b] = ((t << 7) | (t >> 25)) & _M
+
+def hchacha20(key, nonce16):
+    x = list(_SIGMA) + list(struct.unpack("<8I", key)) + list(struct.unpack("<4I", nonce16))
+    _rounds(x)
+    return struct.pack("<8I", *(x[0:4] + x[12:16]))
+
+def xchacha20(key, nonce24, data, counter=0):
+    sub = struct.unpack("<8I", hchacha20(key, nonce24[:16]))
+    n = struct.unpack("<2I", nonce24[16:24])
+    out = bytearray(data)
+    for blk in range((len(out) + 63) // 64):
+        c = counter + blk
+        st = list(_SIGMA) + list(sub) + [c & _M, (c >> 32) & _M, n[0], n[1]]
+        x = st[:]
+        _rounds(x)
+        ks = struct.pack("<16I", *((x[i] + st[i]) & _M for i in range(16)))
+        base = blk * 64
+        for i in range(min(64, len(out) - base)):
+            out[base + i] ^= ks[i]
+    return bytes(out)
+
+
+ENC_KEY_LABEL = b"MIDIswitch firmware encryption v1"
+
+
+def enc_key(secret):
+    """The image encryption key belonging to a signing key."""
+    return hashlib.blake2b(ENC_KEY_LABEL + bytes(secret[:32]), digest_size=32).digest()
+
+
 # ---- Keys --------------------------------------------------------------------------
 
 DEFAULT_KEY = os.path.join(os.path.expanduser("~"), ".midiswitch", "firmware_signing_key.hex")
@@ -143,7 +189,7 @@ def check_bin(image):
 
 def package_from_bin(blob, secret):
     """Turn a plain firmware .bin into the same dict parse_package() returns,
-    signed with ``secret``."""
+    signed and encrypted with ``secret``."""
     image = bytearray(blob)
     while len(image) % 4:
         image.append(0xFF)
@@ -153,8 +199,10 @@ def package_from_bin(blob, secret):
     size, crc = len(image), upd.stm32_crc(image)
     head = struct.pack("<8I", HDR_MAGIC, HDR_VERSION, size, crc, ver or 0, upd.MODEL_ID, 0, 0)
     sig = sign(secret, head + hashlib.blake2b(image, digest_size=64).digest())
+    nonce = os.urandom(24)
     return {
         "model": upd.MODEL_ID, "version": ver or 0, "size": size, "crc": crc, "flags": 0,
-        "signature": sig, "key_id": secret[32:40], "image": image,
+        "signature": sig, "key_id": secret[32:40], "nonce": nonce,
+        "image": xchacha20(enc_key(secret), nonce, image),
         "version_known": ver is not None,
     }
