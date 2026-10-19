@@ -55,7 +55,10 @@ class VialDevice:
             return bytes(self.dev.read(length, timeout_ms=timeout_ms))
 
     def close(self):
-        self.dev.close()
+        # Wait for any transaction in flight on another thread: closing the
+        # handle while hidapi is reading it crashes the app.
+        with self.hid_lock:
+            self.dev.close()
 
 
 class VialKeyboard(VialDevice):

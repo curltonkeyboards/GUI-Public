@@ -443,6 +443,9 @@ class MainWindow(QMainWindow):
                 state["done"] = True
 
         set_hid_transfer_active(True)
+        # Ignore device add/remove events until the transfer is over: a refresh
+        # would close the HID handle while the worker thread is reading it.
+        self.lock_ui()
         try:
             worker = threading.Thread(target=read_worker, daemon=True)
             worker.start()
@@ -455,6 +458,7 @@ class MainWindow(QMainWindow):
             worker.join()
         finally:
             set_hid_transfer_active(False)
+            self.unlock_ui()
             progress.close()
 
         if state["canceled"]:
@@ -628,6 +632,9 @@ class MainWindow(QMainWindow):
                 state["done"] = True
 
         set_hid_transfer_active(True)
+        # Ignore device add/remove events until the transfer is over: a refresh
+        # would close the HID handle while the worker thread is reading it.
+        self.lock_ui()
         try:
             worker = threading.Thread(target=write_worker, daemon=True)
             worker.start()
@@ -640,6 +647,7 @@ class MainWindow(QMainWindow):
             worker.join()
         finally:
             set_hid_transfer_active(False)
+            self.unlock_ui()
             progress.close()
 
         canceled = state["canceled"]
