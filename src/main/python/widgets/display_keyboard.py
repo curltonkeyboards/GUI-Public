@@ -24,14 +24,14 @@ class DisplayKeyboard(QWidget):
 
         keymap = KleSerial().deserialize(json.loads(kbdef))
         for key in keymap.keys:
-            kc = Keycode.find_by_qmk_id(key.labels[0])
+            kc = Keycode.find_by_code_id(key.labels[0])
             btn = SquareButton()
             btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             btn.setRelSize(KEYCODE_BTN_RATIO)
             btn.setContentsMargins(0, 0, 0, 0)
-            btn.setToolTip(Keycode.tooltip(kc.qmk_id))
+            btn.setToolTip(Keycode.tooltip(kc.code_id))
             btn.setText(kc.label)
-            btn.clicked.connect(lambda st, k=kc: self.keycode_changed.emit(k.qmk_id))
+            btn.clicked.connect(lambda st, k=kc: self.keycode_changed.emit(k.code_id))
             btn.keycode = kc
 
             self.buttons.append(btn)

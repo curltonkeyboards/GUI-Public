@@ -31,7 +31,7 @@ FACE_COLORS = {
 # Degrees (Qt: 0 = 3 o'clock, counter-clockwise) for each direction.
 _ANGLE = {"up": 90, "left": 180, "down": 270, "right": 0}
 
-# qmk_id -> (kind, arg)
+# code_id -> (kind, arg)
 GAMEPAD_ICONS = {
     "XBOX_A": ("face", "A"), "XBOX_B": ("face", "B"),
     "XBOX_X": ("face", "X"), "XBOX_Y": ("face", "Y"),
@@ -59,13 +59,13 @@ GAMEPAD_ORDER = [
 ]
 
 
-def has_gamepad_icon(qmk_id):
-    return qmk_id in GAMEPAD_ICONS
+def has_gamepad_icon(code_id):
+    return code_id in GAMEPAD_ICONS
 
 
-def paint_gamepad_icon(qp, box, qmk_id):
-    """Draw the icon for `qmk_id` inside the square QRectF `box`."""
-    kind, arg = GAMEPAD_ICONS[qmk_id]
+def paint_gamepad_icon(qp, box, code_id):
+    """Draw the icon for `code_id` inside the square QRectF `box`."""
+    kind, arg = GAMEPAD_ICONS[code_id]
     qp.save()
     qp.setRenderHint(QPainter.Antialiasing)
     _PAINTERS[kind](qp, box, arg)
@@ -227,10 +227,10 @@ class GamepadIconButton(SquareButton):
     SquareButton, so it has the palette key's size, frame, hover/pressed
     styling, click and drag-to-assign behaviour."""
 
-    def __init__(self, qmk_id, parent=None):
+    def __init__(self, code_id, parent=None):
         super().__init__(parent)
         self.setRelSize(KEYCODE_BTN_RATIO)
-        self.icon_qmk_id = qmk_id
+        self.icon_code_id = code_id
 
     def paintEvent(self, ev):
         super().paintEvent(ev)
@@ -238,5 +238,5 @@ class GamepadIconButton(SquareButton):
         side = min(self.width(), self.height())
         s = side * 0.74
         box = QRectF((self.width() - s) / 2, (self.height() - s) / 2, s, s)
-        paint_gamepad_icon(qp, box, self.icon_qmk_id)
+        paint_gamepad_icon(qp, box, self.icon_code_id)
         qp.end()

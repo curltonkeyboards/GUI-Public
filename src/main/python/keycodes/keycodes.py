@@ -31,18 +31,18 @@ class Keycode:
 
     masked_keycodes = set()
     recorder_alias_to_keycode = dict()
-    qmk_id_to_keycode = dict()
+    code_id_to_keycode = dict()
     protocol = 0
 
-    def __init__(self, qmk_id, label, tooltip=None, masked=False, printable=None, recorder_alias=None, alias=None):
-        self.qmk_id = qmk_id
-        self.qmk_id_to_keycode[qmk_id] = self
+    def __init__(self, code_id, label, tooltip=None, masked=False, printable=None, recorder_alias=None, alias=None):
+        self.code_id = code_id
+        self.code_id_to_keycode[code_id] = self
         self.label = label
         # The web build only carries DejaVu Sans / Vera (no CJK fonts): those
         # draw subscripts, arrows, sharps etc. fine, so only labels with
         # Japanese / Chinese / Korean text fall back to the keycode name.
-        if sys.platform == "emscripten" and _has_cjk(label) and qmk_id != "KC_TRNS":
-            self.label = qmk_id.replace("KC_", "")
+        if sys.platform == "emscripten" and _has_cjk(label) and code_id != "KC_TRNS":
+            self.label = code_id.replace("KC_", "")
 
         self.tooltip = tooltip
         # whether this keycode requires another sub-keycode
@@ -51,7 +51,7 @@ class Keycode:
         # if this is printable keycode, what character does it normally output (i.e. non-shifted state)
         self.printable = printable
 
-        self.alias = [self.qmk_id]
+        self.alias = [self.code_id]
         if alias:
             self.alias += alias
 
@@ -62,65 +62,65 @@ class Keycode:
                 self.recorder_alias_to_keycode[alias] = self
 
         if masked:
-            assert qmk_id.endswith("(kc)")
-            self.masked_keycodes.add(qmk_id.replace("(kc)", ""))
+            assert code_id.endswith("(kc)")
+            self.masked_keycodes.add(code_id.replace("(kc)", ""))
 
     @classmethod
-    def find(cls, qmk_id):
-        # this is to handle cases of qmk_id LCTL(kc) propagated here from find_inner_keycode
-        if qmk_id == "kc":
-            qmk_id = "KC_NO"
-        return KEYCODES_MAP.get(qmk_id)
+    def find(cls, code_id):
+        # this is to handle cases of code_id LCTL(kc) propagated here from find_inner_keycode
+        if code_id == "kc":
+            code_id = "KC_NO"
+        return KEYCODES_MAP.get(code_id)
 
     @classmethod
-    def find_outer_keycode(cls, qmk_id):
+    def find_outer_keycode(cls, code_id):
         """
         Finds outer keycode, i.e. if it is masked like 0x5Fxx, just return the 0x5F00 portion
         """
-        if cls.is_mask(qmk_id):
-            qmk_id = qmk_id[:qmk_id.find("(")]
-        return cls.find(qmk_id)
+        if cls.is_mask(code_id):
+            code_id = code_id[:code_id.find("(")]
+        return cls.find(code_id)
 
     @classmethod
-    def find_inner_keycode(cls, qmk_id):
+    def find_inner_keycode(cls, code_id):
         """
         Finds inner keycode, i.e. if it is masked like 0x5F12, just return the 0x12 portion
         """
-        if cls.is_mask(qmk_id):
-            qmk_id = qmk_id[qmk_id.find("(")+1:-1]
-        return cls.find(qmk_id)
+        if cls.is_mask(code_id):
+            code_id = code_id[code_id.find("(")+1:-1]
+        return cls.find(code_id)
 
     @classmethod
     def find_by_recorder_alias(cls, alias):
         return cls.recorder_alias_to_keycode.get(alias)
 
     @classmethod
-    def find_by_qmk_id(cls, qmk_id):
-        return cls.qmk_id_to_keycode.get(qmk_id)
+    def find_by_code_id(cls, code_id):
+        return cls.code_id_to_keycode.get(code_id)
 
     @classmethod
-    def is_mask(cls, qmk_id):
-        return "(" in qmk_id and qmk_id[:qmk_id.find("(")] in cls.masked_keycodes
+    def is_mask(cls, code_id):
+        return "(" in code_id and code_id[:code_id.find("(")] in cls.masked_keycodes
 
     @classmethod
-    def is_basic(cls, qmk_id):
-        return cls.deserialize(qmk_id) < 0x00FF
+    def is_basic(cls, code_id):
+        return cls.deserialize(code_id) < 0x00FF
 
     @classmethod
-    def label(cls, qmk_id):
-        keycode = cls.find_outer_keycode(qmk_id)
+    def label(cls, code_id):
+        keycode = cls.find_outer_keycode(code_id)
         if keycode is None:
-            return qmk_id
+            return code_id
         return keycode.label
 
     @classmethod
-    def tooltip(cls, qmk_id):
-        keycode = cls.find_outer_keycode(qmk_id)
+    def tooltip(cls, code_id):
+        keycode = cls.find_outer_keycode(code_id)
         if keycode is None:
             return None
-        if keycode.qmk_id.startswith("TD("):
+        if keycode.code_id.startswith("TD("):
             return keycode.label.replace("\n", " ").replace("/ ", "/")
-        tooltip = keycode.qmk_id
+        tooltip = keycode.code_id
         if keycode.tooltip:
             tooltip = "{}: {}".format(tooltip, keycode.tooltip)
         return tooltip
@@ -136,12 +136,12 @@ class Keycode:
         if (code & 0xFF00) not in masked:
             kc = RAWCODES_MAP.get(code)
             if kc is not None:
-                return kc.qmk_id
+                return kc.code_id
         else:
             outer = RAWCODES_MAP.get(code & 0xFF00)
             inner = RAWCODES_MAP.get(code & 0x00FF)
             if outer is not None and inner is not None:
-                return outer.qmk_id.replace("kc", inner.qmk_id)
+                return outer.code_id.replace("kc", inner.code_id)
         return hex(code)
 
     @classmethod
@@ -154,8 +154,8 @@ class Keycode:
 
         if isinstance(val, int):
             return val
-        if val in cls.qmk_id_to_keycode:
-            return cls.resolve(cls.qmk_id_to_keycode[val].qmk_id)
+        if val in cls.code_id_to_keycode:
+            return cls.resolve(cls.code_id_to_keycode[val].code_id)
         if _any_keycode_cache is None:
             _any_keycode_cache = AnyKeycode()
         try:
@@ -172,20 +172,20 @@ class Keycode:
         return Keycode.serialize(Keycode.deserialize(code))
 
     @classmethod
-    def resolve(cls, qmk_constant):
-        """ Translates a qmk_constant into firmware-specific integer keycode or macro constant """
+    def resolve(cls, kc_constant):
+        """ Translates a kc_constant into firmware-specific integer keycode or macro constant """
         if cls.protocol == 6:
             kc = keycodes_v6.kc
         else:
             kc = keycodes_v5.kc
 
-        if qmk_constant not in kc:
-            raise RuntimeError("unable to resolve qmk_id={}".format(qmk_constant))
-        return kc[qmk_constant]
+        if kc_constant not in kc:
+            raise RuntimeError("unable to resolve code_id={}".format(kc_constant))
+        return kc[kc_constant]
         
     @classmethod
-    def description(cls, qmk_id):
-        keycode = cls.find_outer_keycode(qmk_id)
+    def description(cls, code_id):
+        keycode = cls.find_outer_keycode(code_id)
         if keycode is None or keycode.tooltip is None:
             return ""
         return keycode.tooltip
@@ -917,8 +917,8 @@ _MEDIA_SUPPORTED = {
     "KC_BTN1", "KC_BTN2", "KC_BTN3", "KC_BTN4", "KC_BTN5",
     "KC_WH_U", "KC_WH_D",
 }
-KEYCODES_MEDIA_UNSUPPORTED = [kc for kc in KEYCODES_MEDIA if kc.qmk_id not in _MEDIA_SUPPORTED]
-KEYCODES_MEDIA[:] = [kc for kc in KEYCODES_MEDIA if kc.qmk_id in _MEDIA_SUPPORTED]
+KEYCODES_MEDIA_UNSUPPORTED = [kc for kc in KEYCODES_MEDIA if kc.code_id not in _MEDIA_SUPPORTED]
+KEYCODES_MEDIA[:] = [kc for kc in KEYCODES_MEDIA if kc.code_id in _MEDIA_SUPPORTED]
 
 # Keycodes the device does not support. They are never offered (palette,
 # Search tab, on-device search) but stay registered so a keymap that already
@@ -935,10 +935,10 @@ _UNSUPPORTED_EXTRA_IDS = {
 
 
 def unsupported_ids():
-    """qmk_ids of every unsupported keycode (see KEYCODES_UNSUPPORTED)."""
-    ids = {kc.qmk_id for kc in KEYCODES_UNSUPPORTED}
-    ids.update(kc.qmk_id for kc in KEYCODES_SHIFTED)
-    ids.update(kc.qmk_id for kc in KEYCODES_USER)
+    """code_ids of every unsupported keycode (see KEYCODES_UNSUPPORTED)."""
+    ids = {kc.code_id for kc in KEYCODES_UNSUPPORTED}
+    ids.update(kc.code_id for kc in KEYCODES_SHIFTED)
+    ids.update(kc.code_id for kc in KEYCODES_USER)
     ids.update("USER{:02}".format(x) for x in range(16))
     ids.update(_UNSUPPORTED_EXTRA_IDS)
     return ids
@@ -1628,7 +1628,7 @@ KEYCODES_MIDI_PEDAL = [
 
 KEYCODES_MIDI_INOUT = [
     # MIDI Routing Controls - Both inputs have same 4 modes:
-    # PROC (process all through QMK), THRU (forward to both outputs), CLK (process clock only), IGN (ignore)
+    # PROC (process all on the keyboard), THRU (forward to both outputs), CLK (process clock only), IGN (ignore)
     K("MIDI_IN_MODE_TOG", "HW MIDI\nRoute", "Toggle Hardware MIDI IN routing: PROC→THRU→CLK→IGN"),
     K("USB_MIDI_MODE_TOG", "USB MIDI\nRoute", "Toggle USB MIDI routing: PROC→THRU→CLK→IGN"),
     K("MIDI_CLOCK_SRC_TOG", "Clock\nSource", "Toggle MIDI clock source: LOCAL→USB→MIDI_IN"),
@@ -2652,14 +2652,14 @@ JOYSTICK_FUNCTIONS = [
     ("LT", 19, "LT"), ("RT", 20, "RT"),
     ("DPAD_UP", 21, "D\u2191"), ("DPAD_DOWN", 22, "D\u2193"), ("DPAD_LEFT", 23, "D\u2190"), ("DPAD_RIGHT", 24, "D\u2192"),
 ]
-JOYSTICK_FUNCTION_IDS = {qmk_id: fid for qmk_id, fid, _ in JOYSTICK_FUNCTIONS}
+JOYSTICK_FUNCTION_IDS = {code_id: fid for code_id, fid, _ in JOYSTICK_FUNCTIONS}
 JOYSTICK_FUNCTION_LABELS = {fid: label for _, fid, label in JOYSTICK_FUNCTIONS}
-JOYSTICK_FUNCTION_NAMES = {fid: qmk_id for qmk_id, fid, _ in JOYSTICK_FUNCTIONS}
+JOYSTICK_FUNCTION_NAMES = {fid: code_id for code_id, fid, _ in JOYSTICK_FUNCTIONS}
 
 
-def joystick_function_id(qmk_id):
+def joystick_function_id(code_id):
     """Joystick function id (1-24) for a Gaming palette keycode, else 0."""
-    return JOYSTICK_FUNCTION_IDS.get(qmk_id, 0)
+    return JOYSTICK_FUNCTION_IDS.get(code_id, 0)
 
 
 KEYCODES_ARPEGGIATOR = [
@@ -3258,8 +3258,8 @@ def recreate_keycodes():
     KEYCODES_MAP.clear()
     RAWCODES_MAP.clear()
     for keycode in KEYCODES:
-        KEYCODES_MAP[keycode.qmk_id.replace("(kc)", "")] = keycode
-        RAWCODES_MAP[Keycode.deserialize(keycode.qmk_id)] = keycode
+        KEYCODES_MAP[keycode.code_id.replace("(kc)", "")] = keycode
+        RAWCODES_MAP[Keycode.deserialize(keycode.code_id)] = keycode
 
 
 def create_user_keycodes():
@@ -3325,28 +3325,28 @@ def recreate_keyboard_keycodes(keyboard):
 
 
     # Layer-tap is unsupported: registered for display only (see KEYCODES_UNSUPPORTED).
-    known_lt = {kc.qmk_id for kc in KEYCODES_LAYERS_LT}
+    known_lt = {kc.code_id for kc in KEYCODES_LAYERS_LT}
     for x in range(layers):
-        qmk_id = "LT{}(kc)".format(x)
-        if qmk_id in known_lt:
+        code_id = "LT{}(kc)".format(x)
+        if code_id in known_lt:
             continue
-        kc = Keycode(qmk_id, "LT {}\n(kc)".format(x + 1),
+        kc = Keycode(code_id, "LT {}\n(kc)".format(x + 1),
                      "kc on tap, switch to layer {} while held".format(x + 1), masked=True)
         KEYCODES_LAYERS_LT.append(kc)
         KEYCODES_UNSUPPORTED.append(kc)
 
     KEYCODES_MACRO.clear()
     for x in range(keyboard.macro_count):
-        qmk_id = "M{}".format(x)
+        code_id = "M{}".format(x)
         label = "Macro\n{}".format(x)
-        KEYCODES_MACRO.append(Keycode(qmk_id, label))
+        KEYCODES_MACRO.append(Keycode(code_id, label))
 
 
     KEYCODES_TAP_DANCE.clear()
     for x in range(keyboard.tap_dance_count):
-        qmk_id = "TD({})".format(x)
+        code_id = "TD({})".format(x)
         label = "Tap/\nHold\n{}".format(x)
-        KEYCODES_TAP_DANCE.append(Keycode(qmk_id, label, "Tap/Hold keycode"))
+        KEYCODES_TAP_DANCE.append(Keycode(code_id, label, "Tap/Hold keycode"))
 
     # Check if custom keycodes are defined in keyboard, and if so add them to user keycodes
     if keyboard.custom_keycodes is not None and len(keyboard.custom_keycodes) > 0:

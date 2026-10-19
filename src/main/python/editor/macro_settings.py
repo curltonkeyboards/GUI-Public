@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""The three firmware timing settings that survived the QMK Settings tab.
+"""The three firmware timing settings shown on the Macro Settings page.
 
-The old "QMK Settings" tab (Magic / Grave Escape / Tap-Hold / Auto Shift /
+The old settings tab (Magic / Grave Escape / Tap-Hold / Auto Shift /
 Combo / One Shot Keys / Mouse keys) is gone. Only three values are still
 user-facing, as the "Macro Settings" group of MIDI Settings > Advanced
 Settings:
@@ -18,7 +18,7 @@ Settings command's feature-detected mouse fields (protocol/msw_protocol.py).
 The other qsids stay at their firmware defaults; the firmware still supports
 them (stage 1 of the migration is GUI-only), they just have no UI.
 
-`QmkSettingsDefs` keeps the class-level definition/serialisation helpers the
+`MacroSettingsDefs` keeps the class-level definition/serialisation helpers the
 comm layer (`keyboard_comm.py`) and layout-file restore rely on.
 """
 import json
@@ -28,13 +28,13 @@ from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QGridLayout, QLabel, QSpinBox, QHBoxLayout, QPushButton, QMessageBox, QGroupBox, \
     QVBoxLayout
 
-from protocol.constants import VIAL_PROTOCOL_QMK_SETTINGS
+from protocol.constants import VIAL_PROTOCOL_SETTINGS
 from util import tr
 from vial_device import VialKeyboard
 
 
-class QmkSettingsDefs:
-    """Setting definitions loaded from qmk_settings.json + (de)serialisation."""
+class MacroSettingsDefs:
+    """Setting definitions loaded from macro_settings.json + (de)serialisation."""
 
     qsid_fields = defaultdict(list)
     settings_defs = {"tabs": []}
@@ -42,7 +42,7 @@ class QmkSettingsDefs:
     @classmethod
     def initialize(cls, appctx):
         cls.qsid_fields = defaultdict(list)
-        with open(appctx.get_resource("qmk_settings.json"), "r") as inf:
+        with open(appctx.get_resource("macro_settings.json"), "r") as inf:
             cls.settings_defs = json.load(inf)
         for tab in cls.settings_defs["tabs"]:
             for field in tab["fields"]:
@@ -94,14 +94,14 @@ class MacroSettingsGroup(QGroupBox):
     changed = pyqtSignal()
 
     def __init__(self):
-        super().__init__(tr("QmkSettings", "Macro Settings"))
+        super().__init__(tr("MacroSettings", "Macro Settings"))
         self.keyboard = None
         self.spinboxes = {}   # qsid -> QSpinBox
 
         layout = QVBoxLayout()
         grid = QGridLayout()
         grid.setHorizontalSpacing(15)
-        for row, field in enumerate(QmkSettingsDefs.fields()):
+        for row, field in enumerate(MacroSettingsDefs.fields()):
             if field["type"] != "integer":
                 continue
             lbl = QLabel(field["title"])
@@ -120,11 +120,11 @@ class MacroSettingsGroup(QGroupBox):
 
         buttons = QHBoxLayout()
         buttons.addStretch()
-        self.btn_save = QPushButton(tr("QmkSettings", "Save"))
+        self.btn_save = QPushButton(tr("MacroSettings", "Save"))
         self.btn_save.clicked.connect(self.save_settings)
-        self.btn_undo = QPushButton(tr("QmkSettings", "Undo"))
+        self.btn_undo = QPushButton(tr("MacroSettings", "Undo"))
         self.btn_undo.clicked.connect(self.reload_settings)
-        self.btn_reset = QPushButton(tr("QmkSettings", "Reset"))
+        self.btn_reset = QPushButton(tr("MacroSettings", "Reset"))
         self.btn_reset.clicked.connect(self.reset_settings)
         for b in (self.btn_save, self.btn_undo, self.btn_reset):
             b.setMinimumHeight(30)
@@ -140,7 +140,7 @@ class MacroSettingsGroup(QGroupBox):
 
     def valid(self, device):
         return isinstance(device, VialKeyboard) and device.keyboard and \
-            device.keyboard.vial_protocol >= VIAL_PROTOCOL_QMK_SETTINGS and \
+            device.keyboard.vial_protocol >= VIAL_PROTOCOL_SETTINGS and \
             any(qsid in device.keyboard.supported_settings for qsid in self.spinboxes)
 
     def rebuild(self, device):
@@ -181,14 +181,14 @@ class MacroSettingsGroup(QGroupBox):
             return
         for qsid, sb in self.spinboxes.items():
             if sb.isEnabled():
-                self.keyboard.qmk_settings_set(qsid, sb.value())
+                self.keyboard.macro_settings_set(qsid, sb.value())
         self.on_change()
 
     def reset_settings(self):
         if self.keyboard is None:
             return
         if QMessageBox.question(self, "",
-                                tr("QmkSettings", "Reset all Macro Settings to default values?"),
+                                tr("MacroSettings", "Reset all Macro Settings to default values?"),
                                 QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
-            self.keyboard.qmk_settings_reset()
+            self.keyboard.macro_settings_reset()
             self.reload_settings()

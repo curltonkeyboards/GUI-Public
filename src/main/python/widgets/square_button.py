@@ -6,7 +6,7 @@ from PyQt5.QtCore import QEvent, QSize, Qt, QMimeData
 from PyQt5.QtGui import QDrag
 from PyQt5.QtWidgets import QPushButton, QLabel, QHBoxLayout, QApplication
 
-# Drag payload of a keycode picked up from the palette (the qmk_id as UTF-8).
+# Drag payload of a keycode picked up from the palette (the code_id as UTF-8).
 # The editors' keycode buttons, drop gaps and "+" buttons accept it — see
 # widgets/keycode_button.py — inserting the key where it is dropped.
 KEYCODE_PALETTE_MIME = "application/x-midiswitch-palette-keycode"
@@ -14,8 +14,8 @@ KEYCODE_PALETTE_MIME = "application/x-midiswitch-palette-keycode"
 
 class SquareButton(QPushButton):
     """Palette key button.  Any instance that carries a ``keycode`` (the
-    palette sites set ``btn.keycode = <Keycode>`` / a qmk_id string) can be
-    DRAGGED: a press-and-move starts a copy drag carrying the qmk_id, so a key
+    palette sites set ``btn.keycode = <Keycode>`` / a code_id string) can be
+    DRAGGED: a press-and-move starts a copy drag carrying the code_id, so a key
     can be pulled straight from the palette into a macro line / toggle cycle
     (inserted at the drop position) or onto any editor key slot.  A plain
     click still emits ``clicked`` as before."""
@@ -34,14 +34,14 @@ class SquareButton(QPushButton):
 
     # ---- palette drag source -------------------------------------------
 
-    def palette_drag_qmk_id(self):
-        """The qmk_id this button would drag, or None (not a keycode button)."""
+    def palette_drag_code_id(self):
+        """The code_id this button would drag, or None (not a keycode button)."""
         kc = getattr(self, "keycode", None)
         if kc is None:
             return None
         if isinstance(kc, str):
             return kc
-        return getattr(kc, "qmk_id", None)
+        return getattr(kc, "code_id", None)
 
     def mousePressEvent(self, ev):
         self._palette_press_pos = ev.pos() if ev.button() == Qt.LeftButton else None
@@ -50,10 +50,10 @@ class SquareButton(QPushButton):
     def mouseMoveEvent(self, ev):
         if (self._palette_press_pos is not None and (ev.buttons() & Qt.LeftButton)
                 and (ev.pos() - self._palette_press_pos).manhattanLength() >= QApplication.startDragDistance()):
-            qmk_id = self.palette_drag_qmk_id()
+            code_id = self.palette_drag_code_id()
             # The web build cannot run QDrag's nested event loop.
-            if qmk_id and sys.platform != "emscripten":
-                self._start_palette_drag(qmk_id)
+            if code_id and sys.platform != "emscripten":
+                self._start_palette_drag(code_id)
                 return
         super().mouseMoveEvent(ev)
 
@@ -61,12 +61,12 @@ class SquareButton(QPushButton):
         self._palette_press_pos = None
         super().mouseReleaseEvent(ev)
 
-    def _start_palette_drag(self, qmk_id):
+    def _start_palette_drag(self, code_id):
         press_pos = self._palette_press_pos
         self._palette_press_pos = None
         drag = QDrag(self)
         mime = QMimeData()
-        mime.setData(KEYCODE_PALETTE_MIME, str(qmk_id).encode("utf-8"))
+        mime.setData(KEYCODE_PALETTE_MIME, str(code_id).encode("utf-8"))
         drag.setMimeData(mime)
         drag.setPixmap(self.grab())
         if press_pos is not None:

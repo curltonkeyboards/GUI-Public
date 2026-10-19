@@ -58,7 +58,7 @@ class KeyWidget(KeyboardWidget):
             kc = Keycode.find_outer_keycode(self.keycode)
             if kc is None:
                 return
-            keycode = kc.qmk_id.replace("(kc)", "({})".format(keycode))
+            keycode = kc.code_id.replace("(kc)", "({})".format(keycode))
         self.set_keycode(keycode)
 
     def on_anykey(self):

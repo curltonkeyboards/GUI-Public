@@ -94,8 +94,8 @@ class DummyKeyboard(Keyboard):
         """
 
         if "lighting" in self.definition:
-            self.lighting_qmk_rgblight = self.definition["lighting"] in ["qmk_rgblight", "qmk_backlight_rgblight"]
-            self.lighting_qmk_backlight = self.definition["lighting"] in ["qmk_backlight", "qmk_backlight_rgblight"]
+            self.lighting_rgblight = "rgblight" in self.definition["lighting"]
+            self.lighting_backlight = "backlight" in self.definition["lighting"]
             self.lighting_vialrgb = self.definition["lighting"] == "vialrgb"
 
         if self.lighting_vialrgb:
@@ -105,14 +105,14 @@ class DummyKeyboard(Keyboard):
             self.rgb_supported_effects = {0, 1, 2, 3}
 
     def reload_rgb(self):
-        if self.lighting_qmk_rgblight:
+        if self.lighting_rgblight:
             self.underglow_brightness = 128
             self.underglow_effect = 1
             self.underglow_effect_speed = 5
             # hue, sat
             self.underglow_color = (32, 64)
 
-        if self.lighting_qmk_backlight:
+        if self.lighting_backlight:
             self.backlight_brightness = 42
             self.backlight_effect = 0
 

@@ -38,7 +38,7 @@ from editor.dks_settings import DKSSettingsTab
 from editor.toggle_settings import ToggleSettingsTab
 from editor.layout_editor import LayoutEditor
 from editor.macro_recorder import MacroRecorder
-from editor.qmk_settings import QmkSettingsDefs
+from editor.macro_settings import MacroSettingsDefs
 from editor.rgb_configurator import RGBConfigurator
 from tabbed_keycodes import TabbedKeycodes
 from editor.tap_dance import TapDance
@@ -142,7 +142,7 @@ class MainWindow(QMainWindow):
         self.macro_recorder = MacroRecorder()
         self.tap_dance = TapDance()
         self.combo_keys = ComboKeys()
-        QmkSettingsDefs.initialize(appctx)
+        MacroSettingsDefs.initialize(appctx)
         self.matrix_tester = MatrixTest(self.layout_editor)
         self.velocity_tab = VelocityTab(self.layout_editor)
         self.rgb_configurator = RGBConfigurator()

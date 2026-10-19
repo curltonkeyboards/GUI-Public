@@ -13,7 +13,7 @@ from PyQt5.QtGui import QPainterPath, QRegion, QPainter, QColor, QBrush, QPen, Q
 
 from widgets.combo_box import ArrowComboBox, ArrowSpinBox
 from editor.basic_editor import BasicEditor
-from editor.qmk_settings import MacroSettingsGroup
+from editor.macro_settings import MacroSettingsGroup
 from editor.articulation_options import populate_articulation_combo, apply_articulation_visibility
 from editor import drum_voices
 from themes import Theme
@@ -3261,7 +3261,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
 
     def setup_advanced_settings_tab(self):
         """Advanced Settings sub-tab: the Macro Settings (firmware timing values,
-        formerly the QMK Settings tab) plus the display / lighting options moved
+        formerly a tab of their own) plus the display / lighting options moved
         out of the main MIDI Settings page (LCD Theme, Guide Lights, RGB Layer
         Mode)."""
         scroll_area = QScrollArea()

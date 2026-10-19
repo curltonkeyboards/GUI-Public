@@ -4,7 +4,7 @@ import struct
 from keycodes.keycodes import Keycode
 from protocol.constants import VIAL_PROTOCOL_ADVANCED_MACROS
 
-SS_QMK_PREFIX = 1
+SS_MACRO_PREFIX = 1
 
 SS_TAP_CODE = 1
 SS_DOWN_CODE = 2
@@ -80,13 +80,13 @@ class ActionSequence(BasicAction):
         out = b""
         for kc in self.sequence:
             if vial_protocol >= VIAL_PROTOCOL_ADVANCED_MACROS:
-                out += struct.pack("B", SS_QMK_PREFIX)
+                out += struct.pack("B", SS_MACRO_PREFIX)
             kc = Keycode.deserialize(kc)
             out += self.serialize_prefix(kc)
             if kc < 256:
                 out += struct.pack("B", kc)
             else:
-                # see decode_keycode() in qmk
+                # matches the keyboard's keycode decoding
                 if kc % 256 == 0:
                     kc = 0xFF00 | (kc >> 8)
                 out += struct.pack("<H", kc)
@@ -145,7 +145,7 @@ class ActionTap(ActionSequence):
 # through the same key path as any hand-built macro. The keys depend on the
 # key that carries each character differs per language, so each language has
 # its own table; they are merged into one lookup below.
-# Table value = (qmk_id, mods): "" plain, "S" Shift, "A" AltGr (Right Alt),
+# Table value = (code_id, mods): "" plain, "S" Shift, "A" AltGr (Right Alt),
 # "SA" Shift+AltGr. Dead keys (accents that wait for the next key) are left
 # out - they cannot be typed as a single character.
 TEXT_SHIFT_KEY = "KC_LSHIFT"
@@ -299,7 +299,7 @@ for _name in _TEXT_ORDER:
 
 
 def char_to_key(ch):
-    """(qmk_id, mods) of the key that types ``ch``, or None."""
+    """(code_id, mods) of the key that types ``ch``, or None."""
     return TEXT_KEYS.get(ch)
 
 
@@ -361,7 +361,7 @@ class ActionDelay(BasicAction):
         if vial_protocol < VIAL_PROTOCOL_ADVANCED_MACROS:
             raise RuntimeError("ActionDelay can only be used with vial_protocol>=2")
         delay = self.delay
-        return struct.pack("BBBB", SS_QMK_PREFIX, SS_DELAY_CODE, (delay % 255) + 1, (delay // 255) + 1)
+        return struct.pack("BBBB", SS_MACRO_PREFIX, SS_DELAY_CODE, (delay % 255) + 1, (delay // 255) + 1)
 
     def save(self):
         return super().save() + [self.delay]
@@ -401,9 +401,9 @@ class ActionBPMDelay(BasicAction):
         if vial_protocol < VIAL_PROTOCOL_ADVANCED_MACROS:
             raise RuntimeError("ActionBPMDelay can only be used with vial_protocol>=2")
         if getattr(self, 'repeat', 1) > 1:
-            return struct.pack("BBBBB", SS_QMK_PREFIX, SS_BPM_DELAY_REPEAT_CODE,
+            return struct.pack("BBBBB", SS_MACRO_PREFIX, SS_BPM_DELAY_REPEAT_CODE,
                                self.note_value + 1, self.timing_mode + 1, self.repeat + 1)
-        return struct.pack("BBBB", SS_QMK_PREFIX, SS_BPM_DELAY_CODE,
+        return struct.pack("BBBB", SS_MACRO_PREFIX, SS_BPM_DELAY_CODE,
                            self.note_value + 1, self.timing_mode + 1)
 
     def save(self):
@@ -439,7 +439,7 @@ class ActionBPMDelayRepeat(BasicAction):
     def serialize(self, vial_protocol):
         if vial_protocol < VIAL_PROTOCOL_ADVANCED_MACROS:
             raise RuntimeError("ActionBPMDelayRepeat can only be used with vial_protocol>=2")
-        return struct.pack("BBBBB", SS_QMK_PREFIX, SS_BPM_DELAY_REPEAT_CODE,
+        return struct.pack("BBBBB", SS_MACRO_PREFIX, SS_BPM_DELAY_REPEAT_CODE,
                            self.note_value + 1, self.timing_mode + 1, self.repeat + 1)
 
     def save(self):
@@ -483,7 +483,7 @@ class ActionMixingControl(BasicAction):
             timing = self.duration & 0xFF
             d0 = note_val + 1
             d1 = timing + 1
-        return struct.pack("BBBBBBBBB", SS_QMK_PREFIX, SS_MIXING_CONTROL_CODE,
+        return struct.pack("BBBBBBBBB", SS_MACRO_PREFIX, SS_MIXING_CONTROL_CODE,
                            self.cc_num + 1, self.channel + 1,
                            self.start_val + 1, self.end_val + 1,
                            self.duration_type + 1, d0, d1)
@@ -556,7 +556,7 @@ class ActionMouseMove(BasicAction):
         if vial_protocol < VIAL_PROTOCOL_ADVANCED_MACROS:
             raise RuntimeError("ActionMouseMove can only be used with vial_protocol>=2")
         payload = _mouse_coord_bytes(self.x) + _mouse_coord_bytes(self.y) + [int(self.click) + 1]
-        return struct.pack("BB", SS_QMK_PREFIX, SS_MOUSE_MOVE_CODE) + bytes(payload)
+        return struct.pack("BB", SS_MACRO_PREFIX, SS_MOUSE_MOVE_CODE) + bytes(payload)
 
     def save(self):
         return super().save() + [self.x, self.y, self.click]
@@ -652,7 +652,7 @@ class ActionGamepad(BasicAction):
                    max(0, min(100, int(self.percent))) + 1,
                    (dur & 0x7F) + 1, ((dur >> 7) & 0x7F) + 1,
                    (wait & 0x7F) + 1, ((wait >> 7) & 0x7F) + 1]
-        return struct.pack("BB", SS_QMK_PREFIX, SS_GAMEPAD2_CODE) + bytes(payload)
+        return struct.pack("BB", SS_MACRO_PREFIX, SS_GAMEPAD2_CODE) + bytes(payload)
 
     def save(self):
         return super().save() + [self.kind, self.target, self.value, self.percent,

@@ -574,12 +574,12 @@ class ToggleEntryUI(QWidget):
         self._gap.open_at(target, before, QSize(cell_w, key_size.height()),
                           key_size=key_size, key_offset=self.multi_color_labels[0].width())
 
-    def _on_target_key_assigned(self, qmk_id, widget):
+    def _on_target_key_assigned(self, code_id, widget):
         """Palette key dropped on the single target slot."""
         self._on_key_selected(0)
-        self.on_keycode_selected(qmk_id)
+        self.on_keycode_selected(code_id)
 
-    def _on_multi_key_insert(self, qmk_id, target, before):
+    def _on_multi_key_insert(self, code_id, target, before):
         """A key dragged from the palette was dropped on the cycle (on a
         step or in the gap): insert it as a NEW step there, shifting the later
         steps up (needs a free step)."""
@@ -595,7 +595,7 @@ class ToggleEntryUI(QWidget):
             idx = n
         idx = max(0, min(idx, n))
         try:
-            keycode_value = Keycode.deserialize(qmk_id)
+            keycode_value = Keycode.deserialize(code_id)
         except Exception:
             keycode_value = 0
         for i in range(TOGGLE_MULTI_MAX_KEYS - 1, idx, -1):
@@ -699,8 +699,8 @@ class ToggleEntryUI(QWidget):
         """Update the UI to reflect current slot state"""
         # Update standard target key display
         if self.slot.target_keycode != 0:
-            qmk_id = Keycode.serialize(self.slot.target_keycode)
-            self.target_key.set_keycode(qmk_id)
+            code_id = Keycode.serialize(self.slot.target_keycode)
+            self.target_key.set_keycode(code_id)
         else:
             self.target_key.set_keycode("KC_NO")
 
@@ -708,8 +708,8 @@ class ToggleEntryUI(QWidget):
         for i in range(TOGGLE_MULTI_MAX_KEYS):
             kc = self.slot.get_keycode(i)
             if kc != 0:
-                qmk_id = Keycode.serialize(kc)
-                self.multi_key_widgets[i].set_keycode(qmk_id)
+                code_id = Keycode.serialize(kc)
+                self.multi_key_widgets[i].set_keycode(code_id)
             else:
                 self.multi_key_widgets[i].set_keycode("KC_NO")
 
@@ -1024,7 +1024,7 @@ class ToggleSettingsTab(BasicEditor):
 
     @staticmethod
     def _hsv_to_rgb(h, s, v):
-        """Convert QMK HSV (0-255 each) to RGB tuple"""
+        """Convert keyboard HSV (0-255 each) to RGB tuple"""
         from PyQt5.QtGui import QColor
         qh = int(h * 360 / 256) % 360
         c = QColor.fromHsv(qh, s, v)

@@ -130,7 +130,7 @@ def is_alias_candidate(msg):
 #   response status@4 (1 = ok), then the CURRENT values as three u16 LE at
 #            5..10 - for every sub-command, so the caller refreshes from it.
 #
-# The keys are the app's own setting ids (the ones qmk_settings.json lists),
+# The keys are the app's own setting ids (the ones macro_settings.json lists),
 # so the settings page, .vil save/restore and the About dialog are unchanged.
 #
 # The macro Mouse Move timing rides the same command, feature-detected by a

@@ -7,11 +7,11 @@ from macro.macro_action import ActionTap, ActionDown, ActionText, ActionDelay, A
 from macro.macro_key import KeyDown, KeyTap, KeyUp, KeyString
 from macro.macro_optimizer import remove_repeats, replace_with_tap, replace_with_string
 
-KC_A = Keycode.find_by_qmk_id("KC_A").code
-KC_B = Keycode.find_by_qmk_id("KC_B").code
-KC_C = Keycode.find_by_qmk_id("KC_C").code
+KC_A = Keycode.find_by_code_id("KC_A").code
+KC_B = Keycode.find_by_code_id("KC_B").code
+KC_C = Keycode.find_by_code_id("KC_C").code
 
-CMB_TOG = Keycode.find_by_qmk_id("CMB_TOG").code
+CMB_TOG = Keycode.find_by_code_id("CMB_TOG").code
 
 
 class TestMacro(unittest.TestCase):
