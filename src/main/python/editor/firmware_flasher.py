@@ -4,9 +4,7 @@
 Update flow for a connected keyboard:
   1. back up every setting (keyboard clone, saved to the backups folder)
   2. put the keyboard into update mode (no buttons to hold)
-  3. install the signed .mswfw package over USB HID (no driver needed); a
-     plain firmware .bin is signed on the spot with the signing key on this
-     computer (protocol/msw_sign.py)
+  3. install the signed .mswfw package over USB HID (no driver needed)
   4. wait for the keyboard to restart, then restore the backup —
      converted forward when the new firmware stores settings differently
 
@@ -21,7 +19,7 @@ import sys
 import threading
 import time
 
-from PyQt5.QtCore import pyqtSignal, Qt, QSettings
+from PyQt5.QtCore import pyqtSignal, Qt
 from PyQt5.QtGui import QFontDatabase
 from PyQt5.QtWidgets import QHBoxLayout, QLineEdit, QToolButton, QPlainTextEdit, QProgressBar, \
     QFileDialog, QDialog, QCheckBox, QLabel, QPushButton, QMessageBox
@@ -29,19 +27,32 @@ from PyQt5.QtWidgets import QHBoxLayout, QLineEdit, QToolButton, QPlainTextEdit,
 from editor.basic_editor import BasicEditor
 from hidproxy import hid
 from protocol import clone_io
-from protocol import msw_sign
 from protocol import msw_updater as upd
 from util import tr, is_midiswitch_usb_id, RAW_HID_USAGE_PAGE, RAW_HID_USAGE
 from vial_device import VialKeyboard, VialDummyKeyboard, VialVirtualKeyboard, MswBootloader
 
 WAIT_BOOTLOADER_S = 30
 WAIT_KEYBOARD_S = 45
+# After a settings restore the keyboard restarts on its own: ~0.5 s later it
+# starts shutting down and stays off USB for over a second. Wait this long for
+# it to drop off before deciding it never restarted.
+WAIT_GONE_S = 10
+WAIT_ANSWER_S = 15          # listed -> answering, after a restart
+SETTINGS_PROBE_ADDR = 41     # first keymap byte: an ordinary settings read
 
 WHY_TEXT = {
     0: "the app asked it to",
     1: "ESC was held at power-on",
     2: "no firmware is installed (or the last update was interrupted)",
 }
+
+
+def _pollers_paused(active):
+    try:
+        from util import set_hid_transfer_active
+    except ImportError:
+        return
+    set_hid_transfer_active(active)
 
 
 def _keyboard_desc(descs, serial):
@@ -77,7 +88,7 @@ class FirmwareFlasher(BasicEditor):
         row = QHBoxLayout()
         self.txt_file = QLineEdit()
         self.txt_file.setReadOnly(True)
-        self.txt_file.setPlaceholderText(tr("Flasher", "Choose a firmware file (.mswfw or .bin)"))
+        self.txt_file.setPlaceholderText(tr("Flasher", "Choose a firmware file (.mswfw)"))
         row.addWidget(self.txt_file)
         self.btn_select = QToolButton()
         self.btn_select.setText(tr("Flasher", "Select file..."))
@@ -166,6 +177,8 @@ class FirmwareFlasher(BasicEditor):
                 if self.boot_info["app_valid"]:
                     text += " " + tr("Flasher", "Installed firmware: {}.").format(
                         upd.version_str(self.boot_info["app_version"]))
+                if self.boot_info.get("rdp"):
+                    text += " " + tr("Flasher", "Firmware read-out protection: on.")
                 can = True
             else:
                 text = tr("Flasher", "The keyboard is in update mode but is not answering. "
@@ -195,24 +208,14 @@ class FirmwareFlasher(BasicEditor):
     def on_select_file(self):
         dialog = QFileDialog()
         dialog.setAcceptMode(QFileDialog.AcceptOpen)
-        dialog.setNameFilters(["MIDIswitch firmware (*.mswfw *.bin)",
-                               "Firmware package (*.mswfw)", "Firmware build (*.bin)"])
+        dialog.setNameFilters(["MIDIswitch firmware (*.mswfw)"])
         if dialog.exec_() != QDialog.Accepted:
             return
         path = dialog.selectedFiles()[0]
         try:
             with open(path, "rb") as f:
                 blob = f.read(4 * 1024 * 1024)
-            if blob[:len(upd.PKG_MAGIC)] == upd.PKG_MAGIC:
-                self.package = upd.parse_package(blob)
-                note = ""
-            else:
-                key = self._signing_key()
-                if key is None:
-                    return
-                self.log("Signing {}...".format(os.path.basename(path)))
-                self.package = msw_sign.package_from_bin(blob, key)
-                note = tr("Flasher", ", signed here from the .bin")
+            self.package = upd.parse_package(blob)
         except (OSError, upd.UpdateError) as e:
             self.package = None
             self.txt_file.setText("")
@@ -220,8 +223,8 @@ class FirmwareFlasher(BasicEditor):
             QMessageBox.warning(None, tr("Flasher", "Firmware file"), str(e))
         else:
             self.txt_file.setText(path)
-            self.lbl_package.setText(tr("Flasher", "Firmware {} ({} KB{})").format(
-                self._pkg_version(self.package), self.package["size"] // 1024, note))
+            self.lbl_package.setText(tr("Flasher", "Firmware {} ({} KB)").format(
+                self._pkg_version(self.package), self.package["size"] // 1024))
             self.log("Selected {}".format(path))
         self._refresh_status()
 
@@ -230,36 +233,6 @@ class FirmwareFlasher(BasicEditor):
         if pkg.get("version_known", True):
             return upd.version_str(pkg["version"])
         return tr("Flasher", "(version unknown)")
-
-    def _signing_key(self):
-        """The secret key for signing a .bin: the remembered file, the default
-        location, or one the user picks (remembered for next time)."""
-        settings = QSettings("MIDIswitch", "SwitchStation")
-        for path in (settings.value("firmware/signing_key", "", type=str), msw_sign.DEFAULT_KEY):
-            if path and os.path.isfile(path):
-                try:
-                    return msw_sign.load_key(path)
-                except upd.UpdateError as e:
-                    QMessageBox.warning(None, tr("Flasher", "Signing key"), str(e))
-        QMessageBox.information(
-            None, tr("Flasher", "Signing key"),
-            tr("Flasher", "A .bin file has to be signed before the keyboard accepts it. "
-                          "Choose your firmware signing key file "
-                          "(for example DEV-firmware_signing_key.hex). "
-                          "The app remembers it for next time."))
-        dialog = QFileDialog()
-        dialog.setAcceptMode(QFileDialog.AcceptOpen)
-        dialog.setNameFilters(["Signing key (*.hex)", "All files (*)"])
-        if dialog.exec_() != QDialog.Accepted:
-            return None
-        path = dialog.selectedFiles()[0]
-        try:
-            key = msw_sign.load_key(path)
-        except upd.UpdateError as e:
-            QMessageBox.warning(None, tr("Flasher", "Signing key"), str(e))
-            return None
-        settings.setValue("firmware/signing_key", path)
-        return key
 
     def on_show_backups(self):
         from PyQt5.QtCore import QUrl
@@ -332,11 +305,62 @@ class FirmwareFlasher(BasicEditor):
             time.sleep(0.5)
         raise upd.UpdateError("Timed out waiting for {}.".format(what))
 
+    def _wait_gone(self, finder, seconds):
+        """Wait until the device finder no longer matches anything. Returns
+        False if it was still there when the time ran out."""
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            try:
+                found = finder(list(hid.enumerate()))
+            except Exception:
+                found = True
+            if not found:
+                return True
+            time.sleep(0.2)
+        return False
+
+    def _wait_ready(self, serial, what):
+        """Wait for the keyboard to be listed AND answering on its configurator
+        interface, so the app's reconnect afterwards doesn't land on a keyboard
+        that is still starting up."""
+        from protocol.keyboard_comm import Keyboard
+        desc = self._wait_for(lambda ds: _keyboard_desc(ds, serial), WAIT_KEYBOARD_S, what)
+        deadline = time.monotonic() + WAIT_ANSWER_S
+        memory_failed = False
+        while time.monotonic() < deadline:
+            dev = hid.device()
+            try:
+                dev.open_path(desc["path"])
+                kb = Keyboard(dev)
+                if kb.get_clone_info():
+                    # Answering is not enough: the keyboard must also be able to
+                    # read its settings memory, or a restore would be written
+                    # into nothing and the app would hang loading the keymap.
+                    if kb.clone_read_chunk(SETTINGS_PROBE_ADDR, 16) is not None:
+                        return desc
+                    memory_failed = True
+            except Exception:
+                pass
+            finally:
+                try:
+                    dev.close()
+                except Exception:
+                    pass
+            time.sleep(0.5)
+            desc = _keyboard_desc(list(hid.enumerate()), serial) or desc
+        if memory_failed:
+            raise upd.UpdateError(
+                "The keyboard restarted but cannot read its settings memory. Unplug the "
+                "keyboard, plug it back in, then press Refresh. If your settings were not "
+                "put back, load the backup with File > Load keyboard clone.")
+        return desc
+
     def _run(self, mode, pkg, keep, restore_path):
         log = self.log_signal.emit
         prog = self.progress_signal.emit
         backup = None   # (path, blob, layout_version)
         opened = None
+        _pollers_paused(True)    # the app's live readouts must not touch the keyboard meanwhile
         try:
             serial = self.device.desc.get("serial_number") or ""
             if mode == "keyboard":
@@ -380,12 +404,17 @@ class FirmwareFlasher(BasicEditor):
                 opened.close()
                 opened = None
 
-            kb_desc = self._wait_for(lambda ds: _keyboard_desc(ds, serial), WAIT_KEYBOARD_S,
-                                     "the keyboard to restart")
+            kb_desc = self._wait_ready(serial, "the keyboard to restart")
             if backup:
                 self._restore(kb_desc, backup)
-                self._wait_for(lambda ds: _keyboard_desc(ds, serial), WAIT_KEYBOARD_S,
-                               "the keyboard to restart with your settings")
+                # The keyboard restarts by itself after the restore. Wait for it to
+                # actually drop off USB first: it is still listed for a moment after
+                # the restore is confirmed, and reconnecting then makes the app load
+                # a keyboard that disconnects halfway through.
+                log("Waiting for the keyboard to restart...")
+                if not self._wait_gone(lambda ds: _keyboard_desc(ds, serial), WAIT_GONE_S):
+                    log("The keyboard did not restart by itself; carrying on.")
+                self._wait_ready(serial, "the keyboard to restart with your settings")
             prog(1.0)
             self.done_signal.emit(True, "Update complete.")
         except Exception as e:
@@ -395,6 +424,7 @@ class FirmwareFlasher(BasicEditor):
                 msg += "\n\nYour settings backup is saved at:\n{}".format(backup[0])
             self.done_signal.emit(False, msg)
         finally:
+            _pollers_paused(False)
             if opened is not None:
                 try:
                     opened.close()

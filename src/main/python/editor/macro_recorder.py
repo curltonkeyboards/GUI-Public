@@ -192,7 +192,7 @@ class MacroRecorder(BasicEditor):
                 actions.append(ActionText(k.string))
             else:
                 cls = {KeyDown: ActionDown, KeyUp: ActionUp, KeyTap: ActionTap}[type(k)]
-                actions.append(cls([k.keycode.qmk_id]))
+                actions.append(cls([k.keycode.code_id]))
 
         # merge: i.e. replace multiple instances of KeyDown with a single multi-key ActionDown, etc
         actions = self.keyboard.macro_deserialize(self.keyboard.macro_serialize(actions))

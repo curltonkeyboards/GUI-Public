@@ -328,16 +328,16 @@ class TestMacroSettings(unittest.TestCase):
         self.assertEqual(kb.supported_settings, set(msw.MACRO_SETTINGS_QSIDS))
         self.assertEqual(kb.settings, SETTINGS_DEFAULTS)
 
-        self.assertEqual(kb.qmk_settings_set(7, 250), 0)
+        self.assertEqual(kb.macro_settings_set(7, 250), 0)
         self.assertEqual(fw.settings[7], 250)
         self.assertEqual(fw.settings[18], SETTINGS_DEFAULTS[18])   # the other two carried unchanged
         self.assertEqual(kb.settings[7], 250)
 
-        kb.qmk_settings_reset()
+        kb.macro_settings_reset()
         self.assertEqual(fw.settings, SETTINGS_DEFAULTS)
         self.assertEqual(kb.settings, SETTINGS_DEFAULTS)
 
-        self.assertEqual(kb.qmk_settings_set(99, 1), 1)              # not a Macro Setting
+        self.assertEqual(kb.macro_settings_set(99, 1), 1)              # not a Macro Setting
         self.assertFalse(setting_subcommands(fw), "per-setting sub-command on the wire")
 
     def test_mouse_timing_rides_the_same_command(self):
@@ -348,14 +348,14 @@ class TestMacroSettings(unittest.TestCase):
         self.assertEqual(kb.supported_settings, set(msw.MACRO_SETTINGS_QSIDS + msw.MOUSE_SETTINGS_IDS))
         self.assertEqual(kb.settings[msw.MOUSE_DOUBLE_CLICK_ID], 100)
 
-        self.assertEqual(kb.qmk_settings_set(msw.MOUSE_CLICK_DELAY_ID, 40), 0)
+        self.assertEqual(kb.macro_settings_set(msw.MOUSE_CLICK_DELAY_ID, 40), 0)
         self.assertEqual(fw.mouse_settings[msw.MOUSE_CLICK_DELAY_ID], 40)
         self.assertEqual(fw.mouse_settings[msw.MOUSE_DOUBLE_CLICK_ID], 100)
         self.assertEqual(fw.settings, SETTINGS_DEFAULTS)
-        self.assertEqual(kb.qmk_settings_set(7, 300), 0)             # carries the mouse values unchanged
+        self.assertEqual(kb.macro_settings_set(7, 300), 0)             # carries the mouse values unchanged
         self.assertEqual(fw.mouse_settings[msw.MOUSE_CLICK_DELAY_ID], 40)
 
-        kb.qmk_settings_reset()
+        kb.macro_settings_reset()
         self.assertEqual(fw.mouse_settings, MOUSE_DEFAULTS)
         self.assertEqual(kb.settings[msw.MOUSE_CLICK_DELAY_ID], 10)
 
@@ -365,14 +365,14 @@ class TestMacroSettings(unittest.TestCase):
         kb.reload_layout()
         kb.reload_settings()
         self.assertNotIn(msw.MOUSE_CLICK_DELAY_ID, kb.supported_settings)
-        self.assertEqual(kb.qmk_settings_set(7, 250), 0)
+        self.assertEqual(kb.macro_settings_set(7, 250), 0)
         self.assertEqual(fw.settings[7], 250)
 
     def test_set_before_reload_fetches_the_rest(self):
         fw = FakeFirmware()
         kb = Keyboard(None, fw.send)
         kb.reload_layout()
-        self.assertEqual(kb.qmk_settings_set(18, 7), 0)
+        self.assertEqual(kb.macro_settings_set(18, 7), 0)
         self.assertEqual(fw.settings, {7: 200, 18: 7, 6: 5000})
 
     def test_bad_reply_leaves_settings_unsupported(self):
@@ -383,17 +383,17 @@ class TestMacroSettings(unittest.TestCase):
         kb.reload_settings()
         self.assertEqual(kb.supported_settings, set())
         self.assertEqual(kb.settings, {})
-        self.assertEqual(kb.qmk_settings_set(7, 1), 1)
+        self.assertEqual(kb.macro_settings_set(7, 1), 1)
 
     def test_legacy_firmware_still_uses_the_per_setting_commands(self):
         # the per-setting path decodes through the settings definitions the app ships
-        from editor.qmk_settings import QmkSettingsDefs
+        from editor.macro_settings import MacroSettingsDefs
         res = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "resources", "base")
 
         class Ctx:
             def get_resource(self, name):
                 return os.path.join(res, name)
-        QmkSettingsDefs.initialize(Ctx())
+        MacroSettingsDefs.initialize(Ctx())
 
         fw = FakeFirmware(has_ident=False, serve_definition=True)
         kb = Keyboard(None, fw.send)
@@ -401,7 +401,7 @@ class TestMacroSettings(unittest.TestCase):
         kb.reload_settings()
         self.assertEqual(kb.supported_settings, set(SETTINGS_DEFAULTS))
         self.assertEqual(kb.settings, SETTINGS_DEFAULTS)
-        self.assertEqual(kb.qmk_settings_set(6, 123), 0)
+        self.assertEqual(kb.macro_settings_set(6, 123), 0)
         self.assertEqual(fw.settings[6], 123)
         self.assertTrue(setting_subcommands(fw))
 
@@ -414,6 +414,47 @@ def definition_requests(fw):
 def setting_subcommands(fw):
     """The per-setting query/get/set/reset requests seen on the wire, either form."""
     return [p for p in fw.wire if p[0] in (0xFE, msw.ALIAS_VIAL_PREFIX) and 0x09 <= p[1] <= 0x0C]
+
+
+class TestLateReply(unittest.TestCase):
+    """A reply that arrives after the app gave up on it must not be taken as
+    the answer to the next request (that shifted every later request by one
+    and left the keymap load stuck)."""
+
+    def _kb(self, queue):
+        class Dev:
+            def read(self, n, timeout_ms=0):
+                return queue.pop(0) if queue else b""
+        sent = []
+
+        def send(dev, msg, retries=1):
+            sent.append(bytes(msg))
+            return queue.pop(0) if queue else b""
+        kb = Keyboard(Dev(), send)
+        kb.hid_codec = "msw"
+        return kb, sent
+
+    def test_stale_buffer_reply_skipped(self):
+        alias = msw.VIA_TO_ALIAS[0x12]
+        stale = pad(bytes([alias, 0x00, 0x00, 28]) + b"\x11" * 28)    # earlier offset 0
+        real = pad(bytes([alias, 0x00, 0x1C, 28]) + b"\x22" * 28)     # this request, offset 28
+        kb, sent = self._kb([stale, real])
+        data = kb.usb_send(kb.dev, struct.pack(">BHB", 0x12, 28, 28), retries=3)
+        self.assertEqual(data[0], 0x12)
+        self.assertEqual(data[4:32], b"\x22" * 28)
+        self.assertEqual(len(sent), 1)          # found by reading on, not by resending
+
+    def test_other_command_reply_skipped(self):
+        stale = pad(bytes([msw.VIA_TO_ALIAS[0x04], 0, 0, 0, 0x12, 0x34]))
+        real = pad(bytes([msw.VIA_TO_ALIAS[0x11], 4]))
+        kb, sent = self._kb([stale, real])
+        self.assertEqual(kb.usb_send(kb.dev, struct.pack("B", 0x11))[:2], bytes([0x11, 4]))
+
+    def test_no_match_resends_then_fails(self):
+        kb, sent = self._kb([])
+        with self.assertRaises(RuntimeError):
+            kb.usb_send(kb.dev, struct.pack("B", 0x11), retries=2)
+        self.assertEqual(len(sent), 2)
 
 
 if __name__ == "__main__":

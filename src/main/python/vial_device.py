@@ -55,7 +55,10 @@ class VialDevice:
             return bytes(self.dev.read(length, timeout_ms=timeout_ms))
 
     def close(self):
-        self.dev.close()
+        # Wait for any transaction in flight on another thread: closing the
+        # handle while hidapi is reading it crashes the app.
+        with self.hid_lock:
+            self.dev.close()
 
 
 class VialKeyboard(VialDevice):
@@ -73,7 +76,7 @@ class VialKeyboard(VialDevice):
         self.keyboard = Keyboard(self.dev)
         _startup_log("Starting keyboard data reload...")
         self.keyboard.reload(override_json)
-        _startup_log("VialKeyboard.open() complete - returning to MainWindow")
+        _startup_log("Keyboard opened - returning to main window")
 
     def title(self):
         s = "{} {}".format(self.desc["manufacturer_string"], self.desc["product_string"]).strip()

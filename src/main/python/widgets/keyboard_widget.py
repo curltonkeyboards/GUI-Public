@@ -653,7 +653,7 @@ class KeyWidget2:
         # Joystick function attached to this key (keymap editor): short label
         # drawn at 50% opacity in the bottom-right quarter, "" = none.
         self.joystick_text = ""
-        self.joystick_icon = None   # gamepad icon id (qmk_id) for the overlay
+        self.joystick_icon = None   # gamepad icon id (code_id) for the overlay
 
         self.rotation_angle = desc.rotation_angle
 
@@ -904,7 +904,7 @@ class KeyboardWidget2(QWidget):
     anykey = pyqtSignal()
     # A keycode dragged out of the keycode palette (SquareButton drag, see
     # KEYCODE_PALETTE_MIME) was dropped on a key: (key widget, hit the masked
-    # inner part, qmk_id). Only emitted once set_drop_assign_enabled(True).
+    # inner part, code_id). Only emitted once set_drop_assign_enabled(True).
     keycode_dropped = pyqtSignal(object, bool, str)
     # The joystick overlay in a key's corner was clicked (key widget).
     joystick_clicked = pyqtSignal(object)
@@ -967,17 +967,17 @@ class KeyboardWidget2(QWidget):
         self.setAcceptDrops(self.drop_assign_enabled)
 
     def _palette_drag_id(self, ev):
-        """qmk_id carried by a palette drag event, or None."""
+        """code_id carried by a palette drag event, or None."""
         if not self.drop_assign_enabled or not self.enabled:
             return None
         mime = ev.mimeData()
         if mime is None or not mime.hasFormat(KEYCODE_PALETTE_MIME):
             return None
         try:
-            qmk_id = bytes(mime.data(KEYCODE_PALETTE_MIME)).decode("utf-8")
+            code_id = bytes(mime.data(KEYCODE_PALETTE_MIME)).decode("utf-8")
         except Exception:
             return None
-        return qmk_id or None
+        return code_id or None
 
     def _set_drop_hover(self, key, mask):
         if key is not self.drop_hover_key or mask != self.drop_hover_mask:
@@ -1012,14 +1012,14 @@ class KeyboardWidget2(QWidget):
         ev.accept()
 
     def dropEvent(self, ev):
-        qmk_id = self._palette_drag_id(ev)
+        code_id = self._palette_drag_id(ev)
         key, mask = self.hit_test(ev.pos())
         self._set_drop_hover(None, False)
-        if qmk_id is None or key is None:
+        if code_id is None or key is None:
             ev.ignore()
             return
         ev.acceptProposedAction()
-        self.keycode_dropped.emit(key, mask, qmk_id)
+        self.keycode_dropped.emit(key, mask, code_id)
 
     def set_keys(self, keys, encoders):
         self.common_widgets = []

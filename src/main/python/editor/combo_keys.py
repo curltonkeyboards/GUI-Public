@@ -45,7 +45,7 @@ def model_is_used(model):
 
 def _kc(v):
     """A fresh KeyOverrideEntry() carries integer 0 keycodes; entries read from
-    the device carry qmk_id strings. Normalise to the string form."""
+    the device carry code_id strings. Normalise to the string form."""
     return "KC_NO" if v in (0, None, "") else v
 
 

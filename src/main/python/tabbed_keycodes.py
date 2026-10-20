@@ -448,12 +448,12 @@ class AlternativeDisplay(QWidget):
         self.buttons = []
 
         for keycode in self.keycodes:
-            if not keycode_filter(keycode.qmk_id):
+            if not keycode_filter(keycode.code_id):
                 continue
             btn = SquareButton()
             btn.setRelSize(KEYCODE_BTN_RATIO)
-            btn.setToolTip(Keycode.tooltip(keycode.qmk_id))
-            btn.clicked.connect(lambda st, k=keycode: self.keycode_changed.emit(k.qmk_id))
+            btn.setToolTip(Keycode.tooltip(keycode.code_id))
+            btn.clicked.connect(lambda st, k=keycode: self.keycode_changed.emit(k.code_id))
             btn.keycode = keycode
             self.key_layout.addWidget(btn)
             self.buttons.append(btn)
@@ -634,7 +634,7 @@ class SmartChordTab(QScrollArea):
                 btn.setFixedSize(50, 50)
                 btn.setText(str(keycode.label))
                 btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
-                btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
                 btn.keycode = keycode
                 chord_qb_layout.addWidget(btn)
             chord_qb_group.setLayout(chord_qb_layout)
@@ -649,7 +649,7 @@ class SmartChordTab(QScrollArea):
                 btn.setFixedSize(50, 50)
                 btn.setText(str(keycode.label))
                 btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
-                btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
                 btn.keycode = keycode
                 dynchord_qb_layout.addWidget(btn)
             dynchord_qb_group.setLayout(dynchord_qb_layout)
@@ -696,13 +696,13 @@ class SmartChordTab(QScrollArea):
             # Use the third value (description) and replace newlines with spaces
             try:
                 # For table items, use the third element (description) with newlines replaced
-                label_text = str(Keycode.description(keycode.qmk_id)).replace("\n", "  ")
+                label_text = str(Keycode.description(keycode.code_id)).replace("\n", "  ")
             except Exception:
-                # Fallback to QMK ID if anything fails
-                label_text = str(keycode.qmk_id)
+                # Fallback to the keycode ID if anything fails
+                label_text = str(keycode.code_id)
             
             keycode_item = QTreeWidgetItem(tree, [label_text])
-            keycode_item.setData(0, Qt.UserRole, keycode.qmk_id)  # Store qmk_id for easy access
+            keycode_item.setData(0, Qt.UserRole, keycode.code_id)  # Store code_id for easy access
 
             # Force text to be on one line and left-aligned
             keycode_item.setTextAlignment(0, Qt.AlignLeft)
@@ -730,9 +730,9 @@ class SmartChordTab(QScrollArea):
             clicked_item.setSelected(True)
             
             # Get the data from the clicked item
-            qmk_id = clicked_item.data(0, Qt.UserRole)
-            if qmk_id:
-                self.keycode_changed.emit(qmk_id)
+            code_id = clicked_item.data(0, Qt.UserRole)
+            if code_id:
+                self.keycode_changed.emit(code_id)
                 
         finally:
             # Restore signals
@@ -748,7 +748,7 @@ class SmartChordTab(QScrollArea):
         max_columns = 15  # Limit columns for better appearance
         
         for keycode in self.inversion_keycodes:
-            if keycode_filter is None or keycode_filter(keycode.qmk_id):
+            if keycode_filter is None or keycode_filter(keycode.code_id):
                 btn = SquareButton()
                 btn.setFixedSize(50, 50)  # Set fixed size to 50x50 as requested
                 
@@ -760,13 +760,13 @@ class SmartChordTab(QScrollArea):
                     # If there's no direct access, try alternative approach
                     try:
                         # Fallback 1: Try to get label via a method if it exists
-                        button_text = str(Keycode.label(keycode.qmk_id))
+                        button_text = str(Keycode.label(keycode.code_id))
                     except Exception:
-                        # Fallback 2: Use QMK ID if all else fails
-                        button_text = str(keycode.qmk_id)
+                        # Fallback 2: Use the keycode ID if all else fails
+                        button_text = str(keycode.code_id)
                 
                 btn.setText(button_text)
-                btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
                 btn.keycode = keycode
 
                 self.button_layout.addWidget(btn, row, col)
@@ -776,9 +776,9 @@ class SmartChordTab(QScrollArea):
                     row += 1
 
     def on_selection_change(self, index):
-        selected_qmk_id = self.sender().itemData(index)
-        if selected_qmk_id:
-            self.keycode_changed.emit(selected_qmk_id)
+        selected_code_id = self.sender().itemData(index)
+        if selected_code_id:
+            self.keycode_changed.emit(selected_code_id)
 
     def relabel_buttons(self):
         """Relabel buttons based on keycodes."""
@@ -794,10 +794,10 @@ class SmartChordTab(QScrollArea):
                         # If there's no direct access, try alternative approach
                         try:
                             # Fallback 1: Try to get label via a method if it exists
-                            button_text = str(Keycode.label(keycode.qmk_id))
+                            button_text = str(Keycode.label(keycode.code_id))
                         except Exception:
-                            # Fallback 2: Use QMK ID if all else fails
-                            button_text = str(keycode.qmk_id)
+                            # Fallback 2: Use the keycode ID if all else fails
+                            button_text = str(keycode.code_id)
                     
                     widget.setText(button_text)
 
@@ -1045,8 +1045,8 @@ class midiadvancedTab(QScrollArea):
         for keycode in self.keycodes_settings1:
             btn = SquareButton()
             btn.setFixedSize(50, 50)
-            btn.setText(Keycode.label(keycode.qmk_id))
-            btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+            btn.setText(Keycode.label(keycode.code_id))
+            btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
             btn.keycode = keycode
             row1_layout.addWidget(btn)
 
@@ -1060,8 +1060,8 @@ class midiadvancedTab(QScrollArea):
         for keycode in self.keycodes_settings2:
             btn = SquareButton()
             btn.setFixedSize(50, 50)
-            btn.setText(Keycode.label(keycode.qmk_id))
-            btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+            btn.setText(Keycode.label(keycode.code_id))
+            btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
             btn.keycode = keycode
             row2_layout.addWidget(btn)
 
@@ -1075,8 +1075,8 @@ class midiadvancedTab(QScrollArea):
         for keycode in self.keycodes_settings3:
             btn = SquareButton()
             btn.setFixedSize(50, 50)
-            btn.setText(Keycode.label(keycode.qmk_id))
-            btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+            btn.setText(Keycode.label(keycode.code_id))
+            btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
             btn.keycode = keycode
             row3_layout.addWidget(btn)
 
@@ -1149,11 +1149,11 @@ class midiadvancedTab(QScrollArea):
             ("Delay Factory Presets", KEYCODES_DELAY_FACTORY, "delay factory preset", "dropdown", None),
             ("Delay User Presets", KEYCODES_DELAY_USER, "delay user preset slot", "dropdown", None),
         ]
-        # Build set of qmk_ids that belong to categories (skip from button display)
+        # Build set of code_ids that belong to categories (skip from button display)
         self._adv_dropdown_ids = set()
         for _, kc_list, _, _, _ in self._ADV_CATEGORIES:
             for kc in kc_list:
-                self._adv_dropdown_ids.add(kc.qmk_id)
+                self._adv_dropdown_ids.add(kc.code_id)
         return self._ADV_CATEGORIES
 
     # Search synonyms: common terms mapped to what appears in labels/ids
@@ -1175,12 +1175,12 @@ class midiadvancedTab(QScrollArea):
     }
 
     # Tab/section synonyms: when ANY of these terms appear in search,
-    # force-include ALL keycodes from that section (by qmk_id).
-    # Maps frozenset of search trigger words → list of qmk_ids.
+    # force-include ALL keycodes from that section (by code_id).
+    # Maps frozenset of search trigger words → list of code_ids.
     _TAB_SECTION_MAP = None  # Built lazily
 
     def _get_tab_section_map(self):
-        """Build mapping of tab search terms → qmk_ids belonging to that tab. Lazy."""
+        """Build mapping of tab search terms → code_ids belonging to that tab. Lazy."""
         if self._TAB_SECTION_MAP is not None:
             return self._TAB_SECTION_MAP
 
@@ -1190,7 +1190,7 @@ class midiadvancedTab(QScrollArea):
         chan_ids = set()
         for kc_list in [self.channel_options, self.channel_oneshot, self.channel_hold]:
             for kc in kc_list:
-                chan_ids.add(kc.qmk_id)
+                chan_ids.add(kc.code_id)
         for term in ["channel", "chan", "midi channel"]:
             m[term] = chan_ids
 
@@ -1200,9 +1200,9 @@ class midiadvancedTab(QScrollArea):
                         self.CCencoder, self.cc_multiplier_options,
                         self.smartchord_program_change, self.smartchord_LSB, self.smartchord_MSB]:
             for kc in kc_list:
-                cc_ids.add(kc.qmk_id)
+                cc_ids.add(kc.code_id)
         for kc in KEYCODES_MIDI_CC_FIXED:
-            cc_ids.add(kc.qmk_id)
+            cc_ids.add(kc.code_id)
         for term in ["cc", "cc options", "control change", "midi cc", "program change", "bank"]:
             m[term] = cc_ids
 
@@ -1210,14 +1210,14 @@ class midiadvancedTab(QScrollArea):
         trans_ids = set()
         for kc_list in [self.smartchord_octave_1, self.smartchord_key]:
             for kc in kc_list:
-                trans_ids.add(kc.qmk_id)
+                trans_ids.add(kc.code_id)
         for term in ["transpose", "transposition", "key selector", "octave selector"]:
             m[term] = trans_ids
 
         # KeySplit tab
         ks_ids = set()
         for kc in self.inversion_keycodes2:
-            ks_ids.add(kc.qmk_id)
+            ks_ids.add(kc.code_id)
         ks_ids.update(["KS_TOGGLE", "KS_VELOCITY_TOGGLE", "KS_TRANSPOSE_TOGGLE"])
         for term in ["keysplit", "key split", "triplesplit", "triple split", "split"]:
             m[term] = ks_ids
@@ -1225,7 +1225,7 @@ class midiadvancedTab(QScrollArea):
         # Advanced MIDI (inversions)
         inv_ids = set()
         for kc in self.inversion_keycodes:
-            inv_ids.add(kc.qmk_id)
+            inv_ids.add(kc.code_id)
         for term in ["inversion", "inversions", "advanced midi", "chord inversion"]:
             m[term] = inv_ids
 
@@ -1233,10 +1233,10 @@ class midiadvancedTab(QScrollArea):
         vel_ids = set()
         for kc_list in [self.velocity_multiplier_options]:
             for kc in kc_list:
-                vel_ids.add(kc.qmk_id)
+                vel_ids.add(kc.code_id)
         vel_ids.update(["MI_VELOCITY_UP", "MI_VELOCITY_DOWN"])
         for kc in KEYCODES_HE_VELOCITY_CURVE:
-            vel_ids.add(kc.qmk_id)
+            vel_ids.add(kc.code_id)
         # Note: KEYCODES_HE_VELOCITY_RANGE (8128 items) excluded - use range dialog instead
         for term in ["velocity", "vel", "playing style", "velocity curve", "articulation"]:
             m[term] = vel_ids
@@ -1244,17 +1244,17 @@ class midiadvancedTab(QScrollArea):
         # In/Out tab
         inout_ids = set()
         for kc in self.keycodes_midi_inout:
-            inout_ids.add(kc.qmk_id)
+            inout_ids.add(kc.code_id)
         for term in ["in/out", "inout", "in out", "routing", "midi routing", "override"]:
             m[term] = inout_ids
 
         # Touch Dial tab
         td_ids = set()
         for kc in self.inversion_keycodesspecial:
-            td_ids.add(kc.qmk_id)
+            td_ids.add(kc.code_id)
         for kc_list in [self.CCencoder, self.velocity_multiplier_options, self.cc_multiplier_options]:
             for kc in kc_list:
-                td_ids.add(kc.qmk_id)
+                td_ids.add(kc.code_id)
         for term in ["touch dial", "expression", "wheel", "encoder"]:
             m[term] = td_ids
 
@@ -1262,7 +1262,7 @@ class midiadvancedTab(QScrollArea):
         preset_ids = set()
         for kc_list in [self.keycodes_settings1, self.keycodes_settings2, self.keycodes_settings3]:
             for kc in kc_list:
-                preset_ids.add(kc.qmk_id)
+                preset_ids.add(kc.code_id)
         for term in ["preset", "presets", "settings", "save settings", "load settings", "factory"]:
             m[term] = preset_ids
 
@@ -1340,14 +1340,14 @@ class midiadvancedTab(QScrollArea):
         # Initial populate
         self._update_advanced_keys("")
 
-    def _tap_hold_configured(self, qmk_id):
+    def _tap_hold_configured(self, code_id):
         """Search offers only Tap/Hold slots that have at least one action set
         (read live from the keyboard, so a newly saved slot shows up)."""
         entries = getattr(getattr(self, "keyboard", None), "tap_dance_entries", None)
         if not entries:
             return False
         try:
-            idx = int(qmk_id[3:-1])
+            idx = int(code_id[3:-1])
         except ValueError:
             return False
         if idx >= len(entries):
@@ -1355,14 +1355,14 @@ class midiadvancedTab(QScrollArea):
         return any(kc not in ("KC_NO", "", None, 0) for kc in entries[idx][:4])
 
     @staticmethod
-    def _is_macro_keycode(qmk_id):
-        return len(qmk_id) > 1 and qmk_id[0] == "M" and qmk_id[1:].isdigit()
+    def _is_macro_keycode(code_id):
+        return len(code_id) > 1 and code_id[0] == "M" and code_id[1:].isdigit()
 
-    def _macro_configured(self, qmk_id):
+    def _macro_configured(self, code_id):
         """Search offers only the macros that exist in the Macro tab: ones
         with actions recorded, or that have been given a name."""
-        idx = int(qmk_id[1:])
-        if KeycodeDisplay.get_custom_name_label(qmk_id):
+        idx = int(code_id[1:])
+        if KeycodeDisplay.get_custom_name_label(code_id):
             return True
         data = getattr(getattr(self, "keyboard", None), "macro", None)
         if not data:
@@ -1525,11 +1525,11 @@ class midiadvancedTab(QScrollArea):
                 dropdown.addItem("Select...")
                 dropdown.model().item(0).setEnabled(False)
                 for kc in kc_list:
-                    dropdown.addItem(Keycode.label(kc.qmk_id), kc.qmk_id)
+                    dropdown.addItem(Keycode.label(kc.code_id), kc.code_id)
                 def on_change(idx, dd=dropdown):
-                    qmk_id = dd.itemData(idx)
-                    if qmk_id:
-                        self.keycode_changed.emit(qmk_id)
+                    code_id = dd.itemData(idx)
+                    if code_id:
+                        self.keycode_changed.emit(code_id)
                     dd.setCurrentIndex(0)
                 dropdown.currentIndexChanged.connect(on_change)
                 wl.addWidget(label)
@@ -1544,7 +1544,7 @@ class midiadvancedTab(QScrollArea):
         self.adv_dropdown_flow.invalidate()
         self.adv_dropdown_container.updateGeometry()
 
-        # Build set of qmk_ids force-included from matched tab sections
+        # Build set of code_ids force-included from matched tab sections
         tab_force_ids = set()
         if words:
             tab_map = self._get_tab_section_map()
@@ -1568,36 +1568,36 @@ class midiadvancedTab(QScrollArea):
         seen_ids = set()
         unsupported = unsupported_ids()
         for keycode in KEYCODES:
-            if not keycode.qmk_id or keycode.qmk_id == "KC_NO":
+            if not keycode.code_id or keycode.code_id == "KC_NO":
                 continue
-            if keycode.qmk_id in unsupported:
+            if keycode.code_id in unsupported:
                 continue
-            if keycode.qmk_id.startswith("TD(") and not self._tap_hold_configured(keycode.qmk_id):
+            if keycode.code_id.startswith("TD(") and not self._tap_hold_configured(keycode.code_id):
                 continue
-            if keycode.qmk_id in seen_ids:
+            if keycode.code_id in seen_ids:
                 continue
-            is_macro = self._is_macro_keycode(keycode.qmk_id)
-            if is_macro and not self._macro_configured(keycode.qmk_id):
+            is_macro = self._is_macro_keycode(keycode.code_id)
+            if is_macro and not self._macro_configured(keycode.code_id):
                 continue
 
             # Force-include if keycode belongs to a matched tab section
-            if keycode.qmk_id in tab_force_ids:
+            if keycode.code_id in tab_force_ids:
                 self._adv_matched_keycodes.append(keycode)
-                seen_ids.add(keycode.qmk_id)
+                seen_ids.add(keycode.code_id)
                 continue
 
             # Normal search: skip dropdown category keycodes
-            if keycode.qmk_id in self._adv_dropdown_ids:
+            if keycode.code_id in self._adv_dropdown_ids:
                 continue
-            haystack = keycode.qmk_id + " " + (keycode.label or "").replace("\n", " ") + " " + (keycode.tooltip or "")
-            custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
+            haystack = keycode.code_id + " " + (keycode.label or "").replace("\n", " ") + " " + (keycode.tooltip or "")
+            custom = KeycodeDisplay.get_custom_name_label(keycode.code_id)
             if custom:
                 haystack += " " + custom.replace("\n", " ")
             if is_macro:
                 haystack += " macro macros"
             if matches_search(haystack):
                 self._adv_matched_keycodes.append(keycode)
-                seen_ids.add(keycode.qmk_id)
+                seen_ids.add(keycode.code_id)
 
         total_buttons = len(self._adv_matched_keycodes)
         total_pages = max(1, (total_buttons + PAGE_SIZE - 1) // PAGE_SIZE)
@@ -1614,15 +1614,15 @@ class midiadvancedTab(QScrollArea):
         for keycode in self._adv_matched_keycodes[start:end]:
             btn = SquareButton()
             btn.setRelSize(KEYCODE_BTN_RATIO)
-            custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
+            custom = KeycodeDisplay.get_custom_name_label(keycode.code_id)
             if custom:
                 btn.setText(custom)
-            elif self._is_macro_keycode(keycode.qmk_id):
-                btn.setText("Macro\n{}".format(int(keycode.qmk_id[1:]) + 1))
+            elif self._is_macro_keycode(keycode.code_id):
+                btn.setText("Macro\n{}".format(int(keycode.code_id[1:]) + 1))
             else:
-                btn.setText(keycode.label if keycode.label else keycode.qmk_id)
-            btn.setToolTip(Keycode.tooltip(keycode.qmk_id) or keycode.qmk_id)
-            btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                btn.setText(keycode.label if keycode.label else keycode.code_id)
+            btn.setToolTip(Keycode.tooltip(keycode.code_id) or keycode.code_id)
+            btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
             btn.keycode = keycode
             self.adv_keys_flow.addWidget(btn)
 
@@ -1745,8 +1745,8 @@ class midiadvancedTab(QScrollArea):
         for keycode in self.inversion_keycodes2:
             btn = SquareButton()
             btn.setFixedSize(55, 55)
-            btn.setText(Keycode.label(keycode.qmk_id))
-            btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+            btn.setText(Keycode.label(keycode.code_id))
+            btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
             btn.keycode = keycode
 
             self.keysplit_grid.addWidget(btn, row, col)
@@ -1824,8 +1824,8 @@ class midiadvancedTab(QScrollArea):
         for keycode in self.inversion_keycodes:
             btn = SquareButton()
             btn.setFixedSize(55, 55)
-            btn.setText(Keycode.label(keycode.qmk_id))
-            btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+            btn.setText(Keycode.label(keycode.code_id))
+            btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
             btn.keycode = keycode
 
             self.advanced_grid.addWidget(btn, row, col)
@@ -1899,17 +1899,17 @@ class midiadvancedTab(QScrollArea):
         routing_row_layout.addStretch(1)
 
         # MIDI routing keycodes from KEYCODES_MIDI_INOUT
-        routing_keycodes = [kc for kc in self.keycodes_midi_inout if kc.qmk_id in [
+        routing_keycodes = [kc for kc in self.keycodes_midi_inout if kc.code_id in [
             "MIDI_IN_MODE_TOG", "USB_MIDI_MODE_TOG", "MIDI_CLOCK_SRC_TOG"
         ]]
         for keycode in routing_keycodes:
             btn = SquareButton()
             btn.setFixedSize(70, 50)
-            btn.setText(Keycode.label(keycode.qmk_id))
-            btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+            btn.setText(Keycode.label(keycode.code_id))
+            btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
             btn.keycode = keycode
             routing_row_layout.addWidget(btn)
-            self.buttons[keycode.qmk_id] = btn
+            self.buttons[keycode.code_id] = btn
 
         routing_row_layout.addStretch(1)
         layout.addLayout(routing_row_layout)
@@ -1922,17 +1922,17 @@ class midiadvancedTab(QScrollArea):
         override_row_layout = QHBoxLayout()
         override_row_layout.addStretch(1)
 
-        override_keycodes = [kc for kc in self.keycodes_midi_inout if kc.qmk_id in [
+        override_keycodes = [kc for kc in self.keycodes_midi_inout if kc.code_id in [
             "MI_CH_OVR_TOG", "MI_VEL_OVR_TOG", "MI_TRNS_OVR_TOG"
         ]]
         for keycode in override_keycodes:
             btn = SquareButton()
             btn.setFixedSize(70, 50)
-            btn.setText(Keycode.label(keycode.qmk_id))
-            btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+            btn.setText(Keycode.label(keycode.code_id))
+            btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
             btn.keycode = keycode
             override_row_layout.addWidget(btn)
-            self.buttons[keycode.qmk_id] = btn
+            self.buttons[keycode.code_id] = btn
 
         override_row_layout.addStretch(1)
         layout.addLayout(override_row_layout)
@@ -1945,17 +1945,17 @@ class midiadvancedTab(QScrollArea):
         additional_row_layout = QHBoxLayout()
         additional_row_layout.addStretch(1)
 
-        additional_keycodes = [kc for kc in self.keycodes_midi_inout if kc.qmk_id in [
+        additional_keycodes = [kc for kc in self.keycodes_midi_inout if kc.code_id in [
             "MI_TRUE_SUS_TOG", "MI_CC_LOOP_TOG"
         ]]
         for keycode in additional_keycodes:
             btn = SquareButton()
             btn.setFixedSize(70, 50)
-            btn.setText(Keycode.label(keycode.qmk_id))
-            btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+            btn.setText(Keycode.label(keycode.code_id))
+            btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
             btn.keycode = keycode
             additional_row_layout.addWidget(btn)
-            self.buttons[keycode.qmk_id] = btn
+            self.buttons[keycode.code_id] = btn
 
         additional_row_layout.addStretch(1)
         layout.addLayout(additional_row_layout)
@@ -1985,8 +1985,8 @@ class midiadvancedTab(QScrollArea):
         for keycode in self.inversion_keycodesspecial:
             btn = SquareButton()
             btn.setFixedSize(80, 80)
-            btn.setText(Keycode.label(keycode.qmk_id))
-            btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+            btn.setText(Keycode.label(keycode.code_id))
+            btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
             btn.keycode = keycode
             button_grid.addWidget(btn, 0, col)
             col += 1
@@ -2202,7 +2202,7 @@ class midiadvancedTab(QScrollArea):
 
         # Add the keycodes as options
         for keycode in keycodes:
-            dropdown.addItem(Keycode.label(keycode.qmk_id), keycode.qmk_id)
+            dropdown.addItem(Keycode.label(keycode.code_id), keycode.code_id)
 
         # Prevent the first item from being selected again
         dropdown.model().item(0).setEnabled(False)
@@ -2229,7 +2229,7 @@ class midiadvancedTab(QScrollArea):
 
         # Add the keycodes as options
         for keycode in keycodes:
-            dropdown.addItem(Keycode.label(keycode.qmk_id), keycode.qmk_id)
+            dropdown.addItem(Keycode.label(keycode.code_id), keycode.code_id)
 
         # Prevent the first item from being selected again
         dropdown.model().item(0).setEnabled(False)
@@ -2265,11 +2265,11 @@ class midiadvancedTab(QScrollArea):
         max_cols = 8
 
         for keycode in self.inversion_keycodes:
-            if keycode_filter is None or keycode_filter(keycode.qmk_id):
+            if keycode_filter is None or keycode_filter(keycode.code_id):
                 btn = SquareButton()
                 btn.setFixedSize(55, 55)
-                btn.setText(Keycode.label(keycode.qmk_id))
-                btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                btn.setText(Keycode.label(keycode.code_id))
+                btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
                 btn.keycode = keycode
                 
                 self.advanced_grid.addWidget(btn, row, col)
@@ -2283,11 +2283,11 @@ class midiadvancedTab(QScrollArea):
         col = 0
 
         for keycode in self.inversion_keycodes2:
-            if keycode_filter is None or keycode_filter(keycode.qmk_id):
+            if keycode_filter is None or keycode_filter(keycode.code_id):
                 btn = SquareButton()
                 btn.setFixedSize(55, 55)
-                btn.setText(Keycode.label(keycode.qmk_id))
-                btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                btn.setText(Keycode.label(keycode.code_id))
+                btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
                 btn.keycode = keycode
                 
                 self.keysplit_grid.addWidget(btn, row, col)
@@ -2304,12 +2304,12 @@ class midiadvancedTab(QScrollArea):
         # Relabel buttons in the advanced section
         for widget in iter_layout_widgets(self.advanced_grid):
             if isinstance(widget, SquareButton) and hasattr(widget, 'keycode'):
-                widget.setText(Keycode.label(widget.keycode.qmk_id))
+                widget.setText(Keycode.label(widget.keycode.code_id))
                 
         # Relabel buttons in the keysplit section
         for widget in iter_layout_widgets(self.keysplit_grid):
             if isinstance(widget, SquareButton) and hasattr(widget, 'keycode'):
-                widget.setText(Keycode.label(widget.keycode.qmk_id))
+                widget.setText(Keycode.label(widget.keycode.code_id))
 
         for _ext_widget in getattr(self, 'external_widgets', {}).values():
             _ext_widget.relabel_buttons()
@@ -2318,9 +2318,9 @@ class midiadvancedTab(QScrollArea):
         return True
 
     def on_selection_change(self, index):
-        selected_qmk_id = self.sender().itemData(index)
-        if selected_qmk_id:
-            self.keycode_changed.emit(selected_qmk_id)
+        selected_code_id = self.sender().itemData(index)
+        if selected_code_id:
+            self.keycode_changed.emit(selected_code_id)
         
 class ModernButton(QPushButton):
     def __init__(self, text, color="#4a90e2"):
@@ -2394,7 +2394,7 @@ class LoopTab(QScrollArea):
         def _make_loop_btn(keycode):
             btn = SquareButton()
             btn.setRelSize(KEYCODE_BTN_RATIO)
-            btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+            btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
             btn.keycode = keycode
             btn.setText(keycode.label)
             btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
@@ -2404,10 +2404,10 @@ class LoopTab(QScrollArea):
         basic_group = QGroupBox("Basic Loop Controls")
         basic_layout = FlowLayout()
         for keycode in self.loop_keycodes:
-            if keycode_filter(keycode) and keycode.qmk_id in ["DM_MACRO_1", "DM_MACRO_2", "DM_MACRO_3", "DM_MACRO_4", "DM_REC5", "DM_REC6", "DM_REC7", "DM_REC8", "DM_NEXT_LOOP_REC", "DM_MUTE", "DM_OVERDUB", "OCT_DBL_TOGGLE"]:
+            if keycode_filter(keycode) and keycode.code_id in ["DM_MACRO_1", "DM_MACRO_2", "DM_MACRO_3", "DM_MACRO_4", "DM_REC5", "DM_REC6", "DM_REC7", "DM_REC8", "DM_NEXT_LOOP_REC", "DM_MUTE", "DM_OVERDUB", "OCT_DBL_TOGGLE"]:
                 btn = SquareButton()
                 btn.setRelSize(KEYCODE_BTN_RATIO)
-                btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
                 btn.keycode = keycode
                 btn.setText(keycode.label)
                 btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
@@ -2423,25 +2423,25 @@ class LoopTab(QScrollArea):
         # Overdub Loop buttons
         modifier_ids = ["DM_LOOP_MOD_1", "DM_LOOP_MOD_2", "DM_LOOP_MOD_3", "DM_LOOP_MOD_4", "DM_SPEED_MOD", "DM_SLOW_MOD"]
         for keycode in self.loop_keycodes:
-            if keycode_filter(keycode) and keycode.qmk_id in modifier_ids:
+            if keycode_filter(keycode) and keycode.code_id in modifier_ids:
                 extra_loop_layout.addWidget(_make_loop_btn(keycode))
         # Advanced Overdub, Sync Mode, Sample Mode
         mode_ids = ["DM_ADVANCED_OVERDUB", "DM_UNSYNC", "DM_SAMPLE", "LOOP_QUANTIZE", "LOOP_BPM_DOUBLE"]
         for keycode in self.loop_keycodes:
-            if keycode_filter(keycode) and keycode.qmk_id in mode_ids:
+            if keycode_filter(keycode) and keycode.code_id in mode_ids:
                 extra_loop_layout.addWidget(_make_loop_btn(keycode))
         # BeatSkip buttons
         for keycode in self.loop_keycodes:
-            if keycode_filter(keycode) and keycode.qmk_id.startswith("DM_SKIP_"):
+            if keycode_filter(keycode) and keycode.code_id.startswith("DM_SKIP_"):
                 extra_loop_layout.addWidget(_make_loop_btn(keycode))
         # Extra loop buttons: Overdub loops, Mute loops, Overdub Mute, Octave Doublers
         for keycode in self.loop_keycodes:
-            if keycode.qmk_id.startswith("DM_OCT_"):
+            if keycode.code_id.startswith("DM_OCT_"):
                 button_order.append(keycode)
         # Add all buttons to layout
         for keycode in button_order:
             if keycode_filter(keycode):
-                qid = keycode.qmk_id
+                qid = keycode.code_id
                 is_extra = (
                     (qid.startswith("DM_OVERDUB_") and not qid.startswith("DM_OVERDUB_MUTE_") and qid != "DM_OVERDUB") or
                     (qid.startswith("DM_MUTE_") and qid != "DM_MUTE") or
@@ -2458,10 +2458,10 @@ class LoopTab(QScrollArea):
         modifier_group = QGroupBox("Modifiers")
         modifier_layout = FlowLayout()
         for keycode in self.loop_keycodes:
-            if keycode_filter(keycode) and keycode.qmk_id in ["DM_LOOP_MOD_1", "DM_LOOP_MOD_2", "DM_LOOP_MOD_3", "DM_LOOP_MOD_4", "DM_LOOP_MOD_5", "DM_LOOP_MOD_6", "DM_LOOP_MOD_7", "DM_LOOP_MOD_8", "OCT_DBL_TOGGLE", "DM_SPEED_MOD", "DM_SLOW_MOD", "DM_MUTE", "DM_OVERDUB"]:
+            if keycode_filter(keycode) and keycode.code_id in ["DM_LOOP_MOD_1", "DM_LOOP_MOD_2", "DM_LOOP_MOD_3", "DM_LOOP_MOD_4", "DM_LOOP_MOD_5", "DM_LOOP_MOD_6", "DM_LOOP_MOD_7", "DM_LOOP_MOD_8", "OCT_DBL_TOGGLE", "DM_SPEED_MOD", "DM_SLOW_MOD", "DM_MUTE", "DM_OVERDUB"]:
                 btn = SquareButton()
                 btn.setRelSize(KEYCODE_BTN_RATIO)
-                btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
                 btn.keycode = keycode
                 btn.setText(keycode.label)
                 btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
@@ -2473,10 +2473,10 @@ class LoopTab(QScrollArea):
         beatskip_group = QGroupBox("BeatSkip")
         beatskip_layout = FlowLayout()
         for keycode in self.loop_keycodes:
-            if keycode_filter(keycode) and keycode.qmk_id.startswith("DM_SKIP_"):
+            if keycode_filter(keycode) and keycode.code_id.startswith("DM_SKIP_"):
                 btn = SquareButton()
                 btn.setRelSize(KEYCODE_BTN_RATIO)
-                btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
                 btn.keycode = keycode
                 btn.setText(keycode.label)
                 btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
@@ -2488,10 +2488,10 @@ class LoopTab(QScrollArea):
         speed_group = QGroupBox("Speed Controls")
         speed_layout = FlowLayout()
         for keycode in self.loop_keycodes:
-            if keycode_filter(keycode) and (keycode.qmk_id.startswith("DM_SPEED_") or keycode.qmk_id.startswith("DM_SLOW_") or keycode.qmk_id == "DM_RESET_SPEED") and keycode.qmk_id not in ["DM_SPEED_MOD", "DM_SLOW_MOD"]:
+            if keycode_filter(keycode) and (keycode.code_id.startswith("DM_SPEED_") or keycode.code_id.startswith("DM_SLOW_") or keycode.code_id == "DM_RESET_SPEED") and keycode.code_id not in ["DM_SPEED_MOD", "DM_SLOW_MOD"]:
                 btn = SquareButton()
                 btn.setRelSize(KEYCODE_BTN_RATIO)
-                btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
                 btn.keycode = keycode
                 btn.setText(keycode.label)
                 btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
@@ -2504,19 +2504,19 @@ class LoopTab(QScrollArea):
         nav_layout = FlowLayout()
         # Play/Pause first
         for keycode in self.loop_keycodes:
-            if keycode_filter(keycode) and keycode.qmk_id == "DM_PLAY_PAUSE":
+            if keycode_filter(keycode) and keycode.code_id == "DM_PLAY_PAUSE":
                 nav_layout.addWidget(_make_loop_btn(keycode))
         # Speed controls (individual speed/slow buttons and reset, not modifiers)
         for keycode in self.loop_keycodes:
             if keycode_filter(keycode):
-                qid = keycode.qmk_id
+                qid = keycode.code_id
                 is_speed = ((qid.startswith("DM_SPEED_") or qid.startswith("DM_SLOW_") or qid == "DM_RESET_SPEED")
                            and qid not in ["DM_SPEED_MOD", "DM_SLOW_MOD"])
                 if is_speed:
                     nav_layout.addWidget(_make_loop_btn(keycode))
         # Navigation buttons
         for keycode in self.loop_keycodes:
-            if keycode_filter(keycode) and keycode.qmk_id.startswith("DM_NAV_"):
+            if keycode_filter(keycode) and keycode.code_id.startswith("DM_NAV_"):
                 nav_layout.addWidget(_make_loop_btn(keycode))
         nav_group.setLayout(nav_layout)
         self.main_layout.addWidget(nav_group)
@@ -2562,7 +2562,7 @@ class DrumLIVETab(QScrollArea):
     def _make_btn(self, keycode):
         btn = SquareButton()
         btn.setRelSize(KEYCODE_BTN_RATIO)
-        btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+        btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
         btn.keycode = keycode
         btn.setText(keycode.label)
         btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
@@ -2573,7 +2573,7 @@ class DrumLIVETab(QScrollArea):
         layout = FlowLayout()
         added = False
         for keycode in self.drumlive_keycodes:
-            if keycode_filter(keycode) and predicate(keycode.qmk_id):
+            if keycode_filter(keycode) and predicate(keycode.code_id):
                 layout.addWidget(self._make_btn(keycode))
                 added = True
         group.setLayout(layout)
@@ -2673,10 +2673,10 @@ class LayerTab(QScrollArea):
         dropdown.addItem("Default Layer")
 
         for keycode in self.smartchord_DF:
-            if keycode_filter is None or keycode_filter(keycode.qmk_id):
-                label = Keycode.label(keycode.qmk_id)
-                tooltip = Keycode.description(keycode.qmk_id)
-                dropdown.addItem(label, keycode.qmk_id)
+            if keycode_filter is None or keycode_filter(keycode.code_id):
+                label = Keycode.label(keycode.code_id)
+                tooltip = Keycode.description(keycode.code_id)
+                dropdown.addItem(label, keycode.code_id)
                 item = dropdown.model().item(dropdown.count() - 1)
                 item.setToolTip(tooltip)
 
@@ -2692,10 +2692,10 @@ class LayerTab(QScrollArea):
         dropdown.addItem("Hold Layer")
 
         for keycode in self.smartchord_MO:
-            if keycode_filter is None or keycode_filter(keycode.qmk_id):
-                label = Keycode.label(keycode.qmk_id)
-                tooltip = Keycode.description(keycode.qmk_id)
-                dropdown.addItem(label, keycode.qmk_id)
+            if keycode_filter is None or keycode_filter(keycode.code_id):
+                label = Keycode.label(keycode.code_id)
+                tooltip = Keycode.description(keycode.code_id)
+                dropdown.addItem(label, keycode.code_id)
                 item = dropdown.model().item(dropdown.count() - 1)
                 item.setToolTip(tooltip)
 
@@ -2711,10 +2711,10 @@ class LayerTab(QScrollArea):
         dropdown.addItem("One Shot Layer")
 
         for keycode in self.smartchord_OSL:
-            if keycode_filter is None or keycode_filter(keycode.qmk_id):
-                label = Keycode.label(keycode.qmk_id)
-                tooltip = Keycode.description(keycode.qmk_id)
-                dropdown.addItem(label, keycode.qmk_id)
+            if keycode_filter is None or keycode_filter(keycode.code_id):
+                label = Keycode.label(keycode.code_id)
+                tooltip = Keycode.description(keycode.code_id)
+                dropdown.addItem(label, keycode.code_id)
                 item = dropdown.model().item(dropdown.count() - 1)
                 item.setToolTip(tooltip)
 
@@ -2753,9 +2753,9 @@ class LayerTab(QScrollArea):
         dropdown.setCurrentIndex(0)
 
     def on_selection_change(self, index):
-        selected_qmk_id = self.sender().itemData(index)
-        if selected_qmk_id:
-            self.keycode_changed.emit(selected_qmk_id)
+        selected_code_id = self.sender().itemData(index)
+        if selected_code_id:
+            self.keycode_changed.emit(selected_code_id)
 
     def relabel_buttons(self):
         # No buttons to relabel in this simplified version
@@ -2891,9 +2891,9 @@ class LightingTab(QScrollArea):
         dropdown.setFixedHeight(40)
         dropdown.addItem("RGB Mode")
         for keycode in self.smartchord_LSB:
-            label = Keycode.label(keycode.qmk_id)
-            tooltip = Keycode.description(keycode.qmk_id)
-            dropdown.addItem(label, keycode.qmk_id)
+            label = Keycode.label(keycode.code_id)
+            tooltip = Keycode.description(keycode.code_id)
+            dropdown.addItem(label, keycode.code_id)
             item = dropdown.model().item(dropdown.count() - 1)
             item.setToolTip(tooltip)
         dropdown.model().item(0).setEnabled(False)
@@ -2906,9 +2906,9 @@ class LightingTab(QScrollArea):
         dropdown.setFixedHeight(40)
         dropdown.addItem("RGB Color")
         for keycode in self.smartchord_MSB:
-            label = Keycode.label(keycode.qmk_id)
-            tooltip = Keycode.description(keycode.qmk_id)
-            dropdown.addItem(label, keycode.qmk_id)
+            label = Keycode.label(keycode.code_id)
+            tooltip = Keycode.description(keycode.code_id)
+            dropdown.addItem(label, keycode.code_id)
             item = dropdown.model().item(dropdown.count() - 1)
             item.setToolTip(tooltip)
         dropdown.model().item(0).setEnabled(False)
@@ -2921,9 +2921,9 @@ class LightingTab(QScrollArea):
         dropdown.setFixedHeight(40)
         dropdown.addItem("Record Layer RGB")
         for keycode in self.smartchord_LSB2:
-            label = Keycode.label(keycode.qmk_id)
-            tooltip = Keycode.description(keycode.qmk_id)
-            dropdown.addItem(label, keycode.qmk_id)
+            label = Keycode.label(keycode.code_id)
+            tooltip = Keycode.description(keycode.code_id)
+            dropdown.addItem(label, keycode.code_id)
             item = dropdown.model().item(dropdown.count() - 1)
             item.setToolTip(tooltip)
         dropdown.model().item(0).setEnabled(False)
@@ -2942,12 +2942,12 @@ class LightingTab(QScrollArea):
         max_columns = 15  # Maximum number of columns
         
         for keycode in self.inversion_keycodes:
-            if keycode_filter is None or keycode_filter(keycode.qmk_id):
+            if keycode_filter is None or keycode_filter(keycode.code_id):
                 btn = SquareButton()
                 btn.setFixedHeight(50)
                 btn.setFixedWidth(50)
-                btn.setText(Keycode.label(keycode.qmk_id))
-                btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                btn.setText(Keycode.label(keycode.code_id))
+                btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
                 btn.keycode = keycode
 
                 self.buttons1_layout.addWidget(btn, row, col)
@@ -2962,12 +2962,12 @@ class LightingTab(QScrollArea):
         col = 0
         
         for keycode in self.inversion_keycodes4:
-            if keycode_filter is None or keycode_filter(keycode.qmk_id):
+            if keycode_filter is None or keycode_filter(keycode.code_id):
                 btn = SquareButton()
                 btn.setFixedHeight(50)
                 btn.setFixedWidth(50)
-                btn.setText(Keycode.label(keycode.qmk_id))
-                btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                btn.setText(Keycode.label(keycode.code_id))
+                btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
                 btn.keycode = keycode
 
                 self.buttons2_layout.addWidget(btn, row, col)
@@ -3011,9 +3011,9 @@ class LightingTab(QScrollArea):
         dropdown.setCurrentIndex(0)
 
     def on_selection_change(self, index):
-        selected_qmk_id = self.sender().itemData(index)
-        if selected_qmk_id:
-            self.keycode_changed.emit(selected_qmk_id)
+        selected_code_id = self.sender().itemData(index)
+        if selected_code_id:
+            self.keycode_changed.emit(selected_code_id)
 
     def relabel_buttons(self):
         # Handle relabeling for buttons in first grid
@@ -3021,14 +3021,14 @@ class LightingTab(QScrollArea):
             if isinstance(widget, SquareButton):
                 keycode = widget.keycode
                 if keycode:
-                    widget.setText(Keycode.label(keycode.qmk_id))
+                    widget.setText(Keycode.label(keycode.code_id))
                     
         # Handle relabeling for buttons in second grid
         for widget in iter_layout_widgets(self.buttons2_layout):
             if isinstance(widget, SquareButton):
                 keycode = widget.keycode
                 if keycode:
-                    widget.setText(Keycode.label(keycode.qmk_id))
+                    widget.setText(Keycode.label(keycode.code_id))
 
     def has_buttons(self):
         """Check if there are buttons or dropdown items."""
@@ -3099,9 +3099,9 @@ class LightingTab2(QScrollArea):
         dropdown.setFixedHeight(40)
         dropdown.addItem("Default Layer")
         for keycode in self.smartchord_DF:
-            label = Keycode.label(keycode.qmk_id)
-            tooltip = Keycode.description(keycode.qmk_id)
-            dropdown.addItem(label, keycode.qmk_id)
+            label = Keycode.label(keycode.code_id)
+            tooltip = Keycode.description(keycode.code_id)
+            dropdown.addItem(label, keycode.code_id)
             item = dropdown.model().item(dropdown.count() - 1)
             item.setToolTip(tooltip)
         dropdown.model().item(0).setEnabled(False)
@@ -3114,9 +3114,9 @@ class LightingTab2(QScrollArea):
         dropdown.setFixedHeight(40)
         dropdown.addItem("Hold Layer")
         for keycode in self.smartchord_MO:
-            label = Keycode.label(keycode.qmk_id)
-            tooltip = Keycode.description(keycode.qmk_id)
-            dropdown.addItem(label, keycode.qmk_id)
+            label = Keycode.label(keycode.code_id)
+            tooltip = Keycode.description(keycode.code_id)
+            dropdown.addItem(label, keycode.code_id)
             item = dropdown.model().item(dropdown.count() - 1)
             item.setToolTip(tooltip)
         dropdown.model().item(0).setEnabled(False)
@@ -3129,9 +3129,9 @@ class LightingTab2(QScrollArea):
         dropdown.setFixedHeight(40)
         dropdown.addItem("One Shot Layer")
         for keycode in self.smartchord_OSL:
-            label = Keycode.label(keycode.qmk_id)
-            tooltip = Keycode.description(keycode.qmk_id)
-            dropdown.addItem(label, keycode.qmk_id)
+            label = Keycode.label(keycode.code_id)
+            tooltip = Keycode.description(keycode.code_id)
+            dropdown.addItem(label, keycode.code_id)
             item = dropdown.model().item(dropdown.count() - 1)
             item.setToolTip(tooltip)
         dropdown.model().item(0).setEnabled(False)
@@ -3168,9 +3168,9 @@ class LightingTab2(QScrollArea):
         dropdown.setCurrentIndex(0)
 
     def on_selection_change(self, index):
-        selected_qmk_id = self.sender().itemData(index)
-        if selected_qmk_id:
-            self.keycode_changed.emit(selected_qmk_id)
+        selected_code_id = self.sender().itemData(index)
+        if selected_code_id:
+            self.keycode_changed.emit(selected_code_id)
 
     def relabel_buttons(self):
         # No buttons to relabel in this simplified version
@@ -3235,25 +3235,25 @@ class MacroSubTab(QScrollArea):
             if keycode_filter is None or keycode_filter(keycode):
                 btn = SquareButton()
                 btn.setRelSize(KEYCODE_BTN_RATIO)
-                btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
                 btn.keycode = keycode
                 # Use custom name if available
-                custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
+                custom = KeycodeDisplay.get_custom_name_label(keycode.code_id)
                 btn.setText(custom if custom else keycode.label)
-                btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.qmk_id)
+                btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.code_id)
                 self.flow_layout.addWidget(btn)
                 self.buttons.append(btn)
 
         # Add "All Macros Off" button at end of macro subtab
         if self.tab_type == "macro":
-            all_off_kc = Keycode.find_by_qmk_id("QK_MACRO_ALL_OFF")
+            all_off_kc = Keycode.find_by_code_id("QK_MACRO_ALL_OFF")
             if all_off_kc and (keycode_filter is None or keycode_filter(all_off_kc)):
                 btn = SquareButton()
                 btn.setRelSize(KEYCODE_BTN_RATIO)
-                btn.clicked.connect(lambda _, k=all_off_kc.qmk_id: self.keycode_changed.emit(k))
+                btn.clicked.connect(lambda _, k=all_off_kc.code_id: self.keycode_changed.emit(k))
                 btn.keycode = all_off_kc
                 btn.setText(all_off_kc.label)
-                btn.setToolTip(all_off_kc.tooltip if all_off_kc.tooltip else all_off_kc.qmk_id)
+                btn.setToolTip(all_off_kc.tooltip if all_off_kc.tooltip else all_off_kc.code_id)
                 self.flow_layout.addWidget(btn)
                 self.buttons.append(btn)
 
@@ -3263,7 +3263,7 @@ class MacroSubTab(QScrollArea):
     def relabel_buttons(self):
         for btn in self.buttons:
             if hasattr(btn, 'keycode') and btn.keycode:
-                custom = KeycodeDisplay.get_custom_name_label(btn.keycode.qmk_id)
+                custom = KeycodeDisplay.get_custom_name_label(btn.keycode.code_id)
                 btn.setText(custom if custom else btn.keycode.label)
 
 
@@ -3387,11 +3387,11 @@ class MacroTab(QScrollArea):
     def _make_button(self, keycode):
         btn = SquareButton()
         btn.setRelSize(KEYCODE_BTN_RATIO)
-        btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+        btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
         btn.keycode = keycode
-        custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
+        custom = KeycodeDisplay.get_custom_name_label(keycode.code_id)
         btn.setText(custom if custom else keycode.label)
-        btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.qmk_id)
+        btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.code_id)
         return btn
 
     def _add_button_section(self, title, keycodes, keycode_filter, extra_keycodes=None):
@@ -3400,13 +3400,13 @@ class MacroTab(QScrollArea):
         flow = FlowLayout()
         flow.setContentsMargins(10, 10, 10, 10)
         for keycode in keycodes:
-            if keycode_filter is None or keycode_filter(keycode.qmk_id):
+            if keycode_filter is None or keycode_filter(keycode.code_id):
                 btn = self._make_button(keycode)
                 flow.addWidget(btn)
                 self.buttons.append(btn)
         if extra_keycodes:
             for keycode in extra_keycodes:
-                if keycode is not None and (keycode_filter is None or keycode_filter(keycode.qmk_id)):
+                if keycode is not None and (keycode_filter is None or keycode_filter(keycode.code_id)):
                     btn = self._make_button(keycode)
                     flow.addWidget(btn)
                     self.buttons.append(btn)
@@ -3420,10 +3420,10 @@ class MacroTab(QScrollArea):
         dropdown.setFixedWidth(200)
         dropdown.addItem(header)
         for keycode in keycodes:
-            if keycode_filter is None or keycode_filter(keycode.qmk_id):
-                label = Keycode.label(keycode.qmk_id)
-                tooltip = Keycode.description(keycode.qmk_id)
-                dropdown.addItem(label, keycode.qmk_id)
+            if keycode_filter is None or keycode_filter(keycode.code_id):
+                label = Keycode.label(keycode.code_id)
+                tooltip = Keycode.description(keycode.code_id)
+                dropdown.addItem(label, keycode.code_id)
                 item = dropdown.model().item(dropdown.count() - 1)
                 item.setToolTip(tooltip)
         dropdown.model().item(0).setEnabled(False)
@@ -3432,9 +3432,9 @@ class MacroTab(QScrollArea):
         return dropdown
 
     def _on_layer_selection_change(self, index):
-        selected_qmk_id = self.sender().itemData(index)
-        if selected_qmk_id:
-            self.keycode_changed.emit(selected_qmk_id)
+        selected_code_id = self.sender().itemData(index)
+        if selected_code_id:
+            self.keycode_changed.emit(selected_code_id)
 
     def recreate_buttons(self, keycode_filter=None):
         self.current_keycode_filter = keycode_filter
@@ -3454,7 +3454,7 @@ class MacroTab(QScrollArea):
         # Macro section (+ "All Macros Off")
         if "macro" in self.shown_sections:
             macro_kcs = KEYCODES_MACRO[:self.macro_count] if self.macro_count > 0 else []
-            all_off_kc = Keycode.find_by_qmk_id("QK_MACRO_ALL_OFF")
+            all_off_kc = Keycode.find_by_code_id("QK_MACRO_ALL_OFF")
             self._add_button_section("Macro", macro_kcs, keycode_filter,
                                      extra_keycodes=[all_off_kc] if all_off_kc else None)
 
@@ -3501,7 +3501,7 @@ class MacroTab(QScrollArea):
     def relabel_buttons(self):
         for btn in self.buttons:
             if hasattr(btn, 'keycode') and btn.keycode:
-                custom = KeycodeDisplay.get_custom_name_label(btn.keycode.qmk_id)
+                custom = KeycodeDisplay.get_custom_name_label(btn.keycode.code_id)
                 btn.setText(custom if custom else btn.keycode.label)
 
 
@@ -3977,19 +3977,19 @@ class midiTab(QScrollArea):
 
         self.recreate_buttons()
 
-    def _make_big_btn(self, qmk_id, label_text):
+    def _make_big_btn(self, code_id, label_text):
         """Create a big 90x50 section button (original format)."""
         btn = QPushButton(label_text)
         btn.setFixedSize(90, 50)
-        btn.clicked.connect(lambda _, k=qmk_id: self.keycode_changed.emit(k))
+        btn.clicked.connect(lambda _, k=code_id: self.keycode_changed.emit(k))
         return btn
 
-    def _make_btn(self, qmk_id, label_text):
+    def _make_btn(self, code_id, label_text):
         """Create a button matching loop tab sizing (SquareButton with KEYCODE_BTN_RATIO)."""
         btn = SquareButton()
         btn.setRelSize(KEYCODE_BTN_RATIO)
         btn.setText(label_text)
-        btn.clicked.connect(lambda _, k=qmk_id: self.keycode_changed.emit(k))
+        btn.clicked.connect(lambda _, k=code_id: self.keycode_changed.emit(k))
         return btn
 
     def _create_nav_arrow(self, text):
@@ -4066,8 +4066,8 @@ class midiTab(QScrollArea):
         self.right_arrow.clicked.connect(lambda: self._update_keyboard_view(1))
 
         # Basic Piano Keyboard
-        midi_mappings = {kc.qmk_id: kc for kc in self.inversion_keycodes
-                        if keycode_filter is None or keycode_filter(kc.qmk_id)}
+        midi_mappings = {kc.code_id: kc for kc in self.inversion_keycodes
+                        if keycode_filter is None or keycode_filter(kc.code_id)}
         self.piano = PianoKeyboard()
         self.piano.keyPressed.connect(self.keycode_changed)
         self.piano.create_piano_keys(midi_mappings)
@@ -4110,8 +4110,8 @@ class midiTab(QScrollArea):
             ("TS_MODIFIER", "Triple\nSplit\nToggle"),
             ("CLEAR_MENU", "Clear\nMenu"),
         ]
-        for qmk_id, label in top_controls:
-            top_row.addWidget(self._make_btn(qmk_id, label))
+        for code_id, label in top_controls:
+            top_row.addWidget(self._make_btn(code_id, label))
         top_row.addStretch(1)
         self.main_layout.addLayout(top_row)
 
@@ -4136,10 +4136,10 @@ class midiTab(QScrollArea):
             ("SMARTCHORD_DOWN", "SmartChord\n\u25BC"),
             ("HE_VEL_CURVE_DOWN", "Articulation\n\u25BC"),
         ]
-        for col, (qmk_id, label) in enumerate(grid_up):
-            grid_layout.addWidget(self._make_big_btn(qmk_id, label), 0, col)
-        for col, (qmk_id, label) in enumerate(grid_down):
-            grid_layout.addWidget(self._make_big_btn(qmk_id, label), 1, col)
+        for col, (code_id, label) in enumerate(grid_up):
+            grid_layout.addWidget(self._make_big_btn(code_id, label), 0, col)
+        for col, (code_id, label) in enumerate(grid_down):
+            grid_layout.addWidget(self._make_big_btn(code_id, label), 1, col)
         self.main_layout.addWidget(grid_container)
 
         # --- Extra Buttons ---
@@ -4172,8 +4172,8 @@ class midiTab(QScrollArea):
             ("RESET_QUICKBUILDS", "Reset All\nQuickbuilds"),
             ("RESET_FACTORY", "Reset\nFactory\nDefaults"),
         ]
-        for qmk_id, label in extra_buttons:
-            extras_layout.addWidget(self._make_btn(qmk_id, label))
+        for code_id, label in extra_buttons:
+            extras_layout.addWidget(self._make_btn(code_id, label))
         extras_group.setLayout(extras_layout)
         self.main_layout.addWidget(extras_group, 0, Qt.AlignCenter)
 
@@ -4190,7 +4190,7 @@ class midiTab(QScrollArea):
             if hasattr(kb, 'white_keys'):
                 for widget in kb.white_keys + kb.black_keys:
                     if hasattr(widget, 'keycode'):
-                        widget.setText(Keycode.label(widget.keycode.qmk_id))
+                        widget.setText(Keycode.label(widget.keycode.code_id))
 
     def has_buttons(self):
         return True
@@ -4308,22 +4308,22 @@ class GamingTab(QScrollArea):
 
         self.recreate_buttons()
 
-    def get_keycode(self, qmk_id):
-        """Helper to get keycode by qmk_id"""
+    def get_keycode(self, code_id):
+        """Helper to get keycode by code_id"""
         for kc in self.gaming_keycodes:
-            if kc.qmk_id == qmk_id:
+            if kc.code_id == code_id:
                 return kc
         return None
 
-    def create_button(self, qmk_id, width=50, height=50):
+    def create_button(self, code_id, width=50, height=50):
         """Create a button for a keycode"""
-        kc = self.get_keycode(qmk_id)
+        kc = self.get_keycode(code_id)
         if not kc:
             return None
 
-        btn = QPushButton(Keycode.label(kc.qmk_id))
+        btn = QPushButton(Keycode.label(kc.code_id))
         btn.setFixedSize(width, height)
-        btn.clicked.connect(lambda: self.keycode_changed.emit(kc.qmk_id))
+        btn.clicked.connect(lambda: self.keycode_changed.emit(kc.code_id))
         btn.keycode = kc
         return btn
 
@@ -4350,22 +4350,22 @@ class GamingTab(QScrollArea):
         container = QWidget()
         flow = FlowLayout()
         container.setLayout(flow)
-        for qmk_id in GAMEPAD_ORDER:
-            kc = self.get_keycode(qmk_id)
+        for code_id in GAMEPAD_ORDER:
+            kc = self.get_keycode(code_id)
             if kc is None:
                 continue
-            if keycode_filter is not None and not keycode_filter(kc.qmk_id):
+            if keycode_filter is not None and not keycode_filter(kc.code_id):
                 continue
-            if has_gamepad_icon(qmk_id):
-                btn = GamepadIconButton(qmk_id)
+            if has_gamepad_icon(code_id):
+                btn = GamepadIconButton(code_id)
             else:
                 # Gaming Mode is an ordinary labelled key
                 btn = SquareButton()
                 btn.setRelSize(KEYCODE_BTN_RATIO)
                 btn.setText("Gaming\nMode")
             btn.keycode = kc
-            btn.setToolTip(kc.tooltip or Keycode.label(kc.qmk_id).replace("\n", " "))
-            btn.clicked.connect(lambda _, k=kc.qmk_id: self.keycode_changed.emit(k))
+            btn.setToolTip(kc.tooltip or Keycode.label(kc.code_id).replace("\n", " "))
+            btn.clicked.connect(lambda _, k=kc.code_id: self.keycode_changed.emit(k))
             flow.addWidget(btn)
         self.main_layout.addWidget(container)
         self.main_layout.addStretch()
@@ -4413,13 +4413,13 @@ class LanguageTab(Tab):
     def relabel_buttons(self):
         super().relabel_buttons()
         for btn in self._language_buttons():
-            qmk_id = getattr(getattr(btn, "keycode", None), "qmk_id", None)
-            if not self.show_jis and qmk_id in self.JIS_ONLY:
+            code_id = getattr(getattr(btn, "keycode", None), "code_id", None)
+            if not self.show_jis and code_id in self.JIS_ONLY:
                 btn.hide()
                 continue
-            if qmk_id in self.language_labels:
+            if code_id in self.language_labels:
                 btn.setStyleSheet("QPushButton {}")
-                btn.setText(self.language_labels[qmk_id].replace("&", "&&"))
+                btn.setText(self.language_labels[code_id].replace("&", "&&"))
 
     def recreate_buttons(self, keycode_filter):
         super().recreate_buttons(keycode_filter)
@@ -4489,7 +4489,7 @@ class KeyboardTab(Tab):
     def __init__(self, parent, include_layer=True):
         # Gaming Mode toggle sits with the application keys (it is a normal key;
         # the joystick functions themselves live in the Gaming tab).
-        app = KEYCODES_MEDIA + [kc for kc in KEYCODES_GAMING if kc.qmk_id == "GAMING_MODE"]
+        app = KEYCODES_MEDIA + [kc for kc in KEYCODES_GAMING if kc.code_id == "GAMING_MODE"]
         super().__init__(parent, "Keyboard", [
             (ansi_100, KEYCODES_SPECIAL + app),
             (ansi_80, KEYCODES_SPECIAL + KEYCODES_BASIC_NUMPAD + app),
@@ -4536,7 +4536,7 @@ class ArpeggiatorTab(QScrollArea):
         def _make_arp_btn(keycode):
             btn = SquareButton()
             btn.setRelSize(KEYCODE_BTN_RATIO)
-            btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+            btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
             btn.keycode = keycode
             btn.setText(keycode.label)
             btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
@@ -4547,7 +4547,7 @@ class ArpeggiatorTab(QScrollArea):
         control_layout = FlowLayout()
         for keycode in self.arp_keycodes:
             if keycode_filter(keycode):
-                if "GATE" not in keycode.qmk_id and "RATE" not in keycode.qmk_id and "MODE" not in keycode.qmk_id and "QUICK" not in keycode.qmk_id:
+                if "GATE" not in keycode.code_id and "RATE" not in keycode.code_id and "MODE" not in keycode.code_id and "QUICK" not in keycode.code_id:
                     control_layout.addWidget(_make_arp_btn(keycode))
         control_group.setLayout(control_layout)
         self.main_layout.addWidget(control_group)
@@ -4562,9 +4562,9 @@ class ArpeggiatorTab(QScrollArea):
                 if keycode_filter(keycode):
                     btn = SquareButton()
                     btn.setRelSize(KEYCODE_BTN_RATIO)
-                    btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                    btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
                     btn.keycode = keycode
-                    custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
+                    custom = KeycodeDisplay.get_custom_name_label(keycode.code_id)
                     btn.setText(custom if custom else keycode.label)
                     btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
                     user_preset_layout.addWidget(btn)
@@ -4575,7 +4575,7 @@ class ArpeggiatorTab(QScrollArea):
         extra_group = QGroupBox("Extra Global Controls")
         extra_layout = FlowLayout()
         for keycode in self.arp_keycodes:
-            if keycode_filter(keycode) and ("GATE" in keycode.qmk_id or "RATE" in keycode.qmk_id or "MODE" in keycode.qmk_id):
+            if keycode_filter(keycode) and ("GATE" in keycode.code_id or "RATE" in keycode.code_id or "MODE" in keycode.code_id):
                 extra_layout.addWidget(_make_arp_btn(keycode))
         extra_group.setLayout(extra_layout)
         self.main_layout.addWidget(extra_group)
@@ -4635,7 +4635,7 @@ class StepSequencerTab(QScrollArea):
         def _make_seq_btn(keycode):
             btn = SquareButton()
             btn.setRelSize(KEYCODE_BTN_RATIO)
-            btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+            btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
             btn.keycode = keycode
             btn.setText(keycode.label)
             btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
@@ -4646,7 +4646,7 @@ class StepSequencerTab(QScrollArea):
         control_layout = FlowLayout()
         for keycode in self.seq_keycodes:
             if keycode_filter(keycode):
-                if "GATE" not in keycode.qmk_id and "RATE" not in keycode.qmk_id and "QUICK" not in keycode.qmk_id:
+                if "GATE" not in keycode.code_id and "RATE" not in keycode.code_id and "QUICK" not in keycode.code_id:
                     control_layout.addWidget(_make_seq_btn(keycode))
         control_group.setLayout(control_layout)
         self.main_layout.addWidget(control_group)
@@ -4659,9 +4659,9 @@ class StepSequencerTab(QScrollArea):
                 if keycode_filter(keycode):
                     btn = SquareButton()
                     btn.setRelSize(KEYCODE_BTN_RATIO)
-                    btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                    btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
                     btn.keycode = keycode
-                    custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
+                    custom = KeycodeDisplay.get_custom_name_label(keycode.code_id)
                     btn.setText(custom if custom else keycode.label)
                     btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
                     drum_layout.addWidget(btn)
@@ -4678,9 +4678,9 @@ class StepSequencerTab(QScrollArea):
                 if keycode_filter(keycode):
                     btn = SquareButton()
                     btn.setRelSize(KEYCODE_BTN_RATIO)
-                    btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+                    btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
                     btn.keycode = keycode
-                    custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
+                    custom = KeycodeDisplay.get_custom_name_label(keycode.code_id)
                     btn.setText(custom if custom else keycode.label)
                     btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
                     user_preset_layout.addWidget(btn)
@@ -4691,7 +4691,7 @@ class StepSequencerTab(QScrollArea):
         extra_group = QGroupBox("Extra Global Controls")
         extra_layout = FlowLayout()
         for keycode in self.seq_keycodes:
-            if keycode_filter(keycode) and ("GATE" in keycode.qmk_id or "RATE" in keycode.qmk_id):
+            if keycode_filter(keycode) and ("GATE" in keycode.code_id or "RATE" in keycode.code_id):
                 extra_layout.addWidget(_make_seq_btn(keycode))
         extra_group.setLayout(extra_layout)
         self.main_layout.addWidget(extra_group)
@@ -4750,9 +4750,9 @@ class DelayMusicTab(QScrollArea):
             return None
         btn = SquareButton()
         btn.setRelSize(KEYCODE_BTN_RATIO)
-        btn.clicked.connect(lambda _, k=keycode.qmk_id: self.keycode_changed.emit(k))
+        btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
         btn.keycode = keycode
-        custom = KeycodeDisplay.get_custom_name_label(keycode.qmk_id)
+        custom = KeycodeDisplay.get_custom_name_label(keycode.code_id)
         btn.setText(custom if custom else keycode.label)
         btn.setToolTip(keycode.tooltip if keycode.tooltip else keycode.label)
         return btn
@@ -5298,8 +5298,8 @@ class DAWTab(QScrollArea):
             }
         """
 
-        # Build a fast lookup from qmk_id to Keycode object
-        kc_lookup = {kc.qmk_id: kc for kc in self.keycodes}
+        # Build a fast lookup from code_id to Keycode object
+        kc_lookup = {kc.code_id: kc for kc in self.keycodes}
 
         for row_label, kc_ids in rows:
             group = QGroupBox(row_label)
@@ -5321,13 +5321,13 @@ class DAWTab(QScrollArea):
                 kc = kc_lookup.get(kc_id)
                 if kc is None:
                     continue
-                if keycode_filter and not keycode_filter(kc.qmk_id):
+                if keycode_filter and not keycode_filter(kc.code_id):
                     continue
 
                 btn = SquareButton()
                 btn.setRelSize(KEYCODE_BTN_RATIO)
                 btn.setToolTip(kc.tooltip)
-                btn.clicked.connect(lambda _, k=kc: self.keycode_changed.emit(k.qmk_id))
+                btn.clicked.connect(lambda _, k=kc: self.keycode_changed.emit(k.code_id))
                 btn.keycode = kc
                 self.buttons.append(btn)
                 flow.addWidget(btn)

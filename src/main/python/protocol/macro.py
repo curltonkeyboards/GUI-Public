@@ -2,7 +2,7 @@ import struct
 
 from keycodes.keycodes import Keycode
 from macro.macro_action import (SS_TAP_CODE, SS_DOWN_CODE, SS_UP_CODE, ActionText, ActionTap, ActionDown, ActionUp,
-    SS_QMK_PREFIX, SS_DELAY_CODE, ActionDelay, VIAL_MACRO_EXT_TAP, VIAL_MACRO_EXT_DOWN, VIAL_MACRO_EXT_UP,
+    SS_MACRO_PREFIX, SS_DELAY_CODE, ActionDelay, VIAL_MACRO_EXT_TAP, VIAL_MACRO_EXT_DOWN, VIAL_MACRO_EXT_UP,
     SS_BPM_DELAY_CODE, ActionBPMDelay, SS_BPM_DELAY_REPEAT_CODE,
     SS_MIXING_CONTROL_CODE, ActionMixingControl,
     SS_MOUSE_MOVE_CODE, ActionMouseMove, mouse_coord_from_bytes,
@@ -64,7 +64,7 @@ def macro_deserialize_v2(data):
     sequence = []
     data = bytearray(data)
     while len(data) > 0:
-        if data[0] == SS_QMK_PREFIX:
+        if data[0] == SS_MACRO_PREFIX:
             if len(data) < 2:
                 break
 
@@ -85,7 +85,7 @@ def macro_deserialize_v2(data):
                         break
                     length = 4
                     kc = struct.unpack("<H", data[2:4])[0]
-                    # see decode_keycode() in qmk
+                    # matches the keyboard's keycode decoding
                     if kc > 0xFF00:
                         kc = (kc & 0xFF) << 8
 

@@ -925,7 +925,7 @@ class DKSActionEditor(QWidget):
 
     def set_action(self, keycode, actuation, behavior):
         """Set action values"""
-        # Convert keycode integer to string qmk_id
+        # Convert keycode integer to string code_id
         if isinstance(keycode, int):
             if keycode == 0:
                 keycode_str = "KC_NO"

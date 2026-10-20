@@ -79,7 +79,7 @@ VIBL_SERIAL_NUMBER_MAGIC = "vibl:d4f8159c"
 
 MSG_LEN = 32
 
-# these should match what we have in vial-qmk/keyboards/vial_example
+# example keyboard UIDs
 # so that people don't accidentally reuse a sample keyboard UID
 EXAMPLE_KEYBOARDS = [
     0xD4A36200603E3007,  # vial_stm32f103_vibl
@@ -317,7 +317,7 @@ class KeycodeDisplay:
         return "\n".join(lines)
 
     @classmethod
-    def get_custom_name_label(cls, qmk_id):
+    def get_custom_name_label(cls, code_id):
         """Check if this keycode has a custom name from feature_names.
         Returns the custom label string (wrapped for button display) or None."""
         try:
@@ -326,36 +326,36 @@ class KeycodeDisplay:
             mgr = get_feature_name_manager()
 
             # Macro: M0-M127
-            if qmk_id.startswith("M") and qmk_id[1:].isdigit():
-                idx = int(qmk_id[1:])
+            if code_id.startswith("M") and code_id[1:].isdigit():
+                idx = int(code_id[1:])
                 if mgr.has_custom_name(FEATURE_MACRO, idx):
                     return cls._wrap_label(mgr.get_name(FEATURE_MACRO, idx))
 
             # Toggle: TGL_00-TGL_99
-            if qmk_id.startswith("TGL_") and len(qmk_id) > 4 and qmk_id[4:].isdigit():
-                idx = int(qmk_id[4:])
+            if code_id.startswith("TGL_") and len(code_id) > 4 and code_id[4:].isdigit():
+                idx = int(code_id[4:])
                 if mgr.has_custom_name(FEATURE_TOGGLE, idx):
                     return cls._wrap_label(mgr.get_name(FEATURE_TOGGLE, idx))
 
             # Arp user presets: ARP_PRESET_48-ARP_PRESET_67
-            if qmk_id.startswith("ARP_PRESET_") and qmk_id[11:].isdigit():
-                idx = int(qmk_id[11:])
+            if code_id.startswith("ARP_PRESET_") and code_id[11:].isdigit():
+                idx = int(code_id[11:])
                 if idx >= 48:
                     user_idx = idx - 48
                     if mgr.has_custom_name(FEATURE_ARP, user_idx):
                         return cls._wrap_label(mgr.get_name(FEATURE_ARP, user_idx))
 
             # Seq user presets: SEQ_PRESET_48-SEQ_PRESET_67
-            if qmk_id.startswith("SEQ_PRESET_") and qmk_id[11:].isdigit():
-                idx = int(qmk_id[11:])
+            if code_id.startswith("SEQ_PRESET_") and code_id[11:].isdigit():
+                idx = int(code_id[11:])
                 if idx >= 48:
                     user_idx = idx - 48
                     if mgr.has_custom_name(FEATURE_SEQ, user_idx):
                         return cls._wrap_label(mgr.get_name(FEATURE_SEQ, user_idx))
 
             # Delay user slots: DELAY_49-DELAY_98 (unified index, user starts at 49)
-            if qmk_id.startswith("DELAY_") and qmk_id[6:].isdigit():
-                idx = int(qmk_id[6:])
+            if code_id.startswith("DELAY_") and code_id[6:].isdigit():
+                idx = int(code_id[6:])
                 if idx > 48:
                     user_idx = idx - 49
                     if mgr.has_custom_name(FEATURE_DELAY, user_idx):
@@ -372,14 +372,14 @@ class KeycodeDisplay:
         if custom:
             return custom
         if cls.code_is_overriden(code):
-            return cls.keymap_override[Keycode.find_outer_keycode(code).qmk_id]
+            return cls.keymap_override[Keycode.find_outer_keycode(code).code_id]
         return Keycode.label(code)
 
     @classmethod
     def code_is_overriden(cls, code):
         """ Check whether a country-specific keymap overrides a code """
         key = Keycode.find_outer_keycode(code)
-        return key is not None and key.qmk_id in cls.keymap_override
+        return key is not None and key.code_id in cls.keymap_override
 
     @classmethod
     def display_keycode(cls, widget, code):
@@ -392,7 +392,7 @@ class KeycodeDisplay:
         mask_text = ""
         inner = Keycode.find_inner_keycode(code)
         if inner:
-            mask_text = cls.get_label(inner.qmk_id)
+            mask_text = cls.get_label(inner.code_id)
         if mask and not custom:
             text = text.split("\n")[0]
         widget.masked = mask if not custom else False
@@ -426,13 +426,13 @@ class KeycodeDisplay:
     @classmethod
     def relabel_buttons(cls, buttons):
         for widget in buttons:
-            qmk_id = widget.keycode.qmk_id
-            custom = cls.get_custom_name_label(qmk_id)
+            code_id = widget.keycode.code_id
+            custom = cls.get_custom_name_label(code_id)
             if custom:
                 label = custom
                 widget.setStyleSheet("QPushButton {}")
-            elif qmk_id in KeycodeDisplay.keymap_override:
-                label = KeycodeDisplay.keymap_override[qmk_id]
+            elif code_id in KeycodeDisplay.keymap_override:
+                label = KeycodeDisplay.keymap_override[code_id]
                 widget.setStyleSheet("QPushButton {}")
             else:
                 label = widget.keycode.label

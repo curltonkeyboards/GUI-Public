@@ -13,7 +13,7 @@ from protocol.clone_migrations import (
     V5_NAV_LAYER_BASE, V5_NAV_LAYER_SIZE,
     V6_DL_QB_BASE, V6_DL_QB_SPAN, V6_DL_QB_V5_MAGIC, V6_DL_QB_V6_MAGIC,
     V6_DL_QB_V5_ENTRY, V6_DL_QB_V6_ENTRY,
-    V7_DYN_COMBO_OLD_BASE, V7_DYN_COMBO_OLD_COUNT, V7_DYN_KO_OLD_BASE, V7_DYN_KO_OLD_COUNT,
+    V7_DYN_TAPHOLD_BASE, V7_DYN_COMBO_OLD_BASE, V7_DYN_COMBO_OLD_COUNT, V7_DYN_KO_OLD_BASE, V7_DYN_KO_OLD_COUNT,
     V7_DYN_ENTRY, V7_DYN_KO_NEW_BASE, V7_DYN_KO_NEW_COUNT, V7_DYN_SPAN_END,
     V8_MOUSE_TIMING_BASE, V8_MOUSE_TIMING_SIZE,
     V9_GBIND_REGIONS,
@@ -219,6 +219,15 @@ class TestCloneMigrationV6ToV7(unittest.TestCase):
     def test_combos_gone(self):
         self.assertNotEqual(struct.unpack_from("<HHHHH", self.v7, V7_DYN_COMBO_OLD_BASE + V7_DYN_ENTRY),
                             (0x05, 0x06, 0, 0, 0x1F))
+
+    def test_geometry_matches_the_six_row_keymap(self):
+        self.assertEqual(41 + 12 * 6 * 14 * 2 + 48 + 36, V7_DYN_TAPHOLD_BASE)
+        self.assertEqual(V7_DYN_TAPHOLD_BASE + 100 * V7_DYN_ENTRY, V7_DYN_COMBO_OLD_BASE)
+        self.assertEqual(V7_DYN_SPAN_END, 4461)
+
+    def test_tap_hold_untouched(self):
+        span = slice(V7_DYN_TAPHOLD_BASE, V7_DYN_COMBO_OLD_BASE)
+        self.assertEqual(self.v6[span], self.v7[span])
 
     def test_only_the_dynamic_span_changes(self):
         changed = {i for i in range(EEPROM_SIZE) if self.v6[i] != self.v7[i]}

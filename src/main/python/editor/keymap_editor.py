@@ -3359,7 +3359,7 @@ class KeymapEditor(BasicEditor):
             kc = Keycode.find_outer_keycode(self.keyboard.encoder_layout[(l, i, d)])
             if kc is None:
                 return
-            keycode = kc.qmk_id.replace("(kc)", "({})".format(keycode))
+            keycode = kc.code_id.replace("(kc)", "({})".format(keycode))
 
         self.keyboard.set_encoder(l, i, d, keycode)
         self.refresh_layer_display()
@@ -3376,7 +3376,7 @@ class KeymapEditor(BasicEditor):
                 kc = Keycode.find_outer_keycode(self.keyboard.layout[(l, r, c)])
                 if kc is None:
                     return
-                keycode = kc.qmk_id.replace("(kc)", "({})".format(keycode))
+                keycode = kc.code_id.replace("(kc)", "({})".format(keycode))
 
             # Removing the last A-Z / ESC / arrow key from the NAVIGATION
             # layer can make the on-device menus impossible to drive — warn.
@@ -3404,38 +3404,38 @@ class KeymapEditor(BasicEditor):
     def on_key_deselected(self):
         self.tabbed_keycodes.set_keycode_filter(None)
 
-    def on_keycode_dropped(self, key, mask, qmk_id):
+    def on_keycode_dropped(self, key, mask, code_id):
         """A palette keycode was dropped on ``key`` (see KeyboardWidget2
         keycode_dropped): select that key and assign exactly like a palette
         click would, then leave it selected (no select_next — the drop named
         its target, so the next palette click still lands there)."""
         if self.keyboard is None or key is None:
             return
-        if joystick_function_id(qmk_id):
+        if joystick_function_id(code_id):
             mask = False  # a joystick function attaches to the whole key
-        elif mask and not Keycode.is_basic(qmk_id):
+        elif mask and not Keycode.is_basic(code_id):
             return
         # Run after the drop event returns: the drop is delivered inside the
         # palette button's QDrag.exec_() loop, and the assignment can raise a
         # modal warning (navigation-layer guard) that should not nest in it.
-        QTimer.singleShot(0, lambda: self._assign_dropped_keycode(key, mask, qmk_id))
+        QTimer.singleShot(0, lambda: self._assign_dropped_keycode(key, mask, code_id))
 
-    def _assign_dropped_keycode(self, key, mask, qmk_id):
+    def _assign_dropped_keycode(self, key, mask, code_id):
         if self.keyboard is None or key not in self.container.widgets:
             return
         self.encoder_assign.deselect()
         self.container.active_key = key
         self.container.active_mask = mask
-        fid = joystick_function_id(qmk_id)
+        fid = joystick_function_id(code_id)
         if fid:
             if not isinstance(key, EncoderWidget2):
                 self._set_joystick(key.desc.row, key.desc.col, fid)
             self.on_key_clicked()
             return
         if isinstance(key, EncoderWidget2):
-            self.set_key_encoder(qmk_id)
+            self.set_key_encoder(code_id)
         else:
-            self.set_key_matrix(qmk_id)
+            self.set_key_matrix(code_id)
         self.on_key_clicked()
 
     def on_encoder_clicked(self):

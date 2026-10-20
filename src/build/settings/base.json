@@ -1,6 +1,6 @@
 {
-    "app_name": "Curlton KeyStation",
-    "author": "Curlton Keyboards",
+    "app_name": "MIDIswitch KeyStation",
+    "author": "MIDIswitch",
     "main_module": "src/main/python/main.py",
     "version": "0.7.1",
     "hidden_imports": [

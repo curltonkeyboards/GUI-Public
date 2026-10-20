@@ -38,7 +38,7 @@ from editor.dks_settings import DKSSettingsTab
 from editor.toggle_settings import ToggleSettingsTab
 from editor.layout_editor import LayoutEditor
 from editor.macro_recorder import MacroRecorder
-from editor.qmk_settings import QmkSettingsDefs
+from editor.macro_settings import MacroSettingsDefs
 from editor.rgb_configurator import RGBConfigurator
 from tabbed_keycodes import TabbedKeycodes
 from editor.tap_dance import TapDance
@@ -142,7 +142,7 @@ class MainWindow(QMainWindow):
         self.macro_recorder = MacroRecorder()
         self.tap_dance = TapDance()
         self.combo_keys = ComboKeys()
-        QmkSettingsDefs.initialize(appctx)
+        MacroSettingsDefs.initialize(appctx)
         self.matrix_tester = MatrixTest(self.layout_editor)
         self.velocity_tab = VelocityTab(self.layout_editor)
         self.rgb_configurator = RGBConfigurator()
@@ -248,17 +248,17 @@ class MainWindow(QMainWindow):
 
         # check if the via defitions already exist
         if os.path.isfile(os.path.join(self.cache_path, "via_keyboards.json")):
-            _startup_log("Loading cached VIA definitions...")
+            _startup_log("Loading cached keyboard definitions...")
             t0 = time.time()
             with open(os.path.join(self.cache_path, "via_keyboards.json")) as vf:
                 data = vf.read()
             try:
                 self.autorefresh.load_via_stack(data)
-                _startup_log(f"  VIA definitions loaded ({time.time()-t0:.2f}s)")
+                _startup_log(f"  Keyboard definitions loaded ({time.time()-t0:.2f}s)")
             except JSONDecodeError as e:
                 # the saved file is invalid - just ignore this
                 logging.warning("Failed to parse stored via_keyboards.json: {}".format(e))
-                _startup_log(f"  VIA definitions failed to parse")
+                _startup_log(f"  Keyboard definitions failed to parse")
 
         # make sure initial state is valid
         _startup_log("Starting initial device refresh...")
@@ -320,6 +320,17 @@ class MainWindow(QMainWindow):
             # check the default theme if nothing else is selected
             if theme_group.checkedAction() is None:
                 theme_group.actions()[0].setChecked(True)
+
+        help_menu = self.menuBar().addMenu(tr("Menu", "Help"))
+        about_act = QAction(tr("MenuHelp", "About MIDIswitch KeyStation..."), self)
+        about_act.triggered.connect(self.show_about)
+        help_menu.addAction(about_act)
+
+    def show_about(self):
+        from widgets.about_dialog import AboutDialog
+        dlg = AboutDialog(self, self.appctx)
+        dlg.setAttribute(Qt.WA_DeleteOnClose)
+        dlg.show()
 
     def on_layout_load(self):
         # Guard: a layout can only be applied to a connected keyboard.
@@ -443,6 +454,9 @@ class MainWindow(QMainWindow):
                 state["done"] = True
 
         set_hid_transfer_active(True)
+        # Ignore device add/remove events until the transfer is over: a refresh
+        # would close the HID handle while the worker thread is reading it.
+        self.lock_ui()
         try:
             worker = threading.Thread(target=read_worker, daemon=True)
             worker.start()
@@ -455,6 +469,7 @@ class MainWindow(QMainWindow):
             worker.join()
         finally:
             set_hid_transfer_active(False)
+            self.unlock_ui()
             progress.close()
 
         if state["canceled"]:
@@ -628,6 +643,9 @@ class MainWindow(QMainWindow):
                 state["done"] = True
 
         set_hid_transfer_active(True)
+        # Ignore device add/remove events until the transfer is over: a refresh
+        # would close the HID handle while the worker thread is reading it.
+        self.lock_ui()
         try:
             worker = threading.Thread(target=write_worker, daemon=True)
             worker.start()
@@ -640,6 +658,7 @@ class MainWindow(QMainWindow):
             worker.join()
         finally:
             set_hid_transfer_active(False)
+            self.unlock_ui()
             progress.close()
 
         canceled = state["canceled"]

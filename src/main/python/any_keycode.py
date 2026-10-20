@@ -35,7 +35,7 @@ def MO(layer): return (r("QK_MOMENTARY") | ((layer)&0xFF))
 def DF(layer): return (r("QK_DEF_LAYER") | ((layer)&0xFF))
 def TG(layer): return (r("QK_TOGGLE_LAYER") | ((layer)&0xFF))
 def OSL(layer): return (r("QK_ONE_SHOT_LAYER") | ((layer)&0xFF))
-def LM(layer, mod): return (r("QK_LAYER_MOD") | (((layer)&0xF) << r("QMK_LM_SHIFT")) | ((mod)&r("QMK_LM_MASK")))
+def LM(layer, mod): return (r("QK_LAYER_MOD") | (((layer)&0xF) << r("LM_SHIFT")) | ((mod)&r("LM_MASK")))
 def OSM(mod): return (r("QK_ONE_SHOT_MOD") | ((mod)&0xFF))
 def TT(layer): return (r("QK_LAYER_TAP_TOGGLE") | ((layer)&0xFF))
 def MT(mod, kc): return (r("QK_MOD_TAP") | (((mod)&0x1F) << 8) | ((kc)&0xFF))
@@ -104,8 +104,8 @@ class AnyKeycode:
     def prepare_names(self):
         for kc in KEYCODES_SPECIAL + KEYCODES_BASIC + KEYCODES_SHIFTED + KEYCODES_ISO + KEYCODES_BACKLIGHT + \
                   KEYCODES_MEDIA + KEYCODES_USER:
-            for qmk_id in kc.alias:
-                self.names[qmk_id] = Keycode.resolve(kc.qmk_id)
+            for code_id in kc.alias:
+                self.names[code_id] = Keycode.resolve(kc.code_id)
         macros = dict()
         for s in ["MOD_LCTL", "MOD_LSFT", "MOD_LALT", "MOD_LGUI", "MOD_RCTL", "MOD_RSFT", "MOD_RALT", "MOD_RGUI",
                   "MOD_MEH", "MOD_HYPR"]:

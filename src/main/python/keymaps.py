@@ -24,8 +24,8 @@ KEYMAPS = [
     ("Swiss (QWERTZ)", swiss.keymap)
 ]
 
-# make sure that qmk IDs we used are all correct
+# make sure that the keycode IDs we used are all correct
 for name, keymap in KEYMAPS:
-    for qmk_id in keymap.keys():
-        if Keycode.find_by_qmk_id(qmk_id) is None:
-            raise RuntimeError("Misconfigured - cannot find QMK keycode {}".format(qmk_id))
+    for code_id in keymap.keys():
+        if Keycode.find_by_code_id(code_id) is None:
+            raise RuntimeError("Misconfigured - cannot find keycode {}".format(code_id))

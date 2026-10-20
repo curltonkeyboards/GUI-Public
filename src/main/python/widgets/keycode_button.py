@@ -28,7 +28,7 @@ Optional per-sequence behaviour (enabled by the owner setting ``drag_group``):
 * right-click → "Duplicate" — the owner gets ``duplicate_requested(button)``;
 * a key dragged from the PALETTE (SquareButton's drag, KEYCODE_PALETTE_MIME)
   can be dropped on a row's button / gap / "+" to INSERT it there
-  (``insert_requested(qmk_id, target, before)``), or on a fixed slot to assign
+  (``insert_requested(code_id, target, before)``), or on a fixed slot to assign
   it (``assign_requested``).
 """
 
@@ -160,20 +160,20 @@ def drag_accepted_from(ev, drag_group, exclude=None):
 
 
 def palette_keycode_from(ev, keycode_filter=None):
-    """The qmk_id a PALETTE drag (see SquareButton) carries, if ``ev`` is one
+    """The code_id a PALETTE drag (see SquareButton) carries, if ``ev`` is one
     and ``keycode_filter`` (None = accept any) admits it; else None."""
     mime = ev.mimeData()
     if mime is None or not mime.hasFormat(KEYCODE_PALETTE_MIME):
         return None
     try:
-        qmk_id = bytes(mime.data(KEYCODE_PALETTE_MIME)).decode("utf-8")
+        code_id = bytes(mime.data(KEYCODE_PALETTE_MIME)).decode("utf-8")
     except Exception:
         return None
-    if not qmk_id:
+    if not code_id:
         return None
-    if keycode_filter is not None and not keycode_filter(qmk_id):
+    if keycode_filter is not None and not keycode_filter(code_id):
         return None
-    return qmk_id
+    return code_id
 
 
 class DropGap(QWidget):
@@ -196,7 +196,7 @@ class DropGap(QWidget):
     keeps_key_selection = True
 
     dropped = pyqtSignal(object, object, bool)   # source, target, insert-before
-    inserted = pyqtSignal(str, object, bool)     # palette qmk_id, target, insert-before
+    inserted = pyqtSignal(str, object, bool)     # palette code_id, target, insert-before
 
     _active = None       # the currently open gap, if any
     ANIM_MS = 130
@@ -314,11 +314,11 @@ class DropGap(QWidget):
             ev.accept()
             self.dropped.emit(ev.source(), target, before)
             return
-        qmk_id = palette_keycode_from(ev, self.keycode_filter)
-        if qmk_id:
+        code_id = palette_keycode_from(ev, self.keycode_filter)
+        if code_id:
             ev.setDropAction(Qt.CopyAction)
             ev.accept()
-            self.inserted.emit(qmk_id, target, before)
+            self.inserted.emit(code_id, target, before)
             return
         ev.ignore()
 
@@ -349,7 +349,7 @@ def merge_keycode_pick(current, picked):
         if (isinstance(current, str) and Keycode.is_mask(current)
                 and isinstance(picked, str) and Keycode.is_basic(picked)):
             inner = Keycode.find_inner_keycode(current)
-            if inner is None or inner.qmk_id == "KC_NO":
+            if inner is None or inner.code_id == "KC_NO":
                 return "{}({})".format(current[:current.find("(")], picked)
     except Exception:
         pass
@@ -369,7 +369,7 @@ class KeycodeButton(SquareButton):
     # drag hovering a button of a drag group reports the same way (source = the
     # palette button), so it gets the same push preview.
     drop_hover = pyqtSignal(object, object, bool)
-    # A palette key was dropped on a button of a drag group: (qmk_id, self,
+    # A palette key was dropped on a button of a drag group: (code_id, self,
     # insert-before) — the owner inserts a NEW key there.
     insert_requested = pyqtSignal(str, object, bool)
     # A palette key was dropped on a fixed slot (no drag group): the button has
@@ -661,16 +661,16 @@ class KeycodeButton(SquareButton):
             ev.accept()
             self.reorder_requested.emit(ev.source(), self, before)
             return
-        qmk_id = palette_keycode_from(ev, self.keycode_filter)
-        if qmk_id:
+        code_id = palette_keycode_from(ev, self.keycode_filter)
+        if code_id:
             ev.setDropAction(Qt.CopyAction)
             ev.accept()
             if self.drag_group is not None:
                 # a row (macro line / toggle cycle): insert a new key here
-                self.insert_requested.emit(qmk_id, self, before)
+                self.insert_requested.emit(code_id, self, before)
             else:
                 # a fixed slot (tap dance / combo / DKS / toggle target): take it
-                self.on_keycode_changed(qmk_id)
+                self.on_keycode_changed(code_id)
                 self.assign_requested.emit(self.keycode, self)
             return
         ev.ignore()

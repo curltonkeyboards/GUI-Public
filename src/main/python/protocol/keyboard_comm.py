@@ -19,12 +19,12 @@ from kle_serial import Serial as KleSerial, Key
 from protocol.constants import CMD_VIA_GET_PROTOCOL_VERSION, CMD_VIA_GET_KEYBOARD_VALUE, CMD_VIA_SET_KEYBOARD_VALUE, \
     CMD_VIA_SET_KEYCODE, CMD_VIA_LIGHTING_SET_VALUE, CMD_VIA_LIGHTING_GET_VALUE, CMD_VIA_LIGHTING_SAVE, \
     CMD_VIA_GET_LAYER_COUNT, CMD_VIA_KEYMAP_GET_BUFFER, CMD_VIA_VIAL_PREFIX, VIA_LAYOUT_OPTIONS, \
-    VIA_SWITCH_MATRIX_STATE, QMK_BACKLIGHT_BRIGHTNESS, QMK_BACKLIGHT_EFFECT, QMK_RGBLIGHT_BRIGHTNESS, \
-    QMK_RGBLIGHT_EFFECT, QMK_RGBLIGHT_EFFECT_SPEED, QMK_RGBLIGHT_COLOR, VIALRGB_GET_INFO, VIALRGB_GET_MODE, \
+    VIA_SWITCH_MATRIX_STATE, BACKLIGHT_BRIGHTNESS, BACKLIGHT_EFFECT, RGBLIGHT_BRIGHTNESS, \
+    RGBLIGHT_EFFECT, RGBLIGHT_EFFECT_SPEED, RGBLIGHT_COLOR, VIALRGB_GET_INFO, VIALRGB_GET_MODE, \
     VIALRGB_GET_SUPPORTED, VIALRGB_SET_MODE, CMD_VIAL_GET_KEYBOARD_ID, CMD_VIAL_GET_SIZE, CMD_VIAL_GET_DEFINITION, \
     CMD_VIAL_GET_ENCODER, CMD_VIAL_SET_ENCODER, CMD_VIAL_GET_UNLOCK_STATUS, CMD_VIAL_UNLOCK_START, CMD_VIAL_UNLOCK_POLL, \
-    CMD_VIAL_LOCK, CMD_VIAL_QMK_SETTINGS_QUERY, CMD_VIAL_QMK_SETTINGS_GET, CMD_VIAL_QMK_SETTINGS_SET, \
-    CMD_VIAL_QMK_SETTINGS_RESET, BUFFER_FETCH_CHUNK, VIAL_PROTOCOL_QMK_SETTINGS, \
+    CMD_VIAL_LOCK, CMD_VIAL_SETTINGS_QUERY, CMD_VIAL_SETTINGS_GET, CMD_VIAL_SETTINGS_SET, \
+    CMD_VIAL_SETTINGS_RESET, BUFFER_FETCH_CHUNK, VIAL_PROTOCOL_SETTINGS, \
     CMD_VIAL_LAYER_RGB_SAVE, CMD_VIAL_LAYER_RGB_LOAD, CMD_VIAL_LAYER_RGB_ENABLE, CMD_VIAL_LAYER_RGB_GET_STATUS, \
     CMD_VIAL_CUSTOM_ANIM_SET_PARAM, CMD_VIAL_CUSTOM_ANIM_GET_PARAM, CMD_VIAL_CUSTOM_ANIM_SET_ALL, \
     CMD_VIAL_CUSTOM_ANIM_GET_ALL, CMD_VIAL_CUSTOM_ANIM_SAVE, CMD_VIAL_CUSTOM_ANIM_LOAD, \
@@ -37,7 +37,7 @@ from protocol.key_override import ProtocolKeyOverride
 from protocol.macro import ProtocolMacro
 from protocol.tap_dance import ProtocolTapDance
 from unlocker import Unlocker
-from protocol.msw_protocol import build_ident_request, parse_ident, encode_request, decode_response, \
+from protocol.msw_protocol import build_ident_request, parse_ident, encode_request, decode_response, VIA_TO_ALIAS, \
     MSW_PROTOCOL_MAJOR_SUPPORTED, MSW1_VIA_LEVEL, MSW1_VIAL_LEVEL, MSW_CAP_DEFINITION, \
     MACRO_SETTINGS_QSIDS, MOUSE_SETTINGS_IDS, MSW_MSET_GET, MSW_MSET_SET, MSW_MSET_RESET, \
     build_macro_settings_request, parse_macro_settings
@@ -254,7 +254,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         self.custom_keycodes = None
         self.midi = None
 
-        self.lighting_qmk_rgblight = self.lighting_qmk_backlight = self.lighting_vialrgb = False
+        self.lighting_rgblight = self.lighting_backlight = self.lighting_vialrgb = False
 
         # underglow
         self.underglow_brightness = self.underglow_effect = self.underglow_effect_speed = -1
@@ -321,10 +321,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         self.reload_layer_rgb_support()
         _startup_log(f"  Layer RGB check done ({time.time()-t0:.2f}s)")
 
-        _startup_log("  Loading QMK settings...")
+        _startup_log("  Loading macro settings...")
         t0 = time.time()
         self.reload_settings()
-        _startup_log(f"  QMK settings done ({time.time()-t0:.2f}s)")
+        _startup_log(f"  Macro settings done ({time.time()-t0:.2f}s)")
 
         _startup_log("  Loading dynamic config...")
         t0 = time.time()
@@ -387,12 +387,57 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         total_time = time.time() - reload_start
         _startup_log(f"Keyboard reload complete! Total time: {total_time:.2f}s")
 
+    # Requests whose reply keeps bytes 1-3 (offset + size) exactly as sent.
+    _ECHO_ARGS_CMDS = (0x0E, 0x12)   # macro / keymap get_buffer
+
     def _usb_send_codec(self, dev, msg, retries=1):
-        """usb_send with the command-alias codec applied."""
+        """usb_send with the command-alias codec applied.
+
+        On a MIDIswitch the reply to a byte-0 id command repeats that id
+        (and, for the two buffer reads, the offset and size). A reply that
+        does not is a late answer to an earlier request: it is skipped and
+        the next queued report is read, so one slow reply can no longer
+        shift every later request out of step."""
         if self.hid_codec != "msw":
             return self._usb_send_raw(dev, msg, retries)
-        response = self._usb_send_raw(dev, encode_request(msg), retries)
-        return decode_response(msg, response)
+        encoded = encode_request(msg)
+        b0 = msg[0] if msg else None
+        if b0 not in VIA_TO_ALIAS:
+            return decode_response(msg, self._usb_send_raw(dev, encoded, retries))
+        want = VIA_TO_ALIAS[b0]
+        padded = bytes(msg) + b"\x00" * max(0, MSG_LEN - len(msg))
+        check_args = b0 in self._ECHO_ARGS_CMDS
+
+        def matches(resp):
+            if not resp:
+                return False
+            if resp[0] == 0xFF:          # "unhandled" marker: a real answer
+                return True
+            if resp[0] != want:
+                return False
+            return not check_args or bytes(resp[1:4]) == padded[1:4]
+
+        error = None
+        for attempt in range(max(1, retries)):
+            if attempt:
+                time.sleep(0.5)
+            try:
+                response = self._usb_send_raw(dev, encoded, 1)
+            except RuntimeError as e:
+                error = e
+                continue
+            for _ in range(8):
+                if matches(response):
+                    return decode_response(msg, response)
+                if not hasattr(dev, "read"):
+                    break
+                try:
+                    response = bytes(dev.read(MSG_LEN, timeout_ms=100))
+                except OSError:
+                    break
+                if not response:
+                    break
+        raise error or RuntimeError("failed to communicate with the device")
 
     def probe_ident(self):
         """Send IDENT ("who are you"). On a MIDIswitch this fills
@@ -623,8 +668,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         """
 
         if "lighting" in self.definition:
-            self.lighting_qmk_rgblight = self.definition["lighting"] in ["qmk_rgblight", "qmk_backlight_rgblight"]
-            self.lighting_qmk_backlight = self.definition["lighting"] in ["qmk_backlight", "qmk_backlight_rgblight"]
+            self.lighting_rgblight = "rgblight" in self.definition["lighting"]
+            self.lighting_backlight = "backlight" in self.definition["lighting"]
             self.lighting_vialrgb = self.definition["lighting"] == "vialrgb"
 
         if self.lighting_vialrgb:
@@ -648,23 +693,23 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
                     max_effect = max(max_effect, value)
 
     def reload_rgb(self):
-        if self.lighting_qmk_rgblight:
+        if self.lighting_rgblight:
             self.underglow_brightness = self.usb_send(
-                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_RGBLIGHT_BRIGHTNESS), retries=20)[2]
+                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, RGBLIGHT_BRIGHTNESS), retries=20)[2]
             self.underglow_effect = self.usb_send(
-                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_RGBLIGHT_EFFECT), retries=20)[2]
+                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, RGBLIGHT_EFFECT), retries=20)[2]
             self.underglow_effect_speed = self.usb_send(
-                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_RGBLIGHT_EFFECT_SPEED), retries=20)[2]
+                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, RGBLIGHT_EFFECT_SPEED), retries=20)[2]
             color = self.usb_send(
-                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_RGBLIGHT_COLOR), retries=20)[2:4]
+                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, RGBLIGHT_COLOR), retries=20)[2:4]
             # hue, sat
             self.underglow_color = (color[0], color[1])
 
-        if self.lighting_qmk_backlight:
+        if self.lighting_backlight:
             self.backlight_brightness = self.usb_send(
-                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_BACKLIGHT_BRIGHTNESS), retries=20)[2]
+                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, BACKLIGHT_BRIGHTNESS), retries=20)[2]
             self.backlight_effect = self.usb_send(
-                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_BACKLIGHT_EFFECT), retries=20)[2]
+                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, BACKLIGHT_EFFECT), retries=20)[2]
 
         if self.lighting_vialrgb:
             self._vialrgb_refresh_cache()
@@ -675,7 +720,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         if self.hid_codec == "msw":
             self._macro_settings_cmd(MSW_MSET_GET)
             return
-        if self.vial_protocol < VIAL_PROTOCOL_QMK_SETTINGS:
+        if self.vial_protocol < VIAL_PROTOCOL_SETTINGS:
             return
         cur = 0
         # (#11) This loop terminates only when a response contains the 0xFFFF
@@ -687,10 +732,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         while cur != 0xFFFF:
             _query_guard += 1
             if _query_guard > 2048:
-                logging.warning("reload_settings: aborting QMK settings query (too many blocks / malformed stream)")
+                logging.warning("reload_settings: aborting settings query (too many blocks / malformed stream)")
                 break
             _prev_cur = cur
-            data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_QUERY, cur),
+            data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_SETTINGS_QUERY, cur),
                                  retries=20)
             for x in range(0, len(data), 2):
                 qsid = int.from_bytes(data[x:x+2], byteorder="little")
@@ -700,19 +745,19 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
             if cur == _prev_cur:
                 # No 0xFFFF terminator and no higher qsid this round -> stop rather
                 # than re-querying the same block indefinitely.
-                logging.warning("reload_settings: QMK settings query stalled (malformed response); stopping")
+                logging.warning("reload_settings: settings query stalled (malformed response); stopping")
                 break
 
         for qsid in self.supported_settings:
-            from editor.qmk_settings import QmkSettingsDefs as QmkSettings
+            from editor.macro_settings import MacroSettingsDefs as MacroSettings
 
-            if not QmkSettings.is_qsid_supported(qsid):
+            if not MacroSettings.is_qsid_supported(qsid):
                 continue
 
-            data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_GET, qsid),
+            data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_SETTINGS_GET, qsid),
                                  retries=20)
             if data[0] == 0:
-                self.settings[qsid] = QmkSettings.qsid_deserialize(qsid, data[1:])
+                self.settings[qsid] = MacroSettings.qsid_deserialize(qsid, data[1:])
 
     def set_key(self, layer, row, col, code):
         key = (layer, row, col)
@@ -751,32 +796,32 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
             self.usb_send(self.dev, struct.pack(">BBI", CMD_VIA_SET_KEYBOARD_VALUE, VIA_LAYOUT_OPTIONS, options),
                           retries=20)
 
-    def set_qmk_rgblight_brightness(self, value):
+    def set_rgblight_brightness(self, value):
         self.underglow_brightness = value
-        self.usb_send(self.dev, struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_RGBLIGHT_BRIGHTNESS, value),
+        self.usb_send(self.dev, struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, RGBLIGHT_BRIGHTNESS, value),
                       retries=20)
 
-    def set_qmk_rgblight_effect(self, index):
+    def set_rgblight_effect(self, index):
         self.underglow_effect = index
-        self.usb_send(self.dev, struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_RGBLIGHT_EFFECT, index),
+        self.usb_send(self.dev, struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, RGBLIGHT_EFFECT, index),
                       retries=20)
 
-    def set_qmk_rgblight_effect_speed(self, value):
+    def set_rgblight_effect_speed(self, value):
         self.underglow_effect_speed = value
-        self.usb_send(self.dev, struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_RGBLIGHT_EFFECT_SPEED, value),
+        self.usb_send(self.dev, struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, RGBLIGHT_EFFECT_SPEED, value),
                       retries=20)
 
-    def set_qmk_rgblight_color(self, h, s, v):
-        self.set_qmk_rgblight_brightness(v)
-        self.usb_send(self.dev, struct.pack(">BBBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_RGBLIGHT_COLOR, h, s))
+    def set_rgblight_color(self, h, s, v):
+        self.set_rgblight_brightness(v)
+        self.usb_send(self.dev, struct.pack(">BBBB", CMD_VIA_LIGHTING_SET_VALUE, RGBLIGHT_COLOR, h, s))
 
-    def set_qmk_backlight_brightness(self, value):
+    def set_backlight_brightness(self, value):
         self.backlight_brightness = value
-        self.usb_send(self.dev, struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_BACKLIGHT_BRIGHTNESS, value))
+        self.usb_send(self.dev, struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, BACKLIGHT_BRIGHTNESS, value))
 
-    def set_qmk_backlight_effect(self, value):
+    def set_backlight_effect(self, value):
         self.backlight_effect = value
-        self.usb_send(self.dev, struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_BACKLIGHT_EFFECT, value))
+        self.usb_send(self.dev, struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, BACKLIGHT_EFFECT, value))
 
     def save_rgb(self):
         self.usb_send(self.dev, struct.pack(">B", CMD_VIA_LIGHTING_SAVE), retries=20)
@@ -845,11 +890,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         # "combo" blocks in older layout files are ignored: combos no longer exist
 
         for qsid, value in data.get("settings", dict()).items():
-            from editor.qmk_settings import QmkSettingsDefs as QmkSettings
+            from editor.macro_settings import MacroSettingsDefs as MacroSettings
 
             qsid = int(qsid)
-            if QmkSettings.is_qsid_supported(qsid):
-                self.qmk_settings_set(qsid, value)
+            if MacroSettings.is_qsid_supported(qsid):
+                self.macro_settings_set(qsid, value)
 
     def reset(self):
         self.usb_send(self.dev, struct.pack("B", 0xB))
@@ -1247,8 +1292,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         self.supported_settings = set(parsed.keys())
         return True
 
-    def qmk_settings_set(self, qsid, value):
-        from editor.qmk_settings import QmkSettingsDefs as QmkSettings
+    def macro_settings_set(self, qsid, value):
+        from editor.macro_settings import MacroSettingsDefs as MacroSettings
         if self.hid_codec == "msw":
             if qsid not in MACRO_SETTINGS_QSIDS + MOUSE_SETTINGS_IDS:
                 return 1
@@ -1260,16 +1305,16 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
             values[qsid] = value
             return 0 if self._macro_settings_cmd(MSW_MSET_SET, values) else 1
         self.settings[qsid] = value
-        data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_SET, qsid)
-                             + QmkSettings.qsid_serialize(qsid, value),
+        data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_SETTINGS_SET, qsid)
+                             + MacroSettings.qsid_serialize(qsid, value),
                              retries=20)
         return data[0]
 
-    def qmk_settings_reset(self):
+    def macro_settings_reset(self):
         if self.hid_codec == "msw":
             self._macro_settings_cmd(MSW_MSET_RESET)
             return
-        self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_RESET))
+        self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_SETTINGS_RESET))
 
     def _vialrgb_set_mode(self):
         self.usb_send(self.dev, struct.pack("BBHBBBB", CMD_VIA_LIGHTING_SET_VALUE, VIALRGB_SET_MODE,

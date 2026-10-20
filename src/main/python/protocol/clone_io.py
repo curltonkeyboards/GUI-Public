@@ -107,13 +107,14 @@ def load_file(path):
 # ---- Automatic backups ---------------------------------------------------------
 
 def backup_dir():
+    # A fixed "MIDIswitch" folder under the per-user data directory, not one
+    # named after the app, so renaming the app never hides earlier backups.
     try:
         from PyQt5.QtCore import QStandardPaths
-        base = QStandardPaths.writableLocation(QStandardPaths.AppLocalDataLocation)
+        base = QStandardPaths.writableLocation(QStandardPaths.GenericDataLocation)
     except Exception:
         base = ""
-    if not base:
-        base = os.path.join(os.path.expanduser("~"), ".midiswitch")
+    base = os.path.join(base, "MIDIswitch") if base else os.path.join(os.path.expanduser("~"), ".midiswitch")
     path = os.path.join(base, "firmware-update-backups")
     os.makedirs(path, exist_ok=True)
     return path

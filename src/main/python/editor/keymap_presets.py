@@ -22,7 +22,7 @@ Zone prefixes:
   - TripleSplit zone: MI_SPLIT2_* (e.g. MI_SPLIT2_C_3)
 """
 
-# Chromatic note names matching QMK MI_* keycode naming
+# Chromatic note names matching the MI_* keycode naming
 CHROMATIC_NAMES = ['C', 'Cs', 'D', 'Ds', 'E', 'F', 'Fs', 'G', 'Gs', 'A', 'As', 'B']
 
 ROWS = 5

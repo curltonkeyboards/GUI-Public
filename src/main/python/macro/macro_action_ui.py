@@ -111,11 +111,11 @@ class PlusDropButton(QToolButton):
             ev.accept()
             self.dropped.emit(ev.source())
             return
-        qmk_id = palette_keycode_from(ev, self.keycode_filter)
-        if qmk_id:
+        code_id = palette_keycode_from(ev, self.keycode_filter)
+        if code_id:
             ev.setDropAction(Qt.CopyAction)
             ev.accept()
-            self.insert_dropped.emit(qmk_id)
+            self.insert_dropped.emit(code_id)
             return
         ev.ignore()
 
@@ -352,7 +352,7 @@ class ActionSequenceUI(BasicActionUI):
         size = source.sizeHint() if isinstance(source, KeycodeButton) else self.btn_plus.sizeHint()
         self.gap.open_at(target, before, size)
 
-    def on_insert_keycode(self, qmk_id, target, before):
+    def on_insert_keycode(self, code_id, target, before):
         """A key dragged from the palette was dropped on this line (on a key,
         in the gap, or on "+"): insert it at that position.  The buttons are
         rebuilt on the next event-loop pass — the drop is still being delivered
@@ -361,7 +361,7 @@ class ActionSequenceUI(BasicActionUI):
             idx = len(self.act.sequence)
         else:
             idx = self.widgets.index(target) + (0 if before else 1)
-        self.act.sequence.insert(idx, qmk_id)
+        self.act.sequence.insert(idx, code_id)
         self.gap.close()
         QTimer.singleShot(0, self._rebuild_and_select(idx))
         self.changed.emit()
