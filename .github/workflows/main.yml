@@ -10,7 +10,10 @@ jobs:
     - uses: actions/checkout@v4
     - name: Install system libraries
       run: |
-        apt-get update
+        # bullseye has moved to the Debian archive
+        rm -f /etc/apt/sources.list.d/*
+        printf 'deb http://archive.debian.org/debian bullseye main\ndeb http://archive.debian.org/debian-security bullseye-security main\n' > /etc/apt/sources.list
+        apt-get -o Acquire::Check-Valid-Until=false update
         apt-get install -y libusb-1.0-0-dev libudev-dev libgl1 libglib2.0-0 libfontconfig1 libdbus-1-3 libxkbcommon-x11-0 libasound2-dev
     - name: Setup venv
       run: |
