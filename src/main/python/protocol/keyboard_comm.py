@@ -390,6 +390,49 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
     # Requests whose reply keeps bytes 1-3 (offset + size) exactly as sent.
     _ECHO_ARGS_CMDS = (0x0E, 0x12)   # macro / keymap get_buffer
 
+    _CUSTOM_HDR = b"\x7d\x00\x4d"
+
+    def _read_more(self, dev, seconds):
+        """Yield queued reports until `seconds` pass with nothing arriving."""
+        if not hasattr(dev, "read"):
+            return
+        deadline = time.time() + seconds
+        while time.time() < deadline:
+            try:
+                r = bytes(dev.read(MSG_LEN, timeout_ms=100))
+            except OSError:
+                return
+            if r:
+                yield r
+
+    def _send_custom(self, dev, encoded, hdr, retries):
+        """Device-feature command (7D 00 4D <cmd>). Their replies repeat
+        those four bytes. A reply carrying another command is a late answer
+        to an earlier request: skip it and read the next one. A slow reply
+        (a large settings save) is waited for before the request is sent
+        again, so the command does not run twice."""
+        def is_other(r):
+            return len(r) > 3 and r[:3] == self._CUSTOM_HDR and r[3] != hdr[3]
+
+        error = None
+        for attempt in range(max(1, retries)):
+            if attempt:
+                time.sleep(0.5)
+            try:
+                first = self._usb_send_raw(dev, encoded, 1)
+            except RuntimeError as e:
+                error = e
+                first = None
+            first = first or None
+            if first is not None and not is_other(first):
+                return first
+            for r in self._read_more(dev, 2.0 if first is None else 0.6):
+                if not is_other(r):
+                    return r
+            if first is not None:
+                return first
+        raise error or RuntimeError("failed to communicate with the device")
+
     def _usb_send_codec(self, dev, msg, retries=1):
         """usb_send with the command-alias codec applied.
 
@@ -402,6 +445,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
             return self._usb_send_raw(dev, msg, retries)
         encoded = encode_request(msg)
         b0 = msg[0] if msg else None
+        if len(msg) > 3 and bytes(msg[:3]) == self._CUSTOM_HDR:
+            return self._send_custom(dev, encoded, bytes(msg[:4]), retries)
         if b0 not in VIA_TO_ALIAS:
             return decode_response(msg, self._usb_send_raw(dev, encoded, retries))
         want = VIA_TO_ALIAS[b0]

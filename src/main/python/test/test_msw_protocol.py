@@ -450,6 +450,26 @@ class TestLateReply(unittest.TestCase):
         kb, sent = self._kb([stale, real])
         self.assertEqual(kb.usb_send(kb.dev, struct.pack("B", 0x11))[:2], bytes([0x11, 4]))
 
+    def test_custom_reply_for_other_command_skipped(self):
+        stale = pad(bytes([0x7D, 0x00, 0x4D, 0xF5, 0x34, 0x12]))   # a GET_SLOT answer
+        real = pad(bytes([0x7D, 0x00, 0x4D, 0xF7, 0x00]))
+        kb, sent = self._kb([stale, real])
+        data = kb.usb_send(kb.dev, bytes([0x7D, 0x00, 0x4D, 0xF7]), retries=3)
+        self.assertEqual(data[3:5], bytes([0xF7, 0x00]))
+        self.assertEqual(len(sent), 1)
+
+    def test_slow_custom_reply_waited_for_not_resent(self):
+        real = pad(bytes([0x7D, 0x00, 0x4D, 0xF7, 0x00]))
+        kb, sent = self._kb([b"", real])     # first read times out, reply comes later
+        data = kb.usb_send(kb.dev, bytes([0x7D, 0x00, 0x4D, 0xF7]), retries=3)
+        self.assertEqual(data[3:5], bytes([0xF7, 0x00]))
+        self.assertEqual(len(sent), 1)
+
+    def test_custom_reply_without_header_kept(self):
+        odd = pad(bytes([0x01, 0x02]))
+        kb, sent = self._kb([odd])
+        self.assertEqual(kb.usb_send(kb.dev, bytes([0x7D, 0x00, 0x4D, 0xC0]))[:2], bytes([1, 2]))
+
     def test_no_match_resends_then_fails(self):
         kb, sent = self._kb([])
         with self.assertRaises(RuntimeError):
