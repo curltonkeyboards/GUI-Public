@@ -7,7 +7,8 @@ needed on any OS. One request = one 64-byte output report
 [cmd, seq, status, data...].
 
 Firmware arrives as a signed, encrypted ``.mswfw`` package (XChaCha20; the
-keyboard decrypts it as it arrives). The keyboard checks the signature itself and only marks the new firmware bootable once every byte is
+keyboard decrypts it as it arrives). Keyboards with the first updater (protocol
+1) cannot decrypt; they take the unencrypted ``MSWFWPK1`` package instead. The keyboard checks the signature itself and only marks the new firmware bootable once every byte is
 on flash and the signature verifies, so an interrupted update leaves the
 keyboard in update mode, ready to try again.
 """
@@ -49,10 +50,11 @@ WRITE_MAX = 56
 
 # ---- Package -----------------------------------------------------------------------
 PKG_MAGIC = b"MSWFWPK2"
-PKG_MAGIC_V1 = b"MSWFWPK1"       # older unencrypted packages
+PKG_MAGIC_V1 = b"MSWFWPK1"       # unencrypted packages, for the first updater
 PKG_HEADER_SIZE = 128
 MODEL_ID = 1
 MIN_BOOT_PROTO = 2               # first updater that takes encrypted images
+PLAIN_BOOT_PROTO = 1             # the first updater: unencrypted images only
 
 
 class UpdateError(Exception):
@@ -87,10 +89,8 @@ def version_str(v):
 
 def parse_package(blob):
     """Check a .mswfw file and return its fields. Raises UpdateError."""
-    if bytes(blob[:8]) == PKG_MAGIC_V1:
-        raise UpdateError("This firmware file is in an older format that this app no longer "
-                          "installs. Download the current firmware file.")
-    if len(blob) < PKG_HEADER_SIZE or blob[:8] != PKG_MAGIC:
+    plain = bytes(blob[:8]) == PKG_MAGIC_V1
+    if len(blob) < PKG_HEADER_SIZE or not (plain or blob[:8] == PKG_MAGIC):
         raise UpdateError("This is not a MIDIswitch firmware file (.mswfw).")
     model, ver, size, crc, flags, file_crc = struct.unpack_from("<6I", blob, 8)
     image = bytes(blob[PKG_HEADER_SIZE:])
@@ -98,14 +98,16 @@ def parse_package(blob):
         raise UpdateError("This firmware is for a different keyboard model.")
     if len(image) != size or size % 4:
         raise UpdateError("The firmware file is truncated.")
-    if stm32_crc(image) != file_crc:
+    # "crc" is the checksum of the decrypted firmware (checked by the keyboard).
+    # An encrypted image stays encrypted all the way to the keyboard.
+    if stm32_crc(image) != (crc if plain else file_crc):
         raise UpdateError("The firmware file is damaged (checksum mismatch).")
-    # "crc" is the checksum of the decrypted firmware (checked by the keyboard);
-    # "image" stays encrypted all the way to the keyboard.
     return {
         "model": model, "version": ver, "size": size, "crc": crc, "flags": flags,
         "signature": bytes(blob[32:96]), "key_id": bytes(blob[96:104]),
-        "nonce": bytes(blob[104:128]), "image": image,
+        "nonce": b"" if plain else bytes(blob[104:128]),
+        "image": None if plain else image,
+        "plain_image": image if plain else None,
     }
 
 
@@ -204,10 +206,21 @@ class BootloaderClient:
     def flash(self, pkg, log=lambda s: None, progress=lambda f: None):
         """Install a parsed package. progress(0..1)."""
         info = self.info()
-        if info["proto"] < MIN_BOOT_PROTO:
-            raise UpdateError("This keyboard's updater is too old for this firmware file. Install "
-                              "the factory image once with STM32CubeProgrammer, then update "
-                              "from the app again.")
+        if info["proto"] <= PLAIN_BOOT_PROTO:
+            # The first updater has no decryption: it needs the unencrypted image.
+            image = pkg.get("plain_image")
+            if image is None:
+                raise UpdateError("This keyboard has the first version of the updater, which "
+                                  "cannot install encrypted firmware files. Use the firmware "
+                                  "file made for the first updater (\"-boot1.mswfw\"), or "
+                                  "install the factory image once with STM32CubeProgrammer.")
+            nonce = b""
+        else:
+            image = pkg.get("image")
+            if image is None:
+                raise UpdateError("This firmware file is for keyboards with the first version "
+                                  "of the updater. This keyboard needs the normal .mswfw file.")
+            nonce = pkg["nonce"]
         if info["model"] != pkg["model"]:
             raise UpdateError("This firmware is for a different keyboard model.")
         if pkg["size"] > info["app_max"]:
@@ -219,7 +232,7 @@ class BootloaderClient:
         chunk = min(WRITE_MAX, info["write_max"] or WRITE_MAX)
 
         self.request(CMD_BEGIN, struct.pack("<5I", pkg["size"], pkg["crc"], pkg["version"],
-                                            pkg["model"], pkg["flags"]) + pkg["nonce"])
+                                            pkg["model"], pkg["flags"]) + nonce)
         self.request(CMD_SIG, b"\x00" + pkg["signature"][:32])
         self.request(CMD_SIG, b"\x01" + pkg["signature"][32:])
 
@@ -232,7 +245,6 @@ class BootloaderClient:
             progress(0.15 * (i + 1) / len(sectors))
 
         log("Writing...")
-        image = pkg["image"]
         total = len(image)
         for off in range(0, total, chunk):
             part = image[off:off + chunk]
