@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtCore import pyqtSignal, QObject, Qt
+from PyQt5.QtCore import pyqtSignal, QObject, Qt, QTimer
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QWidget, QPushButton, QHBoxLayout, QSizePolicy, QGridLayout, QLabel, QSlider, \
     QComboBox, QColorDialog, QCheckBox, QTabWidget, QMenu, QAction, QScrollArea, QVBoxLayout, QGroupBox, \
-    QStackedWidget, QToolButton
+    QStackedWidget, QToolButton, QMessageBox
 
 from widgets.combo_box import ArrowComboBox
 from widgets.keyboard_widget import KeyboardWidget2, KeyboardWidgetSimple, KeyboardWidgetNoHighlight
@@ -2269,6 +2269,17 @@ class FrostOverlay(QWidget):
         ev.accept()
 
 
+# Random lighting effects (VialRGB 69-77). They all draw their current
+# animation in the last custom slot, which the app shows and can copy.
+RANDOM_EFFECT_BASE = 69
+RANDOM_EFFECT_NAMES = ["Random 1 - Loop", "Random 2 - Loop", "Random 3 - Loop",
+                       "Random 1 - BPM", "Random 2 - BPM", "Random 3 - BPM",
+                       "Random 1 - Manual", "Random 2 - Manual", "Random 3 - Manual"]
+RANDOM_SCRATCH_SLOT = 49
+RANDOM_ITEM_BASE = 100   # dropdown data for the random entries
+RANDOM_FREEZE_TIP = "Stop the random effect from changing, so you can look at it, edit it or save it."
+
+
 class CustomLightsHandler(BasicHandler):
     """Handler for custom animation slot configuration - uses VialKeyboard infrastructure"""
 
@@ -2322,8 +2333,33 @@ class CustomLightsHandler(BasicHandler):
         selector_row.addWidget(self.slot_combo, 1)
         selector_row.addWidget(self.slot_up_btn)
         selector_row.addWidget(self.slot_down_btn)
+        # Shown while a random effect is picked: Freeze + copy it to a slot.
+        self.random_freeze = QCheckBox(tr("RGBConfigurator", "Freeze"))
+        self.random_freeze.setToolTip(RANDOM_FREEZE_TIP)
+        self.random_target = ArrowComboBox()
+        self.random_target.setMaxVisibleItems(20)
+        for slot in range(RANDOM_SCRATCH_SLOT):
+            self.random_target.addItem(tr("RGBConfigurator", "Slot {}").format(slot + 1), slot)
+        self.random_save_btn = QPushButton(tr("RGBConfigurator", "Save to slot"))
+        self.random_save_btn.setToolTip(tr("RGBConfigurator",
+            "Save the animation the random effect is showing now into the chosen slot."))
+        random_row = QHBoxLayout()
+        random_row.setContentsMargins(0, 0, 0, 0)
+        random_row.addWidget(self.random_freeze)
+        random_row.addStretch(1)
+        random_row.addWidget(self.random_target)
+        random_row.addWidget(self.random_save_btn)
+        self.random_bar = QWidget()
+        self.random_bar.setLayout(random_row)
+        self.random_bar.setVisible(False)
+        self.random_freeze.toggled.connect(self._on_random_freeze_toggled)
+        self.random_save_btn.clicked.connect(self._on_random_save)
+        selector_box = QVBoxLayout()
+        selector_box.setContentsMargins(0, 0, 0, 0)
+        selector_box.addLayout(selector_row)
+        selector_box.addWidget(self.random_bar)
         self.selector_widget = QWidget()
-        self.selector_widget.setLayout(selector_row)
+        self.selector_widget.setLayout(selector_box)
         container.addWidget(self.selector_widget, row, 0, 1, 2)
 
         # One page per slot; the dropdown picks the page shown
@@ -2341,6 +2377,15 @@ class CustomLightsHandler(BasicHandler):
         # Set by RGBConfigurator: also save the rest of the lighting settings
         # when this tab's Save is pressed
         self.extra_save_cb = None
+        # Set by RGBConfigurator: called with the random effect (0-8) picked
+        # in the dropdown
+        self.random_chosen_cb = None
+        # Random effect picked in the dropdown (0-8), or None
+        self.random_effect = None
+        self._random_generation = None
+        self._random_timer = QTimer()
+        self._random_timer.setInterval(500)
+        self._random_timer.timeout.connect(self._poll_random)
 
         # Track the currently active slot (for parameter changes)
         self.current_active_slot = None
@@ -2365,6 +2410,12 @@ class CustomLightsHandler(BasicHandler):
             for slot in range(start_idx, end_idx):
                 self.slot_combo.addItem(tr("RGBConfigurator", "Slot {}").format(slot + 1), slot)
                 self.create_slot_tab(slot, None)
+        # The random effects show the animation they are running (they all
+        # draw it in the last slot); it reloads whenever they change it.
+        self.slot_combo.addItem("\u2014 {} \u2014".format(tr("RGBConfigurator", "Random")), -1)
+        self.slot_combo.model().item(self.slot_combo.count() - 1).setEnabled(False)
+        for i, name in enumerate(RANDOM_EFFECT_NAMES):
+            self.slot_combo.addItem(name, RANDOM_ITEM_BASE + i)
         self._set_combo_slot(0)
         self._show_slot(0)
         self.slot_combo.currentIndexChanged.connect(self._on_slot_combo_changed)
@@ -2403,12 +2454,111 @@ class CustomLightsHandler(BasicHandler):
         slot = self.slot_combo.itemData(index)
         if slot is None or slot < 0:
             return
+        if slot >= RANDOM_ITEM_BASE:
+            self.select_random(slot - RANDOM_ITEM_BASE, user=True)
+            return
         self.select_slot(slot, user=True)
+
+    def _leave_random(self):
+        self.random_effect = None
+        self._random_timer.stop()
+        self.random_bar.setVisible(False)
+
+    def select_random(self, effect, user=False):
+        """Show a random effect (0-8 = Random 1-3 Loop / BPM / Manual): the
+        last slot's controls, loaded from what the keyboard is running now and
+        reloaded every time the effect changes it. user=True means it was
+        picked in the dropdown: the keyboard switches to that effect."""
+        self._set_combo_slot(RANDOM_ITEM_BASE + effect)
+        self._show_slot(RANDOM_SCRATCH_SLOT)
+        self.random_effect = effect
+        self.random_bar.setVisible(True)
+        if user:
+            self.overlay_override = True
+            self.set_overlay_visible(False)
+        if self.device is None or not hasattr(self.device, 'keyboard'):
+            return
+        if user and self.random_chosen_cb is not None:
+            self.random_chosen_cb(effect)
+        kb = self.device.keyboard
+        state = kb.get_randomize_state() if hasattr(kb, 'get_randomize_state') else None
+        self.random_freeze.setEnabled(state is not None)
+        self.random_freeze.setToolTip(RANDOM_FREEZE_TIP if state is not None else
+                                      tr("RGBConfigurator", "Freeze needs a firmware update."))
+        self.random_freeze.blockSignals(True)
+        self.random_freeze.setChecked(bool(state and state[0]))
+        self.random_freeze.blockSignals(False)
+        # None = reload on the next poll too (the keyboard picks the first
+        # animation when the effect starts, which may land after this read)
+        self._random_generation = None
+        self._reload_random_slot()
+        self._random_timer.start()
+
+    def _reload_random_slot(self):
+        self.block_signals()
+        self.load_slot_from_ram(RANDOM_SCRATCH_SLOT)
+        self.unblock_signals()
+
+    def _poll_random(self):
+        """Reload the random effect's animation when the keyboard changed it."""
+        if self.random_effect is None or self.device is None or not hasattr(self.device, 'keyboard'):
+            self._random_timer.stop()
+            return
+        if not self.slot_stack.isVisible():
+            return
+        kb = self.device.keyboard
+        if not hasattr(kb, 'get_randomize_state'):
+            return
+        state = kb.get_randomize_state()
+        if state is None:
+            return
+        frozen, generation, running = state
+        if self.random_freeze.isChecked() != frozen:
+            self.random_freeze.blockSignals(True)
+            self.random_freeze.setChecked(frozen)
+            self.random_freeze.blockSignals(False)
+        if generation != self._random_generation:
+            self._random_generation = generation
+            self._reload_random_slot()
+
+    def _on_random_freeze_toggled(self, checked):
+        kb = getattr(self.device, 'keyboard', None)
+        if kb is None or not hasattr(kb, 'set_randomize_freeze'):
+            return
+        if not kb.set_randomize_freeze(checked):
+            self.random_freeze.blockSignals(True)
+            self.random_freeze.setChecked(not checked)
+            self.random_freeze.blockSignals(False)
+
+    def _on_random_save(self):
+        """Copy the animation the random effect is showing into a slot."""
+        kb = getattr(self.device, 'keyboard', None)
+        if kb is None:
+            return
+        target = self.random_target.currentData()
+        if target is None:
+            return
+        config = kb.get_custom_slot_config(RANDOM_SCRATCH_SLOT, from_eeprom=False)
+        ok = False
+        if config and len(config) >= 16:
+            # Same 16-byte order as the slot read; the write also saves it
+            ok = kb.set_custom_slot_all_parameters(target, *list(config[:16]))
+        if ok:
+            if target in self.slot_widgets:
+                self.block_signals()
+                self.load_slot_from_eeprom(target)
+                self.unblock_signals()
+            QMessageBox.information(self.random_bar, tr("RGBConfigurator", "Saved"),
+                tr("RGBConfigurator", "The random animation was saved to Slot {}.").format(target + 1))
+        else:
+            QMessageBox.warning(self.random_bar, tr("RGBConfigurator", "Not saved"),
+                tr("RGBConfigurator", "Could not read the random animation from the keyboard."))
 
     def select_slot(self, slot, user=False):
         """Show `slot`'s controls and load its saved values. user=True means
         it was picked in the dropdown: the device previews it and the Basic
         RGB effect follows."""
+        self._leave_random()
         self._set_combo_slot(slot)
         self._show_slot(slot)
         if user:
@@ -3919,6 +4069,7 @@ class RGBConfigurator(BasicEditor):
         self.handler_custom_lights.update.connect(self.update_from_keyboard)
         self.handler_custom_lights.slot_chosen_cb = self._on_custom_slot_chosen
         self.handler_custom_lights.extra_save_cb = self._save_other_lighting
+        self.handler_custom_lights.random_chosen_cb = self._on_random_effect_chosen
 
         # Key Indicators handler (Tab 3)
         self.handler_adv_key_lighting = AdvancedKeyLightingHandler(self.adv_key_lighting_container)
@@ -4119,8 +4270,15 @@ class RGBConfigurator(BasicEditor):
         """Frost the slot controls unless the Basic RGB effect is a custom
         slot (or one was picked in the dropdown); follow the effect's slot."""
         cl = self.handler_custom_lights
-        slot = self._custom_slot_of_mode(self._current_rgb_mode())
-        if slot is not None and slot != cl.get_current_slot_index():
+        mode = self._current_rgb_mode()
+        if mode is not None and 0 <= mode - RANDOM_EFFECT_BASE < len(RANDOM_EFFECT_NAMES):
+            effect = mode - RANDOM_EFFECT_BASE
+            if cl.random_effect != effect:
+                cl.select_random(effect)
+            cl.set_overlay_visible(False)
+            return
+        slot = self._custom_slot_of_mode(mode)
+        if slot is not None and (slot != cl.get_current_slot_index() or cl.random_effect is not None):
             cl.select_slot(slot)
         cl.set_overlay_visible(slot is None and not cl.overlay_override)
 
@@ -4135,6 +4293,21 @@ class RGBConfigurator(BasicEditor):
         kb = getattr(self.device, 'keyboard', None)
         if kb is not None and slot < self.CUSTOM_SLOT_EFFECTS:
             mode = self.CUSTOM_SLOT_EFFECT_BASE + slot
+            if mode in getattr(kb, 'rgb_supported_effects', ()):
+                if getattr(kb, 'rgb_mode', None) != mode:
+                    kb.set_vialrgb_mode(mode)
+                h = self.handler_vialrgb_custom
+                h.block_signals()
+                h.update_from_keyboard()
+                h.unblock_signals()
+        self.handler_custom_lights.set_overlay_visible(False)
+
+    def _on_random_effect_chosen(self, effect):
+        """A random effect was picked in the Custom Lights dropdown: make it
+        the Basic RGB effect so the keyboard runs it."""
+        kb = getattr(self.device, 'keyboard', None)
+        if kb is not None:
+            mode = RANDOM_EFFECT_BASE + effect
             if mode in getattr(kb, 'rgb_supported_effects', ()):
                 if getattr(kb, 'rgb_mode', None) != mode:
                     kb.set_vialrgb_mode(mode)
