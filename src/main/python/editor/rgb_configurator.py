@@ -452,6 +452,110 @@ LIVE_EFFECTS_HIERARCHY = {
         {"name": "Cross Lines Reverse Solo", "index": 163},
         {"name": "Cross Lines Reverse Long", "index": 164},
         {"name": "Cross Lines Reverse Long Solo", "index": 165}
+    ],
+    "Diamond & Square": [
+        {"name": "Diamond Ripple", "index": 174},
+        {"name": "Diamond Ripple Solo", "index": 175},
+        {"name": "Diamond Ripple Long", "index": 176},
+        {"name": "Diamond Ripple Long Solo", "index": 177},
+        {"name": "Square Ripple", "index": 178},
+        {"name": "Square Ripple Solo", "index": 179},
+        {"name": "Square Ripple Long", "index": 180},
+        {"name": "Square Ripple Long Solo", "index": 181}
+    ],
+    "Rings": [
+        {"name": "Double Ring", "index": 182},
+        {"name": "Double Ring Solo", "index": 183},
+        {"name": "Triple Ring Long", "index": 184},
+        {"name": "Triple Ring Long Solo", "index": 185}
+    ],
+    "Fills": [
+        {"name": "Diamond Fill", "index": 186},
+        {"name": "Diamond Fill Solo", "index": 187},
+        {"name": "Square Fill", "index": 188},
+        {"name": "Square Fill Solo", "index": 189},
+        {"name": "Circle Fill", "index": 190},
+        {"name": "Circle Fill Solo", "index": 191},
+        {"name": "Row Fill", "index": 252},
+        {"name": "Row Fill Solo", "index": 253},
+        {"name": "Cross Fill", "index": 254},
+        {"name": "Cross Fill Solo", "index": 255}
+    ],
+    "Collapse": [
+        {"name": "Diamond Collapse", "index": 192},
+        {"name": "Diamond Collapse Solo", "index": 193},
+        {"name": "Square Collapse", "index": 194},
+        {"name": "Square Collapse Solo", "index": 195},
+        {"name": "Ring Collapse", "index": 196},
+        {"name": "Ring Collapse Solo", "index": 197},
+        {"name": "Box Collapse", "index": 198},
+        {"name": "Box Collapse Solo", "index": 199},
+        {"name": "Curtain Close", "index": 200},
+        {"name": "Curtain Close Solo", "index": 201}
+    ],
+    "Bounce": [
+        {"name": "Bounce Line", "index": 202},
+        {"name": "Bounce Line Solo", "index": 203},
+        {"name": "Bounce Row", "index": 204},
+        {"name": "Bounce Row Solo", "index": 205},
+        {"name": "Zigzag", "index": 242},
+        {"name": "Zigzag Solo", "index": 243}
+    ],
+    "Comets": [
+        {"name": "Comet Right", "index": 206},
+        {"name": "Comet Right Solo", "index": 207},
+        {"name": "Comet Left", "index": 208},
+        {"name": "Comet Left Solo", "index": 209},
+        {"name": "Fall", "index": 210},
+        {"name": "Fall Solo", "index": 211},
+        {"name": "Rise", "index": 212},
+        {"name": "Rise Solo", "index": 213},
+        {"name": "Waterfall", "index": 238},
+        {"name": "Waterfall Solo", "index": 239},
+        {"name": "Fountain", "index": 240},
+        {"name": "Fountain Solo", "index": 241}
+    ],
+    "Sweeps": [
+        {"name": "Clockwise Sweep", "index": 214},
+        {"name": "Clockwise Sweep Solo", "index": 215},
+        {"name": "Counter-Clockwise Sweep", "index": 216},
+        {"name": "Counter-Clockwise Sweep Solo", "index": 217},
+        {"name": "Spiral Wave", "index": 218},
+        {"name": "Spiral Wave Solo", "index": 219}
+    ],
+    "Diagonal Waves": [
+        {"name": "Diagonal Wave /", "index": 220},
+        {"name": "Diagonal Wave / Solo", "index": 221},
+        {"name": "Diagonal Wave \\", "index": 222},
+        {"name": "Diagonal Wave \\ Solo", "index": 223},
+        {"name": "Diagonal Cross Wave", "index": 224},
+        {"name": "Diagonal Cross Wave Solo", "index": 225}
+    ],
+    "Bursts": [
+        {"name": "Starburst", "index": 226},
+        {"name": "Starburst Solo", "index": 227},
+        {"name": "Starburst Long", "index": 228},
+        {"name": "Starburst Long Solo", "index": 229},
+        {"name": "Sparkle Burst", "index": 230},
+        {"name": "Sparkle Burst Solo", "index": 231},
+        {"name": "Scatter", "index": 232},
+        {"name": "Scatter Solo", "index": 233},
+        {"name": "Checker Pulse", "index": 234},
+        {"name": "Checker Pulse Solo", "index": 235},
+        {"name": "Plus Burst", "index": 236},
+        {"name": "Plus Burst Solo", "index": 237}
+    ],
+    "Trails": [
+        {"name": "Snake Trail", "index": 244},
+        {"name": "Snake Trail Solo", "index": 245}
+    ],
+    "Glow": [
+        {"name": "Glow", "index": 246},
+        {"name": "Glow Solo", "index": 247},
+        {"name": "Glow Large", "index": 248},
+        {"name": "Glow Large Solo", "index": 249},
+        {"name": "Heartbeat", "index": 250},
+        {"name": "Heartbeat Solo", "index": 251}
     ]
 }
 
@@ -805,6 +909,54 @@ LIVE_STYLES_HIERARCHY = {
         {"name": "Close Dots 1", "index": 32},
         {"name": "Close Dots 2", "index": 33},
     ],
+    "Full Lines": [
+        {"name": "Pitch Column", "index": 34},
+        {"name": "Pitch Row", "index": 35},
+        {"name": "Left Edge Column", "index": 36},
+        {"name": "Right Edge Column", "index": 37},
+        {"name": "Both Edge Columns", "index": 38},
+        {"name": "Top Edge Row", "index": 39},
+        {"name": "Bottom Edge Row", "index": 40},
+        {"name": "Top + Bottom Edges", "index": 41},
+        {"name": "Center Column", "index": 42},
+        {"name": "Center Row", "index": 43}
+    ],
+    "Shapes": [
+        {"name": "Diagonal TL-BR", "index": 44},
+        {"name": "Diagonal TR-BL", "index": 45},
+        {"name": "Diagonal X", "index": 46},
+        {"name": "Corners + Center", "index": 47},
+        {"name": "Border Ring", "index": 48},
+        {"name": "Grid 3x3", "index": 49}
+    ],
+    "Pitch Pairs": [
+        {"name": "Pitch Edge Pair", "index": 50},
+        {"name": "Pitch Top + Bottom", "index": 51},
+        {"name": "Mirror Pair", "index": 52},
+        {"name": "Quad Mirror", "index": 53},
+        {"name": "Pitch Scatter", "index": 54}
+    ],
+    "Moving": [
+        {"name": "Snake Vertical", "index": 55},
+        {"name": "Spiral In", "index": 56},
+        {"name": "Spiral Out", "index": 57},
+        {"name": "Bounce Walk", "index": 58},
+        {"name": "Random Walk", "index": 59},
+        {"name": "Random Key", "index": 60},
+        {"name": "Random Column", "index": 61},
+        {"name": "Random Row", "index": 62},
+        {"name": "Sweep Column", "index": 63},
+        {"name": "Sweep Row", "index": 64},
+        {"name": "Clock", "index": 65},
+        {"name": "Clock Reverse", "index": 66},
+        {"name": "Count Across", "index": 67},
+        {"name": "Rise", "index": 68},
+        {"name": "Expanding Pair", "index": 69},
+        {"name": "Converging Pair", "index": 70},
+        {"name": "Raindrop", "index": 71},
+        {"name": "Random Edge", "index": 72},
+        {"name": "Knight Walk", "index": 73}
+    ]
 }
 
 # Hierarchical structure for macro positioning styles
@@ -876,6 +1028,54 @@ MACRO_STYLES_HIERARCHY = {
         {"name": "Close Dots 1", "index": 45},
         {"name": "Close Dots 2", "index": 46},
     ],
+    "Full Lines": [
+        {"name": "Pitch Column", "index": 47},
+        {"name": "Pitch Row", "index": 48},
+        {"name": "Left Edge Column", "index": 49},
+        {"name": "Right Edge Column", "index": 50},
+        {"name": "Both Edge Columns", "index": 51},
+        {"name": "Top Edge Row", "index": 52},
+        {"name": "Bottom Edge Row", "index": 53},
+        {"name": "Top + Bottom Edges", "index": 54},
+        {"name": "Center Column", "index": 55},
+        {"name": "Center Row", "index": 56}
+    ],
+    "Shapes": [
+        {"name": "Diagonal TL-BR", "index": 57},
+        {"name": "Diagonal TR-BL", "index": 58},
+        {"name": "Diagonal X", "index": 59},
+        {"name": "Corners + Center", "index": 60},
+        {"name": "Border Ring", "index": 61},
+        {"name": "Grid 3x3", "index": 62}
+    ],
+    "Pitch Pairs": [
+        {"name": "Pitch Edge Pair", "index": 63},
+        {"name": "Pitch Top + Bottom", "index": 64},
+        {"name": "Mirror Pair", "index": 65},
+        {"name": "Quad Mirror", "index": 66},
+        {"name": "Pitch Scatter", "index": 67}
+    ],
+    "Moving": [
+        {"name": "Snake Vertical", "index": 68},
+        {"name": "Spiral In", "index": 69},
+        {"name": "Spiral Out", "index": 70},
+        {"name": "Bounce Walk", "index": 71},
+        {"name": "Random Walk", "index": 72},
+        {"name": "Random Key", "index": 73},
+        {"name": "Random Column", "index": 74},
+        {"name": "Random Row", "index": 75},
+        {"name": "Sweep Column", "index": 76},
+        {"name": "Sweep Row", "index": 77},
+        {"name": "Clock", "index": 78},
+        {"name": "Clock Reverse", "index": 79},
+        {"name": "Count Across", "index": 80},
+        {"name": "Rise", "index": 81},
+        {"name": "Expanding Pair", "index": 82},
+        {"name": "Converging Pair", "index": 83},
+        {"name": "Raindrop", "index": 84},
+        {"name": "Random Edge", "index": 85},
+        {"name": "Knight Walk", "index": 86}
+    ]
 }
 
 CUSTOM_LIGHT_COLOR_TYPES_HIERARCHY = {
@@ -3159,10 +3359,10 @@ class CustomLightsHandler(BasicHandler):
         # macro pos < 47, backgrounds < 241 (0-240). The old 171/121 clamps
         # displayed the last two effects and background 120 as a DIFFERENT entry
         # and then saved that wrong value back.
-        widgets['live_effect'].setCurrentIndex(min(config[2], 173))
-        widgets['live_style'].setCurrentIndex(min(config[0], 33))
-        widgets['macro_effect'].setCurrentIndex(min(config[3], 173))
-        widgets['macro_style'].setCurrentIndex(min(config[1], 46))
+        widgets['live_effect'].setCurrentIndex(config[2])
+        widgets['live_style'].setCurrentIndex(min(config[0], 73))
+        widgets['macro_effect'].setCurrentIndex(config[3])
+        widgets['macro_style'].setCurrentIndex(min(config[1], 86))
         widgets['background'].setCurrentIndex(min(config[5], 240))
         widgets['bg_speed'].setValue(config[14] if len(config) > 14 else 128)
         widgets['color_type'].setCurrentIndex(min(config[7], 84))
