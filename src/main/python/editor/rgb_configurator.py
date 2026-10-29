@@ -481,7 +481,7 @@ BACKGROUNDS_HIERARCHY = {
         {"name": "Autolight Breathing", "index": 8},
         {"name": "Autolight Breathing Desaturated", "index": 86},
     ],
-    "Cycle Effects": [
+    "Cycle": [
         {"name": "Cycle All", "index": 59},
         {"name": "Cycle All Desaturated", "index": 87},
         {"name": "Cycle Left Right", "index": 60},
@@ -492,12 +492,48 @@ BACKGROUNDS_HIERARCHY = {
         {"name": "Cycle Out In Desaturated", "index": 90},
         {"name": "Cycle Out In Dual", "index": 63},
         {"name": "Cycle Out In Dual Desaturated", "index": 91},
+    ],
+    "Pinwheel": [
         {"name": "Rainbow Pinwheel", "index": 64},
         {"name": "Rainbow Pinwheel Desaturated", "index": 92},
+        {"name": "Band Pinwheel Sat", "index": 75},
+        {"name": "Band Pinwheel Sat Desaturated", "index": 103},
+        {"name": "Band Pinwheel Val", "index": 76},
+        {"name": "Band Pinwheel Val Desaturated", "index": 104},
     ],
-    "Wave Effects": [
+    "Spiral": [
+        {"name": "Band Spiral Sat", "index": 77},
+        {"name": "Band Spiral Sat Desaturated", "index": 105},
+        {"name": "Band Spiral Val", "index": 78},
+        {"name": "Band Spiral Val Desaturated", "index": 106},
+        {"name": "Rainbow Spiral", "index": 126},
+        {"name": "Rainbow Spiral Desaturated", "index": 156},
+        {"name": "Twin Spiral Left Right", "index": 121},
+        {"name": "Twin Spiral Left Right Desaturated", "index": 151},
+        {"name": "Twin Spiral Left Right Sat", "index": 122},
+        {"name": "Twin Spiral Left Right Sat Desaturated", "index": 152},
+        {"name": "Twin Spiral Top Bottom", "index": 123},
+        {"name": "Twin Spiral Top Bottom Desaturated", "index": 153},
+        {"name": "Twin Spiral Top Bottom Sat", "index": 124},
+        {"name": "Twin Spiral Top Bottom Sat Desaturated", "index": 154},
+        {"name": "Quad Spiral", "index": 125},
+        {"name": "Quad Spiral Desaturated", "index": 155},
+    ],
+    "Breathing": [
+        {"name": "Breathing", "index": 65},
+        {"name": "Breathing Desaturated", "index": 93},
+    ],
+    "Wave": [
         {"name": "Wave Left Right", "index": 66},
         {"name": "Wave Left Right Desaturated", "index": 94},
+    ],
+    "Chevron": [
+        {"name": "Rainbow Moving Chevron", "index": 74},
+        {"name": "Rainbow Moving Chevron Desaturated", "index": 102},
+        {"name": "Chevron Wave", "index": 130},
+        {"name": "Chevron Wave Desaturated", "index": 160},
+    ],
+    "Diagonal Wave": [
         {"name": "Diagonal Wave", "index": 67},
         {"name": "Diagonal Wave Desaturated", "index": 95},
         {"name": "Diagonal Wave Hue Cycle", "index": 107},
@@ -515,11 +551,15 @@ BACKGROUNDS_HIERARCHY = {
         {"name": "Diagonal Wave Reverse Dual Hue Cycle", "index": 113},
         {"name": "Diagonal Wave Reverse Dual Hue Cycle Desaturated", "index": 120},
     ],
-    "Breathing Effects": [
-        {"name": "Breathing", "index": 65},
-        {"name": "Breathing Desaturated", "index": 93},
+    "Double Diagonal Wave": [
+        {"name": "Double Diagonal Wave", "index": 127},
+        {"name": "Double Diagonal Wave Desaturated", "index": 157},
+        {"name": "Double Diagonal Wave Hue Cycle", "index": 128},
+        {"name": "Double Diagonal Wave Hue Cycle Desaturated", "index": 158},
+        {"name": "Double Diagonal Wave Dual Color", "index": 129},
+        {"name": "Double Diagonal Wave Dual Color Desaturated", "index": 159},
     ],
-    "Gradient Effects": [
+    "Gradient": [
         {"name": "Gradient Up Down", "index": 68},
         {"name": "Gradient Up Down Desaturated", "index": 96},
         {"name": "Gradient Left Right", "index": 69},
@@ -527,7 +567,7 @@ BACKGROUNDS_HIERARCHY = {
         {"name": "Gradient Diagonal", "index": 70},
         {"name": "Gradient Diagonal Desaturated", "index": 98},
     ],
-    "Hue Effects": [
+    "Hue": [
         {"name": "Hue Breathing", "index": 71},
         {"name": "Hue Breathing Desaturated", "index": 99},
         {"name": "Hue Pendulum", "index": 72},
@@ -535,21 +575,61 @@ BACKGROUNDS_HIERARCHY = {
         {"name": "Hue Wave", "index": 73},
         {"name": "Hue Wave Desaturated", "index": 101},
     ],
-    "Rainbow Effects": [
-        {"name": "Rainbow Moving Chevron", "index": 74},
-        {"name": "Rainbow Moving Chevron Desaturated", "index": 102},
+    "Hue Focus": [
+        {"name": "Hue Breathing Focus", "index": 134},
+        {"name": "Hue Breathing Focus Desaturated", "index": 164},
+        {"name": "Hue Pendulum Focus", "index": 135},
+        {"name": "Hue Pendulum Focus Desaturated", "index": 165},
+        {"name": "Hue Wave Focus", "index": 136},
+        {"name": "Hue Wave Focus Desaturated", "index": 166},
     ],
-    "Band Effects": [
-        {"name": "Band Pinwheel Sat", "index": 75},
-        {"name": "Band Pinwheel Sat Desaturated", "index": 103},
-        {"name": "Band Pinwheel Val", "index": 76},
-        {"name": "Band Pinwheel Val Desaturated", "index": 104},
-        {"name": "Band Spiral Sat", "index": 77},
-        {"name": "Band Spiral Sat Desaturated", "index": 105},
-        {"name": "Band Spiral Val", "index": 78},
-        {"name": "Band Spiral Val Desaturated", "index": 106},
+    "Ripple": [
+        {"name": "Ripple", "index": 137},
+        {"name": "Ripple Desaturated", "index": 167},
+        {"name": "Twin Ripple", "index": 138},
+        {"name": "Twin Ripple Desaturated", "index": 168},
+        {"name": "Diamond Ripple", "index": 139},
+        {"name": "Diamond Ripple Desaturated", "index": 169},
     ],
-        "BPM Pulse Fade": [
+    "Matrix": [
+        {"name": "Matrix Fade", "index": 131},
+        {"name": "Matrix Fade Desaturated", "index": 161},
+        {"name": "Matrix Rain", "index": 132},
+        {"name": "Matrix Rain Desaturated", "index": 162},
+        {"name": "Matrix Rain Rainbow", "index": 133},
+        {"name": "Matrix Rain Rainbow Desaturated", "index": 163},
+    ],
+    "Plasma": [
+        {"name": "Plasma", "index": 140},
+        {"name": "Plasma Desaturated", "index": 170},
+        {"name": "Plasma Glow", "index": 141},
+        {"name": "Plasma Glow Desaturated", "index": 171},
+        {"name": "Kaleidoscope", "index": 142},
+        {"name": "Kaleidoscope Desaturated", "index": 172},
+    ],
+    "Nature": [
+        {"name": "Aurora", "index": 143},
+        {"name": "Aurora Desaturated", "index": 173},
+        {"name": "Lava Lamp", "index": 144},
+        {"name": "Lava Lamp Desaturated", "index": 174},
+        {"name": "Tide", "index": 145},
+        {"name": "Tide Desaturated", "index": 175},
+        {"name": "Candle", "index": 146},
+        {"name": "Candle Desaturated", "index": 176},
+    ],
+    "Sparkle": [
+        {"name": "Twinkle", "index": 147},
+        {"name": "Twinkle Desaturated", "index": 177},
+        {"name": "Rainbow Twinkle", "index": 148},
+        {"name": "Rainbow Twinkle Desaturated", "index": 178},
+    ],
+    "Sweep": [
+        {"name": "Scanner", "index": 149},
+        {"name": "Scanner Desaturated", "index": 179},
+        {"name": "Radar", "index": 150},
+        {"name": "Radar Desaturated", "index": 180},
+    ],
+    "BPM Pulse Fade": [
         {"name": "BPM Pulse Fade", "index": 9},
         {"name": "BPM Pulse Fade 2", "index": 10},
         {"name": "BPM Pulse Fade Desaturated", "index": 11},
@@ -609,11 +689,6 @@ BACKGROUNDS_HIERARCHY = {
         {"name": "BPM All Autolight 2", "index": 57},
         {"name": "BPM All Autolight Disco", "index": 58},
     ],
-    # NOTE: the old "Per Key Layers" group (indices 57-68) was WRONG here: those
-    # numbers are VialRGB effect ids for the per-key presets, not background_mode
-    # values. In the background namespace 57-68 are BPM/cycle/wave modes already
-    # listed above, so the group both duplicated real entries and made readback
-    # ambiguous. Per-key presets are selected from the Basic RGB effect list.
 }
 
 # Hierarchical structure for live positioning styles
@@ -3017,14 +3092,14 @@ class CustomLightsHandler(BasicHandler):
             
         widgets = self.slot_widgets[slot]
         # Clamps mirror the firmware setter limits: effects < 174, live pos < 34,
-        # macro pos < 47, backgrounds < 121 (0-120). The old 171/121 clamps
+        # macro pos < 47, backgrounds < 181 (0-180). The old 171/121 clamps
         # displayed the last two effects and background 120 as a DIFFERENT entry
         # and then saved that wrong value back.
         widgets['live_effect'].setCurrentIndex(min(config[2], 173))
         widgets['live_style'].setCurrentIndex(min(config[0], 33))
         widgets['macro_effect'].setCurrentIndex(min(config[3], 173))
         widgets['macro_style'].setCurrentIndex(min(config[1], 46))
-        widgets['background'].setCurrentIndex(min(config[5], 120))
+        widgets['background'].setCurrentIndex(min(config[5], 180))
         widgets['bg_speed'].setValue(config[14] if len(config) > 14 else 128)
         widgets['color_type'].setCurrentIndex(min(config[7], 84))
         widgets['background_brightness'].setValue(config[9] if len(config) > 9 else 30)
