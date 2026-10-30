@@ -881,33 +881,35 @@ LIVE_STYLES_HIERARCHY = {
         {"name": "Center Block", "index": 31},
         {"name": "Snake", "index": 30},
     ],
-    "Note Row Positions": [
+    "Edges": [
         {"name": "Left Edge", "index": 3},
         {"name": "Right Edge", "index": 4},
         {"name": "Top Edge", "index": 6},
         {"name": "Bottom Edge", "index": 7},
         {"name": "Left and Right Edges", "index": 9},
-        {"name": "Top and Bottom Edges", "index": 10},
-        {"name": "Middle Row", "index": 8}, 
-        {"name": "Middle Column", "index": 5},            
+        {"name": "Top and Bottom Edges", "index": 10}
     ],
-    "Single Dots": [
-        {"name": "Top Dot", "index": 11},
-        {"name": "Left Dot", "index": 12},
-        {"name": "Right Dot", "index": 13},
-        {"name": "Bottom Dot", "index": 14},
-        {"name": "Center Dot", "index": 15},
-        {"name": "Top Left Dot", "index": 16},
-        {"name": "Top Right Dot", "index": 17},
-        {"name": "Bottom Left Dot", "index": 18},
-        {"name": "Bottom Right Dot", "index": 19},
+    "Rows": [
+        {"name": "Middle Row", "index": 8},
+        {"name": "Middle Column", "index": 5}
     ],
-    "Group Dots": [
-        {"name": "Corner Dots", "index": 20},
-        {"name": "Edge Dots", "index": 21},
-        {"name": "All Dots", "index": 22},
-        {"name": "Close Dots 1", "index": 32},
-        {"name": "Close Dots 2", "index": 33},
+    "Single Keys": [
+        {"name": "Top Key", "index": 11},
+        {"name": "Left Key", "index": 12},
+        {"name": "Right Key", "index": 13},
+        {"name": "Bottom Key", "index": 14},
+        {"name": "Center Key", "index": 15},
+        {"name": "Top Left Key", "index": 16},
+        {"name": "Top Right Key", "index": 17},
+        {"name": "Bottom Left Key", "index": 18},
+        {"name": "Bottom Right Key", "index": 19},
+    ],
+    "Key Groups": [
+        {"name": "Corner Keys", "index": 20},
+        {"name": "Edge Keys", "index": 21},
+        {"name": "All Keys", "index": 22},
+        {"name": "Close Keys 1", "index": 32},
+        {"name": "Close Keys 2", "index": 33},
     ],
     "Full Lines": [
         {"name": "Pitch Column", "index": 34},
@@ -987,46 +989,49 @@ MACRO_STYLES_HIERARCHY = {
         {"name": "Center Block Large", "index": 43},   
         {"name": "Snake", "index": 42},        
     ],
-    "Note Row Positions": [
+    "Edges": [
         {"name": "Left Edge", "index": 3},
         {"name": "Right Edge", "index": 4},
         {"name": "Top Edge", "index": 6},
         {"name": "Bottom Edge", "index": 7},
         {"name": "Left and Right Edges", "index": 9},
-        {"name": "Top and Bottom Edges", "index": 10},
-        {"name": "Middle Row", "index": 8},
-        {"name": "Middle Column", "index": 5},
-
+        {"name": "Top and Bottom Edges", "index": 10}
     ],
-    "Loop Row Positions": [
+    "Rows": [
+        {"name": "Middle Row", "index": 8},
+        {"name": "Middle Column", "index": 5}
+    ],
+    "Loop Edges": [
         {"name": "Loop Left Edge", "index": 11},
         {"name": "Loop Right Edge", "index": 12},
         {"name": "Loop Top Edge", "index": 15},
         {"name": "Loop Bottom Edge", "index": 16},
-        {"name": "Loop Middle Row", "index": 17},
-        {"name": "Loop Middle Column", "index": 13},
-        {"name": "Loop Left and Right Edges", "index": 14},
+        {"name": "Loop Left and Right Edges", "index": 14}
     ],
-    "Single Dots": [
-        {"name": "Top Dot", "index": 20},
-        {"name": "Left Dot", "index": 21},
-        {"name": "Right Dot", "index": 22},
-        {"name": "Bottom Dot", "index": 23},
-        {"name": "Center Dot", "index": 24},
-        {"name": "Top Left Dot", "index": 25},
-        {"name": "Top Right Dot", "index": 26},
-        {"name": "Bottom Left Dot", "index": 27},
-        {"name": "Bottom Right Dot", "index": 28},
+    "Loop Rows": [
+        {"name": "Loop Middle Row", "index": 17},
+        {"name": "Loop Middle Column", "index": 13}
+    ],
+    "Single Keys": [
+        {"name": "Top Key", "index": 20},
+        {"name": "Left Key", "index": 21},
+        {"name": "Right Key", "index": 22},
+        {"name": "Bottom Key", "index": 23},
+        {"name": "Center Key", "index": 24},
+        {"name": "Top Left Key", "index": 25},
+        {"name": "Top Right Key", "index": 26},
+        {"name": "Bottom Left Key", "index": 27},
+        {"name": "Bottom Right Key", "index": 28},
     ],
 
-    "Group Dots": [
-        {"name": "Corner Dots", "index": 29},
-        {"name": "Edge Dots", "index": 30},
-        {"name": "Loop Corner Dots", "index": 32},
-        {"name": "Loop Edge Dots", "index": 33},
-        {"name": "All Dots", "index": 31},        
-        {"name": "Close Dots 1", "index": 45},
-        {"name": "Close Dots 2", "index": 46},
+    "Key Groups": [
+        {"name": "Corner Keys", "index": 29},
+        {"name": "Edge Keys", "index": 30},
+        {"name": "Loop Corner Keys", "index": 32},
+        {"name": "Loop Edge Keys", "index": 33},
+        {"name": "All Keys", "index": 31},        
+        {"name": "Close Keys 1", "index": 45},
+        {"name": "Close Keys 2", "index": 46},
     ],
     "Full Lines": [
         {"name": "Pitch Column", "index": 47},
