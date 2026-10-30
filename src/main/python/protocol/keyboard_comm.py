@@ -1649,6 +1649,30 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         except Exception as e:
             return None
 
+    def get_randomize_state(self):
+        """State of the random lighting effects (Random 1-3 Loop / BPM /
+        Manual): (frozen, change_counter, running_effect) with running_effect
+        0 = none, 1-9 = the nine random effects. None when the firmware does
+        not report it (older firmware) or the read failed."""
+        try:
+            data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_CUSTOM_ANIM_GET_STATUS), retries=20)
+            if data and len(data) >= 14 and data[0] == 0x01 and (data[11] & 0x80):
+                return bool(data[11] & 0x01), data[12], data[13]
+            return None
+        except Exception:
+            return None
+
+    def set_randomize_freeze(self, frozen):
+        """Freeze / unfreeze the random lighting effects (the running one
+        stops changing). RAM only on the keyboard."""
+        try:
+            data = self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_CUSTOM_ANIM_GET_STATUS,
+                                                       ord('F'), 1 if frozen else 0), retries=20)
+            return bool(data and len(data) >= 14 and data[0] == 0x01 and (data[11] & 0x80)
+                        and bool(data[11] & 0x01) == bool(frozen))
+        except Exception:
+            return False
+
     def get_current_custom_slot(self):
         """Get the currently active custom slot number"""
         try:

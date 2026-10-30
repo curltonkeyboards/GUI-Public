@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtCore import pyqtSignal, QObject, Qt
+from PyQt5.QtCore import pyqtSignal, QObject, Qt, QTimer
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QWidget, QPushButton, QHBoxLayout, QSizePolicy, QGridLayout, QLabel, QSlider, \
     QComboBox, QColorDialog, QCheckBox, QTabWidget, QMenu, QAction, QScrollArea, QVBoxLayout, QGroupBox, \
-    QStackedWidget, QToolButton
+    QStackedWidget, QToolButton, QMessageBox
 
 from widgets.combo_box import ArrowComboBox
 from widgets.keyboard_widget import KeyboardWidget2, KeyboardWidgetSimple, KeyboardWidgetNoHighlight
@@ -452,6 +452,110 @@ LIVE_EFFECTS_HIERARCHY = {
         {"name": "Cross Lines Reverse Solo", "index": 163},
         {"name": "Cross Lines Reverse Long", "index": 164},
         {"name": "Cross Lines Reverse Long Solo", "index": 165}
+    ],
+    "Diamond & Square": [
+        {"name": "Diamond Ripple", "index": 174},
+        {"name": "Diamond Ripple Solo", "index": 175},
+        {"name": "Diamond Ripple Long", "index": 176},
+        {"name": "Diamond Ripple Long Solo", "index": 177},
+        {"name": "Square Ripple", "index": 178},
+        {"name": "Square Ripple Solo", "index": 179},
+        {"name": "Square Ripple Long", "index": 180},
+        {"name": "Square Ripple Long Solo", "index": 181}
+    ],
+    "Rings": [
+        {"name": "Double Ring", "index": 182},
+        {"name": "Double Ring Solo", "index": 183},
+        {"name": "Triple Ring Long", "index": 184},
+        {"name": "Triple Ring Long Solo", "index": 185}
+    ],
+    "Fills": [
+        {"name": "Diamond Fill", "index": 186},
+        {"name": "Diamond Fill Solo", "index": 187},
+        {"name": "Square Fill", "index": 188},
+        {"name": "Square Fill Solo", "index": 189},
+        {"name": "Circle Fill", "index": 190},
+        {"name": "Circle Fill Solo", "index": 191},
+        {"name": "Row Fill", "index": 252},
+        {"name": "Row Fill Solo", "index": 253},
+        {"name": "Cross Fill", "index": 254},
+        {"name": "Cross Fill Solo", "index": 255}
+    ],
+    "Collapse": [
+        {"name": "Diamond Collapse", "index": 192},
+        {"name": "Diamond Collapse Solo", "index": 193},
+        {"name": "Square Collapse", "index": 194},
+        {"name": "Square Collapse Solo", "index": 195},
+        {"name": "Ring Collapse", "index": 196},
+        {"name": "Ring Collapse Solo", "index": 197},
+        {"name": "Box Collapse", "index": 198},
+        {"name": "Box Collapse Solo", "index": 199},
+        {"name": "Curtain Close", "index": 200},
+        {"name": "Curtain Close Solo", "index": 201}
+    ],
+    "Bounce": [
+        {"name": "Bounce Line", "index": 202},
+        {"name": "Bounce Line Solo", "index": 203},
+        {"name": "Bounce Row", "index": 204},
+        {"name": "Bounce Row Solo", "index": 205},
+        {"name": "Zigzag", "index": 242},
+        {"name": "Zigzag Solo", "index": 243}
+    ],
+    "Comets": [
+        {"name": "Comet Right", "index": 206},
+        {"name": "Comet Right Solo", "index": 207},
+        {"name": "Comet Left", "index": 208},
+        {"name": "Comet Left Solo", "index": 209},
+        {"name": "Fall", "index": 210},
+        {"name": "Fall Solo", "index": 211},
+        {"name": "Rise", "index": 212},
+        {"name": "Rise Solo", "index": 213},
+        {"name": "Waterfall", "index": 238},
+        {"name": "Waterfall Solo", "index": 239},
+        {"name": "Fountain", "index": 240},
+        {"name": "Fountain Solo", "index": 241}
+    ],
+    "Sweeps": [
+        {"name": "Clockwise Sweep", "index": 214},
+        {"name": "Clockwise Sweep Solo", "index": 215},
+        {"name": "Counter-Clockwise Sweep", "index": 216},
+        {"name": "Counter-Clockwise Sweep Solo", "index": 217},
+        {"name": "Spiral Wave", "index": 218},
+        {"name": "Spiral Wave Solo", "index": 219}
+    ],
+    "Diagonal Waves": [
+        {"name": "Diagonal Wave /", "index": 220},
+        {"name": "Diagonal Wave / Solo", "index": 221},
+        {"name": "Diagonal Wave \\", "index": 222},
+        {"name": "Diagonal Wave \\ Solo", "index": 223},
+        {"name": "Diagonal Cross Wave", "index": 224},
+        {"name": "Diagonal Cross Wave Solo", "index": 225}
+    ],
+    "Bursts": [
+        {"name": "Starburst", "index": 226},
+        {"name": "Starburst Solo", "index": 227},
+        {"name": "Starburst Long", "index": 228},
+        {"name": "Starburst Long Solo", "index": 229},
+        {"name": "Sparkle Burst", "index": 230},
+        {"name": "Sparkle Burst Solo", "index": 231},
+        {"name": "Scatter", "index": 232},
+        {"name": "Scatter Solo", "index": 233},
+        {"name": "Checker Pulse", "index": 234},
+        {"name": "Checker Pulse Solo", "index": 235},
+        {"name": "Plus Burst", "index": 236},
+        {"name": "Plus Burst Solo", "index": 237}
+    ],
+    "Trails": [
+        {"name": "Snake Trail", "index": 244},
+        {"name": "Snake Trail Solo", "index": 245}
+    ],
+    "Glow": [
+        {"name": "Glow", "index": 246},
+        {"name": "Glow Solo", "index": 247},
+        {"name": "Glow Large", "index": 248},
+        {"name": "Glow Large Solo", "index": 249},
+        {"name": "Heartbeat", "index": 250},
+        {"name": "Heartbeat Solo", "index": 251}
     ]
 }
 
@@ -481,7 +585,7 @@ BACKGROUNDS_HIERARCHY = {
         {"name": "Autolight Breathing", "index": 8},
         {"name": "Autolight Breathing Desaturated", "index": 86},
     ],
-    "Cycle Effects": [
+    "Cycle": [
         {"name": "Cycle All", "index": 59},
         {"name": "Cycle All Desaturated", "index": 87},
         {"name": "Cycle Left Right", "index": 60},
@@ -492,12 +596,64 @@ BACKGROUNDS_HIERARCHY = {
         {"name": "Cycle Out In Desaturated", "index": 90},
         {"name": "Cycle Out In Dual", "index": 63},
         {"name": "Cycle Out In Dual Desaturated", "index": 91},
+    ],
+    "Pinwheel": [
         {"name": "Rainbow Pinwheel", "index": 64},
         {"name": "Rainbow Pinwheel Desaturated", "index": 92},
+        {"name": "Band Pinwheel Sat", "index": 75},
+        {"name": "Band Pinwheel Sat Desaturated", "index": 103},
+        {"name": "Band Pinwheel Val", "index": 76},
+        {"name": "Band Pinwheel Val Desaturated", "index": 104},
+        {"name": "Twin Pinwheel", "index": 181},
+        {"name": "Twin Pinwheel Desaturated", "index": 211},
+        {"name": "Twin Rainbow Pinwheel", "index": 182},
+        {"name": "Twin Rainbow Pinwheel Desaturated", "index": 212},
     ],
-    "Wave Effects": [
+    "Spiral": [
+        {"name": "Band Spiral Sat", "index": 77},
+        {"name": "Band Spiral Sat Desaturated", "index": 105},
+        {"name": "Band Spiral Val", "index": 78},
+        {"name": "Band Spiral Val Desaturated", "index": 106},
+        {"name": "Rainbow Spiral", "index": 126},
+        {"name": "Rainbow Spiral Desaturated", "index": 156},
+        {"name": "Twin Spiral Left Right", "index": 121},
+        {"name": "Twin Spiral Left Right Desaturated", "index": 151},
+        {"name": "Twin Spiral Left Right Sat", "index": 122},
+        {"name": "Twin Spiral Left Right Sat Desaturated", "index": 152},
+        {"name": "Twin Spiral Top Bottom", "index": 123},
+        {"name": "Twin Spiral Top Bottom Desaturated", "index": 153},
+        {"name": "Twin Spiral Top Bottom Sat", "index": 124},
+        {"name": "Twin Spiral Top Bottom Sat Desaturated", "index": 154},
+        {"name": "Quad Spiral", "index": 125},
+        {"name": "Quad Spiral Desaturated", "index": 155},
+        {"name": "Spiral Arms", "index": 183},
+        {"name": "Spiral Arms Desaturated", "index": 213},
+        {"name": "Galaxy", "index": 184},
+        {"name": "Galaxy Desaturated", "index": 214},
+    ],
+    "Breathing": [
+        {"name": "Breathing", "index": 65},
+        {"name": "Breathing Desaturated", "index": 93},
+        {"name": "Key Breathing", "index": 200},
+        {"name": "Key Breathing Desaturated", "index": 230},
+    ],
+    "Wave": [
         {"name": "Wave Left Right", "index": 66},
         {"name": "Wave Left Right Desaturated", "index": 94},
+        {"name": "Wave Up Down", "index": 185},
+        {"name": "Wave Up Down Desaturated", "index": 215},
+        {"name": "Sine Line", "index": 186},
+        {"name": "Sine Line Desaturated", "index": 216},
+        {"name": "Double Helix", "index": 187},
+        {"name": "Double Helix Desaturated", "index": 217},
+    ],
+    "Chevron": [
+        {"name": "Rainbow Moving Chevron", "index": 74},
+        {"name": "Rainbow Moving Chevron Desaturated", "index": 102},
+        {"name": "Chevron Wave", "index": 130},
+        {"name": "Chevron Wave Desaturated", "index": 160},
+    ],
+    "Diagonal Wave": [
         {"name": "Diagonal Wave", "index": 67},
         {"name": "Diagonal Wave Desaturated", "index": 95},
         {"name": "Diagonal Wave Hue Cycle", "index": 107},
@@ -515,19 +671,27 @@ BACKGROUNDS_HIERARCHY = {
         {"name": "Diagonal Wave Reverse Dual Hue Cycle", "index": 113},
         {"name": "Diagonal Wave Reverse Dual Hue Cycle Desaturated", "index": 120},
     ],
-    "Breathing Effects": [
-        {"name": "Breathing", "index": 65},
-        {"name": "Breathing Desaturated", "index": 93},
+    "Double Diagonal Wave": [
+        {"name": "Double Diagonal Wave", "index": 127},
+        {"name": "Double Diagonal Wave Desaturated", "index": 157},
+        {"name": "Double Diagonal Wave Hue Cycle", "index": 128},
+        {"name": "Double Diagonal Wave Hue Cycle Desaturated", "index": 158},
+        {"name": "Double Diagonal Wave Dual Color", "index": 129},
+        {"name": "Double Diagonal Wave Dual Color Desaturated", "index": 159},
     ],
-    "Gradient Effects": [
+    "Gradient": [
         {"name": "Gradient Up Down", "index": 68},
         {"name": "Gradient Up Down Desaturated", "index": 96},
         {"name": "Gradient Left Right", "index": 69},
         {"name": "Gradient Left Right Desaturated", "index": 97},
         {"name": "Gradient Diagonal", "index": 70},
         {"name": "Gradient Diagonal Desaturated", "index": 98},
+        {"name": "Duotone", "index": 192},
+        {"name": "Duotone Desaturated", "index": 222},
+        {"name": "Sunrise", "index": 193},
+        {"name": "Sunrise Desaturated", "index": 223},
     ],
-    "Hue Effects": [
+    "Hue": [
         {"name": "Hue Breathing", "index": 71},
         {"name": "Hue Breathing Desaturated", "index": 99},
         {"name": "Hue Pendulum", "index": 72},
@@ -535,21 +699,105 @@ BACKGROUNDS_HIERARCHY = {
         {"name": "Hue Wave", "index": 73},
         {"name": "Hue Wave Desaturated", "index": 101},
     ],
-    "Rainbow Effects": [
-        {"name": "Rainbow Moving Chevron", "index": 74},
-        {"name": "Rainbow Moving Chevron Desaturated", "index": 102},
+    "Hue Focus": [
+        {"name": "Hue Breathing Focus", "index": 134},
+        {"name": "Hue Breathing Focus Desaturated", "index": 164},
+        {"name": "Hue Pendulum Focus", "index": 135},
+        {"name": "Hue Pendulum Focus Desaturated", "index": 165},
+        {"name": "Hue Wave Focus", "index": 136},
+        {"name": "Hue Wave Focus Desaturated", "index": 166},
+        {"name": "Hue Ripple Focus", "index": 190},
+        {"name": "Hue Ripple Focus Desaturated", "index": 220},
+        {"name": "Hue Diagonal Focus", "index": 191},
+        {"name": "Hue Diagonal Focus Desaturated", "index": 221},
     ],
-    "Band Effects": [
-        {"name": "Band Pinwheel Sat", "index": 75},
-        {"name": "Band Pinwheel Sat Desaturated", "index": 103},
-        {"name": "Band Pinwheel Val", "index": 76},
-        {"name": "Band Pinwheel Val Desaturated", "index": 104},
-        {"name": "Band Spiral Sat", "index": 77},
-        {"name": "Band Spiral Sat Desaturated", "index": 105},
-        {"name": "Band Spiral Val", "index": 78},
-        {"name": "Band Spiral Val Desaturated", "index": 106},
+    "Ripple": [
+        {"name": "Ripple", "index": 137},
+        {"name": "Ripple Desaturated", "index": 167},
+        {"name": "Twin Ripple", "index": 138},
+        {"name": "Twin Ripple Desaturated", "index": 168},
+        {"name": "Diamond Ripple", "index": 139},
+        {"name": "Diamond Ripple Desaturated", "index": 169},
+        {"name": "Interference", "index": 188},
+        {"name": "Interference Desaturated", "index": 218},
+        {"name": "Iris", "index": 189},
+        {"name": "Iris Desaturated", "index": 219},
     ],
-        "BPM Pulse Fade": [
+    "Checker": [
+        {"name": "Checker Fade", "index": 194},
+        {"name": "Checker Fade Desaturated", "index": 224},
+        {"name": "Checker Hue", "index": 195},
+        {"name": "Checker Hue Desaturated", "index": 225},
+        {"name": "Stripes", "index": 196},
+        {"name": "Stripes Desaturated", "index": 226},
+    ],
+    "Matrix": [
+        {"name": "Matrix Fade", "index": 131},
+        {"name": "Matrix Fade Desaturated", "index": 161},
+        {"name": "Matrix Rain", "index": 132},
+        {"name": "Matrix Rain Desaturated", "index": 162},
+        {"name": "Matrix Rain Rainbow", "index": 133},
+        {"name": "Matrix Rain Rainbow Desaturated", "index": 163},
+        {"name": "Row Fade", "index": 197},
+        {"name": "Row Fade Desaturated", "index": 227},
+        {"name": "Matrix Rise", "index": 198},
+        {"name": "Matrix Rise Desaturated", "index": 228},
+        {"name": "Meteor Shower", "index": 199},
+        {"name": "Meteor Shower Desaturated", "index": 229},
+    ],
+    "Bars": [
+        {"name": "Equalizer", "index": 201},
+        {"name": "Equalizer Desaturated", "index": 231},
+    ],
+    "Plasma": [
+        {"name": "Plasma", "index": 140},
+        {"name": "Plasma Desaturated", "index": 170},
+        {"name": "Plasma Glow", "index": 141},
+        {"name": "Plasma Glow Desaturated", "index": 171},
+        {"name": "Kaleidoscope", "index": 142},
+        {"name": "Kaleidoscope Desaturated", "index": 172},
+    ],
+    "Nature": [
+        {"name": "Aurora", "index": 143},
+        {"name": "Aurora Desaturated", "index": 173},
+        {"name": "Lava Lamp", "index": 144},
+        {"name": "Lava Lamp Desaturated", "index": 174},
+        {"name": "Tide", "index": 145},
+        {"name": "Tide Desaturated", "index": 175},
+        {"name": "Candle", "index": 146},
+        {"name": "Candle Desaturated", "index": 176},
+        {"name": "Fire", "index": 202},
+        {"name": "Fire Desaturated", "index": 232},
+        {"name": "Clouds", "index": 203},
+        {"name": "Clouds Desaturated", "index": 233},
+    ],
+    "Sparkle": [
+        {"name": "Twinkle", "index": 147},
+        {"name": "Twinkle Desaturated", "index": 177},
+        {"name": "Rainbow Twinkle", "index": 148},
+        {"name": "Rainbow Twinkle Desaturated", "index": 178},
+        {"name": "Starfield", "index": 204},
+        {"name": "Starfield Desaturated", "index": 234},
+        {"name": "Fireflies", "index": 205},
+        {"name": "Fireflies Desaturated", "index": 235},
+        {"name": "Confetti", "index": 206},
+        {"name": "Confetti Desaturated", "index": 236},
+    ],
+    "Sweep": [
+        {"name": "Scanner", "index": 149},
+        {"name": "Scanner Desaturated", "index": 179},
+        {"name": "Radar", "index": 150},
+        {"name": "Radar Desaturated", "index": 180},
+        {"name": "Radar Dual", "index": 207},
+        {"name": "Radar Dual Desaturated", "index": 237},
+        {"name": "Vertical Scanner", "index": 208},
+        {"name": "Vertical Scanner Desaturated", "index": 238},
+        {"name": "Wipe", "index": 209},
+        {"name": "Wipe Desaturated", "index": 239},
+        {"name": "Pong", "index": 210},
+        {"name": "Pong Desaturated", "index": 240},
+    ],
+    "BPM Pulse Fade": [
         {"name": "BPM Pulse Fade", "index": 9},
         {"name": "BPM Pulse Fade 2", "index": 10},
         {"name": "BPM Pulse Fade Desaturated", "index": 11},
@@ -609,11 +857,6 @@ BACKGROUNDS_HIERARCHY = {
         {"name": "BPM All Autolight 2", "index": 57},
         {"name": "BPM All Autolight Disco", "index": 58},
     ],
-    # NOTE: the old "Per Key Layers" group (indices 57-68) was WRONG here: those
-    # numbers are VialRGB effect ids for the per-key presets, not background_mode
-    # values. In the background namespace 57-68 are BPM/cycle/wave modes already
-    # listed above, so the group both duplicated real entries and made readback
-    # ambiguous. Per-key presets are selected from the Basic RGB effect list.
 }
 
 # Hierarchical structure for live positioning styles
@@ -638,34 +881,84 @@ LIVE_STYLES_HIERARCHY = {
         {"name": "Center Block", "index": 31},
         {"name": "Snake", "index": 30},
     ],
-    "Note Row Positions": [
+    "Edges": [
         {"name": "Left Edge", "index": 3},
         {"name": "Right Edge", "index": 4},
         {"name": "Top Edge", "index": 6},
         {"name": "Bottom Edge", "index": 7},
         {"name": "Left and Right Edges", "index": 9},
-        {"name": "Top and Bottom Edges", "index": 10},
-        {"name": "Middle Row", "index": 8}, 
-        {"name": "Middle Column", "index": 5},            
+        {"name": "Top and Bottom Edges", "index": 10}
     ],
-    "Single Dots": [
-        {"name": "Top Dot", "index": 11},
-        {"name": "Left Dot", "index": 12},
-        {"name": "Right Dot", "index": 13},
-        {"name": "Bottom Dot", "index": 14},
-        {"name": "Center Dot", "index": 15},
-        {"name": "Top Left Dot", "index": 16},
-        {"name": "Top Right Dot", "index": 17},
-        {"name": "Bottom Left Dot", "index": 18},
-        {"name": "Bottom Right Dot", "index": 19},
+    "Rows": [
+        {"name": "Middle Row", "index": 8},
+        {"name": "Middle Column", "index": 5}
     ],
-    "Group Dots": [
-        {"name": "Corner Dots", "index": 20},
-        {"name": "Edge Dots", "index": 21},
-        {"name": "All Dots", "index": 22},
-        {"name": "Close Dots 1", "index": 32},
-        {"name": "Close Dots 2", "index": 33},
+    "Single Keys": [
+        {"name": "Top Key", "index": 11},
+        {"name": "Left Key", "index": 12},
+        {"name": "Right Key", "index": 13},
+        {"name": "Bottom Key", "index": 14},
+        {"name": "Center Key", "index": 15},
+        {"name": "Top Left Key", "index": 16},
+        {"name": "Top Right Key", "index": 17},
+        {"name": "Bottom Left Key", "index": 18},
+        {"name": "Bottom Right Key", "index": 19},
     ],
+    "Key Groups": [
+        {"name": "Corner Keys", "index": 20},
+        {"name": "Edge Keys", "index": 21},
+        {"name": "All Keys", "index": 22},
+        {"name": "Close Keys 1", "index": 32},
+        {"name": "Close Keys 2", "index": 33},
+    ],
+    "Full Lines": [
+        {"name": "Pitch Column", "index": 34},
+        {"name": "Pitch Row", "index": 35},
+        {"name": "Left Edge Column", "index": 36},
+        {"name": "Right Edge Column", "index": 37},
+        {"name": "Both Edge Columns", "index": 38},
+        {"name": "Top Edge Row", "index": 39},
+        {"name": "Bottom Edge Row", "index": 40},
+        {"name": "Top + Bottom Edges", "index": 41},
+        {"name": "Center Column", "index": 42},
+        {"name": "Center Row", "index": 43}
+    ],
+    "Shapes": [
+        {"name": "Diagonal TL-BR", "index": 44},
+        {"name": "Diagonal TR-BL", "index": 45},
+        {"name": "Diagonal X", "index": 46},
+        {"name": "Corners + Center", "index": 47},
+        {"name": "Border Ring", "index": 48},
+        {"name": "Grid 3x3", "index": 49}
+    ],
+    "Pitch Pairs": [
+        {"name": "Pitch Edge Pair", "index": 50},
+        {"name": "Pitch Top + Bottom", "index": 51},
+        {"name": "Mirror Pair", "index": 52},
+        {"name": "Quad Mirror", "index": 53},
+        {"name": "Pitch Scatter", "index": 54}
+    ],
+    "Moving": [
+        {"name": "Snake Vertical", "index": 55},
+        {"name": "Spiral In", "index": 56},
+        {"name": "Spiral Out", "index": 57},
+        {"name": "Bounce Walk", "index": 58},
+        {"name": "Random Walk", "index": 59},
+        {"name": "Random Key", "index": 60},
+        {"name": "Random Column", "index": 61},
+        {"name": "Random Row", "index": 62},
+        {"name": "Sweep Column", "index": 63},
+        {"name": "Sweep Row", "index": 64},
+        {"name": "Clock", "index": 65},
+        {"name": "Clock Reverse", "index": 66},
+        {"name": "Count Across", "index": 67},
+        {"name": "Rise", "index": 68},
+        {"name": "Expanding Pair", "index": 69},
+        {"name": "Converging Pair", "index": 70},
+        {"name": "Raindrop", "index": 71},
+        {"name": "Random Edge", "index": 72},
+        {"name": "Knight Walk", "index": 73}
+    ]
 }
 
 # Hierarchical structure for macro positioning styles
@@ -696,47 +989,98 @@ MACRO_STYLES_HIERARCHY = {
         {"name": "Center Block Large", "index": 43},   
         {"name": "Snake", "index": 42},        
     ],
-    "Note Row Positions": [
+    "Edges": [
         {"name": "Left Edge", "index": 3},
         {"name": "Right Edge", "index": 4},
         {"name": "Top Edge", "index": 6},
         {"name": "Bottom Edge", "index": 7},
         {"name": "Left and Right Edges", "index": 9},
-        {"name": "Top and Bottom Edges", "index": 10},
-        {"name": "Middle Row", "index": 8},
-        {"name": "Middle Column", "index": 5},
-
+        {"name": "Top and Bottom Edges", "index": 10}
     ],
-    "Loop Row Positions": [
+    "Rows": [
+        {"name": "Middle Row", "index": 8},
+        {"name": "Middle Column", "index": 5}
+    ],
+    "Loop Edges": [
         {"name": "Loop Left Edge", "index": 11},
         {"name": "Loop Right Edge", "index": 12},
         {"name": "Loop Top Edge", "index": 15},
         {"name": "Loop Bottom Edge", "index": 16},
-        {"name": "Loop Middle Row", "index": 17},
-        {"name": "Loop Middle Column", "index": 13},
-        {"name": "Loop Left and Right Edges", "index": 14},
+        {"name": "Loop Left and Right Edges", "index": 14}
     ],
-    "Single Dots": [
-        {"name": "Top Dot", "index": 20},
-        {"name": "Left Dot", "index": 21},
-        {"name": "Right Dot", "index": 22},
-        {"name": "Bottom Dot", "index": 23},
-        {"name": "Center Dot", "index": 24},
-        {"name": "Top Left Dot", "index": 25},
-        {"name": "Top Right Dot", "index": 26},
-        {"name": "Bottom Left Dot", "index": 27},
-        {"name": "Bottom Right Dot", "index": 28},
+    "Loop Rows": [
+        {"name": "Loop Middle Row", "index": 17},
+        {"name": "Loop Middle Column", "index": 13}
+    ],
+    "Single Keys": [
+        {"name": "Top Key", "index": 20},
+        {"name": "Left Key", "index": 21},
+        {"name": "Right Key", "index": 22},
+        {"name": "Bottom Key", "index": 23},
+        {"name": "Center Key", "index": 24},
+        {"name": "Top Left Key", "index": 25},
+        {"name": "Top Right Key", "index": 26},
+        {"name": "Bottom Left Key", "index": 27},
+        {"name": "Bottom Right Key", "index": 28},
     ],
 
-    "Group Dots": [
-        {"name": "Corner Dots", "index": 29},
-        {"name": "Edge Dots", "index": 30},
-        {"name": "Loop Corner Dots", "index": 32},
-        {"name": "Loop Edge Dots", "index": 33},
-        {"name": "All Dots", "index": 31},        
-        {"name": "Close Dots 1", "index": 45},
-        {"name": "Close Dots 2", "index": 46},
+    "Key Groups": [
+        {"name": "Corner Keys", "index": 29},
+        {"name": "Edge Keys", "index": 30},
+        {"name": "Loop Corner Keys", "index": 32},
+        {"name": "Loop Edge Keys", "index": 33},
+        {"name": "All Keys", "index": 31},        
+        {"name": "Close Keys 1", "index": 45},
+        {"name": "Close Keys 2", "index": 46},
     ],
+    "Full Lines": [
+        {"name": "Pitch Column", "index": 47},
+        {"name": "Pitch Row", "index": 48},
+        {"name": "Left Edge Column", "index": 49},
+        {"name": "Right Edge Column", "index": 50},
+        {"name": "Both Edge Columns", "index": 51},
+        {"name": "Top Edge Row", "index": 52},
+        {"name": "Bottom Edge Row", "index": 53},
+        {"name": "Top + Bottom Edges", "index": 54},
+        {"name": "Center Column", "index": 55},
+        {"name": "Center Row", "index": 56}
+    ],
+    "Shapes": [
+        {"name": "Diagonal TL-BR", "index": 57},
+        {"name": "Diagonal TR-BL", "index": 58},
+        {"name": "Diagonal X", "index": 59},
+        {"name": "Corners + Center", "index": 60},
+        {"name": "Border Ring", "index": 61},
+        {"name": "Grid 3x3", "index": 62}
+    ],
+    "Pitch Pairs": [
+        {"name": "Pitch Edge Pair", "index": 63},
+        {"name": "Pitch Top + Bottom", "index": 64},
+        {"name": "Mirror Pair", "index": 65},
+        {"name": "Quad Mirror", "index": 66},
+        {"name": "Pitch Scatter", "index": 67}
+    ],
+    "Moving": [
+        {"name": "Snake Vertical", "index": 68},
+        {"name": "Spiral In", "index": 69},
+        {"name": "Spiral Out", "index": 70},
+        {"name": "Bounce Walk", "index": 71},
+        {"name": "Random Walk", "index": 72},
+        {"name": "Random Key", "index": 73},
+        {"name": "Random Column", "index": 74},
+        {"name": "Random Row", "index": 75},
+        {"name": "Sweep Column", "index": 76},
+        {"name": "Sweep Row", "index": 77},
+        {"name": "Clock", "index": 78},
+        {"name": "Clock Reverse", "index": 79},
+        {"name": "Count Across", "index": 80},
+        {"name": "Rise", "index": 81},
+        {"name": "Expanding Pair", "index": 82},
+        {"name": "Converging Pair", "index": 83},
+        {"name": "Raindrop", "index": 84},
+        {"name": "Random Edge", "index": 85},
+        {"name": "Knight Walk", "index": 86}
+    ]
 }
 
 CUSTOM_LIGHT_COLOR_TYPES_HIERARCHY = {
@@ -2269,6 +2613,17 @@ class FrostOverlay(QWidget):
         ev.accept()
 
 
+# Random lighting effects (VialRGB 69-77). They all draw their current
+# animation in the last custom slot, which the app shows and can copy.
+RANDOM_EFFECT_BASE = 69
+RANDOM_EFFECT_NAMES = ["Random 1 - Loop", "Random 2 - Loop", "Random 3 - Loop",
+                       "Random 1 - BPM", "Random 2 - BPM", "Random 3 - BPM",
+                       "Random 1 - Manual", "Random 2 - Manual", "Random 3 - Manual"]
+RANDOM_SCRATCH_SLOT = 49
+RANDOM_ITEM_BASE = 100   # dropdown data for the random entries
+RANDOM_FREEZE_TIP = "Stop the random effect from changing, so you can look at it, edit it or save it."
+
+
 class CustomLightsHandler(BasicHandler):
     """Handler for custom animation slot configuration - uses VialKeyboard infrastructure"""
 
@@ -2322,8 +2677,33 @@ class CustomLightsHandler(BasicHandler):
         selector_row.addWidget(self.slot_combo, 1)
         selector_row.addWidget(self.slot_up_btn)
         selector_row.addWidget(self.slot_down_btn)
+        # Shown while a random effect is picked: Freeze + copy it to a slot.
+        self.random_freeze = QCheckBox(tr("RGBConfigurator", "Freeze"))
+        self.random_freeze.setToolTip(RANDOM_FREEZE_TIP)
+        self.random_target = ArrowComboBox()
+        self.random_target.setMaxVisibleItems(20)
+        for slot in range(RANDOM_SCRATCH_SLOT):
+            self.random_target.addItem(tr("RGBConfigurator", "Slot {}").format(slot + 1), slot)
+        self.random_save_btn = QPushButton(tr("RGBConfigurator", "Save to slot"))
+        self.random_save_btn.setToolTip(tr("RGBConfigurator",
+            "Save the animation the random effect is showing now into the chosen slot."))
+        random_row = QHBoxLayout()
+        random_row.setContentsMargins(0, 0, 0, 0)
+        random_row.addWidget(self.random_freeze)
+        random_row.addStretch(1)
+        random_row.addWidget(self.random_target)
+        random_row.addWidget(self.random_save_btn)
+        self.random_bar = QWidget()
+        self.random_bar.setLayout(random_row)
+        self.random_bar.setVisible(False)
+        self.random_freeze.toggled.connect(self._on_random_freeze_toggled)
+        self.random_save_btn.clicked.connect(self._on_random_save)
+        selector_box = QVBoxLayout()
+        selector_box.setContentsMargins(0, 0, 0, 0)
+        selector_box.addLayout(selector_row)
+        selector_box.addWidget(self.random_bar)
         self.selector_widget = QWidget()
-        self.selector_widget.setLayout(selector_row)
+        self.selector_widget.setLayout(selector_box)
         container.addWidget(self.selector_widget, row, 0, 1, 2)
 
         # One page per slot; the dropdown picks the page shown
@@ -2341,6 +2721,15 @@ class CustomLightsHandler(BasicHandler):
         # Set by RGBConfigurator: also save the rest of the lighting settings
         # when this tab's Save is pressed
         self.extra_save_cb = None
+        # Set by RGBConfigurator: called with the random effect (0-8) picked
+        # in the dropdown
+        self.random_chosen_cb = None
+        # Random effect picked in the dropdown (0-8), or None
+        self.random_effect = None
+        self._random_generation = None
+        self._random_timer = QTimer()
+        self._random_timer.setInterval(500)
+        self._random_timer.timeout.connect(self._poll_random)
 
         # Track the currently active slot (for parameter changes)
         self.current_active_slot = None
@@ -2365,6 +2754,12 @@ class CustomLightsHandler(BasicHandler):
             for slot in range(start_idx, end_idx):
                 self.slot_combo.addItem(tr("RGBConfigurator", "Slot {}").format(slot + 1), slot)
                 self.create_slot_tab(slot, None)
+        # The random effects show the animation they are running (they all
+        # draw it in the last slot); it reloads whenever they change it.
+        self.slot_combo.addItem("\u2014 {} \u2014".format(tr("RGBConfigurator", "Random")), -1)
+        self.slot_combo.model().item(self.slot_combo.count() - 1).setEnabled(False)
+        for i, name in enumerate(RANDOM_EFFECT_NAMES):
+            self.slot_combo.addItem(name, RANDOM_ITEM_BASE + i)
         self._set_combo_slot(0)
         self._show_slot(0)
         self.slot_combo.currentIndexChanged.connect(self._on_slot_combo_changed)
@@ -2403,12 +2798,111 @@ class CustomLightsHandler(BasicHandler):
         slot = self.slot_combo.itemData(index)
         if slot is None or slot < 0:
             return
+        if slot >= RANDOM_ITEM_BASE:
+            self.select_random(slot - RANDOM_ITEM_BASE, user=True)
+            return
         self.select_slot(slot, user=True)
+
+    def _leave_random(self):
+        self.random_effect = None
+        self._random_timer.stop()
+        self.random_bar.setVisible(False)
+
+    def select_random(self, effect, user=False):
+        """Show a random effect (0-8 = Random 1-3 Loop / BPM / Manual): the
+        last slot's controls, loaded from what the keyboard is running now and
+        reloaded every time the effect changes it. user=True means it was
+        picked in the dropdown: the keyboard switches to that effect."""
+        self._set_combo_slot(RANDOM_ITEM_BASE + effect)
+        self._show_slot(RANDOM_SCRATCH_SLOT)
+        self.random_effect = effect
+        self.random_bar.setVisible(True)
+        if user:
+            self.overlay_override = True
+            self.set_overlay_visible(False)
+        if self.device is None or not hasattr(self.device, 'keyboard'):
+            return
+        if user and self.random_chosen_cb is not None:
+            self.random_chosen_cb(effect)
+        kb = self.device.keyboard
+        state = kb.get_randomize_state() if hasattr(kb, 'get_randomize_state') else None
+        self.random_freeze.setEnabled(state is not None)
+        self.random_freeze.setToolTip(RANDOM_FREEZE_TIP if state is not None else
+                                      tr("RGBConfigurator", "Freeze needs a firmware update."))
+        self.random_freeze.blockSignals(True)
+        self.random_freeze.setChecked(bool(state and state[0]))
+        self.random_freeze.blockSignals(False)
+        # None = reload on the next poll too (the keyboard picks the first
+        # animation when the effect starts, which may land after this read)
+        self._random_generation = None
+        self._reload_random_slot()
+        self._random_timer.start()
+
+    def _reload_random_slot(self):
+        self.block_signals()
+        self.load_slot_from_ram(RANDOM_SCRATCH_SLOT)
+        self.unblock_signals()
+
+    def _poll_random(self):
+        """Reload the random effect's animation when the keyboard changed it."""
+        if self.random_effect is None or self.device is None or not hasattr(self.device, 'keyboard'):
+            self._random_timer.stop()
+            return
+        if not self.slot_stack.isVisible():
+            return
+        kb = self.device.keyboard
+        if not hasattr(kb, 'get_randomize_state'):
+            return
+        state = kb.get_randomize_state()
+        if state is None:
+            return
+        frozen, generation, running = state
+        if self.random_freeze.isChecked() != frozen:
+            self.random_freeze.blockSignals(True)
+            self.random_freeze.setChecked(frozen)
+            self.random_freeze.blockSignals(False)
+        if generation != self._random_generation:
+            self._random_generation = generation
+            self._reload_random_slot()
+
+    def _on_random_freeze_toggled(self, checked):
+        kb = getattr(self.device, 'keyboard', None)
+        if kb is None or not hasattr(kb, 'set_randomize_freeze'):
+            return
+        if not kb.set_randomize_freeze(checked):
+            self.random_freeze.blockSignals(True)
+            self.random_freeze.setChecked(not checked)
+            self.random_freeze.blockSignals(False)
+
+    def _on_random_save(self):
+        """Copy the animation the random effect is showing into a slot."""
+        kb = getattr(self.device, 'keyboard', None)
+        if kb is None:
+            return
+        target = self.random_target.currentData()
+        if target is None:
+            return
+        config = kb.get_custom_slot_config(RANDOM_SCRATCH_SLOT, from_eeprom=False)
+        ok = False
+        if config and len(config) >= 16:
+            # Same 16-byte order as the slot read; the write also saves it
+            ok = kb.set_custom_slot_all_parameters(target, *list(config[:16]))
+        if ok:
+            if target in self.slot_widgets:
+                self.block_signals()
+                self.load_slot_from_eeprom(target)
+                self.unblock_signals()
+            QMessageBox.information(self.random_bar, tr("RGBConfigurator", "Saved"),
+                tr("RGBConfigurator", "The random animation was saved to Slot {}.").format(target + 1))
+        else:
+            QMessageBox.warning(self.random_bar, tr("RGBConfigurator", "Not saved"),
+                tr("RGBConfigurator", "Could not read the random animation from the keyboard."))
 
     def select_slot(self, slot, user=False):
         """Show `slot`'s controls and load its saved values. user=True means
         it was picked in the dropdown: the device previews it and the Basic
         RGB effect follows."""
+        self._leave_random()
         self._set_combo_slot(slot)
         self._show_slot(slot)
         if user:
@@ -2867,14 +3361,14 @@ class CustomLightsHandler(BasicHandler):
             
         widgets = self.slot_widgets[slot]
         # Clamps mirror the firmware setter limits: effects < 174, live pos < 34,
-        # macro pos < 47, backgrounds < 121 (0-120). The old 171/121 clamps
+        # macro pos < 47, backgrounds < 241 (0-240). The old 171/121 clamps
         # displayed the last two effects and background 120 as a DIFFERENT entry
         # and then saved that wrong value back.
-        widgets['live_effect'].setCurrentIndex(min(config[2], 173))
-        widgets['live_style'].setCurrentIndex(min(config[0], 33))
-        widgets['macro_effect'].setCurrentIndex(min(config[3], 173))
-        widgets['macro_style'].setCurrentIndex(min(config[1], 46))
-        widgets['background'].setCurrentIndex(min(config[5], 120))
+        widgets['live_effect'].setCurrentIndex(config[2])
+        widgets['live_style'].setCurrentIndex(min(config[0], 73))
+        widgets['macro_effect'].setCurrentIndex(config[3])
+        widgets['macro_style'].setCurrentIndex(min(config[1], 86))
+        widgets['background'].setCurrentIndex(min(config[5], 240))
         widgets['bg_speed'].setValue(config[14] if len(config) > 14 else 128)
         widgets['color_type'].setCurrentIndex(min(config[7], 84))
         widgets['background_brightness'].setValue(config[9] if len(config) > 9 else 30)
@@ -3919,6 +4413,7 @@ class RGBConfigurator(BasicEditor):
         self.handler_custom_lights.update.connect(self.update_from_keyboard)
         self.handler_custom_lights.slot_chosen_cb = self._on_custom_slot_chosen
         self.handler_custom_lights.extra_save_cb = self._save_other_lighting
+        self.handler_custom_lights.random_chosen_cb = self._on_random_effect_chosen
 
         # Key Indicators handler (Tab 3)
         self.handler_adv_key_lighting = AdvancedKeyLightingHandler(self.adv_key_lighting_container)
@@ -4119,8 +4614,15 @@ class RGBConfigurator(BasicEditor):
         """Frost the slot controls unless the Basic RGB effect is a custom
         slot (or one was picked in the dropdown); follow the effect's slot."""
         cl = self.handler_custom_lights
-        slot = self._custom_slot_of_mode(self._current_rgb_mode())
-        if slot is not None and slot != cl.get_current_slot_index():
+        mode = self._current_rgb_mode()
+        if mode is not None and 0 <= mode - RANDOM_EFFECT_BASE < len(RANDOM_EFFECT_NAMES):
+            effect = mode - RANDOM_EFFECT_BASE
+            if cl.random_effect != effect:
+                cl.select_random(effect)
+            cl.set_overlay_visible(False)
+            return
+        slot = self._custom_slot_of_mode(mode)
+        if slot is not None and (slot != cl.get_current_slot_index() or cl.random_effect is not None):
             cl.select_slot(slot)
         cl.set_overlay_visible(slot is None and not cl.overlay_override)
 
@@ -4135,6 +4637,21 @@ class RGBConfigurator(BasicEditor):
         kb = getattr(self.device, 'keyboard', None)
         if kb is not None and slot < self.CUSTOM_SLOT_EFFECTS:
             mode = self.CUSTOM_SLOT_EFFECT_BASE + slot
+            if mode in getattr(kb, 'rgb_supported_effects', ()):
+                if getattr(kb, 'rgb_mode', None) != mode:
+                    kb.set_vialrgb_mode(mode)
+                h = self.handler_vialrgb_custom
+                h.block_signals()
+                h.update_from_keyboard()
+                h.unblock_signals()
+        self.handler_custom_lights.set_overlay_visible(False)
+
+    def _on_random_effect_chosen(self, effect):
+        """A random effect was picked in the Custom Lights dropdown: make it
+        the Basic RGB effect so the keyboard runs it."""
+        kb = getattr(self.device, 'keyboard', None)
+        if kb is not None:
+            mode = RANDOM_EFFECT_BASE + effect
             if mode in getattr(kb, 'rgb_supported_effects', ()):
                 if getattr(kb, 'rgb_mode', None) != mode:
                     kb.set_vialrgb_mode(mode)
