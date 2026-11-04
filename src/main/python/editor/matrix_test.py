@@ -2733,7 +2733,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "Off: Use global RGB settings\n"
             "On: Each layer can have unique RGB animations"
         ))
-        rgb_layer_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "RGB Layer Mode:")))
+        rgb_layer_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Layer RGB:")))
         rgb_layer_label.setLayout(rgb_layer_label_layout)
         self._adv_rgb_layer_label = rgb_layer_label   # placed on the Advanced Settings tab
         self.custom_layer_animations = ArrowComboBox()
@@ -2836,8 +2836,8 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         )
         self._art_atcc_labels = []   # placed on Articulation > Settings
         for _atcc_name, _atcc_attr, _atcc_col in (
-            ("Enable Aftertouch Modes", "enable_at_modes", 1),
-            ("Enable CC Modes",         "enable_cc_modes", 3),
+            ("Aftertouch Modes", "enable_at_modes", 1),
+            ("CC Modes",         "enable_cc_modes", 3),
         ):
             _atcc_label = QWidget()
             _atcc_label_layout = QHBoxLayout()
@@ -2877,7 +2877,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         _ca_label_layout.setSpacing(5)
         _ca_label_layout.addWidget(self.create_help_label(_ca_help))
         _ca_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator",
-                                             "Enable Channel Articulations:")))
+                                             "Channel Articulations:")))
         _ca_label.setLayout(_ca_label_layout)
         self._art_ca_label = _ca_label
         self.enable_channel_artic = ArrowComboBox()
@@ -2952,7 +2952,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ch_override_layout.setContentsMargins(0, 0, 0, 0)
         ch_override_layout.setSpacing(5)
         ch_override_layout.addWidget(self.create_help_label("Override channel for incoming MIDI"))
-        ch_override_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Channel Override:")))
+        ch_override_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Channel Prio:")))
         ch_override_label.setLayout(ch_override_layout)
         midi_routing_layout.addWidget(ch_override_label, 0, 1)
         self.channel_override = ArrowComboBox()
@@ -2975,7 +2975,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "Off: Use incoming velocity values\n"
             "On: Apply keyboard velocity settings to input"
         ))
-        vel_override_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Velocity Override:")))
+        vel_override_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Velocity Prio:")))
         vel_override_label.setLayout(vel_override_label_layout)
         midi_routing_layout.addWidget(vel_override_label, 0, 3)
         self.velocity_override = ArrowComboBox()
@@ -2998,7 +2998,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "Off: Use incoming note values\n"
             "On: Apply keyboard transpose settings to input"
         ))
-        trans_override_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Transpose Override:")))
+        trans_override_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Transpose Prio:")))
         trans_override_label.setLayout(trans_override_label_layout)
         midi_routing_layout.addWidget(trans_override_label, 0, 5)
         self.transpose_override = ArrowComboBox()
