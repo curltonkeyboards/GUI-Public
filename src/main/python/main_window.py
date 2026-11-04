@@ -173,6 +173,8 @@ class MainWindow(QMainWindow):
             self.MIDIswitchSettingsConfigurator.build_lighting_settings_page())
         self.velocity_tab.add_settings_tab(
             self.MIDIswitchSettingsConfigurator.build_articulation_settings_page())
+        self.macro_recorder.add_settings_widget(
+            self.MIDIswitchSettingsConfigurator.macro_settings_group)
 
         self.editors = [(self.keymap_editor, "Keymap"), (self.trigger_settings, "Advanced"),
                         (self.velocity_tab, "Articulation"), (self.rgb_configurator, "Lighting"),
