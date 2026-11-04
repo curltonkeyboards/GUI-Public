@@ -78,6 +78,7 @@ HID_CMD_DAW = 0x99  # Get/set the default DAW (sub 0=GET, 1=SET)
 HID_CMD_PERF = 0x9B  # Get/set the LCD smoothness mode (sub 0=GET, 1=SET)
 HID_CMD_LOOP_SNAP = 0x9C  # Get/set the loop note snap grid (sub 0=GET, 1=SET)
 HID_CMD_UPDATE_MODE = 0x9D  # Firmware update mode (sub 0=QUERY, 1=ENTER)
+HID_CMD_KEYMAP_SYNC = 0x9E  # Keymap edits made on the keyboard itself (sub 0=GET)
 HID_CMD_GAMING_BIND = 0x9A  # Joystick functions attached to keys (sub 0=GET, 1=SET, 2=CLEAR)
 HID_CMD_SET_KEYBOARD_PARAM_SINGLE = 0xE8  # Set individual parameter (changed from 0xBD collision)
 
@@ -245,6 +246,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         # RAM keymap has ever received the full keymap this session.
         self._rescan_dirty_rows = set()
         self._rescan_full_sent = False
+        # Change count of the keyboard's own keymap edits (Key Mapper menu);
+        # None = not read yet. See poll_device_keymap_changes().
+        self._km_sync_count = None
+        self._km_sync_supported = None
         self.rows = self.cols = self.layers = 0
         self.layout_labels = None
         self.layout_options = -1
@@ -1852,6 +1857,72 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
             return bool(data) and len(data) > 4 and data[4] == 0
         except Exception:
             return False
+
+    def keymap_sync_supported(self):
+        """Does the keyboard report keymap edits made on the keyboard itself
+        (firmware 1.1.25 and later)? Older firmware may not answer the
+        request at all, which would stall every poll, so it is never asked."""
+        if self._km_sync_supported is None:
+            ident = getattr(self, "msw_ident", None)
+            fw = tuple(ident.get("firmware", (0, 0, 0))) if ident else (0, 0, 0)
+            self._km_sync_supported = bool(ident) and (fw >= (1, 1, 25) or fw < (1, 1, 0))
+        return self._km_sync_supported
+
+    def get_keymap_sync(self):
+        """Read the keyboard's own keymap edits.
+
+        Returns (count, entries) or None. count goes up by one per edit made
+        on the keyboard (wraps at 65536); entries are up to 4 of the newest
+        edits, newest first, each (kind, layer, a, b, keycode): kind 0 = key
+        at row a, column b; kind 1 = encoder a, direction b (0 CCW, 1 CW)."""
+        if not self.keymap_sync_supported():
+            return None
+        try:
+            packet = self._create_hid_packet(HID_CMD_KEYMAP_SYNC, 0, None)
+            data = self.usb_send(self.dev, packet, retries=1)
+        except Exception:
+            return None
+        if not data or len(data) < 32 or data[3] != HID_CMD_KEYMAP_SYNC or data[4] != 0x01:
+            self._km_sync_supported = False
+            return None
+        count = data[5] | (data[6] << 8)
+        entries = []
+        for i in range(min(data[7], 4)):
+            e = data[8 + i * 6: 14 + i * 6]
+            entries.append((e[0], e[1], e[2], e[3], e[4] | (e[5] << 8)))
+        return count, entries
+
+    def poll_device_keymap_changes(self):
+        """Bring self.layout / self.encoder_layout up to date with keys
+        changed on the keyboard itself (the Key Mapper menu). The first call
+        only records where the count stands. Returns True when something
+        changed (the caller redraws)."""
+        st = self.get_keymap_sync()
+        if st is None:
+            return False
+        count, entries = st
+        if self._km_sync_count is None:
+            self._km_sync_count = count
+            return False
+        delta = (count - self._km_sync_count) & 0xFFFF
+        if delta == 0:
+            return False
+        self._km_sync_count = count
+        if delta > len(entries):
+            # More edits than the reply carries: read the whole keymap again.
+            self.reload_keymap()
+            self._rescan_full_sent = False
+            return True
+        firmware_rows = getattr(self, 'firmware_rows', self.rows)
+        for kind, layer, a, b, kc in reversed(entries[:delta]):
+            code = Keycode.serialize(kc)
+            if kind == 0 and (layer, a, b) in self.layout:
+                self.layout[(layer, a, b)] = code
+                if a < firmware_rows:
+                    self._rescan_dirty_rows.add((layer, a))
+            elif kind == 1 and (layer, a, b) in self.encoder_layout:
+                self.encoder_layout[(layer, a, b)] = code
+        return True
 
     def get_nav_layer(self):
         """Get the keyboard's navigation layer (the layer on-device menus read

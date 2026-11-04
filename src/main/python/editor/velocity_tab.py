@@ -1224,6 +1224,11 @@ class VelocityTab(BasicEditor):
                 set_setting('points', points)
             controls['curve_editor'].curve_changed.connect(on_curve_changed)
 
+    def add_settings_tab(self, page):
+        """Add the 'Settings' sub-tab (Velocity Interval / Dynamic Range,
+        built by the MIDI settings editor, which owns and saves them)."""
+        self.preset_settings_tabs.addTab(page, tr("VelocityTab", "Settings"))
+
     def setup_ui(self):
         # Create scroll area for the main content - stretches to fill window
         scroll = QScrollArea()
