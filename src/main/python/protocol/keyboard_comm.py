@@ -2248,116 +2248,74 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
 
     @_hid_transaction
     def get_thruloop_config(self):
-        """Get all ThruLoop configuration using multi-packet collection"""
+        """Get all ThruLoop configuration.
+
+        The keyboard answers GET_ALL_CONFIG (0xB4) with six packets that carry
+        the SET command bytes (0xB0, 0xB1 x2, 0xB2 x2, 0xB3) and no 0xB4 reply
+        of its own. So the request is written straight to the device and the
+        six packets are read here: usb_send() would take a packet with a
+        different command byte as a late reply and throw it away. Returns
+        None unless all six arrive. Never sends the SET commands to read:
+        the keyboard would store their empty payloads."""
+        expected_commands = (HID_CMD_SET_LOOP_CONFIG, HID_CMD_SET_MAIN_LOOP_CCS,
+                             HID_CMD_SET_OVERDUB_CCS, HID_CMD_SET_NAVIGATION_CONFIG)
+        # (command, bank) of every packet in the reply
+        expected_keys = {(HID_CMD_SET_LOOP_CONFIG, None),
+                         (HID_CMD_SET_MAIN_LOOP_CCS, 0), (HID_CMD_SET_MAIN_LOOP_CCS, 1),
+                         (HID_CMD_SET_OVERDUB_CCS, 0), (HID_CMD_SET_OVERDUB_CCS, 1),
+                         (HID_CMD_SET_NAVIGATION_CONFIG, None)}
+        if not hasattr(self.dev, 'write') or not hasattr(self.dev, 'read'):
+            return None
         try:
-            # Clear stale packets from earlier commands before the burst.
-            self._drain_stale_packets()
-
-            # Send request for all config
-            packet = self._create_hid_packet(HID_CMD_GET_ALL_CONFIG, 0, None)
-            response = self.usb_send(self.dev, packet, retries=20)
-            
-            if not response or len(response) == 0 or response[5] != 0:
-                return None
-            
-            # Collect response packets using proper HID read method
-            # Banked commands (main/overdub CCs) send 2 packets each, so expect 6 total
             packets = {}
-            expected_commands = [HID_CMD_SET_LOOP_CONFIG, HID_CMD_SET_MAIN_LOOP_CCS,
-                               HID_CMD_SET_OVERDUB_CCS, HID_CMD_SET_NAVIGATION_CONFIG]
-            expected_packet_count = 6  # config + 2x main CCs + 2x overdub CCs + nav
-
-            # The usb_send() above already consumed the first of the 6 response
-            # packets — record it, otherwise the collector can never complete.
-            if response and len(response) >= 4 and response[0] == HID_MANUFACTURER_ID:
-                cmd = response[3]
-                if cmd in expected_commands:
-                    packets[cmd] = [response]
-
-            # Try multiple times to collect all expected packets
-            for attempt in range(30):
-                try:
-                    # Use the device's read method directly
-                    if hasattr(self.dev, 'read'):
-                        data = self.dev.read(32, timeout_ms=100)
-                    else:
-                        # Fallback: try to read using get_feature
-                        data = self.dev.get_feature_report(0, 32)
-
-                    if data and len(data) >= 4 and data[0] == HID_MANUFACTURER_ID:
-                        cmd = data[3]
-                        if cmd in expected_commands:
-                            # Store as list to handle banked packets (same cmd, different bank)
-                            if cmd not in packets:
-                                packets[cmd] = []
-                            packets[cmd].append(data)
-
-                    total_collected = sum(len(v) for v in packets.values())
-                    if total_collected >= expected_packet_count:
-                        break
-                        
-                except:
-                    # If direct read fails, try a small delay and continue
-                    time.sleep(0.01)
+            for attempt in range(3):
+                self._drain_stale_packets()
+                packet = self._create_hid_packet(HID_CMD_GET_ALL_CONFIG, 0, None)
+                if self.dev.write(b"\x00" + packet) != len(packet) + 1:
                     continue
-            
-            # If the response set is incomplete, fail the read rather than
-            # parsing partial data. (A previous "fallback" here re-sent the
-            # expected commands as zero-payload packets — but these are SET
-            # commands, so the firmware executed them as real writes and
-            # persisted zeroed loop config to EEPROM. Never send SETs to read.)
-            total_collected = sum(len(v) for v in packets.values()) if packets else 0
-            if total_collected < expected_packet_count:
+                packets = {}
+                deadline = time.time() + 1.5
+                while time.time() < deadline and len(packets) < len(expected_keys):
+                    try:
+                        data = bytes(self.dev.read(32, timeout_ms=100))
+                    except OSError:
+                        break
+                    if (len(data) < 6 or data[0] != HID_MANUFACTURER_ID
+                            or data[1] != HID_SUB_ID or data[2] != HID_DEVICE_ID
+                            or data[3] not in expected_commands or data[5] != 0):
+                        continue
+                    cmd = data[3]
+                    bank = data[4] if cmd in (HID_CMD_SET_MAIN_LOOP_CCS,
+                                              HID_CMD_SET_OVERDUB_CCS) else None
+                    if (cmd, bank) in expected_keys:
+                        packets[(cmd, bank)] = data
+                if len(packets) == len(expected_keys):
+                    break
+                # Part of a burst may still be on its way: clear it before asking again.
+                self._drain_stale_packets()
+            if len(packets) != len(expected_keys):
                 return None
 
-            # Parse collected packets (8-loop banked protocol)
             config = {}
+            data = packets[(HID_CMD_SET_LOOP_CONFIG, None)][6:]
+            config['loopChannel'] = data[0]
+            config['syncMidi'] = data[1] != 0
+            config['alternateRestart'] = data[2] != 0
+            config['restartCCs'] = list(data[3:11])  # 8 restart CCs
 
-            if HID_CMD_SET_LOOP_CONFIG in packets:
-                data = packets[HID_CMD_SET_LOOP_CONFIG][0][6:]
-                config['loopChannel'] = data[0]
-                config['syncMidi'] = data[1] != 0
-                config['alternateRestart'] = data[2] != 0
-                config['restartCCs'] = list(data[3:11])  # 8 restart CCs
+            # Banked: bank 0 = loops 1-4, bank 1 = loops 5-8
+            config['mainCCs'] = (list(packets[(HID_CMD_SET_MAIN_LOOP_CCS, 0)][6:26]) +
+                                 list(packets[(HID_CMD_SET_MAIN_LOOP_CCS, 1)][6:26]))
+            config['overdubCCs'] = (list(packets[(HID_CMD_SET_OVERDUB_CCS, 0)][6:30]) +
+                                    list(packets[(HID_CMD_SET_OVERDUB_CCS, 1)][6:30]))
 
-            # Main CCs may arrive as 2 banked packets; collect both banks
-            main_ccs_bank0 = None
-            main_ccs_bank1 = None
-            overdub_ccs_bank0 = None
-            overdub_ccs_bank1 = None
+            data = packets[(HID_CMD_SET_NAVIGATION_CONFIG, None)][6:]
+            config['separateLoopChopCC'] = data[0] != 0
+            config['masterCC'] = data[1]
+            config['navCCs'] = list(data[2:10])
+            return config
 
-            for pkt in packets.get(HID_CMD_SET_MAIN_LOOP_CCS, []):
-                bank = pkt[4]  # macro_num field = bank
-                pkt_data = pkt[6:]
-                if bank == 0:
-                    main_ccs_bank0 = list(pkt_data[:20])
-                elif bank == 1:
-                    main_ccs_bank1 = list(pkt_data[:20])
-
-            for pkt in packets.get(HID_CMD_SET_OVERDUB_CCS, []):
-                bank = pkt[4]
-                pkt_data = pkt[6:]
-                if bank == 0:
-                    overdub_ccs_bank0 = list(pkt_data[:24])
-                elif bank == 1:
-                    overdub_ccs_bank1 = list(pkt_data[:24])
-
-            # Combine banks into full 8-loop arrays
-            if main_ccs_bank0:
-                config['mainCCs'] = main_ccs_bank0 + (main_ccs_bank1 or [128] * 20)
-            if overdub_ccs_bank0:
-                config['overdubCCs'] = overdub_ccs_bank0 + (overdub_ccs_bank1 or [128] * 24)
-
-            if HID_CMD_SET_NAVIGATION_CONFIG in packets:
-                nav_pkt = packets[HID_CMD_SET_NAVIGATION_CONFIG][0]
-                data = nav_pkt[6:]
-                config['separateLoopChopCC'] = data[0] != 0
-                config['masterCC'] = data[1]
-                config['navCCs'] = list(data[2:10])
-                
-            return config if config else None
-            
-        except Exception as e:
+        except Exception:
             return None
 
     def reset_thruloop_config(self):
