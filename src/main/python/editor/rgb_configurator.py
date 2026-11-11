@@ -4425,6 +4425,15 @@ class RGBConfigurator(BasicEditor):
                         self.handler_adv_key_lighting]
 
 
+    def add_settings_tab(self, page):
+        """Add the 'Settings' sub-tab (Guide Lights / RGB Layer Mode /
+        Colorblind Mode, built by the MIDI settings editor, which owns and
+        saves them)."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(page)
+        self.tabs_widget.addTab(scroll, tr("RGBConfigurator", "Settings"))
+
     def _create_tab_with_title(self, container, title, description):
         """Helper method to create a tab with title, description, and scroll area - centered"""
         content_layout = QVBoxLayout()

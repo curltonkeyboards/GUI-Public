@@ -2,7 +2,8 @@
 import sys
 import sip
 
-from PyQt5.QtWidgets import QPushButton, QHBoxLayout, QWidget, QLabel, QTabWidget, QProgressBar
+from PyQt5.QtWidgets import QPushButton, QHBoxLayout, QWidget, QLabel, QTabWidget, QProgressBar, \
+    QDialog, QVBoxLayout
 
 from editor.basic_editor import BasicEditor
 from macro.macro_action import ActionText, ActionTap, ActionDown, ActionUp
@@ -70,6 +71,7 @@ class MacroRecorder(BasicEditor):
         buttons.addWidget(self.lbl_memory)
         buttons.addWidget(self.bar_memory)
         buttons.addStretch()
+        self._buttons_layout = buttons
 
         self.addLayout(buttons)
 
@@ -81,6 +83,29 @@ class MacroRecorder(BasicEditor):
 
     def valid(self):
         return isinstance(self.device, VialKeyboard)
+
+    def add_settings_widget(self, widget):
+        """Show the Macro Settings (key press duration, gap between macro keys,
+        ...) from a "Macro Settings..." button. The widget is built and
+        rebuilt by the MIDI settings editor."""
+        self._settings_dialog = QDialog()
+        self._settings_dialog.setWindowTitle(tr("MacroRecorder", "Macro Settings"))
+        lay = QVBoxLayout()
+        lay.addWidget(widget)
+        close = QPushButton(tr("MacroRecorder", "Close"))
+        close.clicked.connect(self._settings_dialog.accept)
+        row = QHBoxLayout()
+        row.addStretch()
+        row.addWidget(close)
+        lay.addLayout(row)
+        self._settings_dialog.setLayout(lay)
+        btn = QPushButton(tr("MacroRecorder", "Macro Settings..."))
+        btn.clicked.connect(self._show_settings_dialog)
+        self._buttons_layout.addWidget(btn)
+
+    def _show_settings_dialog(self):
+        self._settings_dialog.show()
+        self._settings_dialog.raise_()
 
     def rebuild(self, device):
         super().rebuild(device)

@@ -167,6 +167,14 @@ class MainWindow(QMainWindow):
         # Updated editors list with new tabs inserted between Lighting and Tap Dance
         # Gaming Settings is a sub-tab of Settings, not a tab of its own
         self.MIDIswitchSettingsConfigurator.add_sub_editor(self.gaming_configurator, "Gaming Settings")
+        # LED and articulation settings are shown on the Lighting and
+        # Articulation tabs; the MIDI settings editor still owns and saves them.
+        self.rgb_configurator.add_settings_tab(
+            self.MIDIswitchSettingsConfigurator.build_lighting_settings_page())
+        self.velocity_tab.add_settings_tab(
+            self.MIDIswitchSettingsConfigurator.build_articulation_settings_page())
+        self.macro_recorder.add_settings_widget(
+            self.MIDIswitchSettingsConfigurator.macro_settings_group)
 
         self.editors = [(self.keymap_editor, "Keymap"), (self.trigger_settings, "Advanced"),
                         (self.velocity_tab, "Articulation"), (self.rgb_configurator, "Lighting"),

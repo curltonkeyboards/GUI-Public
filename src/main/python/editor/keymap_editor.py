@@ -2679,6 +2679,33 @@ class KeymapEditor(BasicEditor):
         self._rescan_timer.setInterval(1000)
         self._rescan_timer.timeout.connect(self._do_ram_rescan)
 
+        # Follow keymap edits made on the keyboard itself (the Key Mapper
+        # menu): poll the keyboard's change count while this page is shown.
+        self._device_km_timer = QTimer()
+        self._device_km_timer.setInterval(1000)
+        self._device_km_timer.timeout.connect(self._poll_device_keymap)
+        self._device_km_timer.start()
+
+    def _poll_device_keymap(self):
+        kb = getattr(self, "keyboard", None)
+        if not self.valid() or kb is None or not hasattr(kb, "poll_device_keymap_changes"):
+            return
+        if not self.container.isVisible():
+            return
+        try:
+            from util import is_hid_transfer_active
+            if is_hid_transfer_active():
+                return
+        except ImportError:
+            pass
+        try:
+            changed = kb.poll_device_keymap_changes()
+        except Exception:
+            return
+        if changed:
+            self.refresh_layer_display()
+            self.encoder_assign.set_layer(self.current_layer, kb)
+
     def _do_ram_rescan(self):
         """Send keymap from GUI RAM to firmware and trigger fast rescan."""
         if self.keyboard and hasattr(self.keyboard, 'send_keymap_for_ram_rescan'):

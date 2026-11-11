@@ -853,14 +853,19 @@ class ThruLoopConfigurator(BasicEditor):
         self.alternate_restart = QCheckBox(tr("ThruLoopConfigurator", "Alternate Restart Mode"))
         basic_layout.addWidget(self.alternate_restart, 2, 1)
 
+        # The global "Sync Macros" switch is gone: each macro waits for the
+        # loop trigger only if its own "wait for loop trigger" option (Macros
+        # tab) is on. The hidden, always-off checkbox keeps Save sending 0,
+        # which turns the old global switch off on the keyboard.
         self.macro_sync_to_loop = QCheckBox(tr("ThruLoopConfigurator", "Sync Macros"))
-        self.macro_sync_to_loop.setToolTip("Global master override: when ON every macro defers until the next loop trigger, regardless of its per-macro sync bit (which is set per macro in the Macros tab)")
-        self.macro_sync_to_loop.stateChanged.connect(self.on_macro_sync_changed)
-        basic_layout.addWidget(self.macro_sync_to_loop, 3, 0, 1, 2)
+        self.macro_sync_to_loop.setChecked(False)
+        self.macro_sync_to_loop.setVisible(False)
 
         # Note snap grid: notes of new loop takes / overdubs move to the
         # nearest grid line. Global for all loops; applies + saves instantly.
-        basic_layout.addWidget(QLabel(tr("ThruLoopConfigurator", "Note Snap Grid")), 4, 0)
+        self.loop_snap_label = QLabel(tr("ThruLoopConfigurator", "Note Snap Grid"))
+        basic_layout.addWidget(self.loop_snap_label, 4, 0)
+        self._basic_layout = basic_layout   # the MIDI settings editor moves the snap grid out
         self.loop_snap = ArrowComboBox()
         self.loop_snap.setMinimumWidth(150)
         self.loop_snap.setMaximumHeight(30)
@@ -1305,17 +1310,7 @@ class ThruLoopConfigurator(BasicEditor):
                 if i < len(nav_ccs):
                     self.set_cc_value(combo, nav_ccs[i])
 
-        # Restore the "Sync Macros" checkbox from the device (read via the
-        # 0x95 macro-modes GET on connect; None on old firmware). Signals must
-        # be blocked — the change handler pushes param 51 and this is a load,
-        # not a user edit. Without this the checkbox showed its default and a
-        # subsequent Save wrote that default back to the device.
-        if self.device and isinstance(self.device, VialKeyboard):
-            dev_sync = getattr(self.device.keyboard, 'macro_sync_to_loop_device', None)
-            if dev_sync is not None:
-                self.macro_sync_to_loop.blockSignals(True)
-                self.macro_sync_to_loop.setChecked(bool(dev_sync))
-                self.macro_sync_to_loop.blockSignals(False)
+        # (The global "Sync Macros" switch is no longer shown or restored.)
 
         # Update UI state
         self.on_separate_loopchop_changed()
@@ -1792,6 +1787,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.base_smartchord_ignore.lineEdit().setReadOnly(True)
         self.base_smartchord_ignore.lineEdit().setAlignment(Qt.AlignCenter)
         base_layout.addWidget(self.base_smartchord_ignore, row, 1)
+        # True Sustain is added to this group further down (once it exists).
+        self._base_layout = base_layout
+        self._base_true_sustain_row = row + 1
 
         # KeySplit Settings container
         self.keysplit_offshoot = QGroupBox()
@@ -2257,7 +2255,11 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         loop_row_layout.addWidget(loop_title_widget)
         loop_row_layout.addWidget(loop_group)
         loop_row_layout.addStretch()
-        main_layout.addWidget(loop_row_container)
+        # The Loop group is shown on the Loop Settings sub-tab, not here
+        # (setup_loop_settings_tab). Widgets and save/load are unchanged.
+        loop_row_layout.removeWidget(loop_group)
+        self._loop_group = loop_group
+        self._loop_layout = loop_layout
 
         # Sync Mode with help
         sync_mode_label = QWidget()
@@ -2479,7 +2481,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         # the AT/CC enable block after the Advanced grid is built. Their wiring
         # is unchanged.)
 
-        main_layout.addWidget(stopmode_row_container)
+        # Shown on the Loop Settings sub-tab (setup_loop_settings_tab).
+        stopmode_row_layout.removeWidget(stopmode_group)
+        self._stopmode_group = stopmode_group
 
         # Advanced Settings Group with title on left, container centered
         advanced_row_container = QWidget()
@@ -2521,7 +2525,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ))
         vel_interval_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Velocity Interval:")))
         vel_interval_label.setLayout(vel_interval_label_layout)
-        advanced_layout.addWidget(vel_interval_label, 0, 1)
+        self._art_vel_interval_label = vel_interval_label   # placed on Articulation > Settings
         self.velocity_sensitivity = ArrowComboBox()
         self.velocity_sensitivity.setMinimumWidth(120)
         self.velocity_sensitivity.setMinimumHeight(25)
@@ -2531,7 +2535,6 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.velocity_sensitivity.lineEdit().setAlignment(Qt.AlignCenter)
         for i in range(1, 11):
             self.velocity_sensitivity.addItem(str(i), i)
-        advanced_layout.addWidget(self.velocity_sensitivity, 0, 2)
 
         # CC Interval with help
         cc_interval_label = QWidget()
@@ -2545,7 +2548,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ))
         cc_interval_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "CC Interval:")))
         cc_interval_label.setLayout(cc_interval_label_layout)
-        advanced_layout.addWidget(cc_interval_label, 0, 3)
+        self._route_cc_interval_label = cc_interval_label   # placed in MIDI Routing
         self.cc_sensitivity = ArrowComboBox()
         self.cc_sensitivity.setMinimumWidth(120)
         self.cc_sensitivity.setMinimumHeight(25)
@@ -2555,7 +2558,6 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.cc_sensitivity.lineEdit().setAlignment(Qt.AlignCenter)
         for i in range(1, 17):
             self.cc_sensitivity.addItem(str(i), i)
-        advanced_layout.addWidget(self.cc_sensitivity, 0, 4)
 
         # Dynamic Range with help
         dynamic_range_label = QWidget()
@@ -2570,7 +2572,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ))
         dynamic_range_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Dynamic Range:")))
         dynamic_range_label.setLayout(dynamic_range_label_layout)
-        advanced_layout.addWidget(dynamic_range_label, 1, 1)
+        self._art_dynamic_range_label = dynamic_range_label   # placed on Articulation > Settings
         self.random_velocity_modifier = ArrowComboBox()
         self.random_velocity_modifier.setMinimumWidth(120)
         self.random_velocity_modifier.setMinimumHeight(25)
@@ -2580,7 +2582,6 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.random_velocity_modifier.lineEdit().setAlignment(Qt.AlignCenter)
         for i in range(128):
             self.random_velocity_modifier.addItem(str(i), i)
-        advanced_layout.addWidget(self.random_velocity_modifier, 1, 2)
 
         # Virtual Instrument with help (formerly "OLED Keyboard") — selects the
         # LCD display mode: piano keyboards or guitar-tab views.
@@ -2593,9 +2594,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "Keyboard 1/2/3: piano keyboard at different octaves\n"
             "Guitar Low/Med/High: guitar tablature views"
         ))
-        oled_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Virtual Instrument:")))
+        oled_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Style:")))
         oled_label.setLayout(oled_label_layout)
-        advanced_layout.addWidget(oled_label, 1, 3)
+        self._adv_style_label = oled_label   # placed on Advanced Settings > Screen Settings
         self.oled_keyboard = ArrowComboBox()
         self.oled_keyboard.setMinimumWidth(120)
         self.oled_keyboard.setMinimumHeight(25)
@@ -2609,7 +2610,6 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.oled_keyboard.addItem("Guitar Low", 2)
         self.oled_keyboard.addItem("Guitar Med", 3)
         self.oled_keyboard.addItem("Guitar High", 4)
-        advanced_layout.addWidget(self.oled_keyboard, 1, 4)
 
         # LCD Theme with help — global LCD colour theme. Lives in its own
         # EEPROM region on the keyboard and is synced over a dedicated HID
@@ -2712,7 +2712,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ))
         colorblind_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Colorblind Mode:")))
         colorblind_label.setLayout(colorblind_label_layout)
-        advanced_layout.addWidget(colorblind_label, 2, 1)
+        self._light_colorblind_label = colorblind_label   # placed on Lighting > Settings
         self.colorblind_mode = ArrowComboBox()
         self.colorblind_mode.setMinimumWidth(120)
         self.colorblind_mode.setMinimumHeight(25)
@@ -2722,7 +2722,6 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.colorblind_mode.lineEdit().setAlignment(Qt.AlignCenter)
         self.colorblind_mode.addItem("Off", 0)
         self.colorblind_mode.addItem("On", 1)
-        advanced_layout.addWidget(self.colorblind_mode, 2, 2)
 
         # RGB Layer Mode with help
         rgb_layer_label = QWidget()
@@ -2734,7 +2733,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "Off: Use global RGB settings\n"
             "On: Each layer can have unique RGB animations"
         ))
-        rgb_layer_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "RGB Layer Mode:")))
+        rgb_layer_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Layer RGB:")))
         rgb_layer_label.setLayout(rgb_layer_label_layout)
         self._adv_rgb_layer_label = rgb_layer_label   # placed on the Advanced Settings tab
         self.custom_layer_animations = ArrowComboBox()
@@ -2759,7 +2758,8 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ))
         true_sustain_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "True Sustain:")))
         true_sustain_label.setLayout(true_sustain_label_layout)
-        advanced_layout.addWidget(true_sustain_label, 2, 3)
+        true_sustain_label_layout.addStretch()
+        self._base_layout.addWidget(true_sustain_label, self._base_true_sustain_row, 0)
         self.true_sustain = ArrowComboBox()
         self.true_sustain.setMinimumWidth(120)
         self.true_sustain.setMinimumHeight(25)
@@ -2769,7 +2769,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.true_sustain.lineEdit().setAlignment(Qt.AlignCenter)
         self.true_sustain.addItem("Off", False)
         self.true_sustain.addItem("On", True)
-        advanced_layout.addWidget(self.true_sustain, 2, 4)
+        self.true_sustain.setMinimumWidth(80)
+        self.true_sustain.setMaximumWidth(120)
+        self._base_layout.addWidget(self.true_sustain, self._base_true_sustain_row, 1)
 
         # Chord Display with help — global setting controlling how the chord
         # progression OLED menu labels each progression.
@@ -2785,7 +2787,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ))
         chord_display_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Chord Display:")))
         chord_display_label.setLayout(chord_display_label_layout)
-        advanced_layout.addWidget(chord_display_label, 3, 1)
+        advanced_layout.addWidget(chord_display_label, 0, 1)
         self.chord_display_mode = ArrowComboBox()
         self.chord_display_mode.setMinimumWidth(120)
         self.chord_display_mode.setMinimumHeight(25)
@@ -2797,7 +2799,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.chord_display_mode.addItem("Numerals", 1)
         self.chord_display_mode.addItem("Name", 2)
         self.chord_display_mode.setCurrentIndex(2)  # Default: Name (legacy behavior)
-        advanced_layout.addWidget(self.chord_display_mode, 3, 2)
+        advanced_layout.addWidget(self.chord_display_mode, 0, 2)
 
         # SmartChord Mode widget removed — only tap-toggle remains on the
         # firmware side.  A hidden ArrowComboBox pinned to "Toggle" stays
@@ -2817,7 +2819,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "Go to the Layer Actuation section to configure\n"
             "aftertouch mode and CC number for each layer."
         )
-        advanced_layout.addWidget(aftertouch_note, 5, 1, 1, 2)  # Moved to row 5
+        advanced_layout.addWidget(aftertouch_note, 1, 1, 1, 2)
 
         # AT/CC Mode enable flags — two global On/Off toggles that gate the
         # second factory velocity-preset band (curve indices 73-98). Placed in
@@ -2832,9 +2834,10 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "CC Modes: the same five as CC-flavored variants.\n"
             "While a group is Off, its presets stay locked in the Velocity tab."
         )
+        self._art_atcc_labels = []   # placed on Articulation > Settings
         for _atcc_name, _atcc_attr, _atcc_col in (
-            ("Enable Aftertouch Modes", "enable_at_modes", 1),
-            ("Enable CC Modes",         "enable_cc_modes", 3),
+            ("Aftertouch Modes", "enable_at_modes", 1),
+            ("CC Modes",         "enable_cc_modes", 3),
         ):
             _atcc_label = QWidget()
             _atcc_label_layout = QHBoxLayout()
@@ -2843,7 +2846,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             _atcc_label_layout.addWidget(self.create_help_label(_atcc_help))
             _atcc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", _atcc_name + ":")))
             _atcc_label.setLayout(_atcc_label_layout)
-            advanced_layout.addWidget(_atcc_label, 6, _atcc_col)
+            self._art_atcc_labels.append(_atcc_label)
             _atcc_combo = ArrowComboBox()
             _atcc_combo.setMinimumWidth(120)
             _atcc_combo.setMinimumHeight(25)
@@ -2853,7 +2856,6 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             _atcc_combo.lineEdit().setAlignment(Qt.AlignCenter)
             _atcc_combo.addItem("Off", False)
             _atcc_combo.addItem("On", True)
-            advanced_layout.addWidget(_atcc_combo, 6, _atcc_col + 1)
             setattr(self, _atcc_attr, _atcc_combo)
         # Toggling either enable live-updates which AT/CC band rows are shown in
         # the zone Articulation combos.
@@ -2875,9 +2877,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         _ca_label_layout.setSpacing(5)
         _ca_label_layout.addWidget(self.create_help_label(_ca_help))
         _ca_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator",
-                                             "Enable Channel Articulations:")))
+                                             "Channel Articulations:")))
         _ca_label.setLayout(_ca_label_layout)
-        advanced_layout.addWidget(_ca_label, 7, 1)
+        self._art_ca_label = _ca_label
         self.enable_channel_artic = ArrowComboBox()
         self.enable_channel_artic.setMinimumWidth(120)
         self.enable_channel_artic.setMinimumHeight(25)
@@ -2889,7 +2891,6 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.enable_channel_artic.addItem("On", True)
         self.enable_channel_artic.currentIndexChanged.connect(
             self._on_channel_artic_enable_changed)
-        advanced_layout.addWidget(self.enable_channel_artic, 7, 2)
 
         # Articulation CC: the CC# that AT/CC articulations set to "CC Default"
         # send on. Global (rides the same dedicated HID region); writes immediately.
@@ -2904,7 +2905,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         _artcc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator",
                                                 "Articulation CC:")))
         _artcc_label.setLayout(_artcc_label_layout)
-        advanced_layout.addWidget(_artcc_label, 7, 3)
+        self._art_artcc_label = _artcc_label
         self.articulation_cc_combo = ArrowComboBox()
         self.articulation_cc_combo.setMinimumWidth(120)
         self.articulation_cc_combo.setMinimumHeight(25)
@@ -2916,7 +2917,6 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             self.articulation_cc_combo.addItem("CC#{}".format(_cc), _cc)
         self.articulation_cc_combo.currentIndexChanged.connect(
             self._on_articulation_cc_changed)
-        advanced_layout.addWidget(self.articulation_cc_combo, 7, 4)
 
         # MIDI Routing Settings Group with title on left, container centered
         routing_row_container = QWidget()
@@ -2952,7 +2952,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ch_override_layout.setContentsMargins(0, 0, 0, 0)
         ch_override_layout.setSpacing(5)
         ch_override_layout.addWidget(self.create_help_label("Override channel for incoming MIDI"))
-        ch_override_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Channel Override:")))
+        ch_override_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Channel Prio:")))
         ch_override_label.setLayout(ch_override_layout)
         midi_routing_layout.addWidget(ch_override_label, 0, 1)
         self.channel_override = ArrowComboBox()
@@ -2975,7 +2975,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "Off: Use incoming velocity values\n"
             "On: Apply keyboard velocity settings to input"
         ))
-        vel_override_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Velocity Override:")))
+        vel_override_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Velocity Prio:")))
         vel_override_label.setLayout(vel_override_label_layout)
         midi_routing_layout.addWidget(vel_override_label, 0, 3)
         self.velocity_override = ArrowComboBox()
@@ -2998,7 +2998,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "Off: Use incoming note values\n"
             "On: Apply keyboard transpose settings to input"
         ))
-        trans_override_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Transpose Override:")))
+        trans_override_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Transpose Prio:")))
         trans_override_label.setLayout(trans_override_label_layout)
         midi_routing_layout.addWidget(trans_override_label, 0, 5)
         self.transpose_override = ArrowComboBox()
@@ -3091,6 +3091,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.midi_clock_source.addItem("USB", 1)
         self.midi_clock_source.addItem("MIDI IN", 2)
         midi_routing_layout.addWidget(self.midi_clock_source, 1, 6)
+        # CC Interval (moved here from Advanced Settings)
+        midi_routing_layout.addWidget(self._route_cc_interval_label, 2, 1)
+        midi_routing_layout.addWidget(self.cc_sensitivity, 2, 2)
 
         # Add MIDI Routing before Advanced Settings (swapped order)
         main_layout.addWidget(routing_row_container)
@@ -3252,12 +3255,133 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
     MULTICHANNEL_COUNT = 16
 
     def setup_loop_settings_tab(self):
-        """Loop Settings sub-tab: the ThruLoop CC configuration (moved here from
-        the Loop Manager tab)."""
+        """Loop Settings sub-tab: the loop behaviour settings (Sync Mode, Sample
+        Mode, Loop Recording, Live Note Priority — part of the MIDI settings
+        packet, moved here from the MIDI Settings page) above the ThruLoop CC
+        configuration (moved here from the Loop Manager tab)."""
         self.thruloop_tab = ThruLoopConfigurator()
         container = QWidget()
-        container.setLayout(self.thruloop_tab)
+        outer = QVBoxLayout()
+        outer.setContentsMargins(0, 0, 0, 0)
+        container.setLayout(outer)
+
+        self._loop_group.setTitle(tr("MIDIswitchSettingsConfigurator", "Loop Behaviour"))
+        # Note Snap Grid moves here from the ThruLoop Basic Settings (it is a
+        # loop setting); it still applies and saves instantly (HID 0x9C).
+        thru = self.thruloop_tab
+        thru._basic_layout.removeWidget(thru.loop_snap_label)
+        thru.loop_snap_label.hide()
+        thru._basic_layout.removeWidget(thru.loop_snap)
+        snap_label = QWidget()
+        snap_label_layout = QHBoxLayout()
+        snap_label_layout.setContentsMargins(0, 0, 0, 0)
+        snap_label_layout.setSpacing(5)
+        snap_label_layout.addWidget(self.create_help_label(thru._loop_snap_help))
+        snap_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Note Snap Grid:")))
+        snap_label.setLayout(snap_label_layout)
+        thru.loop_snap.setMinimumWidth(120)
+        thru.loop_snap.setMinimumHeight(25)
+        thru.loop_snap.setMaximumHeight(25)
+        self._loop_layout.addWidget(snap_label, 2, 1)
+        self._loop_layout.addWidget(thru.loop_snap, 2, 2)
+        loop_row = QHBoxLayout()
+        loop_row.addStretch()
+        loop_row.addWidget(self._loop_group)
+        loop_col = QVBoxLayout()
+        loop_col.addStretch()
+        loop_col.addWidget(self._make_save_default_button())
+        loop_col.addStretch()
+        loop_row.addLayout(loop_col)
+        loop_row.addStretch()
+        outer.addLayout(loop_row)
+
+        # Stop Mode (moved here from the MIDI Settings page). Saved with the
+        # MIDI settings, like Loop Behaviour above.
+        self._stopmode_group.setTitle(tr("MIDIswitchSettingsConfigurator", "Stop Mode"))
+        stop_row = QHBoxLayout()
+        stop_row.addStretch()
+        stop_row.addWidget(self._stopmode_group)
+        stop_row.addStretch()
+        outer.addLayout(stop_row)
+
+        thru = QWidget()
+        thru.setLayout(self.thruloop_tab)
+        outer.addWidget(thru, 1)
         self.tabs_widget.addTab(container, tr("MIDIswitchSettingsConfigurator", "Loop Settings"))
+
+    def _make_save_default_button(self):
+        """'Save as Default' (settings slot 0) for settings shown away from the
+        MIDI Settings page, which keeps its own Save buttons."""
+        btn = QPushButton(tr("MIDIswitchSettingsConfigurator", "Save as Default"))
+        btn.setMinimumHeight(30)
+        btn.setMaximumHeight(30)
+        btn.setMinimumWidth(120)
+        btn.setStyleSheet("QPushButton { border-radius: 5px; }")
+        btn.setToolTip(tr("MIDIswitchSettingsConfigurator",
+            "These settings are part of the MIDI settings: this saves all of them\n"
+            "to the keyboard's default slot (same as Save as Default on MIDI Settings)."))
+        btn.clicked.connect(lambda: self.on_save_slot(0))
+        return btn
+
+    def _settings_page(self, title, rows, note):
+        """A centred page of label/combo rows + note + Save as Default, for
+        settings that are shown on another tab (Lighting, Articulation) but
+        still belong to (and are saved with) the MIDI settings."""
+        page = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        page.setLayout(layout)
+        layout.addSpacing(10)
+        group = QGroupBox(title)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(25)
+        for r, (label, combo) in enumerate(rows):
+            grid.addWidget(label, r, 0)
+            grid.addWidget(combo, r, 1)
+        note_label = QLabel(note)
+        note_label.setStyleSheet("color: gray; font-size: 9pt;")
+        grid.addWidget(note_label, len(rows), 0, 1, 2)
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_row.addWidget(self._make_save_default_button())
+        grid.addLayout(btn_row, len(rows) + 1, 0, 1, 2)
+        group.setLayout(grid)
+        row = QHBoxLayout()
+        row.addStretch()
+        row.addWidget(group)
+        row.addStretch()
+        layout.addLayout(row)
+        layout.addStretch()
+        return page
+
+    def build_lighting_settings_page(self):
+        """Lighting > Settings: the LED behaviour settings (Guide Lights, RGB
+        Layer Mode, Colorblind Mode). Called once by the main window."""
+        return self._settings_page(
+            tr("MIDIswitchSettingsConfigurator", "Lighting Settings"),
+            [(self._adv_guide_lights_label, self.smart_chord_light_mode),
+             (self._adv_rgb_layer_label, self.custom_layer_animations),
+             (self._light_colorblind_label, self.colorblind_mode)],
+            tr("MIDIswitchSettingsConfigurator",
+               "Part of the MIDI settings: saved with them (Save as Default here,\n"
+               "or Save as Default / Save to Slot on Settings > MIDI Settings)."))
+
+    def build_articulation_settings_page(self):
+        """Articulation > Settings: Velocity Interval, Dynamic Range, the AT / CC
+        Mode enables, Channel Articulations and Articulation CC. Called once by
+        the main window."""
+        return self._settings_page(
+            tr("MIDIswitchSettingsConfigurator", "Articulation Settings"),
+            [(self._art_vel_interval_label, self.velocity_sensitivity),
+             (self._art_dynamic_range_label, self.random_velocity_modifier),
+             (self._art_atcc_labels[0], self.enable_at_modes),
+             (self._art_atcc_labels[1], self.enable_cc_modes),
+             (self._art_ca_label, self.enable_channel_artic),
+             (self._art_artcc_label, self.articulation_cc_combo)],
+            tr("MIDIswitchSettingsConfigurator",
+               "Velocity Interval, Dynamic Range and the Aftertouch / CC Modes are part of\n"
+               "the MIDI settings: saved with them (Save as Default here, or on Settings >\n"
+               "MIDI Settings). Channel Articulations and Articulation CC save instantly."))
 
     def setup_advanced_settings_tab(self):
         """Advanced Settings sub-tab: the Macro Settings (firmware timing values,
@@ -3274,55 +3398,45 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         main_layout.setSpacing(15)
         main_widget.setLayout(main_layout)
         scroll_area.setWidget(main_widget)
-        self.tabs_widget.addTab(scroll_area, tr("MIDIswitchSettingsConfigurator", "Advanced Settings"))
+        self.tabs_widget.addTab(scroll_area, tr("MIDIswitchSettingsConfigurator", "Screen Settings"))
 
         main_layout.addSpacing(10)
-        title_label = QLabel(tr("MIDIswitchSettingsConfigurator", "Advanced Settings"))
+        title_label = QLabel(tr("MIDIswitchSettingsConfigurator", "Screen Settings"))
         title_label.setStyleSheet("font-weight: bold; font-size: 14pt;")
         title_label.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(title_label)
         desc_label = QLabel(tr("MIDIswitchSettingsConfigurator",
-            "Macro timing, LCD theme and lighting behaviour."))
+            "Colour, style and smoothness of the keyboard's screen."))
         desc_label.setStyleSheet("color: gray; font-size: 9pt;")
         desc_label.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(desc_label)
 
-        # Macro Settings: the three firmware timing values (explicit Save / Undo / Reset)
+        # Macro Settings: the three firmware timing values (explicit Save / Undo /
+        # Reset). Shown from the Macros tab (main window wiring); this editor
+        # still rebuilds it.
         self.macro_settings_group = MacroSettingsGroup()
-        macro_row = QHBoxLayout()
-        macro_row.addStretch()
-        macro_row.addWidget(self.macro_settings_group)
-        macro_row.addStretch()
-        main_layout.addLayout(macro_row)
 
         # Display & Lighting: widgets created by the main page's Advanced grid,
         # placed here instead. They keep their attribute names so the settings
         # packet (get_current_settings / apply_settings) is unchanged.
-        display_group = QGroupBox(tr("MIDIswitchSettingsConfigurator", "Display & Lighting"))
+        display_group = QGroupBox(tr("MIDIswitchSettingsConfigurator", "Screen Settings"))
         display_layout = QGridLayout()
         display_layout.setHorizontalSpacing(25)
         display_layout.addWidget(self._adv_lcd_theme_label, 0, 0)
         display_layout.addWidget(self.lcd_theme, 0, 1)
+        display_layout.addWidget(self._adv_style_label, 1, 0)
+        display_layout.addWidget(self.oled_keyboard, 1, 1)
         display_layout.addWidget(self._adv_perf_label, 3, 0)
         display_layout.addWidget(self.perf_mode, 3, 1)
-        display_layout.addWidget(self._adv_guide_lights_label, 1, 0)
-        display_layout.addWidget(self.smart_chord_light_mode, 1, 1)
-        display_layout.addWidget(self._adv_rgb_layer_label, 2, 0)
-        display_layout.addWidget(self.custom_layer_animations, 2, 1)
+        # (Guide Lights and RGB Layer Mode moved to Lighting > Settings.)
         note = QLabel(tr("MIDIswitchSettingsConfigurator",
-            "LCD Theme and Smoothness apply and save instantly. Guide Lights and RGB Layer Mode are part of\n"
-            "the MIDI Settings and are saved with them (Save as Default / Save to Slot)."))
+            "LCD Theme and Smoothness apply and save instantly. Style is part of the\n"
+            "MIDI settings (Save as Default)."))
         note.setStyleSheet("color: gray; font-size: 9pt;")
         display_layout.addWidget(note, 4, 0, 1, 2)
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        btn_save_default = QPushButton(tr("MIDIswitchSettingsConfigurator", "Save as Default"))
-        btn_save_default.setMinimumHeight(30)
-        btn_save_default.setMaximumHeight(30)
-        btn_save_default.setMinimumWidth(120)
-        btn_save_default.setStyleSheet("QPushButton { border-radius: 5px; }")
-        btn_save_default.clicked.connect(lambda: self.on_save_slot(0))
-        btn_row.addWidget(btn_save_default)
+        btn_row.addWidget(self._make_save_default_button())
         display_layout.addLayout(btn_row, 5, 0, 1, 2)
         display_group.setLayout(display_layout)
         display_row = QHBoxLayout()
