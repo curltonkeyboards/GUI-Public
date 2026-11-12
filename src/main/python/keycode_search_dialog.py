@@ -24,7 +24,7 @@ class KeycodeSearchDialog(QDialog):
         self.search.keycode_changed.connect(self.on_pick)
 
         self.lbl_status = QLabel()
-        self.lbl_status.setStyleSheet("color: palette(mid);")
+        self.lbl_status.setStyleSheet("color: palette(dark);")
         self.lbl_status.hide()
 
         self.buttons = QDialogButtonBox(QDialogButtonBox.Cancel)

@@ -4,6 +4,8 @@ import sys
 
 from PyQt5.QtCore import QEvent, QSize, Qt, QMimeData
 from PyQt5.QtGui import QDrag
+
+from widgets.drag_ghost import run_drag, drag_start_distance
 from PyQt5.QtWidgets import QPushButton, QLabel, QHBoxLayout, QApplication
 
 # Drag payload of a keycode picked up from the palette (the code_id as UTF-8).
@@ -49,7 +51,7 @@ class SquareButton(QPushButton):
 
     def mouseMoveEvent(self, ev):
         if (self._palette_press_pos is not None and (ev.buttons() & Qt.LeftButton)
-                and (ev.pos() - self._palette_press_pos).manhattanLength() >= QApplication.startDragDistance()):
+                and (ev.pos() - self._palette_press_pos).manhattanLength() >= drag_start_distance()):
             code_id = self.palette_drag_code_id()
             # The web build cannot run QDrag's nested event loop.
             if code_id and sys.platform != "emscripten":
@@ -68,10 +70,7 @@ class SquareButton(QPushButton):
         mime = QMimeData()
         mime.setData(KEYCODE_PALETTE_MIME, str(code_id).encode("utf-8"))
         drag.setMimeData(mime)
-        drag.setPixmap(self.grab())
-        if press_pos is not None:
-            drag.setHotSpot(press_pos)
-        drag.exec_(Qt.CopyAction)
+        run_drag(drag, self, press_pos, Qt.CopyAction)     # the button's picture is carried under the mouse
         # The release went to the drop target, so undo the pressed look and
         # collapse whatever drop preview an editor opened for this drag.
         self.setDown(False)

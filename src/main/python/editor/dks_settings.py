@@ -996,7 +996,7 @@ class DKSVisualWidget(QWidget):
         desc_label = QLabel("Configure multi-action keys with customizable actuation points.\n"
                            "Set different actions for press and release at specific depths.")
         desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
+        desc_label.setStyleSheet("color: palette(dark); font-size: 9pt;")
         press_layout.addWidget(desc_label)
 
         # Add some spacing before press section
@@ -1033,7 +1033,8 @@ class DKSVisualWidget(QWidget):
         # Middle: Visualization container (matching trigger settings exactly)
         viz_container = QFrame()
         viz_container.setFrameShape(QFrame.StyledPanel)
-        viz_container.setStyleSheet("QFrame { background-color: palette(base); }")
+        viz_container.setObjectName("filled_panel")     # the fill is for this frame only, not the labels inside it
+        viz_container.setStyleSheet("QFrame#filled_panel { background-color: palette(base); }")
         viz_container.setMaximumHeight(325)
         viz_container.setMaximumWidth(580)
         viz_layout = QVBoxLayout()

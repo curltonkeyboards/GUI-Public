@@ -253,13 +253,13 @@ class ToggleEntryUI(QWidget):
         header_layout.addWidget(self.btn_rename)
 
         self.keycode_label = QLabel(f"Keycode: 0x{slot_to_toggle_keycode(self.slot_num):04X}")
-        self.keycode_label.setStyleSheet("font-family: monospace; color: gray;")
+        self.keycode_label.setStyleSheet("font-family: monospace; color: palette(dark);")
         header_layout.addWidget(self.keycode_label)
 
         header_layout.addStretch()
 
         self.status_label = QLabel("(Not configured)")
-        self.status_label.setStyleSheet("color: gray;")
+        self.status_label.setStyleSheet("color: palette(dark);")
         header_layout.addWidget(self.status_label)
 
         layout.addLayout(header_layout)
@@ -273,7 +273,7 @@ class ToggleEntryUI(QWidget):
             "Assign this TGL keycode to a key on your keymap.")
         desc.setTextFormat(Qt.RichText)
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: gray; font-size: 9pt;")
+        desc.setStyleSheet("color: palette(dark); font-size: 9pt;")
         layout.addWidget(desc)
 
         # Multi-key toggle checkbox
@@ -380,7 +380,7 @@ class ToggleEntryUI(QWidget):
         multi_btn_layout.addWidget(self.remove_key_btn)
 
         self.multi_key_count_label = QLabel("2 / 8 keys")
-        self.multi_key_count_label.setStyleSheet("color: gray; font-size: 8pt;")
+        self.multi_key_count_label.setStyleSheet("color: palette(dark); font-size: 8pt;")
         multi_btn_layout.addWidget(self.multi_key_count_label)
 
         multi_btn_layout.addStretch()
@@ -742,7 +742,7 @@ class ToggleEntryUI(QWidget):
             self.status_label.setStyleSheet("color: green;")
         else:
             self.status_label.setText("(Not configured)")
-            self.status_label.setStyleSheet("color: gray;")
+            self.status_label.setStyleSheet("color: palette(dark);")
 
     def _on_clear(self):
         """Clear this slot"""

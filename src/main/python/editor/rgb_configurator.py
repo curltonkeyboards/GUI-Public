@@ -1957,7 +1957,7 @@ class PerKeyRGBHandler(BasicHandler):
             "Configure individual LED colors for each key. Select a preset, choose a color from the palette,\n"
             "then click keys on the keyboard to paint them. Double-click palette colors to edit them."))
         self.lbl_description.setWordWrap(True)
-        self.lbl_description.setStyleSheet("color: gray; font-size: 9pt;")
+        self.lbl_description.setStyleSheet("color: palette(dark); font-size: 9pt;")
         container.addWidget(self.lbl_description, row, 0, 1, 2)
         row += 1
 
@@ -2632,7 +2632,7 @@ class CustomLightsHandler(BasicHandler):
         help_btn = QPushButton("?")
         help_btn.setStyleSheet("""
             QPushButton {
-                color: #888;
+                color: palette(dark);
                 font-weight: bold;
                 font-size: 9pt;
                 border: 1px solid #888;
@@ -4016,7 +4016,7 @@ class AdvancedKeyLightingHandler(QObject):
         desc = QLabel("Configure colors, brightness, and blink patterns for functional key indicators.\n"
                        "These settings control LED colors for arpeggiator, sequencer, loop pedal, macros, toggles, and more.")
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: gray; font-size: 9pt;")
+        desc.setStyleSheet("color: palette(dark); font-size: 9pt;")
         desc.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(desc, 1, 0, 1, 2)
 
@@ -4084,7 +4084,7 @@ class AdvancedKeyLightingHandler(QObject):
             if group_desc:
                 desc_label = QLabel(group_desc)
                 desc_label.setWordWrap(True)
-                desc_label.setStyleSheet("color: #888; font-size: 8pt; font-style: italic; padding: 4px;")
+                desc_label.setStyleSheet("color: palette(dark); font-size: 8pt; font-style: italic; padding: 4px;")
                 grid.addWidget(desc_label, current_row, 0, 1, 5)
                 current_row += 1
 
@@ -4439,7 +4439,7 @@ class RGBConfigurator(BasicEditor):
         # Description
         desc_label = QLabel(description)
         desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
+        desc_label.setStyleSheet("color: palette(dark); font-size: 9pt;")
         desc_label.setAlignment(QtCore.Qt.AlignCenter)
         content_layout.addWidget(desc_label)
 
@@ -4447,7 +4447,7 @@ class RGBConfigurator(BasicEditor):
         layer_info = QLabel("Select a layer button to apply lighting effects only to that layer\n"
                            "when Per-Layer RGB is enabled.")
         layer_info.setWordWrap(True)
-        layer_info.setStyleSheet("color: gray; font-size: 9pt; font-style: italic;")
+        layer_info.setStyleSheet("color: palette(dark); font-size: 9pt; font-style: italic;")
         layer_info.setAlignment(QtCore.Qt.AlignCenter)
         content_layout.addWidget(layer_info)
 
@@ -4487,7 +4487,7 @@ class RGBConfigurator(BasicEditor):
         desc_label = QLabel("Create and edit custom RGB animations. Basic controls on the left,\n"
                            "custom animation slots on the right.")
         desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
+        desc_label.setStyleSheet("color: palette(dark); font-size: 9pt;")
         desc_label.setAlignment(QtCore.Qt.AlignCenter)
         content_layout.addWidget(desc_label)
 

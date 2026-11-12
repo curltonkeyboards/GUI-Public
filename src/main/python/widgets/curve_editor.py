@@ -346,33 +346,20 @@ class CurveCanvas(QWidget):
         return validated
 
     def _update_theme_colors(self):
-        """Pick graph colors from the app palette so the graph is light in
-        light mode and dark in dark mode (same brightness check used by the
-        other themed widgets)."""
-        window_color = QApplication.palette().color(QPalette.Window)
-        brightness = (window_color.red() * 0.299 +
-                      window_color.green() * 0.587 +
-                      window_color.blue() * 0.114)
-        if brightness < 127:  # Dark mode
-            self._c_bg = QColor(30, 30, 30)
-            self._c_grid = QColor(50, 50, 50)
-            self._c_label = QColor(150, 150, 150)
-            self._c_title = QColor(180, 180, 180)
-            self._c_curve = QColor(255, 165, 0)
-            self._c_point = QColor(255, 165, 0)
-            self._c_point_constrained = QColor(200, 100, 50)
-            self._c_point_hover = QColor(255, 200, 0)
-            self._c_point_border = QColor(255, 255, 255)
-        else:  # Light mode
-            self._c_bg = QColor(250, 250, 250)
-            self._c_grid = QColor(210, 210, 210)
-            self._c_label = QColor(90, 90, 90)
-            self._c_title = QColor(70, 70, 70)
-            self._c_curve = QColor(235, 140, 0)
-            self._c_point = QColor(235, 140, 0)
-            self._c_point_constrained = QColor(200, 100, 50)
-            self._c_point_hover = QColor(255, 170, 0)
-            self._c_point_border = QColor(80, 80, 80)
+        """Take the graph's colours from the current theme: the graph sits in a
+        groove, the curve is drawn in the accent colour (Retro themes) or the
+        text colour (Futuristic themes, which have no colour accent)."""
+        from themes import Theme
+        self._c_bg = Theme.color("card" if Theme.is_pop() else "track")
+        self._c_grid = Theme.color("soft_line")
+        self._c_label = Theme.color("dim")
+        self._c_title = Theme.color("text")
+        line = Theme.color("accent" if Theme.is_pop() else "text")
+        self._c_curve = line
+        self._c_point = line
+        self._c_point_constrained = Theme.color("dim")
+        self._c_point_hover = Theme.color("accent_hover" if Theme.is_pop() else "dim")
+        self._c_point_border = Theme.color("outline" if Theme.is_pop() else "card")
 
     def paintEvent(self, event):
         painter = QPainter(self)

@@ -948,7 +948,8 @@ class TriggerSettingsTab(BasicEditor):
         """Create the trigger travel configuration container"""
         container = QFrame()
         container.setFrameShape(QFrame.StyledPanel)
-        container.setStyleSheet("QFrame { background-color: palette(base); }")
+        container.setObjectName("filled_panel")     # the fill is for this frame only, not the labels inside it
+        container.setStyleSheet("QFrame#filled_panel { background-color: palette(base); }")
         layout = QVBoxLayout()
         layout.setSpacing(8)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -1056,7 +1057,7 @@ class TriggerSettingsTab(BasicEditor):
         # Deadzone bottom
         dz_bottom_container = QVBoxLayout()
         dz_bottom_title = QLabel("DZ Min")
-        dz_bottom_title.setStyleSheet("QLabel { color: gray; font-size: 7pt; }")
+        dz_bottom_title.setStyleSheet("QLabel { color: palette(dark); font-size: 7pt; }")
         self.deadzone_bottom_value_label = QLabel(self.deadzone_to_mm(6))
         self.deadzone_bottom_value_label.setStyleSheet("QLabel { font-weight: bold; font-size: 9pt; }")
         dz_bottom_container.addWidget(dz_bottom_title, 0, Qt.AlignCenter)
@@ -1068,7 +1069,7 @@ class TriggerSettingsTab(BasicEditor):
         # Actuation
         actuation_container = QVBoxLayout()
         actuation_title = QLabel("Actuation")
-        actuation_title.setStyleSheet("QLabel { color: gray; font-size: 7pt; }")
+        actuation_title.setStyleSheet("QLabel { color: palette(dark); font-size: 7pt; }")
         self.actuation_value_label = QLabel(self.value_to_mm(127))
         self.actuation_value_label.setStyleSheet("QLabel { font-weight: bold; font-size: 10pt; color: palette(highlight); }")
         actuation_container.addWidget(actuation_title, 0, Qt.AlignCenter)
@@ -1080,7 +1081,7 @@ class TriggerSettingsTab(BasicEditor):
         # Deadzone top
         dz_top_container = QVBoxLayout()
         dz_top_title = QLabel("DZ Max")
-        dz_top_title.setStyleSheet("QLabel { color: gray; font-size: 7pt; }")
+        dz_top_title.setStyleSheet("QLabel { color: palette(dark); font-size: 7pt; }")
         self.deadzone_top_value_label = QLabel(self.deadzone_to_mm(6))
         self.deadzone_top_value_label.setStyleSheet("QLabel { font-weight: bold; font-size: 9pt; }")
         dz_top_container.addWidget(dz_top_title, 0, Qt.AlignCenter)
@@ -1112,7 +1113,8 @@ class TriggerSettingsTab(BasicEditor):
         """Create the rapidfire configuration container"""
         container = QFrame()
         container.setFrameShape(QFrame.StyledPanel)
-        container.setStyleSheet("QFrame { background-color: palette(base); }")
+        container.setObjectName("filled_panel")     # the fill is for this frame only, not the labels inside it
+        container.setStyleSheet("QFrame#filled_panel { background-color: palette(base); }")
         layout = QVBoxLayout()
         layout.setSpacing(8)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -1144,7 +1146,7 @@ class TriggerSettingsTab(BasicEditor):
             "They use velocity-based retrigger instead."))
         self.rf_midi_note_label.setWordWrap(True)
         self.rf_midi_note_label.setAlignment(Qt.AlignCenter)
-        self.rf_midi_note_label.setStyleSheet("QLabel { color: palette(mid); font-style: italic; }")
+        self.rf_midi_note_label.setStyleSheet("QLabel { color: palette(dark); font-style: italic; }")
         self.rf_midi_note_label.setVisible(False)
         layout.addWidget(self.rf_midi_note_label)
 
@@ -1165,7 +1167,7 @@ class TriggerSettingsTab(BasicEditor):
         # Press sensitivity
         press_container = QVBoxLayout()
         press_title = QLabel("Press")
-        press_title.setStyleSheet("QLabel { color: gray; font-size: 7pt; }")
+        press_title.setStyleSheet("QLabel { color: palette(dark); font-size: 7pt; }")
         self.rf_press_value_label = QLabel(self.value_to_mm(6))
         self.rf_press_value_label.setStyleSheet("QLabel { font-weight: bold; font-size: 9pt; color: palette(highlight); }")
         press_container.addWidget(press_title, 0, Qt.AlignCenter)
@@ -1177,7 +1179,7 @@ class TriggerSettingsTab(BasicEditor):
         # Release sensitivity
         release_container = QVBoxLayout()
         release_title = QLabel("Release")
-        release_title.setStyleSheet("QLabel { color: gray; font-size: 7pt; }")
+        release_title.setStyleSheet("QLabel { color: palette(dark); font-size: 7pt; }")
         self.rf_release_value_label = QLabel(self.value_to_mm(6))
         self.rf_release_value_label.setStyleSheet("QLabel { font-weight: bold; font-size: 9pt; color: palette(link); }")
         release_container.addWidget(release_title, 0, Qt.AlignCenter)
@@ -1217,7 +1219,8 @@ class TriggerSettingsTab(BasicEditor):
         """Create the null bind (SOCD) configuration container"""
         container = QFrame()
         container.setFrameShape(QFrame.StyledPanel)
-        container.setStyleSheet("QFrame { background-color: palette(base); }")
+        container.setObjectName("filled_panel")     # the fill is for this frame only, not the labels inside it
+        container.setStyleSheet("QFrame#filled_panel { background-color: palette(base); }")
         layout = QVBoxLayout()
         layout.setSpacing(8)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -1234,7 +1237,8 @@ class TriggerSettingsTab(BasicEditor):
         # --- Selected Keys box (live from the keyboard selection above) ---
         sel_frame = QFrame()
         sel_frame.setFrameShape(QFrame.StyledPanel)
-        sel_frame.setStyleSheet("QFrame { background-color: palette(alternate-base); }")
+        sel_frame.setObjectName("filled_panel")     # the fill is for this frame only, not the labels inside it
+        sel_frame.setStyleSheet("QFrame#filled_panel { background-color: palette(alternate-base); }")
         sel_layout = QVBoxLayout()
         sel_layout.setSpacing(6)
         sel_layout.setContentsMargins(8, 8, 8, 8)
@@ -1246,7 +1250,7 @@ class TriggerSettingsTab(BasicEditor):
         sel_header.addStretch()
 
         self.nullbind_selected_count_label = QLabel(tr("TriggerSettings", "0 keys"))
-        self.nullbind_selected_count_label.setStyleSheet("QLabel { color: gray; }")
+        self.nullbind_selected_count_label.setStyleSheet("QLabel { color: palette(dark); }")
         sel_header.addWidget(self.nullbind_selected_count_label)
         sel_layout.addLayout(sel_header)
 
@@ -1313,7 +1317,8 @@ class TriggerSettingsTab(BasicEditor):
         # --- Group Viewer box (browse/edit configured groups) ---
         gv_frame = QFrame()
         gv_frame.setFrameShape(QFrame.StyledPanel)
-        gv_frame.setStyleSheet("QFrame { background-color: palette(alternate-base); }")
+        gv_frame.setObjectName("filled_panel")     # the fill is for this frame only, not the labels inside it
+        gv_frame.setStyleSheet("QFrame#filled_panel { background-color: palette(alternate-base); }")
         gv_layout = QVBoxLayout()
         gv_layout.setSpacing(6)
         gv_layout.setContentsMargins(8, 8, 8, 8)
@@ -1385,7 +1390,8 @@ class TriggerSettingsTab(BasicEditor):
         # Tabbed settings container
         tabs_container = QFrame()
         tabs_container.setFrameShape(QFrame.StyledPanel)
-        tabs_container.setStyleSheet("QFrame { background-color: palette(alternate-base); }")
+        tabs_container.setObjectName("filled_panel")     # the fill is for this frame only, not the labels inside it
+        tabs_container.setStyleSheet("QFrame#filled_panel { background-color: palette(alternate-base); }")
         tabs_layout = QVBoxLayout()
         tabs_layout.setSpacing(6)
         tabs_layout.setContentsMargins(10, 10, 10, 10)
@@ -1404,7 +1410,8 @@ class TriggerSettingsTab(BasicEditor):
         actuation_desc_container = QWidget()
         actuation_desc_container.setFixedWidth(228)
         actuation_desc_layout = QVBoxLayout()
-        actuation_desc_layout.setContentsMargins(0, 0, 0, 0)
+        actuation_desc_layout.setContentsMargins(4, 2, 6, 0)
+        actuation_desc_layout.setSpacing(4)
         actuation_desc_title = QLabel(tr("TriggerSettings", "Actuation"))
         actuation_desc_title.setStyleSheet("font-weight: bold; font-size: 11pt;")
         actuation_desc_layout.addWidget(actuation_desc_title)
@@ -1412,27 +1419,27 @@ class TriggerSettingsTab(BasicEditor):
             "Set the key travel distance at which a keypress is registered. "
             "Adjust deadzones to prevent accidental presses."))
         actuation_desc_text.setWordWrap(True)
-        actuation_desc_text.setStyleSheet("color: gray; font-size: 9pt;")
+        actuation_desc_text.setStyleSheet("color: palette(dark); font-size: 9pt;")
         actuation_desc_layout.addWidget(actuation_desc_text)
 
-        actuation_desc_layout.addSpacing(10)
+        actuation_desc_layout.addSpacing(14)
 
         # Per-Key checkbox with description
         actuation_desc_layout.addWidget(self.enable_checkbox)
         per_key_desc = QLabel(tr("TriggerSettings",
             "Per-Key: Each key can have its own actuation settings."))
         per_key_desc.setWordWrap(True)
-        per_key_desc.setStyleSheet("color: gray; font-size: 8pt; margin-left: 18px;")
+        per_key_desc.setStyleSheet("color: palette(dark); font-size: 9pt; margin-left: 24px;")
         actuation_desc_layout.addWidget(per_key_desc)
 
-        actuation_desc_layout.addSpacing(5)
+        actuation_desc_layout.addSpacing(12)
 
         # Per-Layer checkbox with description
         actuation_desc_layout.addWidget(self.per_layer_checkbox)
         per_layer_desc = QLabel(tr("TriggerSettings",
             "Per-Layer: Settings change based on the active keyboard layer."))
         per_layer_desc.setWordWrap(True)
-        per_layer_desc.setStyleSheet("color: gray; font-size: 8pt; margin-left: 18px;")
+        per_layer_desc.setStyleSheet("color: palette(dark); font-size: 9pt; margin-left: 24px;")
         actuation_desc_layout.addWidget(per_layer_desc)
 
         actuation_desc_layout.addStretch()
@@ -1464,7 +1471,7 @@ class TriggerSettingsTab(BasicEditor):
             "Enable rapid key repeats based on key travel. "
             "Adjust press and release sensitivity thresholds."))
         rapidfire_desc_text.setWordWrap(True)
-        rapidfire_desc_text.setStyleSheet("color: gray; font-size: 9pt;")
+        rapidfire_desc_text.setStyleSheet("color: palette(dark); font-size: 9pt;")
         rapidfire_desc_layout.addWidget(rapidfire_desc_text)
 
         rapidfire_desc_layout.addSpacing(10)
@@ -1477,7 +1484,7 @@ class TriggerSettingsTab(BasicEditor):
             "Then switch Rapid Trigger on and fine-tune its press and release "
             "sensitivity - the settings apply to just those keys."))
         rf_howto.setWordWrap(True)
-        rf_howto.setStyleSheet("color: gray; font-size: 9pt;")
+        rf_howto.setStyleSheet("color: palette(dark); font-size: 9pt;")
         rapidfire_desc_layout.addWidget(rf_howto)
 
         rapidfire_desc_layout.addStretch()
@@ -1509,7 +1516,7 @@ class TriggerSettingsTab(BasicEditor):
             "Decide what happens when opposing keys (e.g. A and D) are held at the "
             "same time. Each group works on the layer you choose."))
         nullbind_desc_text.setWordWrap(True)
-        nullbind_desc_text.setStyleSheet("color: gray; font-size: 9pt;")
+        nullbind_desc_text.setStyleSheet("color: palette(dark); font-size: 9pt;")
         nullbind_desc_layout.addWidget(nullbind_desc_text)
 
         nullbind_desc_layout.addSpacing(8)
@@ -1528,7 +1535,7 @@ class TriggerSettingsTab(BasicEditor):
             "should cancel each other out. Choose a behavior and the layer it "
             "works on, then press Save Group to turn them into a group."))
         nb_howto.setWordWrap(True)
-        nb_howto.setStyleSheet("color: gray; font-size: 9pt;")
+        nb_howto.setStyleSheet("color: palette(dark); font-size: 9pt;")
         nullbind_desc_layout.addWidget(nb_howto)
         nullbind_desc_layout.addSpacing(8)
 
@@ -1544,7 +1551,7 @@ class TriggerSettingsTab(BasicEditor):
             "<b>Absolute Priority</b> - the chosen key always wins while it is held."))
         nb_guide.setWordWrap(True)
         nb_guide.setTextFormat(Qt.RichText)
-        nb_guide.setStyleSheet("color: gray; font-size: 8pt;")
+        nb_guide.setStyleSheet("color: palette(dark); font-size: 8pt;")
         nullbind_desc_layout.addWidget(nb_guide)
 
         nullbind_desc_layout.addStretch()
@@ -1582,7 +1589,8 @@ class TriggerSettingsTab(BasicEditor):
         # Right side: Visualization container (crossection + actuation visualizer)
         viz_container = QFrame()
         viz_container.setFrameShape(QFrame.StyledPanel)
-        viz_container.setStyleSheet("QFrame { background-color: palette(base); }")
+        viz_container.setObjectName("filled_panel")     # the fill is for this frame only, not the labels inside it
+        viz_container.setStyleSheet("QFrame#filled_panel { background-color: palette(base); }")
         viz_container.setMaximumHeight(325)  # Set maximum height for visualization container
         viz_container.setMaximumWidth(580)  # Max width for trigger settings
         viz_layout = QVBoxLayout()
@@ -3126,6 +3134,11 @@ class TriggerSettingsTab(BasicEditor):
                 self.copy_all_layers_btn.setEnabled(self.mode_enabled)
                 self.reset_btn.setEnabled(self.mode_enabled)
                 self.syncing = False
+
+                # the keymap tab's Actuation slider shows the same two modes
+                if self.actuation_widget_ref and hasattr(self.actuation_widget_ref, 'refresh_layer_actuation_ui'):
+                    self.actuation_widget_ref.per_layer_enabled = self.per_layer_enabled
+                    self.actuation_widget_ref.refresh_layer_actuation_ui()
 
             # Drop edits pending from BEFORE the reconnect: the cache is about
             # to be reloaded from the device, and stale pending entries would

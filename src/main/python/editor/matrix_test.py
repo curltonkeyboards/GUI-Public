@@ -110,8 +110,7 @@ class ActuationVisualizer(QWidget):
         height = self.height()
 
         # Check if light theme
-        light_themes = ["Light", "Lavender Dream", "Mint Fresh", "Peachy Keen", "Sky Serenity", "Rose Garden"]
-        is_light = Theme.get_theme() in light_themes
+        is_light = Theme.is_light()
 
         # Margins - reduced for compact display
         margin_top = 20
@@ -271,7 +270,7 @@ class MatrixTest(BasicEditor):
             "Test individual key switches by pressing them. Each key will light up when its switch\n"
             "is activated, helping identify faulty or stuck switches."))
         desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
+        desc_label.setStyleSheet("color: palette(dark); font-size: 9pt;")
         desc_label.setAlignment(QtCore.Qt.AlignCenter)
         container_layout.addWidget(desc_label)
 
@@ -765,6 +764,38 @@ class MatrixTest(BasicEditor):
             viz.set_distance(0)
 
 
+# The ThruLoop controls MIDIswitch Play's looper listens for out of the box: channel 16, and for
+# each of the eight loops a CC for record, play, clear and restart, plus the same four for its
+# overdub. Start and stop share a CC: it starts a loop that is stopped and stops one that is going.
+# One row per action, one column per loop.
+#
+# Every number is one nothing else lays claim to: those the MIDI standard leaves undefined
+# (3, 9, 14, 15, 20-31, 85-87, 89, 90, 102-119), those it sets aside for general use (16-19,
+# 80-83), and the "fine adjustment" partners of those (46-51, 52-63), which have no use of their
+# own. Keep in step with Engine::defaultLooperCC in Play.
+PLAY_LOOP_CHANNEL = 16
+_RECORD = [102, 103, 104, 105, 106, 107, 108, 109]
+_PLAY = [110, 111, 112, 113, 114, 115, 116, 117]
+PLAY_LOOP_CCS = [
+    _RECORD,                                    # Start Recording
+    _RECORD,                                    # Stop Recording (same control: it toggles)
+    _PLAY,                                      # Start Playing
+    _PLAY,                                      # Stop Playing (same control: it toggles)
+    [20, 21, 22, 23, 24, 25, 26, 27],           # Clear
+    [28, 29, 30, 31, 85, 86, 87, 89],           # Restart
+]
+_DUB_RECORD = [52, 53, 54, 55, 56, 57, 58, 59]
+_DUB_PLAY = [16, 17, 18, 19, 80, 81, 82, 83]
+PLAY_OVERDUB_CCS = [
+    _DUB_RECORD,                                # Start Recording
+    _DUB_RECORD,                                # Stop Recording
+    _DUB_PLAY,                                  # Start Playing
+    _DUB_PLAY,                                  # Stop Playing
+    [3, 9, 14, 15, 90, 118, 119, 60],           # Clear
+    [46, 47, 48, 49, 50, 51, 61, 62],           # Restart
+]
+
+
 class ThruLoopConfigurator(BasicEditor):
 
     def __init__(self):
@@ -809,7 +840,7 @@ class ThruLoopConfigurator(BasicEditor):
             "these CCs to sync external gear — the regular MIDI loops no longer send them. "
             "Each Thru column maps to one track; Overdub rows fire on the held Overdub button."))
         desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
+        desc_label.setStyleSheet("color: palette(dark); font-size: 9pt;")
         desc_label.setAlignment(QtCore.Qt.AlignCenter)
         title_layout.addWidget(desc_label)
 
@@ -1031,6 +1062,16 @@ class ThruLoopConfigurator(BasicEditor):
         reset_btn.setStyleSheet(button_style)
         reset_btn.clicked.connect(self.on_reset)
         buttons_layout.addWidget(reset_btn)
+
+        play_btn = QPushButton(tr("ThruLoopConfigurator", "MIDIswitch Play Defaults"))
+        play_btn.setMinimumHeight(45)
+        play_btn.setMinimumWidth(230)
+        play_btn.setStyleSheet(button_style)
+        play_btn.setToolTip(tr("ThruLoopConfigurator",
+                               "Fill in the controls MIDIswitch Play's looper listens for: channel 16, all eight loops.\n"
+                               "Nothing is sent to the keyboard until you press Save Configuration."))
+        play_btn.clicked.connect(self.apply_play_defaults)
+        buttons_layout.addWidget(play_btn)
 
         self.addLayout(buttons_layout)
         
@@ -1359,6 +1400,20 @@ class ThruLoopConfigurator(BasicEditor):
 
         self.on_separate_loopchop_changed()
     
+    def apply_play_defaults(self):
+        """Fill the page with the controls MIDIswitch Play's looper uses by default:
+        channel 16, and a CC for every action of all eight loops. Only the page
+        changes: Save Configuration sends it to the keyboard."""
+        self.loop_channel.setCurrentIndex(PLAY_LOOP_CHANNEL - 1)
+
+        for row, ccs in enumerate(PLAY_LOOP_CCS):
+            for col in range(8):
+                self.set_cc_value(self.main_combos[row][col], ccs[col])
+
+        for row, ccs in enumerate(PLAY_OVERDUB_CCS):
+            for col in range(8):
+                self.set_cc_value(self.overdub_combos[row][col], ccs[col])
+
     def get_current_config(self):
         """Get current UI configuration as dictionary"""
         config = {
@@ -1502,7 +1557,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         help_btn = QPushButton("?")
         help_btn.setStyleSheet("""
             QPushButton {
-                color: #888;
+                color: palette(dark);
                 font-weight: bold;
                 font-size: 10pt;
                 border: 1px solid #888;
@@ -1583,7 +1638,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "Configure global MIDI settings including channel, transpose, articulation, "
             "sustain behavior, and aftertouch options for your keyboard."))
         desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
+        desc_label.setStyleSheet("color: palette(dark); font-size: 9pt;")
         desc_label.setAlignment(QtCore.Qt.AlignLeft)
         midi_title_layout.addWidget(desc_label)
 
@@ -2811,7 +2866,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
 
         # Aftertouch is now per-layer (configured in Layer Actuation section)
         aftertouch_note = QLabel(tr("MIDIswitchSettingsConfigurator", "Aftertouch: Per-Layer"))
-        aftertouch_note.setStyleSheet("QLabel { color: #888; font-style: italic; }")
+        aftertouch_note.setStyleSheet("QLabel { color: palette(dark); font-style: italic; }")
         aftertouch_note.setToolTip(
             "Aftertouch settings are configured per-layer.\n"
             "Go to the Layer Actuation section to configure\n"
@@ -3283,7 +3338,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         main_layout.addWidget(title_label)
         desc_label = QLabel(tr("MIDIswitchSettingsConfigurator",
             "Macro timing, LCD theme and lighting behaviour."))
-        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
+        desc_label.setStyleSheet("color: palette(dark); font-size: 9pt;")
         desc_label.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(desc_label)
 
@@ -3312,7 +3367,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         note = QLabel(tr("MIDIswitchSettingsConfigurator",
             "LCD Theme and Smoothness apply and save instantly. Guide Lights and RGB Layer Mode are part of\n"
             "the MIDI Settings and are saved with them (Save as Default / Save to Slot)."))
-        note.setStyleSheet("color: gray; font-size: 9pt;")
+        note.setStyleSheet("color: palette(dark); font-size: 9pt;")
         display_layout.addWidget(note, 4, 0, 1, 2)
         btn_row = QHBoxLayout()
         btn_row.addStretch()
@@ -3355,7 +3410,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "'Multi CH' keycode or a QuickBuild master button (hold the key to edit these "
             "same settings on the device). Changes save to the keyboard immediately."))
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #888;")
+        desc.setStyleSheet("color: palette(dark);")
         layout.addWidget(desc)
         layout.addSpacing(6)
 
@@ -3413,7 +3468,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             self.multichannel_oct_combos.append(oct_row)
 
             state_label = QLabel("-")
-            state_label.setStyleSheet("color: #888;")
+            state_label.setStyleSheet("color: palette(dark);")
             grid.addWidget(state_label, p + 1, 8)
             self.multichannel_state_labels.append(state_label)
 
@@ -3493,7 +3548,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "machine whose bindings still match the previous default; drum machines you have "
             "customized individually keep their own bindings."))
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #888;")
+        desc.setStyleSheet("color: palette(dark);")
         layout.addWidget(desc)
         layout.addSpacing(6)
 
@@ -3544,7 +3599,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         # Right panel header (cols 4-5): Extra Voicings
         extra_hdr = QLabel(tr("MIDIswitchSettingsConfigurator",
             "Extra Voicings (DrumLIVE filter only — notes, no velocity)"))
-        extra_hdr.setStyleSheet("color: #888; font-style: italic;")
+        extra_hdr.setStyleSheet("color: palette(dark); font-style: italic;")
         grid.addWidget(extra_hdr, 0, 4, 1, 2)
 
         self.drum_note_combos = []
@@ -4485,7 +4540,7 @@ class LayerActuationConfigurator(BasicEditor):
         # Info label
         info_label = QLabel(tr("LayerActuationConfigurator", 
             "Configure actuation distances and settings per layer"))
-        info_label.setStyleSheet("QLabel { color: #666; font-style: italic; font-size: 10px; margin: 5px; }")
+        info_label.setStyleSheet("QLabel { color: palette(dark); font-style: italic; font-size: 10px; margin: 5px; }")
         main_layout.addWidget(info_label, alignment=QtCore.Qt.AlignCenter)
         
         # Create master controls group
@@ -6135,7 +6190,7 @@ class GamingConfigurator(BasicEditor):
         help_btn = QPushButton("?")
         help_btn.setStyleSheet("""
             QPushButton {
-                color: #888;
+                color: palette(dark);
                 font-weight: bold;
                 font-size: 9pt;
                 border: 1px solid #888;
@@ -6186,7 +6241,7 @@ class GamingConfigurator(BasicEditor):
             "The settings below shape how the sticks and triggers respond."))
         desc_label.setWordWrap(True)
         desc_label.setMaximumWidth(760)
-        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
+        desc_label.setStyleSheet("color: palette(dark); font-size: 9pt;")
         main_layout.addWidget(desc_label)
 
         enable_row = QHBoxLayout()

@@ -882,7 +882,7 @@ class ActionMouseMoveUI(BasicActionUI):
         self.layout.addWidget(self.btn_get)
 
         self.lbl_desk = QLabel("(desktop {}x{})".format(vg.width(), vg.height()))
-        self.lbl_desk.setStyleSheet("color: gray; font-size: 9pt;")
+        self.lbl_desk.setStyleSheet("color: palette(dark); font-size: 9pt;")
         self.layout.addWidget(self.lbl_desk)
         self.layout.addStretch()
 

@@ -297,8 +297,7 @@ class VelocityKeyboardWidget(KeyboardWidgetSimple):
         painter.setRenderHint(QPainter.Antialiasing)
 
         # Check if light theme
-        light_themes = ["Light", "Lavender Dream", "Mint Fresh", "Peachy Keen", "Sky Serenity", "Rose Garden"]
-        is_light = Theme.get_theme() in light_themes
+        is_light = Theme.is_light()
 
         # Draw velocity overlay on keys
         for widget in self.widgets:
@@ -436,7 +435,7 @@ class VelocityTab(BasicEditor):
         help_btn = QPushButton("?")
         help_btn.setStyleSheet("""
             QPushButton {
-                color: #888;
+                color: palette(dark);
                 font-weight: bold;
                 font-size: 9pt;
                 border: 1px solid #888;
@@ -811,7 +810,7 @@ class VelocityTab(BasicEditor):
         smooth_layout.addWidget(smooth_label)
 
         fast_label = QLabel("Fast")
-        fast_label.setStyleSheet("QLabel { font-size: 10px; color: #888; }")
+        fast_label.setStyleSheet("QLabel { font-size: 10px; color: palette(dark); }")
         smooth_layout.addWidget(fast_label)
 
         controls['smoothness_slider'] = QSlider(Qt.Horizontal)
@@ -822,7 +821,7 @@ class VelocityTab(BasicEditor):
         smooth_layout.addWidget(controls['smoothness_slider'], 1)
 
         slow_label = QLabel("Slow")
-        slow_label.setStyleSheet("QLabel { font-size: 10px; color: #888; }")
+        slow_label.setStyleSheet("QLabel { font-size: 10px; color: palette(dark); }")
         smooth_layout.addWidget(slow_label)
 
         # Hidden label to keep control reference (not displayed)
@@ -845,7 +844,7 @@ class VelocityTab(BasicEditor):
         sens_layout.addWidget(sens_label)
 
         sens_high_label = QLabel("Sensitive")
-        sens_high_label.setStyleSheet("QLabel { font-size: 10px; color: #888; }")
+        sens_high_label.setStyleSheet("QLabel { font-size: 10px; color: palette(dark); }")
         sens_layout.addWidget(sens_high_label)
 
         controls['vibrato_sens_slider'] = QSlider(Qt.Horizontal)
@@ -856,7 +855,7 @@ class VelocityTab(BasicEditor):
         sens_layout.addWidget(controls['vibrato_sens_slider'], 1)
 
         sens_low_label = QLabel("Less")
-        sens_low_label.setStyleSheet("QLabel { font-size: 10px; color: #888; }")
+        sens_low_label.setStyleSheet("QLabel { font-size: 10px; color: palette(dark); }")
         sens_layout.addWidget(sens_low_label)
 
         # Hidden label to keep control reference
@@ -879,7 +878,7 @@ class VelocityTab(BasicEditor):
         decay_layout.addWidget(decay_label)
 
         decay_fast_label = QLabel("Fast")
-        decay_fast_label.setStyleSheet("QLabel { font-size: 10px; color: #888; }")
+        decay_fast_label.setStyleSheet("QLabel { font-size: 10px; color: palette(dark); }")
         decay_layout.addWidget(decay_fast_label)
 
         controls['vibrato_decay_slider'] = QSlider(Qt.Horizontal)
@@ -890,7 +889,7 @@ class VelocityTab(BasicEditor):
         decay_layout.addWidget(controls['vibrato_decay_slider'], 1)
 
         decay_slow_label = QLabel("Slow")
-        decay_slow_label.setStyleSheet("QLabel { font-size: 10px; color: #888; }")
+        decay_slow_label.setStyleSheet("QLabel { font-size: 10px; color: palette(dark); }")
         decay_layout.addWidget(decay_slow_label)
 
         # Hidden label to keep control reference
@@ -1003,7 +1002,7 @@ class VelocityTab(BasicEditor):
         retrigger_layout.addWidget(controls['retrigger_checkbox'])
 
         controls['retrigger_disabled_label'] = QLabel("(disabled when aftertouch is enabled)")
-        controls['retrigger_disabled_label'].setStyleSheet("QLabel { color: #888; font-style: italic; font-size: 10px; }")
+        controls['retrigger_disabled_label'].setStyleSheet("QLabel { color: palette(dark); font-style: italic; font-size: 10px; }")
         controls['retrigger_disabled_label'].setVisible(False)
         retrigger_layout.addWidget(controls['retrigger_disabled_label'])
 
@@ -1256,7 +1255,7 @@ class VelocityTab(BasicEditor):
             "aftertouch, legato and retrigger behaviour. Pick a preset, adjust its "
             "settings, and watch the live velocity of each key below."))
         desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
+        desc_label.setStyleSheet("color: palette(dark); font-size: 9pt;")
         desc_label.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop)
         desc_label.setFixedWidth(760)
         desc_label.ensurePolished()  # measure the height in the 9pt font
@@ -1414,7 +1413,7 @@ class VelocityTab(BasicEditor):
         self.atcc_placeholder_label.setAlignment(Qt.AlignCenter)
         self.atcc_placeholder_label.setWordWrap(True)
         self.atcc_placeholder_label.setStyleSheet(
-            "QLabel { font-size: 16px; font-weight: bold; color: #888; }")
+            "QLabel { font-size: 16px; font-weight: bold; color: palette(dark); }")
         atcc_page_layout.addWidget(self.atcc_placeholder_label)
         # True when the checkbox currently governs the CC band (bit6); False for
         # the AT band (bit5). Set by _show_atcc_locked_page.
@@ -3181,7 +3180,7 @@ class VelocityTab(BasicEditor):
             "new channel below. 'None' leaves the zone unchanged. Press Save "
             "to send your settings to the keyboard."))
         desc.setWordWrap(True)
-        desc.setStyleSheet("QLabel { color: #888; }")
+        desc.setStyleSheet("QLabel { color: palette(dark); }")
         v.addWidget(desc)
 
         grid = QGridLayout()

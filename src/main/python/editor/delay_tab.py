@@ -91,7 +91,7 @@ def _make_help_label(tooltip_text):
     help_btn = QPushButton("?")
     help_btn.setStyleSheet("""
         QPushButton {
-            color: #888;
+            color: palette(dark);
             font-weight: bold;
             font-size: 9pt;
             border: 1px solid #888;
@@ -140,7 +140,7 @@ class DelaySlotEditor(QWidget):
         desc = QLabel("Build delay effects for MIDI notes played or passed through the MIDIswitch.\n"
                       "Assign delays to the keymap using the User Delay Buttons, which can be renamed.")
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: gray; font-size: 9pt;")
+        desc.setStyleSheet("color: palette(dark); font-size: 9pt;")
         desc.setAlignment(Qt.AlignCenter)
         layout.addWidget(desc)
 
@@ -397,7 +397,7 @@ class DelaySlotEditor(QWidget):
         tick_row.addSpacing(72)
         for lbl in ["-48", "-24", "0", "+24", "+48"]:
             t = QLabel(lbl)
-            t.setStyleSheet("font-size: 9px; color: gray;")
+            t.setStyleSheet("font-size: 9px; color: palette(dark);")
             tick_row.addWidget(t)
             if lbl != "+24":
                 tick_row.addStretch()

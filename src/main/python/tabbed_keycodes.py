@@ -533,7 +533,65 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QLabel
 from PyQt5.QtCore import pyqtSignal
 
 class CenteredComboBox(ArrowComboBox):
-    """ComboBox with centered text and arrow drawn programmatically"""
+    """ComboBox with centered text and arrow drawn programmatically.
+
+    Every one of these is at least MIN_HEIGHT tall and at least wide enough to show its
+    longest entry in full, whatever fixed size the caller asks for."""
+
+    MIN_HEIGHT = 40
+    # Room the box needs beside its text: the padding on the left, the padding and the arrow on
+    # the right (all set by the theme's QComboBox rule) and the borders.
+    SIDE_ROOM = 12 + 28 + 24 + 12
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._asked_width = None
+
+    def setFixedHeight(self, height):
+        # The theme's stylesheet gives these boxes their minimum height (see CenteredComboBox in
+        # themes.py); a stylesheet minimum replaces one set here, so a smaller fixed height would
+        # only cap the box below it. Taller requests are honoured.
+        if height > self.MIN_HEIGHT + 4:
+            super().setFixedHeight(height)
+
+    def setFixedWidth(self, width):
+        self._asked_width = width
+        super().setFixedWidth(max(width, self._needed_width()))
+
+    def _needed_width(self):
+        metrics = self.fontMetrics()
+        # width(): present in every Qt 5 (horizontalAdvance only arrived in 5.11; the release build uses 5.9)
+        widest = max([metrics.width(self.itemText(i)) for i in range(self.count())] or [0])
+        return widest + self.SIDE_ROOM
+
+    def _fit_to_text(self):
+        """Widen the box if an entry would otherwise be cut off."""
+        needed = self._needed_width()
+        if self._asked_width is not None:
+            if needed > self.width() or self.minimumWidth() < needed:
+                super().setFixedWidth(max(self._asked_width, needed))
+        elif self.minimumWidth() < needed:
+            self.setMinimumWidth(needed)
+
+    def addItem(self, *args, **kwargs):
+        super().addItem(*args, **kwargs)
+        self._fit_to_text()
+
+    def addItems(self, texts):
+        super().addItems(texts)
+        self._fit_to_text()
+
+    def insertItem(self, *args, **kwargs):
+        super().insertItem(*args, **kwargs)
+        self._fit_to_text()
+
+    def setItemText(self, index, text):
+        super().setItemText(index, text)
+        self._fit_to_text()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._fit_to_text()         # the font is final by now
 
     def paintEvent(self, event):
         opt = QStyleOptionComboBox()
@@ -891,11 +949,12 @@ class midiadvancedTab(QScrollArea):
         # Create side tabs container with border
         side_tabs_container = QWidget()
         side_tabs_container.setObjectName("side_tabs_container")
+        # The tabs stand on the page itself; each draws its own edges (see the
+        # side_tab rules in themes.py), so the column needs no box of its own.
         side_tabs_container.setStyleSheet("""
             QWidget#side_tabs_container {
-                background: palette(window);
-                border: 1px solid palette(mid);
-                border-right: none;
+                background: transparent;
+                border: none;
             }
         """)
         side_tabs_layout = QVBoxLayout(side_tabs_container)
@@ -908,30 +967,16 @@ class midiadvancedTab(QScrollArea):
             btn.setCheckable(True)
             btn.setMinimumHeight(40)
             btn.setMinimumWidth(120)
-            btn.setStyleSheet("""
-                QPushButton {
-                    border: 1px solid palette(mid);
-                    border-radius: 0px;
-                    border-right: none;
-                    background: palette(button);
-                    text-align: left;
-                    padding-left: 15px;
-                    font-size: 9pt;
-                }
-                QPushButton:hover:!checked {
-                    background: palette(light);
-                }
-                QPushButton:checked {
-                    background: palette(base);
-                    font-weight: 600;
-                    border-right: 1px solid palette(base);
-                }
-            """)
+            btn.setProperty("side_tab", True)     # styled by the theme (themes.py)
             btn.clicked.connect(lambda checked, sk=section_key: self.show_section(sk))
             side_tabs_layout.addWidget(btn)
             self.side_tab_buttons[section_key] = btn
 
-        side_tabs_layout.addStretch(1)
+        # Below the last tab, carry on the line that separates the tabs from the content
+        side_tabs_filler = QWidget()
+        side_tabs_filler.setObjectName("side_tabs_filler")
+        side_tabs_filler.setStyleSheet("QWidget#side_tabs_filler { border-right: 1px solid palette(mid); }")
+        side_tabs_layout.addWidget(side_tabs_filler, 1)
         main_layout_h.addWidget(side_tabs_container)
         if len(self.sections) <= 1:
             side_tabs_container.hide()
@@ -942,11 +987,14 @@ class midiadvancedTab(QScrollArea):
         self.content_wrapper.setStyleSheet("""
             QWidget#content_wrapper {
                 border: 1px solid palette(mid);
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 0.1,
-                                           stop: 0 palette(alternate-base),
-                                           stop: 1 palette(base));
+                border-left: none;
+                background: palette(window);
             }
         """)
+        if len(self.sections) <= 1:
+            # No side tabs to be attached to, so no box (and no line across the top) either
+            self.content_wrapper.setStyleSheet(
+                "QWidget#content_wrapper { border: none; background: palette(window); }")
         self.content_layout = QVBoxLayout(self.content_wrapper)
         self.content_layout.setSpacing(10)
         self.content_layout.setContentsMargins(15, 15, 15, 15)
@@ -1294,7 +1342,7 @@ class midiadvancedTab(QScrollArea):
         self._adv_current_page = 0
         count_page_layout = QHBoxLayout()
         self.adv_count_label = QLabel("")
-        self.adv_count_label.setStyleSheet("font-size: 8pt; color: palette(mid);")
+        self.adv_count_label.setStyleSheet("font-size: 8pt; color: palette(dark);")
         count_page_layout.addWidget(self.adv_count_label)
         count_page_layout.addStretch(1)
         # Pagination controls
@@ -3571,9 +3619,7 @@ class KeySplitTab(QScrollArea):
             QWidget {
                 border: 1px solid palette(mid);
                 border-top: 1px solid palette(mid);
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 0.1,
-                                           stop: 0 palette(alternate-base),
-                                           stop: 1 palette(base));
+                background: palette(window);
                 margin-top: -1px;
             }
         """)
@@ -4344,7 +4390,7 @@ class GamingTab(QScrollArea):
             "and click the function). It is attached to that key on the current layer "
             "and only acts while Gaming Mode is on; click it on the key to remove it."))
         hint.setWordWrap(True)
-        hint.setStyleSheet("color: gray; font-size: 9pt;")
+        hint.setStyleSheet("color: palette(dark); font-size: 9pt;")
         self.main_layout.addWidget(hint)
 
         container = QWidget()
@@ -4859,11 +4905,12 @@ class MusicTab(QWidget):
         # Create side tabs container
         side_tabs_container = QWidget()
         side_tabs_container.setObjectName("side_tabs_container")
+        # The tabs stand on the page itself; each draws its own edges (see the
+        # side_tab rules in themes.py), so the column needs no box of its own.
         side_tabs_container.setStyleSheet("""
             QWidget#side_tabs_container {
-                background: palette(window);
-                border: 1px solid palette(mid);
-                border-right: none;
+                background: transparent;
+                border: none;
             }
         """)
         side_tabs_layout = QVBoxLayout(side_tabs_container)
@@ -4876,30 +4923,16 @@ class MusicTab(QWidget):
             btn.setCheckable(True)
             btn.setMinimumHeight(40)
             btn.setMinimumWidth(120)
-            btn.setStyleSheet("""
-                QPushButton {
-                    border: 1px solid palette(mid);
-                    border-radius: 0px;
-                    border-right: none;
-                    background: palette(button);
-                    text-align: left;
-                    padding-left: 15px;
-                    font-size: 9pt;
-                }
-                QPushButton:hover:!checked {
-                    background: palette(light);
-                }
-                QPushButton:checked {
-                    background: palette(base);
-                    font-weight: 600;
-                    border-right: 1px solid palette(base);
-                }
-            """)
+            btn.setProperty("side_tab", True)     # styled by the theme (themes.py)
             btn.clicked.connect(lambda checked, dn=display_name: self.show_section(dn))
             side_tabs_layout.addWidget(btn)
             self.side_tab_buttons[display_name] = btn
 
-        side_tabs_layout.addStretch(1)
+        # Below the last tab, carry on the line that separates the tabs from the content
+        side_tabs_filler = QWidget()
+        side_tabs_filler.setObjectName("side_tabs_filler")
+        side_tabs_filler.setStyleSheet("QWidget#side_tabs_filler { border-right: 1px solid palette(mid); }")
+        side_tabs_layout.addWidget(side_tabs_filler, 1)
         main_layout_h.addWidget(side_tabs_container)
 
         # Create content container
@@ -4908,11 +4941,14 @@ class MusicTab(QWidget):
         self.content_wrapper.setStyleSheet("""
             QWidget#content_wrapper {
                 border: 1px solid palette(mid);
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 0.1,
-                                           stop: 0 palette(alternate-base),
-                                           stop: 1 palette(base));
+                border-left: none;
+                background: palette(window);
             }
         """)
+        if len(self.sections) <= 1:
+            # No side tabs to be attached to, so no box (and no line across the top) either
+            self.content_wrapper.setStyleSheet(
+                "QWidget#content_wrapper { border: none; background: palette(window); }")
         self.content_layout = QVBoxLayout(self.content_wrapper)
         self.content_layout.setSpacing(0)
         self.content_layout.setContentsMargins(0, 0, 0, 0)

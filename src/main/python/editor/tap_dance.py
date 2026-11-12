@@ -63,7 +63,7 @@ class TapDanceEntryUI(QObject):
                       "Assign it in the keymap with the \"Tap/Hold {}\" key "
                       "(Keyboard & Macro > Macro > Tap/Hold).".format(idx))
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: gray; font-size: 9pt;")
+        desc.setStyleSheet("color: palette(dark); font-size: 9pt;")
         main_layout.addWidget(desc)
 
         # Keys group
@@ -72,7 +72,7 @@ class TapDanceEntryUI(QObject):
 
         # Instruction text
         instruction = QLabel("Click a key to select, then choose from keycodes below")
-        instruction.setStyleSheet("color: gray; font-style: italic;")
+        instruction.setStyleSheet("color: palette(dark); font-style: italic;")
         keys_layout.addWidget(instruction)
 
         # Container for key widgets
@@ -86,7 +86,7 @@ class TapDanceEntryUI(QObject):
         timing_note = QLabel("Hold time: set by \"Key press duration for hold in Tap/Hold Keys\" "
                              "in MIDI Settings > Advanced Settings.")
         timing_note.setWordWrap(True)
-        timing_note.setStyleSheet("color: gray; font-size: 9pt;")
+        timing_note.setStyleSheet("color: palette(dark); font-size: 9pt;")
         keys_layout.addWidget(timing_note)
 
         keys_layout.addStretch()

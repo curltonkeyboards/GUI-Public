@@ -7,9 +7,10 @@ import sys
 from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWidget,
                               QGroupBox, QSlider, QCheckBox, QPushButton, QComboBox, QFrame,
                               QSizePolicy, QScrollArea, QTabWidget, QDialog, QDialogButtonBox,
-                              QSpinBox, QGridLayout, QMenu, QToolButton, QAction, QInputDialog)
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSettings
-from PyQt5.QtGui import QCursor
+                              QSpinBox, QGridLayout, QMenu, QToolButton, QAction, QInputDialog,
+                              QGraphicsView, QGraphicsScene)
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSettings, QEvent
+from PyQt5.QtGui import QCursor, QPainter
 
 from widgets.combo_box import ArrowComboBox
 from keycode_search_dialog import KeycodeSearchDialog
@@ -133,14 +134,23 @@ class QuickActuationWidget(QWidget):
 
         self.matrix_test = None  # Reference to MatrixTest (set later via set_matrix_test_reference)
 
-        self.setMinimumWidth(320)
-        self.setMaximumWidth(320)
+        self.setMinimumWidth(344)
+        self.setMaximumWidth(344)
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+
+        # The whole panel sits in a card (drawn by the theme: see QFrame[card="true"] in themes.py)
+        outer_layout = QVBoxLayout()
+        outer_layout.setContentsMargins(6, 6, 10, 6)
+        self.setLayout(outer_layout)
+        card = QFrame()
+        card.setProperty("card", True)
+        outer_layout.addWidget(card)
+        outer_layout.addStretch(1)
 
         layout = QVBoxLayout()
         layout.setSpacing(6)
-        layout.setContentsMargins(10, 10, 0, 10)  # No right margin for flush layout
-        self.setLayout(layout)
+        layout.setContentsMargins(12, 10, 10, 12)
+        card.setLayout(layout)
 
         # Layer name header with rename button (matches toggle/macro/delay title style)
         layer_header = QHBoxLayout()
@@ -162,6 +172,9 @@ class QuickActuationWidget(QWidget):
         # Create actuation widgets (hidden, kept for sync with TriggerSettingsTab)
         self.actuation_tab = self.create_actuation_tab()
 
+        # One actuation slider for the layer (it moves the two hidden ones together)
+        layout.addWidget(self.create_layer_actuation_panel())
+
         # Show MIDI Settings directly (no tab widget)
         self.midi_tab = self.create_midi_tab()
         layout.addWidget(self.midi_tab)
@@ -171,7 +184,7 @@ class QuickActuationWidget(QWidget):
         help_btn = QPushButton("?")
         help_btn.setStyleSheet("""
             QPushButton {
-                color: #888;
+                color: palette(dark);
                 font-weight: bold;
                 font-size: 9pt;
                 border: 1px solid #888;
@@ -194,6 +207,173 @@ class QuickActuationWidget(QWidget):
         help_btn.setFocusPolicy(Qt.NoFocus)
         return help_btn
 
+    def create_layer_actuation_panel(self):
+        """The Actuation controls shown above MIDI Settings: one slider, in mm, that sets the
+        actuation point of every key on the layer (normal keys and MIDI keys alike), and a
+        small Per layer button.
+
+        Per layer off: the value is given to all twelve layers. Per layer on: only the
+        layer being shown changes. With per-key actuation on, each key has its own value
+        (set in the Advanced tab), so the slider is greyed out."""
+        panel = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(3)
+        layout.setContentsMargins(10, 4, 10, 0)
+        panel.setLayout(layout)
+
+        head = QHBoxLayout()
+        head.setContentsMargins(0, 0, 0, 0)
+        head.setSpacing(6)
+        title = QLabel(tr("QuickActuationWidget", "Actuation"))
+        title.setStyleSheet("QLabel { font-weight: bold; font-size: 12px; }")
+        head.addWidget(title)
+        head.addWidget(self.create_help_label(
+            "How far a key travels before it registers, for every key on the layer\n"
+            "(normal keys and MIDI keys). Lower = lighter touch.\n\n"
+            "Per layer off: the same value on all layers.\n"
+            "Per layer on: each layer keeps its own value."))
+        head.addStretch(1)
+
+        self.layer_actuation_per_layer_btn = QPushButton(tr("QuickActuationWidget", "Per layer"))
+        self.layer_actuation_per_layer_btn.setCheckable(True)
+        self.layer_actuation_per_layer_btn.setMaximumHeight(24)
+        self.layer_actuation_per_layer_btn.setStyleSheet("QPushButton { font-size: 8pt; padding: 2px 8px; }")
+        self.layer_actuation_per_layer_btn.setToolTip(
+            "On: this layer has its own actuation. Off: all layers share one.")
+        self.layer_actuation_per_layer_btn.clicked.connect(self.on_layer_actuation_per_layer_clicked)
+        head.addWidget(self.layer_actuation_per_layer_btn)
+        layout.addLayout(head)
+
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        self.layer_actuation_slider = QSlider(Qt.Horizontal)
+        self.layer_actuation_slider.setMinimum(7)         # 0.11mm, the same floor as the other actuation sliders
+        self.layer_actuation_slider.setMaximum(255)       # 4.00mm
+        self.layer_actuation_slider.setValue(127)
+        self.layer_actuation_slider.valueChanged.connect(self.on_layer_actuation_moved)
+        self.layer_actuation_slider.sliderReleased.connect(self.on_layer_actuation_released)
+        row.addWidget(self.layer_actuation_slider, 1)
+
+        self.layer_actuation_label = QLabel("2.00mm")
+        self.layer_actuation_label.setMinimumWidth(58)
+        self.layer_actuation_label.setStyleSheet("QLabel { font-weight: bold; font-size: 14px; }")
+        self.layer_actuation_label.setAlignment(Qt.AlignCenter)
+        row.addWidget(self.layer_actuation_label)
+        layout.addLayout(row)
+
+        self.layer_actuation_note = QLabel(tr("QuickActuationWidget", "Per-key actuation is on: set each key in the Actuation tab."))
+        self.layer_actuation_note.setStyleSheet("QLabel { font-style: italic; font-size: 10px; }")
+        self.layer_actuation_note.setWordWrap(True)
+        self.layer_actuation_note.setVisible(False)
+        layout.addWidget(self.layer_actuation_note)
+
+        # While the handle is being dragged nothing is sent: the value goes to the keyboard once,
+        # when the mouse button is let go. Changes made without dragging (arrow keys, the mouse
+        # wheel, a click on the track) are sent a moment after the last one.
+        self._layer_actuation_timer = QTimer(self)
+        self._layer_actuation_timer.setSingleShot(True)
+        self._layer_actuation_timer.setInterval(450)
+        self._layer_actuation_timer.timeout.connect(self.commit_layer_actuation)
+        self._layer_actuation_filling = False
+
+        return panel
+
+    def refresh_layer_actuation_ui(self):
+        """Show the current layer's actuation and the per-layer / per-key state."""
+        if not hasattr(self, 'layer_actuation_slider'):
+            return
+
+        # The Advanced tab owns the two modes; ask it, so this always shows what it shows.
+        ts = self.trigger_settings_ref
+        per_key = ts.mode_enabled if ts else self.enable_per_key_checkbox.isChecked()
+        per_layer = ts.per_layer_enabled if ts else self.per_layer_enabled
+        value = self.layer_data[self.current_layer].get('normal', 127)
+
+        self._layer_actuation_filling = True
+        self.layer_actuation_slider.setValue(max(7, min(255, int(value))))
+        self._layer_actuation_filling = False
+        self.layer_actuation_label.setText(f"{self.layer_actuation_slider.value() * 4.0 / 255.0:.2f}mm")
+
+        self.layer_actuation_slider.setEnabled(not per_key)
+        self.layer_actuation_label.setEnabled(not per_key)
+        self.layer_actuation_note.setVisible(per_key)
+        self.layer_actuation_per_layer_btn.setChecked(per_layer)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.refresh_layer_actuation_ui()
+
+    def on_layer_actuation_moved(self, value):
+        self.layer_actuation_label.setText(f"{value * 4.0 / 255.0:.2f}mm")
+
+        if not self._layer_actuation_filling and not self.layer_actuation_slider.isSliderDown():
+            self._layer_actuation_timer.start()
+
+    def on_layer_actuation_released(self):
+        self._layer_actuation_timer.stop()
+
+        # let go where it started: nothing to send
+        stored = self.layer_data[self.current_layer]
+        value = self.layer_actuation_slider.value()
+        if stored.get('normal') == value and stored.get('midi') == value:
+            return
+
+        self.commit_layer_actuation()
+
+    def commit_layer_actuation(self):
+        """Give the slider's value to the normal keys and the MIDI keys of the layer (of every
+        layer when Per layer is off) and store it on the keyboard."""
+        ts = self.trigger_settings_ref
+
+        if (ts.mode_enabled if ts else self.enable_per_key_checkbox.isChecked()):
+            return      # per-key actuation: each key has its own value
+
+        if ts:
+            self.per_layer_enabled = ts.per_layer_enabled      # one layer or all twelve, as the Advanced tab has it
+
+        value = self.layer_actuation_slider.value()
+
+        # The Advanced tab applies the value to the keys of ITS current layer: point it at the
+        # layer shown here while the change is made.
+        shown_there = ts.current_layer if ts else None
+        if ts:
+            ts.current_layer = self.current_layer
+
+        try:
+            # Moving the two (hidden) sliders does the work: each updates the layer data and
+            # queues the change for its kind of key.
+            for slider in (self.normal_slider, self.midi_slider):
+                if slider.value() == value:
+                    slider.valueChanged.emit(value)     # same number as before: still apply it
+                else:
+                    slider.setValue(value)
+
+            if ts:
+                ts.on_save()                            # writes the queued keys to the keyboard
+        finally:
+            if ts:
+                ts.current_layer = shown_there
+                ts.refresh_layer_display()
+
+    def on_layer_actuation_per_layer_clicked(self, checked):
+        """Switch per-layer actuation. The Advanced tab owns the setting (and asks before
+        switching it off, since that copies this layer to all the others)."""
+        ts = self.trigger_settings_ref
+
+        if ts:
+            shown_there = ts.current_layer
+            ts.current_layer = self.current_layer       # 'this layer' means the one shown here
+            try:
+                ts.on_per_layer_changed(checked)
+            finally:
+                ts.current_layer = shown_there
+            self.per_layer_enabled = ts.per_layer_enabled
+        else:
+            self.per_layer_checkbox.setChecked(checked)
+
+        self.refresh_layer_actuation_ui()
+
     def create_actuation_tab(self):
         """Create the Actuation Settings tab"""
         tab = QWidget()
@@ -210,7 +390,7 @@ class QuickActuationWidget(QWidget):
         self.enable_per_key_checkbox = QCheckBox(tr("QuickActuationWidget", "Enable Per-Key"))
         self.enable_per_key_checkbox.setStyleSheet("QCheckBox { font-weight: bold; font-size: 10px; } QCheckBox::indicator { border: 1px solid palette(mid); background-color: palette(button); width: 13px; height: 13px; } QCheckBox::indicator:checked { border: 1px solid palette(highlight); background-color: palette(highlight); }")
         self.enable_per_key_checkbox.stateChanged.connect(self.on_enable_per_key_toggled)
-        top_row_layout.addWidget(self.create_help_label("Enable individual actuation point per key.\nConfigure in the Advanced tab."))
+        top_row_layout.addWidget(self.create_help_label("Enable individual actuation point per key.\nConfigure in the Actuation tab."))
         top_row_layout.addWidget(self.enable_per_key_checkbox)
 
         top_row_layout.addWidget(self.create_help_label("Enable different actuation points per layer.\nWhen off, same actuation applies to all layers."))
@@ -224,7 +404,7 @@ class QuickActuationWidget(QWidget):
 
         # Layer indicator (only visible in per-layer mode)
         self.layer_label = QLabel(tr("QuickActuationWidget", "Layer 1"))
-        self.layer_label.setStyleSheet("QLabel { font-weight: bold; font-size: 10px; color: #666; }")
+        self.layer_label.setStyleSheet("QLabel { font-weight: bold; font-size: 10px; color: palette(dark); }")
         self.layer_label.setVisible(False)
         layout.addWidget(self.layer_label, alignment=Qt.AlignCenter)
 
@@ -235,8 +415,8 @@ class QuickActuationWidget(QWidget):
         layout.addWidget(line)
 
         # Per-key mode message (shown when per-key actuation is enabled)
-        self.per_key_message = QLabel(tr("QuickActuationWidget", "Per-key actuation enabled.\nChange per key actuation in the Advanced tab."))
-        self.per_key_message.setStyleSheet("QLabel { font-style: italic; font-size: 10px; color: #888; padding: 10px; }")
+        self.per_key_message = QLabel(tr("QuickActuationWidget", "Per-key actuation enabled.\nChange per key actuation in the Actuation tab."))
+        self.per_key_message.setStyleSheet("QLabel { font-style: italic; font-size: 10px; color: palette(dark); padding: 10px; }")
         self.per_key_message.setAlignment(Qt.AlignCenter)
         self.per_key_message.setVisible(False)
         layout.addWidget(self.per_key_message)
@@ -987,10 +1167,12 @@ class QuickActuationWidget(QWidget):
         self.per_key_message.setVisible(per_key_enabled)
         # Disable save button when per-key is enabled (managed in Trigger Settings)
         self.save_btn.setEnabled(not per_key_enabled)
+        self.refresh_layer_actuation_ui()
     
     def on_per_layer_toggled(self):
         """Handle per-layer mode toggle"""
         self.per_layer_enabled = self.per_layer_checkbox.isChecked()
+        self.refresh_layer_actuation_ui()
 
         # Show/hide layer label
         self.layer_label.setVisible(self.per_layer_enabled)
@@ -1032,7 +1214,7 @@ class QuickActuationWidget(QWidget):
             QMessageBox.information(
                 self,
                 tr("QuickActuationWidget", "Per-Key Actuation Enabled"),
-                tr("QuickActuationWidget", "Per-key actuation is now enabled.\nUse the Advanced tab to configure individual keys.")
+                tr("QuickActuationWidget", "Per-key actuation is now enabled.\nUse the Actuation tab to configure individual keys.")
             )
             # Emit signal to request tab switch
             self.enable_per_key_requested.emit()
@@ -1248,6 +1430,7 @@ class QuickActuationWidget(QWidget):
         # NOTE: Velocity mode is now managed in VelocityTab, not here
 
         self.syncing = False
+        self.refresh_layer_actuation_ui()
     
     def on_base_velocity_curve_changed(self):
         """Handle base zone velocity curve changes - send live with vel_min/vel_max"""
@@ -1967,6 +2150,8 @@ class QuickActuationWidget(QWidget):
 
             # NOTE: Advanced settings UI moved to VelocityTab
 
+            self.load_layer_from_memory()       # show what the keyboard has (also updates the Actuation slider)
+
         except Exception:
             pass
     
@@ -1981,6 +2166,8 @@ class QuickActuationWidget(QWidget):
             self.save_btn.setText(tr("QuickActuationWidget", f"Save to Layer {layer + 1}"))
             # Load from memory (fast, no device I/O)
             self.load_layer_from_memory()
+
+        self.refresh_layer_actuation_ui()
 
         # NOTE: Advanced tab settings now in VelocityTab, not here
 
@@ -2504,6 +2691,63 @@ class OverlayContainer(QWidget):
         self.encoder_widget.move(keyboard_pos.x(), keyboard_pos.y() + 30)
 
 
+class ZoomView(QGraphicsView):
+    """Shows a widget at a zoom factor. Everything inside it (the keyboard photo, the keys
+    and the dial and footswitch buttons laid over the photo) is scaled together, so the
+    parts stay lined up at every size. The view is always exactly as big as its scaled
+    content, so the layout around it takes up or gives back the space."""
+
+    zoom_changed = pyqtSignal()
+
+    MIN_ZOOM, MAX_ZOOM = 0.5, 1.6
+
+    def __init__(self, content):
+        super().__init__()
+        self.content = content
+        self.zoom = 1.0
+
+        self.setFrameShape(QFrame.NoFrame)
+        self.setStyleSheet("background: transparent;")
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setRenderHints(self.renderHints() | QPainter.Antialiasing | QPainter.SmoothPixmapTransform
+                            | QPainter.TextAntialiasing)
+        self.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+
+        content.setAttribute(Qt.WA_TranslucentBackground)
+        self._scene = QGraphicsScene(self)
+        self.setScene(self._scene)
+        self._proxy = self._scene.addWidget(content)
+        content.installEventFilter(self)      # its size changes when the keyboard layout does
+        self.refit()
+
+    def set_zoom(self, zoom):
+        zoom = max(self.MIN_ZOOM, min(self.MAX_ZOOM, round(zoom, 2)))
+        if zoom != self.zoom:
+            self.zoom = zoom
+            self.refit()
+
+    def refit(self):
+        """Match the view to the size of the content at the current zoom."""
+        hint = self.content.sizeHint()
+        if not hint.isValid() or hint.isEmpty():
+            return
+        if self.content.size() != hint:
+            self.content.resize(hint)
+        self._scene.setSceneRect(0, 0, hint.width(), hint.height())
+        self.resetTransform()
+        self.scale(self.zoom, self.zoom)
+        size = (int(hint.width() * self.zoom + 0.999), int(hint.height() * self.zoom + 0.999))
+        if (self.width(), self.height()) != size:
+            self.setFixedSize(*size)
+            self.zoom_changed.emit()
+
+    def eventFilter(self, obj, ev):
+        if obj is self.content and ev.type() == QEvent.LayoutRequest:
+            QTimer.singleShot(0, self.refit)
+        return super().eventFilter(obj, ev)
+
+
 class KeymapEditor(BasicEditor):
 
     def __init__(self, layout_editor):
@@ -2535,7 +2779,7 @@ class KeymapEditor(BasicEditor):
         nav_help = QPushButton("?")
         nav_help.setStyleSheet("""
             QPushButton {
-                color: #888;
+                color: palette(dark);
                 font-weight: bold;
                 font-size: 9pt;
                 border: 1px solid #888;
@@ -2629,13 +2873,29 @@ class KeymapEditor(BasicEditor):
         # Create overlay container with encoder widget overlaying keyboard
         self.keyboard_overlay = OverlayContainer(self.container, self.encoder_assign)
 
+        # The + and - buttons zoom the whole keyboard picture (photo, keys and the
+        # buttons laid over it) as one.
+        self.keyboard_zoom = ZoomView(self.keyboard_overlay)
+
         # Layout with actuation on left, then keyboard with encoder overlay
         keyboard_layout = QHBoxLayout()
         keyboard_layout.setSpacing(0)  # No spacing between widgets
         keyboard_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
         keyboard_layout.addStretch(1)  # Add stretch before
-        keyboard_layout.addWidget(self.quick_actuation, 0, Qt.AlignTop)
-        keyboard_layout.addWidget(self.keyboard_overlay, 0, Qt.AlignTop)
+
+        # The helper panel (layer name, actuation, MIDI settings) is tucked away until asked for.
+        self.helper_toggle = QPushButton()
+        self.helper_toggle.setFocusPolicy(Qt.NoFocus)
+        self.helper_toggle.setStyleSheet("QPushButton { font-size: 8pt; padding: 3px 8px; }")
+        self.helper_toggle.clicked.connect(lambda: self.set_helper_visible(not self.quick_actuation.isVisible()))
+        helper_column = QVBoxLayout()
+        helper_column.setContentsMargins(0, 8, 8, 0)
+        helper_column.addWidget(self.helper_toggle, 0, Qt.AlignRight)
+        helper_column.addWidget(self.quick_actuation, 0, Qt.AlignTop)
+        helper_column.addStretch(1)
+        keyboard_layout.addLayout(helper_column)
+        self.set_helper_visible(QSettings("MIDIswitch", "SwitchStation").value("keymap_helper_visible", False, type=bool))
+        keyboard_layout.addWidget(self.keyboard_zoom, 0, Qt.AlignTop)
         keyboard_layout.addStretch(1)  # Add stretch after
 
         layout = QVBoxLayout()
@@ -2652,6 +2912,12 @@ class KeymapEditor(BasicEditor):
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll_area.setWidget(w)
+
+        # The keyboard area is only ever as tall as its content, so the keycode panel
+        # below takes the room freed by zooming out (and gives it back on zooming in).
+        self._keyboard_scroll = scroll_area
+        self._keyboard_page = w
+        self.keyboard_zoom.zoom_changed.connect(self._fit_keyboard_area)
 
         self.layer_buttons = []
         self.keyboard = None
@@ -2973,13 +3239,21 @@ class KeymapEditor(BasicEditor):
             self.layout_size.addWidget(btn)
             self.layer_buttons.append(btn)
 
+    def set_helper_visible(self, visible):
+        """Show or hide the helper panel beside the keyboard; the choice is remembered."""
+        self.quick_actuation.setVisible(visible)
+        self.helper_toggle.setText("\u25C2  Hide helper" if visible else "Show helper  \u25B8")
+        self.helper_toggle.setToolTip("Hide the layer helper" if visible
+                                      else "Show the layer helper: layer name, actuation and MIDI settings")
+        QSettings("MIDIswitch", "SwitchStation").setValue("keymap_helper_visible", bool(visible))
+
     def adjust_size(self, minus):
-        if minus:
-            self.container.set_scale(self.container.get_scale() - 0.1)
-        else:
-            self.container.set_scale(self.container.get_scale() + 0.1)
-        self.container.update_layout()
-        self.refresh_layer_display()
+        self.keyboard_zoom.set_zoom(self.keyboard_zoom.zoom + (-0.1 if minus else 0.1))
+
+    def _fit_keyboard_area(self):
+        self._keyboard_page.layout().activate()
+        height = self._keyboard_page.sizeHint().height() + 2 * self._keyboard_scroll.frameWidth() + 2
+        self._keyboard_scroll.setMaximumHeight(height)
 
     def rebuild(self, device):
         super().rebuild(device)

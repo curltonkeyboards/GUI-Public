@@ -1110,6 +1110,10 @@ class KeyboardWidget2(QWidget):
         self.width = round(max_w + 2 * self.padding)
         self.height = round(max_h + 2 * self.padding)
 
+        # Never smaller than the background photo, or its right and bottom edges are cut off
+        self.width = max(self.width, round(1035 * self.bg_image_scale))
+        self.height = max(self.height, round(345 * self.bg_image_scale))
+
         self.update()
         self.updateGeometry()
 
@@ -1186,9 +1190,11 @@ class KeyboardWidget2(QWidget):
         mask_brush.setStyle(Qt.SolidPattern)
 
         # for currently selected keycap
+        # The selected key is outlined in the theme's own marker colour: the accent
+        # in the Retro themes, the text colour in the Futuristic ones (no accent).
         active_pen = qp.pen()
-        active_pen.setColor(QColor("#fabcad"))  # Set color with a hex code
-        active_pen.setWidthF(1.5)
+        active_pen.setColor(Theme.color("accent" if Theme.is_pop() else "text"))
+        active_pen.setWidthF(2.0)
 
         # for the encoder arrow
         extra_pen = regular_pen
@@ -1339,8 +1345,7 @@ class KeyboardWidget2(QWidget):
                     qp.setPen(QColor("#00FF00"))
                 else:
                     # Check if light theme (white text needs dark bg, black text needs light bg)
-                    light_themes = ["Light", "Lavender Dream", "Mint Fresh", "Peachy Keen", "Sky Serenity", "Rose Garden"]
-                    is_light = Theme.get_theme() in light_themes
+                    is_light = Theme.is_light()
                     qp.setPen(QColor("#000000") if is_light else QColor("#FFFFFF"))
                 # Create a rect at the bottom of the key for ADC value
                 adc_rect = QRect(

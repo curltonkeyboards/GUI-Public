@@ -56,7 +56,7 @@ class MacroTab(QVBoxLayout):
         desc = QLabel("Configure actions to send when this macro is triggered. "
                       "Assign this macro to a key in your keymap using the Macro tab in keycodes.")
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: gray; font-size: 9pt;")
+        desc.setStyleSheet("color: palette(dark); font-size: 9pt;")
         header_layout.addWidget(desc, 1)
 
         self.addLayout(header_layout)
@@ -82,7 +82,7 @@ class MacroTab(QVBoxLayout):
         add_row_layout.addWidget(self.btn_add_key)
 
         add_label = QLabel("\u2190 Add Action")
-        add_label.setStyleSheet("color: gray; font-style: italic;")
+        add_label.setStyleSheet("color: palette(dark); font-style: italic;")
         add_row_layout.addWidget(add_label)
         add_row_layout.addStretch()
 
