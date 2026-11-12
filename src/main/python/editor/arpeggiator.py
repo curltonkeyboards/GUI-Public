@@ -375,8 +375,8 @@ class GridCell(QFrame):
             else:
                 self.setStyleSheet(f"background-color: rgba({color.red()}, {color.green()}, {color.blue()}, {opacity}); border: {border_width}px solid {border_color}; border-radius: 3px;")
         else:
-            # Inactive state - use white for light themes, black for dark themes
-            inactive_color = QColor(255, 255, 255) if is_light_theme else QColor(0, 0, 0)
+            # Inactive state - an empty cell is the theme's field colour
+            inactive_color = QApplication.palette().color(QPalette.Base)
             # Use opacity for scale filtering instead of darkening
             opacity = 0.3 if not self.in_scale else 1.0
             self.setStyleSheet(f"background-color: rgba({inactive_color.red()}, {inactive_color.green()}, {inactive_color.blue()}, {opacity}); border: {border_width}px solid {border_color}; border-radius: 3px;")
@@ -516,7 +516,7 @@ class DrumBindingPicker(QDialog):
         layout.setSpacing(6)
 
         hint = QLabel("Pick a drum voice, or choose an exact note.")
-        hint.setStyleSheet("color: gray; font-size: 9pt;")
+        hint.setStyleSheet("color: palette(dark); font-size: 9pt;")
         layout.addWidget(hint)
 
         grid = QGridLayout()
@@ -652,7 +652,7 @@ class BasicStepSequencerGrid(QWidget):
                 raise AttributeError
         except (RuntimeError, AttributeError):
             self.add_note_label = QLabel("Add a new note row")
-            self.add_note_label.setStyleSheet("color: gray; font-style: italic;")
+            self.add_note_label.setStyleSheet("color: palette(dark); font-style: italic;")
             self.add_note_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
     def _remove_persistent_widgets_from_grid(self):
@@ -704,7 +704,7 @@ class BasicStepSequencerGrid(QWidget):
 
         # Add hint label to the right of step numbers
         steps_hint = QLabel("To add or remove steps, adjust the Number of Steps setting below")
-        steps_hint.setStyleSheet("color: gray; font-style: italic; padding-left: 10px;")
+        steps_hint.setStyleSheet("color: palette(dark); font-style: italic; padding-left: 10px;")
         self.grid_layout.addWidget(steps_hint, 1, self.num_steps + 2)
 
     def on_steps_changed(self, new_steps):
@@ -2865,7 +2865,7 @@ class Arpeggiator(BasicEditor):
         desc = QLabel("Configure arpeggiator pattern with intervals relative to the played notes.\n"
                       "Click cells to toggle notes on/off. Right-click for velocity and octave settings.")
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: gray; font-size: 9pt;")
+        desc.setStyleSheet("color: palette(dark); font-size: 9pt;")
         layout.addWidget(desc)
 
         # Top tabs for Basic/Advanced
@@ -4268,7 +4268,7 @@ class StepSequencer(Arpeggiator):
         desc = QLabel("Configure step sequence with absolute MIDI notes.\n"
                       "Click cells to toggle notes on/off. Right-click for velocity settings.")
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: gray; font-size: 9pt;")
+        desc.setStyleSheet("color: palette(dark); font-size: 9pt;")
         layout.addWidget(desc)
 
         # Top tabs for Basic/Advanced

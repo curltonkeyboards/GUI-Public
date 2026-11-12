@@ -131,7 +131,7 @@ class ComboKeyEntryUI(QObject):
                          "Hold the held key(s), tap the tapped key, and the output key is sent instead.\n"
                          "The held modifiers are not sent with the output key."))
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: gray; font-size: 9pt;")
+        desc.setStyleSheet("color: palette(dark); font-size: 9pt;")
         main_layout.addWidget(desc)
 
         # Disable row + notice
@@ -155,7 +155,7 @@ class ComboKeyEntryUI(QObject):
         keys_layout = QVBoxLayout()
 
         instruction = QLabel(tr("ComboKeys", "Click a key to select, then choose from keycodes below"))
-        instruction.setStyleSheet("color: gray; font-style: italic;")
+        instruction.setStyleSheet("color: palette(dark); font-style: italic;")
         keys_layout.addWidget(instruction)
 
         grid = QGridLayout()

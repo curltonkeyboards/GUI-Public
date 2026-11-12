@@ -58,7 +58,7 @@ class MIDIPatchBay(BasicEditor):
             "Route MIDI devices to your MIDIswitch keyboard. Connect external MIDI controllers\n"
             "to send MIDI messages through the keyboard. Filter which message types are passed through."))
         desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
+        desc_label.setStyleSheet("color: palette(dark); font-size: 9pt;")
         desc_label.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(desc_label)
 

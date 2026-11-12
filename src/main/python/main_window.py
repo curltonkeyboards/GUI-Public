@@ -168,7 +168,7 @@ class MainWindow(QMainWindow):
         # Gaming Settings is a sub-tab of Settings, not a tab of its own
         self.MIDIswitchSettingsConfigurator.add_sub_editor(self.gaming_configurator, "Gaming Settings")
 
-        self.editors = [(self.keymap_editor, "Keymap"), (self.trigger_settings, "Advanced"),
+        self.editors = [(self.keymap_editor, "Keymap"), (self.trigger_settings, "Actuation"),
                         (self.velocity_tab, "Articulation"), (self.rgb_configurator, "Lighting"),
                         (self.macro_recorder, "Macros"), (self.toggle_settings, "Toggle"),
                         (self.tap_dance, "Tap/Hold"), (self.combo_keys, "Key Combos"),
@@ -938,9 +938,9 @@ class MainWindow(QMainWindow):
 
 
     def get_theme(self):
-        # The web app (midiswitch.app) opens in Sky Serenity to match its
-        # blue landing page; the desktop app keeps Lavender Dream.
-        default = "Sky Serenity" if sys.platform == "emscripten" else "Lavender Dream"
+        # The web app (midiswitch.app) opens in Retro Blue to match its
+        # blue landing page; the desktop app opens in Retro Peach.
+        default = "Retro Blue" if sys.platform == "emscripten" else themes.DEFAULT_THEME
         theme = self.settings.value("theme", default)
         if theme not in [name for name, _ in themes.themes]:
             theme = default

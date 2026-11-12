@@ -38,6 +38,19 @@ import sys
 
 from PyQt5.QtCore import Qt, QEvent, QTimer, QObject, QMimeData, QPropertyAnimation, QEasingCurve, QSize, QRect, pyqtSignal, pyqtProperty
 from PyQt5.QtGui import QDrag, QPainter, QPen, QPalette
+
+from widgets.drag_ghost import run_drag, drag_start_distance
+
+
+class _Carried:
+    """Hands run_drag a picture that was taken before the key was hidden."""
+
+    def __init__(self, pixmap):
+        self._pixmap = pixmap
+
+    def grab(self):
+        return self._pixmap
+
 from PyQt5.QtWidgets import QApplication, QMenu, QSizePolicy, QWidget
 
 from constants import KEYCODE_BTN_RATIO
@@ -567,7 +580,7 @@ class KeycodeButton(SquareButton):
     def mouseMoveEvent(self, ev):
         if (self._press_pos is not None and (ev.buttons() & Qt.LeftButton)
                 and self.drag_group is not None
-                and (ev.pos() - self._press_pos).manhattanLength() >= QApplication.startDragDistance()):
+                and (ev.pos() - self._press_pos).manhattanLength() >= drag_start_distance()):
             self._start_drag()
             return
         ev.accept()
@@ -591,8 +604,8 @@ class KeycodeButton(SquareButton):
         mime = QMimeData()
         mime.setData(KEYCODE_DRAG_MIME, str(self.keycode).encode("utf-8"))
         drag.setMimeData(mime)
-        drag.setPixmap(self.grab())
-        drag.setHotSpot(self._press_pos)
+        picture = self.grab()       # taken now: the key is hidden while it is carried
+        press_pos = self._press_pos
         self._press_pos = None
         # The key is "picked up": hide it for the duration of the drag so the
         # row collapses around it and the DropGap the owner opens shows the
@@ -600,7 +613,7 @@ class KeycodeButton(SquareButton):
         # example).  Shown again below whatever happened to the drop.
         self.hide()
         self.drag_started.emit(self)
-        drag.exec_(Qt.MoveAction)
+        run_drag(drag, _Carried(picture), press_pos, Qt.MoveAction)
         DropGap.close_active()
         self.show()
         # The drop handler ran INSIDE exec_()'s nested event loop, where an

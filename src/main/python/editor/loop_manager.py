@@ -1034,7 +1034,7 @@ class LoopManager(BasicEditor):
             "Save and load loop recordings to/from your device. Save loops as .loop files for backup,\n"
             "or export as MIDI files. Load loops from files and assign tracks to loop slots."))
         desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("color: gray; font-size: 9pt;")
+        desc_label.setStyleSheet("color: palette(dark); font-size: 9pt;")
         desc_label.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(desc_label)
 
