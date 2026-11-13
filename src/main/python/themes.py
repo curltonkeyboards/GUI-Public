@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 #
-# The four looks shared with MIDIswitch Play.
+# The looks shared with MIDIswitch Play.
 #
 #   Retro Peach / Retro Blue          "pop": near-white panels, dark outlines, hard offset shadows
 #   Futuristic Light / Futuristic Dark "clay": soft raised and hollowed-out shapes, no colour accent
+#   Futuristic Peach / Futuristic Blue "clay" again, tinted with the peach and the blue pastels
+#                                      (a quiet accent of the same family, as in MIDIswitch Play)
 #
 # Each theme is a small set of colour tokens (TOKENS). The QPalette and the application stylesheet are
 # both generated from them, so a colour is only ever written down once.
@@ -59,6 +61,32 @@ TOKENS = {
         outline="#191b1f", soft_line="#2a2c33",
         hi="#7a7f8c", lo="#0e0f12",
         raised_a="#585c68", raised_b="#3a3e47",
+    ),
+    "Futuristic Peach": dict(
+        style="clay", dark=False,
+        backdrop="#f5d8d3",
+        window="#fbe6de",
+        card="#fcebe5",
+        hover="#fef3ef",
+        text="#5b3b3c", dim="#b08d8a", disabled="#cdb6b3", muted="#8f6f6c",
+        accent="#dba29b", accent_hover="#e3b3ad", on_accent="#ffffff",
+        track="#f0d4cb",
+        outline="#d9b5ad", soft_line="#ecd0c8",
+        hi="#ffffff", lo="#c99a90",
+        raised_a="#fff6f2", raised_b="#f1d6ce",
+    ),
+    "Futuristic Blue": dict(
+        style="clay", dark=False,
+        backdrop="#cfdff2",
+        window="#dfe9f6",
+        card="#e6eefa",
+        hover="#eff5fc",
+        text="#2c4259", dim="#869bb1", disabled="#b3c1d0", muted="#5f7790",
+        accent="#8fb0d6", accent_hover="#a3bfdf", on_accent="#ffffff",
+        track="#cfdcec",
+        outline="#b0c3da", soft_line="#c9d8ea",
+        hi="#ffffff", lo="#93a9c4",
+        raised_a="#f4f8fd", raised_b="#d2deee",
     ),
 }
 

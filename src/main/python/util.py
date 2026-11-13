@@ -49,6 +49,59 @@ def hid_lock_for(dev):
         return lock
 
 
+# --- Sharing the keyboard with MIDIswitch Play --------------------------------
+# MIDIswitch Play can have the same raw HID interface open at the same time. The
+# operating system hands every open handle its own copy of every report the
+# keyboard sends, so this app also receives the answers and status updates meant
+# for Play. Two guards keep them from being mistaken for answers to our requests:
+#   - PlaySharedDevice drops Play's status packets (command 0x9F, which this app
+#     never sends) on every read, wherever in the code the read is made;
+#   - hid_send skips an answer to one of the other commands Play uses when it is
+#     not the command we asked for.
+_MSW_HEADER = b"\x7d\x00\x4d"
+_PLAY_STATUS_CMD = 0x9F
+_PLAY_ALSO_ASKS = frozenset((0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB7, 0xBB))   # ThruLoop set-up, keyboard settings
+
+
+def _is_play_status(data):
+    return (len(data) > 3 and data[0] == 0x7D and data[1] == 0x00 and data[2] == 0x4D
+            and data[3] == _PLAY_STATUS_CMD)
+
+
+def _is_answer_for_play(msg, data):
+    """True if `data` answers a command Play uses and `msg` asked for something else."""
+    if len(data) < 4 or bytes(data[:3]) != _MSW_HEADER or data[3] not in _PLAY_ALSO_ASKS:
+        return False
+    return not (bytes(msg[:3]) == _MSW_HEADER and msg[3] in _PLAY_ALSO_ASKS)
+
+
+class PlaySharedDevice:
+    """Wraps a hid device handle; read() never returns a packet the keyboard sent for
+    MIDIswitch Play. Everything else goes straight through to the real handle."""
+
+    def __init__(self, dev):
+        self._dev = dev
+
+    def __getattr__(self, name):
+        return getattr(self._dev, name)
+
+    def read(self, length, timeout_ms=0):
+        if not timeout_ms or timeout_ms <= 0:
+            while True:
+                data = self._dev.read(length, timeout_ms)
+                if not data or not _is_play_status(data):
+                    return data
+
+        deadline = time.monotonic() + timeout_ms / 1000.0
+        while True:
+            left = int((deadline - time.monotonic()) * 1000)
+            data = self._dev.read(length, timeout_ms=max(1, left))
+            if not data or not _is_play_status(data):
+                return data
+            if time.monotonic() >= deadline:
+                return []
+
+
 def set_hid_transfer_active(active):
     """Mark a loop transfer as in progress so live pollers pause their HID reads."""
     global _hid_transfer_active
@@ -147,7 +200,17 @@ def hid_send(dev, msg, retries=1):
         # a slow reply. (H4)
         attempts = retries if retries > 0 else 1
         for _ in range(attempts):
-            data = bytes(dev.read(MSG_LEN, timeout_ms=500))
+            # An answer the keyboard sent for MIDIswitch Play is not ours: keep
+            # reading (for the rest of this attempt's window) until ours arrives.
+            deadline = time.monotonic() + 0.5
+            while True:
+                left = int((deadline - time.monotonic()) * 1000)
+                data = bytes(dev.read(MSG_LEN, timeout_ms=max(1, left)))
+                if data and (_is_play_status(data) or _is_answer_for_play(msg, data)):
+                    data = b""
+                    if time.monotonic() < deadline:
+                        continue
+                break
             if data:
                 break
     except OSError:

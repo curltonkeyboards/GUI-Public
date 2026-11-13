@@ -5,7 +5,7 @@ import threading
 from hidproxy import hid
 from protocol.keyboard_comm import Keyboard
 from protocol.dummy_keyboard import DummyKeyboard
-from util import MSG_LEN, hid_lock_for, pad_for_vibl
+from util import MSG_LEN, PlaySharedDevice, hid_lock_for, pad_for_vibl
 
 # Startup logging helper
 def _startup_log(msg):
@@ -28,7 +28,9 @@ class VialDevice:
 
     def open(self, override_json=None):
         _startup_log(f"Opening HID device: {self.desc.get('product_string', 'Unknown')}")
-        self.dev = hid.device()
+        # (wrapped so packets meant for MIDIswitch Play, which may have the keyboard open
+        # too, are never read as answers to this app's requests)
+        self.dev = PlaySharedDevice(hid.device())
         # Share the per-handle transaction lock with hid_send and the
         # keyboard_comm collectors — the instance RLock from __init__ only
         # covered VialDevice.send/recv against each other, which protected
