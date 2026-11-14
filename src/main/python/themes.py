@@ -336,6 +336,19 @@ def build_stylesheet(t):
                 top: -1px;
             }
 
+            /* Basic mode: a page opened from the home screen is one panel, rounded at
+               every corner, holding its title, the Home button and the page; the tab
+               frame inside it drops its own. */
+            QFrame[pagePanel="true"] {%(raised_big)s
+                background: %(window)s;
+            }
+
+            QTabWidget[inPagePanel="true"]::pane {
+                border: none;
+                background: transparent;
+                top: 0px;
+            }
+
             /* ---- buttons ---- */
             QPushButton {%(raised)s
                 padding: 2px 8px;

@@ -159,6 +159,9 @@ class KeyswitchDiagramWidget(QWidget):
         self.setMinimumHeight(305)
         self.setMaximumHeight(305)
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        # 1.0 = normal. The Actuation page sets this below 1 (and resizes the
+        # widget to match) to draw the whole diagram smaller in a narrow window.
+        self.paint_scale = 1.0
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -178,8 +181,9 @@ class KeyswitchDiagramWidget(QWidget):
 
         if not pixmap.isNull():
             # Calculate scaling to fit widget while maintaining aspect ratio
-            widget_width = self.width()
-            widget_height = self.height()
+            scale = self.paint_scale
+            widget_width = self.width() if scale == 1.0 else int(round(self.width() / scale))
+            widget_height = self.height() if scale == 1.0 else int(round(self.height() / scale))
 
             # Size the diagram so its top and bottom pixels line up with the
             # adjacent action bar (the actuation travel bar). That bar draws
@@ -192,7 +196,9 @@ class KeyswitchDiagramWidget(QWidget):
             target_height = max(1, widget_height - BAR_MARGIN_TOP - BAR_MARGIN_BOTTOM)
             # scaledToHeight keeps the source aspect ratio and gives an exact
             # height so the bottom edge lands on the bar's bottom pixel.
-            scaled_pixmap = pixmap.scaledToHeight(target_height, Qt.SmoothTransformation)
+            scaled_pixmap = pixmap.scaledToHeight(max(1, int(round(target_height * scale))), Qt.SmoothTransformation)
+            # width the picture has at full size, whatever it is drawn at
+            full_width = scaled_pixmap.width() if scale == 1.0 else pixmap.scaledToHeight(target_height).width()
 
             # Invert colors if in dark mode
             if is_dark:
@@ -203,8 +209,8 @@ class KeyswitchDiagramWidget(QWidget):
             # Center horizontally (nudged 35px left to sit beside the travel
             # bar); align the top edge with the bar's top so the image spans
             # exactly the bar's top..bottom range.
-            x = (widget_width - scaled_pixmap.width()) // 2 - 35
-            y = BAR_MARGIN_TOP
+            x = int(round(((widget_width - full_width) // 2 - 35) * scale))
+            y = int(round(BAR_MARGIN_TOP * scale))
 
             painter.drawPixmap(x, y, scaled_pixmap)
         else:
@@ -1124,6 +1130,9 @@ class DKSEntryUI(QWidget):
     """UI for a single DKS slot"""
 
     changed = pyqtSignal()
+    # "Reset All" / "Load from EEPROM" changed every slot on the keyboard: the
+    # tab reads them all again (the buttons are on each slot's page)
+    all_slots_changed = pyqtSignal()
 
     def __init__(self, slot_idx):
         super().__init__()
@@ -1473,6 +1482,7 @@ class DKSEntryUI(QWidget):
                 # reset survives a power cycle (matches "cannot be undone").
                 saved = self.dks_protocol.save_to_eeprom()
                 self._on_load()
+                self.all_slots_changed.emit()
                 if saved:
                     self._set_dirty(False)
                     QMessageBox.information(self, "Success", "All slots reset to defaults")
@@ -1504,6 +1514,7 @@ class DKSEntryUI(QWidget):
             self._set_dirty(False)
             QMessageBox.information(self, "Success", "DKS configurations loaded from EEPROM")
             self._on_load()
+            self.all_slots_changed.emit()
         else:
             self._log("Load from EEPROM: FAILED", "ERROR")
             QMessageBox.warning(self, "Error", "Failed to load from EEPROM")
@@ -1558,6 +1569,7 @@ class DKSSettingsTab(BasicEditor):
             return entry
         entry = DKSEntryUI(idx)
         entry.changed.connect(self.on_entry_changed)
+        entry.all_slots_changed.connect(self._reload_all_slots)
         if self.dks_protocol is not None:
             entry.set_dks_protocol(self.dks_protocol)
             entry.set_debug_log(self.debug_log)
@@ -1666,6 +1678,24 @@ class DKSSettingsTab(BasicEditor):
         self.debug_log("Scanning all slots for content...", "INFO")
         self._scan_and_update_visible_tabs()
         self.debug_log(f"Scan complete - {self._visible_tab_count} tabs visible", "INFO")
+
+    def _reload_all_slots(self):
+        """Read every slot from the keyboard again (after "Reset All" or "Load
+        from EEPROM" on any slot's page). Every tab then shows what the
+        keyboard holds, opened or not, so a later edit on one cannot send back
+        what it showed before."""
+        if not self.dks_protocol:
+            return
+        current = self.tabs.currentIndex()
+        for entry in self._entries.values():
+            entry._send_timer.stop()    # a send still waiting would put old contents back
+        self.loaded_slots.clear()
+        self._scanned_slots.clear()
+        self._scan_and_update_visible_tabs()
+        for idx, entry in self._entries.items():
+            if idx in self._scanned_slots:
+                entry._set_dirty(False)  # shows the keyboard's contents
+        self.tabs.setCurrentIndex(max(0, min(current, self._visible_tab_count - 1)))
 
     def _dks_slot_has_content(self, slot):
         """Check if a DKS slot has any keycodes assigned"""

@@ -25,7 +25,6 @@ class TapDanceKeyWidget(KeycodeButton):
 class TapDanceEntryUI(QObject):
 
     key_changed = pyqtSignal()
-    timing_changed = pyqtSignal()
     key_selected = pyqtSignal(object)  # Emits when a key widget is selected
 
     def __init__(self, idx):
@@ -184,9 +183,6 @@ class TapDanceEntryUI(QObject):
     def on_key_changed(self):
         self.key_changed.emit()
 
-    def on_timing_changed(self):
-        self.timing_changed.emit()
-
 
 class TapDance(BasicEditor):
 
@@ -201,34 +197,24 @@ class TapDance(BasicEditor):
         for x in range(128):
             entry = TapDanceEntryUI(x)
             entry.key_changed.connect(self.on_key_changed)
-            entry.timing_changed.connect(self.on_timing_changed)
             entry.key_selected.connect(self.on_key_widget_selected)
             self.tap_dance_entries_available.append(entry)
 
         # Dynamic tab tracking
         self._visible_tab_count = 1  # Minimum 1 tab visible
         self._manually_expanded_count = 0  # Tabs added via "+" button
+        # The "+" tab: connected once; ignored while the tabs are being rebuilt
+        self._updating_tabs = False
+        self.tabs.currentChanged.connect(self._on_tab_changed)
 
         self.addWidget(self.tabs)
 
-        # Save/Revert buttons
-        buttons = QHBoxLayout()
-        buttons.addStretch()
-        self.btn_save = QPushButton(tr("TapDance", "Save"))
-        self.btn_save.setMinimumHeight(30)
-        self.btn_save.setMaximumHeight(30)
-        self.btn_save.setMinimumWidth(80)
-        self.btn_save.setStyleSheet("QPushButton { border-radius: 5px; }")
-        self.btn_save.clicked.connect(self.on_save)
-        btn_revert = QPushButton(tr("TapDance", "Revert"))
-        btn_revert.setMinimumHeight(30)
-        btn_revert.setMaximumHeight(30)
-        btn_revert.setMinimumWidth(80)
-        btn_revert.setStyleSheet("QPushButton { border-radius: 5px; }")
-        btn_revert.clicked.connect(self.on_revert)
-        buttons.addWidget(self.btn_save)
-        buttons.addWidget(btn_revert)
-        self.addLayout(buttons)
+        # No Save / Revert here: every key picked is written to the keyboard
+        # straight away (on_key_changed), so there is never anything pending.
+        saved_note = QLabel(tr("TapDance", "Changes are saved to the keyboard as you make them."))
+        saved_note.setStyleSheet("color: palette(dark); font-size: 9pt;")
+        saved_note.setAlignment(Qt.AlignRight)
+        self.addWidget(saved_note)
 
         # TabbedKeycodes always visible at bottom
         self.tabbed_keycodes = TabbedKeycodes()
@@ -270,8 +256,12 @@ class TapDance(BasicEditor):
                 self.selected_key_widget = None
 
     def rebuild_ui(self):
-        while self.tabs.count() > 0:
-            self.tabs.removeTab(0)
+        self._updating_tabs = True
+        try:
+            while self.tabs.count() > 0:
+                self.tabs.removeTab(0)
+        finally:
+            self._updating_tabs = False
         self.tap_dance_entries = self.tap_dance_entries_available[:self.keyboard.tap_dance_count]
         self.reload_ui()
         # Reset manual expansion and update visible tabs
@@ -287,10 +277,6 @@ class TapDance(BasicEditor):
         for x, e in enumerate(self.tap_dance_entries):
             self.keyboard.tap_dance_set(x, self.tap_dance_entries[x].save())
         self.update_modified_state()
-
-    def on_revert(self):
-        self.keyboard.reload_dynamic()
-        self.reload_ui()
 
     def rebuild(self, device):
         super().rebuild(device)
@@ -309,19 +295,13 @@ class TapDance(BasicEditor):
         self.on_save()
 
     def update_modified_state(self):
-        """ Update indication of which tabs are modified, and keep Save button enabled only if it's needed """
-        has_changes = False
+        """ Update the tab titles: a tab is marked only if writing it to the keyboard did not go through """
         # Only update titles for visible tabs (not the "+" tab)
         for x in range(self._visible_tab_count):
             if self.tap_dance_entries[x].save() != self.keyboard.tap_dance_get(x):
-                has_changes = True
                 self.tabs.setTabText(x, "{}*".format(x))
             else:
                 self.tabs.setTabText(x, str(x))
-        self.btn_save.setEnabled(has_changes)
-
-    def on_timing_changed(self):
-        self.update_modified_state()
 
     def _tap_dance_has_content(self, entry_idx):
         """Check if a tap dance entry has any keycodes assigned"""
@@ -349,35 +329,31 @@ class TapDance(BasicEditor):
         base_visible = max(1, last_used + 1)
         self._visible_tab_count = min(max_tabs, base_visible + self._manually_expanded_count)
 
-        # Remove all tabs first
-        while self.tabs.count() > 0:
-            self.tabs.removeTab(0)
+        self._updating_tabs = True
+        try:
+            # Remove all tabs first
+            while self.tabs.count() > 0:
+                self.tabs.removeTab(0)
 
-        # Add visible tap dance tabs
-        for x in range(self._visible_tab_count):
-            self.tabs.addTab(self.tap_dance_entries[x].widget(), str(x))
+            # Add visible tap dance tabs
+            for x in range(self._visible_tab_count):
+                self.tabs.addTab(self.tap_dance_entries[x].widget(), str(x))
 
-        # Add "+" tab if not all tabs are visible
-        if self._visible_tab_count < max_tabs:
-            plus_widget = QWidget()
-            self.tabs.addTab(plus_widget, "+")
-            self.tabs.currentChanged.connect(self._on_tab_changed)
-        else:
-            try:
-                self.tabs.currentChanged.disconnect(self._on_tab_changed)
-            except TypeError:
-                pass
+            # Add "+" tab if not all tabs are visible
+            if self._visible_tab_count < max_tabs:
+                plus_widget = QWidget()
+                self.tabs.addTab(plus_widget, "+")
+        finally:
+            self._updating_tabs = False
 
         self.update_modified_state()
 
     def _on_tab_changed(self, index):
         """Handle tab change - check if '+' tab was clicked"""
+        if self._updating_tabs or not self.keyboard:
+            return
         if self._visible_tab_count < len(self.tap_dance_entries) and index == self._visible_tab_count:
             self._manually_expanded_count += 1
-            try:
-                self.tabs.currentChanged.disconnect(self._on_tab_changed)
-            except TypeError:
-                pass
             self._update_visible_tabs()
             # Update keycode buttons to show new tapdance count
             self.tabbed_keycodes.refresh_macro_buttons()

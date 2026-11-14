@@ -1,8 +1,9 @@
+import math
 from collections import defaultdict
 
 from PyQt5.QtGui import QPainter, QColor, QPainterPath, QTransform, QBrush, QPolygonF, QPalette, QPen, QPixmap, QFont
 from PyQt5.QtWidgets import QWidget, QToolTip, QApplication
-from PyQt5.QtCore import Qt, QSize, QRect, QPointF, pyqtSignal, QEvent, QRectF
+from PyQt5.QtCore import Qt, QSize, QRect, QPointF, pyqtSignal, QEvent, QRectF, QTimer
 
 from constants import KEY_SIZE_RATIO, KEY_SPACING_RATIO, KEYBOARD_WIDGET_PADDING, \
     KEYBOARD_WIDGET_MASK_HEIGHT, KEY_ROUNDNESS, SHADOW_SIDE_PADDING, SHADOW_TOP_PADDING, SHADOW_BOTTOM_PADDING, \
@@ -10,6 +11,29 @@ from constants import KEY_SIZE_RATIO, KEY_SPACING_RATIO, KEYBOARD_WIDGET_PADDING
 from themes import Theme
 import themes2
 from widgets.square_button import KEYCODE_PALETTE_MIME
+
+# The keyboard picture behind the keys: "light" for light themes, "dark" for
+# dark ones. Each is the keyboard cut out (transparent around the case, with a
+# crisp outline) and straightened so the gaps of its 14 x 5 key grid are
+# exactly `pitch` apart on both axes, starting at `grid_origin` (the top-left
+# gap corner). The picture is laid out so that this grid sits on the keys' own
+# grid, whatever the key size, so every keycap in it is under its key's hit
+# area. `screen` (left, top, right, bottom) and `knob` (centre x, centre y,
+# radius) are where the footswitch and encoder buttons go. All in the
+# picture's own pixels.
+PHOTOS = {
+    "light": {"path": ":/backgroundlight", "size": (1893, 694), "grid_origin": (323.0, 82.0), "pitch": 109.0,
+              "screen": (42.0, 64.0, 291.0, 397.0), "knob": (167.3, 549.4, 121.3)},
+    "dark": {"path": ":/backgrounddark", "size": (1896, 695), "grid_origin": (328.0, 82.0), "pitch": 109.0,
+              "screen": (35.0, 58.0, 300.0, 401.0), "knob": (175.0, 549.9, 120.8)},
+}
+
+
+def photo_kind():
+    """Which picture the current theme uses: "light" or "dark"."""
+    window = QApplication.palette().color(QPalette.Window)
+    brightness = window.red() * 0.299 + window.green() * 0.587 + window.blue() * 0.114
+    return "light" if brightness > 127 else "dark"
 
 
 def _paint_key_icon(qp, key):
@@ -908,16 +932,25 @@ class KeyboardWidget2(QWidget):
     keycode_dropped = pyqtSignal(object, bool, str)
     # The joystick overlay in a key's corner was clicked (key widget).
     joystick_clicked = pyqtSignal(object)
+    # The keyboard picture changed (a light <-> dark theme switch) and was laid
+    # out again: anything placed over it should follow.
+    photo_changed = pyqtSignal()
 
     def __init__(self, layout_editor):
         super().__init__()
 
         self.enabled = True
         self.scale = 1
-        # Size factor for the background photo (the keys follow self.scale;
-        # the photo is a fixed 1035x345 unless a subclass shrinks it).
+        # Kept for subclasses that set it; the photo now follows the keys (see
+        # _place_photo), so it scales with self.scale on its own.
         self.bg_image_scale = 1.0
         self.padding = KEYBOARD_WIDGET_PADDING
+        # Where the keyboard photo is drawn, in widget pixels (set by
+        # update_layout), and the photo scaled for that size.
+        self.photo_rect = QRectF()
+        self._photo_cache = (None, None)
+        self._photo_spec = None             # the PHOTOS entry the layout was made for
+        self._photo_spec_kind = None
 
         # Set fixed font size for keyboard widget to maintain original key sizes
         fixed_font = QFont()
@@ -1102,70 +1135,142 @@ class KeyboardWidget2(QWidget):
             max_w = max(max_w, p.x() * (self.scale * 1.4))
             max_h = max(max_h, p.y() * (self.scale * 1.5))
 
-        # Move all widgets right and down to create proper padding
+        # Move all widgets right and down to create proper padding (through
+        # update_position, so the hit areas move with the drawn keys)
         for widget in self.widgets:
-            widget.shift_x += 30  # Move right 30 pixels
-            widget.shift_y += 20  # Move down 20 pixels
+            widget.update_position(widget.scale, widget.shift_x + 30, widget.shift_y + 20)
 
         self.width = round(max_w + 2 * self.padding)
         self.height = round(max_h + 2 * self.padding)
 
-        # Never smaller than the background photo, or its right and bottom edges are cut off
-        self.width = max(self.width, round(1035 * self.bg_image_scale))
-        self.height = max(self.height, round(345 * self.bg_image_scale))
+        # The photo is laid out around the keys (and the widget made big enough for it)
+        self._place_photo()
 
         self.update()
         self.updateGeometry()
+
+    def _place_photo(self):
+        """Lay the keyboard photo out under the keys: the photo's key pitch
+        becomes the keys' pitch and its key grid lands on the keys' grid. If
+        the photo's left part (screen and knob) or top rim would stick out of
+        the widget, every key moves right / down to make room. Sets
+        self.photo_rect, in widget pixels."""
+        self.photo_rect = QRectF()
+        self._photo_spec_kind = photo_kind()
+        self._photo_spec = spec = PHOTOS[self._photo_spec_kind]
+        keys = [w for w in self.widgets if not isinstance(w, EncoderWidget2)]
+        if not keys:
+            return
+        s = self.scale * 1.3                         # the keys are drawn at this scale
+        size = keys[0].size                          # one key pitch, before scaling
+        spacing = keys[0].scale * KEY_SPACING_RATIO  # the gap after each key
+        # the key grid's top-left gap corner: half a gap before the first key
+        left = min(k.shift_x + k.x for k in keys) - spacing / 2
+        top = min(k.shift_y + k.y for k in keys) - spacing / 2
+        zoom = size * s / spec["pitch"]              # widget pixels per picture pixel
+        x = left * s - spec["grid_origin"][0] * zoom
+        y = top * s - spec["grid_origin"][1] * zoom
+        dx = max(0.0, self.padding - x)
+        dy = max(0.0, self.padding - y)
+        if dx or dy:
+            for k in self.widgets:
+                k.update_position(k.scale, k.shift_x + dx / s, k.shift_y + dy / s)
+            x += dx
+            y += dy
+        self.photo_rect = QRectF(x, y, spec["size"][0] * zoom, spec["size"][1] * zoom)
+        self.width = max(self.width, math.ceil(self.photo_rect.right() + self.padding))
+        self.height = max(self.height, math.ceil(self.photo_rect.bottom() + self.padding))
+
+    def _spec(self):
+        return self._photo_spec or PHOTOS[photo_kind()]
+
+    def photo_point(self, x, y):
+        """A point given in picture pixels, in widget pixels."""
+        r = self.photo_rect
+        zoom = r.width() / self._spec()["size"][0] if r.width() else 0.0
+        return QPointF(r.x() + x * zoom, r.y() + y * zoom)
+
+    def photo_screen_rect(self):
+        """The picture's screen, in widget pixels."""
+        sc = self._spec()["screen"]
+        return QRectF(self.photo_point(sc[0], sc[1]), self.photo_point(sc[2], sc[3]))
+
+    def photo_knob(self):
+        """The picture's knob: (centre, radius), in widget pixels."""
+        r = self.photo_rect
+        kn = self._spec()["knob"]
+        zoom = r.width() / self._spec()["size"][0] if r.width() else 0.0
+        return self.photo_point(kn[0], kn[1]), kn[2] * zoom
+
+    def _follow_theme(self):
+        """After a switch between a light and a dark theme, lay the keys out
+        again for the other picture (its rim and proportions differ)."""
+        if self._photo_spec_kind is not None and self._photo_spec_kind != photo_kind() and self.widgets:
+            self.update_layout()
+            self.photo_changed.emit()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.PaletteChange, QEvent.ApplicationPaletteChange, QEvent.StyleChange):
+            QTimer.singleShot(0, self._follow_theme)
+
+    def keys_left(self):
+        """The left edge of the leftmost key, in widget pixels."""
+        keys = [w for w in self.widgets if not isinstance(w, EncoderWidget2)]
+        if not keys:
+            return 0.0
+        return min(k.shift_x + k.x for k in keys) * self.scale * 1.3
+
+    def _photo_pixmap(self, painter):
+        """The photo for the current theme, scaled for how it is drawn now
+        (its size here times the painter's own scale: screen DPI, and the
+        keymap's zoom), or None."""
+        if self.photo_rect.isEmpty():
+            return None
+        if self._photo_spec_kind != photo_kind():
+            QTimer.singleShot(0, self._follow_theme)     # the theme changed: re-lay out
+        spec = self._spec()
+        name = spec["path"]
+        t = painter.deviceTransform()
+        sx = max(math.hypot(t.m11(), t.m12()), 0.01)
+        sy = max(math.hypot(t.m21(), t.m22()), 0.01)
+        w = max(1, min(spec["size"][0], round(self.photo_rect.width() * sx)))
+        h = max(1, min(spec["size"][1], round(self.photo_rect.height() * sy)))
+        key = (name, w, h)
+        if self._photo_cache[0] != key:
+            source = QPixmap(name)
+            if source.isNull():
+                return None
+            self._photo_cache = (key, source.scaled(w, h, Qt.IgnoreAspectRatio, Qt.SmoothTransformation))
+        return self._photo_cache[1]
 
     def paintEvent(self, event):
         qp = QPainter()
         qp.begin(self)
         qp.setRenderHint(QPainter.Antialiasing)
         
-        # Set up the color and pen for the keyboard border
-        border_pen = QPen(QApplication.palette().color(QPalette.Highlight))
-        border_pen.setWidth(3)  # Set width of the border
-        qp.setPen(border_pen)
-        qp.setBrush(Qt.NoBrush)
-        
         def with_transparency(color, transparency_factor):
             alpha = int(255 * (1 - transparency_factor))
             return QColor(color.red(), color.green(), color.blue(), alpha)
-    
-        # Draw the rounded border around the keyboard
-        border_radius = 15  # Radius for rounded corners
-        rect = QRect(self.padding, self.padding, self.width - 2 * self.padding, self.height - 2 * self.padding)
-        qp.drawRoundedRect(rect, border_radius, border_radius)
 
-        # Get the Window color and calculate brightness to determine light or dark theme
-        window_color = QApplication.palette().color(QPalette.Window)
-        brightness = (window_color.red() * 0.299 + window_color.green() * 0.587 + window_color.blue() * 0.114)
+        # The pen the keys below start from (as it always was: the frame's pen)
+        border_pen = QPen(QApplication.palette().color(QPalette.Highlight))
+        border_pen.setWidth(3)
+        qp.setPen(border_pen)
+        qp.setBrush(Qt.NoBrush)
 
-        # Choose image based on brightness (light or dark theme)
-        if brightness > 127:  # Threshold for light/dark theme
-            pixmap = QPixmap(":/backgroundlight")  # Light theme alias
+        # The keyboard photo (light keyboard for light themes, dark for dark),
+        # laid out by _place_photo so its keycaps sit under the keys.
+        photo = self._photo_pixmap(qp)
+        if photo is not None:
+            qp.save()
+            qp.setRenderHint(QPainter.SmoothPixmapTransform)
+            qp.drawPixmap(self.photo_rect, photo, QRectF(photo.rect()))
+            qp.restore()
         else:
-            pixmap = QPixmap(":/backgrounddark")  # Dark theme alias
-        
-        if not pixmap.isNull():
-            # Define the area for the image with specific coordinates and dimensions
-            image_x, image_y = 0, 0  # Adjust as needed for positioning
-            image_width, image_height = 1035, 345  # Set the dimensions as desired
-            if self.bg_image_scale != 1.0:
-                image_width = round(image_width * self.bg_image_scale)
-                image_height = round(image_height * self.bg_image_scale)
-            image_rect = QRect(image_x, image_y, image_width, image_height)  # Use QRect instead of QRectF
-
-            # Create a rounded path for clipping
-            path = QPainterPath()
-            path.addRoundedRect(QRectF(image_rect), 15.0, 15.0)  # Use QRectF here for rounded corners
-
-            # Clip drawing to the rounded rectangle path and draw the image
-            qp.setClipPath(path)
-            qp.drawPixmap(image_rect, pixmap, pixmap.rect())
-
-        # Reset clipping after drawing the image
-        qp.setClipping(False)
+            # no photo: a rounded frame around the keys instead
+            rect = QRect(self.padding, self.padding, self.width - 2 * self.padding, self.height - 2 * self.padding)
+            qp.drawRoundedRect(rect, 15, 15)
 
         # for regular keycaps
         regular_pen = qp.pen()
@@ -1371,25 +1476,28 @@ class KeyboardWidget2(QWidget):
     def hit_test(self, pos):
         """ Returns key, hit_masked_part """
 
-        # Adjust the position for hit testing based on shifts
-        adjusted_pos = pos / (self.scale * 1.3)
+        # Back to the keys' own (unscaled) coordinates. Each key's hit polygon
+        # already includes its shift (calculate_bbox applies it), the same shift
+        # the painter applies before drawing the key, so the point is tested as
+        # it is: the hit area is exactly the drawn key.
+        adjusted_pos = QPointF(pos) / (self.scale * 1.3)
 
         for key in self.widgets:
             # Check the masked hitbox first
-            if key.masked and key.mask_polygon.containsPoint(adjusted_pos - QPointF(key.shift_x, key.shift_y), Qt.OddEvenFill):
+            if key.masked and key.mask_polygon.containsPoint(adjusted_pos, Qt.OddEvenFill):
                 return key, True
             # Then check the regular hitbox
-            if key.polygon.containsPoint(adjusted_pos - QPointF(key.shift_x, key.shift_y), Qt.OddEvenFill):
+            if key.polygon.containsPoint(adjusted_pos, Qt.OddEvenFill):
                 return key, False
 
         return None, False
 
     def joystick_hit_test(self, pos):
         """Key whose joystick overlay is under pos, else None."""
-        adjusted_pos = pos / (self.scale * 1.3)
+        adjusted_pos = QPointF(pos) / (self.scale * 1.3)
         for key in self.widgets:
             if getattr(key, "joystick_text", "") and key.joystick_polygon.containsPoint(
-                    adjusted_pos - QPointF(key.shift_x, key.shift_y), Qt.OddEvenFill):
+                    adjusted_pos, Qt.OddEvenFill):
                 return key
         return None
 

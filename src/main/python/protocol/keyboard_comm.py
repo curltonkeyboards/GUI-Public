@@ -78,6 +78,7 @@ HID_CMD_DAW = 0x99  # Get/set the default DAW (sub 0=GET, 1=SET)
 HID_CMD_PERF = 0x9B  # Get/set the LCD smoothness mode (sub 0=GET, 1=SET)
 HID_CMD_LOOP_SNAP = 0x9C  # Get/set the loop note snap grid (sub 0=GET, 1=SET)
 HID_CMD_UPDATE_MODE = 0x9D  # Firmware update mode (sub 0=QUERY, 1=ENTER)
+HID_CMD_KEYMAP_SYNC = 0x9E  # Keymap edits made on the keyboard itself (sub 0=GET)
 HID_CMD_GAMING_BIND = 0x9A  # Joystick functions attached to keys (sub 0=GET, 1=SET, 2=CLEAR)
 HID_CMD_SET_KEYBOARD_PARAM_SINGLE = 0xE8  # Set individual parameter (changed from 0xBD collision)
 
@@ -245,6 +246,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         # RAM keymap has ever received the full keymap this session.
         self._rescan_dirty_rows = set()
         self._rescan_full_sent = False
+        # Change count of the keyboard's own keymap edits (Key Mapper menu);
+        # None = not read yet. See poll_device_keymap_changes().
+        self._km_sync_count = None
+        self._km_sync_supported = None
+        # Unanswered requests in a row, and when to ask again after one.
+        self._km_sync_misses = 0
+        self._km_sync_retry_at = 0.0
         self.rows = self.cols = self.layers = 0
         self.layout_labels = None
         self.layout_options = -1
@@ -1853,6 +1861,89 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         except Exception:
             return False
 
+    def keymap_sync_supported(self):
+        """Does the keyboard report keymap edits made on the keyboard itself
+        (firmware 1.1.25 and later)? Older firmware may not answer the
+        request at all, which would stall every poll, so it is never asked."""
+        if self._km_sync_supported is None:
+            ident = getattr(self, "msw_ident", None)
+            fw = tuple(ident.get("firmware", (0, 0, 0))) if ident else (0, 0, 0)
+            self._km_sync_supported = bool(ident) and (fw >= (1, 1, 25) or fw < (1, 1, 0))
+        return self._km_sync_supported
+
+    def get_keymap_sync(self):
+        """Read the keyboard's own keymap edits.
+
+        Returns (count, entries) or None. count goes up by one per edit made
+        on the keyboard (wraps at 65536); entries are up to 4 of the newest
+        edits, newest first, each (kind, layer, a, b, keycode): kind 0 = key
+        at row a, column b; kind 1 = encoder a, direction b (0 CCW, 1 CW)."""
+        if not self.keymap_sync_supported():
+            return None
+        if time.monotonic() < self._km_sync_retry_at:
+            return None
+        try:
+            packet = self._create_hid_packet(HID_CMD_KEYMAP_SYNC, 0, None)
+            data = self.usb_send(self.dev, packet, retries=1)
+        except Exception:
+            # No answer (unplugged, busy): waiting for one holds the window
+            # for a few seconds, so ask again only after a while, and stop
+            # asking after three in a row.
+            self._km_sync_misses += 1
+            if self._km_sync_misses >= 3:
+                self._km_sync_supported = False
+            self._km_sync_retry_at = time.monotonic() + 30.0
+            return None
+        self._km_sync_misses = 0
+        if not data or len(data) < 32 or data[3] != HID_CMD_KEYMAP_SYNC or data[4] != 0x01:
+            # Answered, but not with a keymap-sync reply: this firmware does
+            # not have the command, so stop asking.
+            self._km_sync_supported = False
+            return None
+        count = data[5] | (data[6] << 8)
+        entries = []
+        for i in range(min(data[7], 4)):
+            e = data[8 + i * 6: 14 + i * 6]
+            entries.append((e[0], e[1], e[2], e[3], e[4] | (e[5] << 8)))
+        return count, entries
+
+    def poll_device_keymap_changes(self):
+        """Bring self.layout / self.encoder_layout up to date with keys
+        changed on the keyboard itself (the Key Mapper menu). The first call
+        only records where the count stands. Returns True when something
+        changed (the caller redraws). Never raises."""
+        try:
+            st = self.get_keymap_sync()
+            if st is None:
+                return False
+            count, entries = st
+            if self._km_sync_count is None:
+                self._km_sync_count = count
+                return False
+            delta = (count - self._km_sync_count) & 0xFFFF
+            if delta == 0:
+                return False
+            if delta > len(entries):
+                # More edits than the reply carries: read the whole keymap
+                # again (the count is only taken once that has worked).
+                self.reload_keymap()
+                self._km_sync_count = count
+                self._rescan_full_sent = False
+                return True
+            self._km_sync_count = count
+            firmware_rows = getattr(self, 'firmware_rows', self.rows)
+            for kind, layer, a, b, kc in reversed(entries[:delta]):
+                code = Keycode.serialize(kc)
+                if kind == 0 and (layer, a, b) in self.layout:
+                    self.layout[(layer, a, b)] = code
+                    if a < firmware_rows:
+                        self._rescan_dirty_rows.add((layer, a))
+                elif kind == 1 and (layer, a, b) in self.encoder_layout:
+                    self.encoder_layout[(layer, a, b)] = code
+            return True
+        except Exception:
+            return False
+
     def get_nav_layer(self):
         """Get the keyboard's navigation layer (the layer on-device menus read
         typed input from — naming/search letters, digits, arrows).
@@ -2310,7 +2401,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
                                     list(packets[(HID_CMD_SET_OVERDUB_CCS, 1)][6:30]))
 
             data = packets[(HID_CMD_SET_NAVIGATION_CONFIG, None)][6:]
-            config['separateLoopChopCC'] = data[0] != 0
+            # data[0] is the keyboard's "use the single LoopChop CC" flag:
+            # 0 = the eight separate CCs are in use.
+            config['separateLoopChopCC'] = data[0] == 0
             config['masterCC'] = data[1]
             config['navCCs'] = list(data[2:10])
             return config
@@ -3504,20 +3597,6 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         packet = self._create_hid_packet(0xDC, 0, bytearray())  # HID_CMD_USER_CURVE_RESET
         response = self.usb_send(self.dev, packet, retries=20)
         return response and len(response) > 5 and response[5] == 0x01
-
-    def toggle_velocity_preset_debug(self):
-        """
-        Toggle velocity preset debug display on OLED.
-        Shows aftertouch, actuation override, speed/peak ratio, retrigger settings.
-
-        Returns:
-            bool: New state (True = debug mode on, False = off), or None if failed
-        """
-        packet = self._create_hid_packet(0xDD, 0, bytearray())  # HID_CMD_VELOCITY_PRESET_DEBUG_TOGGLE
-        response = self.usb_send(self.dev, packet, retries=3)
-        if response and len(response) > 6 and response[5] == 0x01:
-            return response[6] == 0x01  # Returns current state
-        return None
 
     # =========================================================================
     # GAMING RESPONSE SETTINGS

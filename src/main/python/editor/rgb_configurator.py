@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
+import ui_mode
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import pyqtSignal, QObject, Qt, QTimer
 from PyQt5.QtGui import QColor
@@ -1591,6 +1592,7 @@ class RescanButtonHandler(BasicHandler):
         self.rescan_button.setMinimumHeight(30)
         self.rescan_button.setStyleSheet("QPushButton { border-radius: 5px; padding: 8px; }")
         button_layout.addWidget(self.rescan_button)
+        ui_mode.advanced_only(self.rescan_button)
 
         button_layout.addStretch()
 
@@ -1613,40 +1615,71 @@ class RescanButtonHandler(BasicHandler):
         # Always show the rescan button
         return isinstance(self.device, VialKeyboard)
 
+    RESCAN_WAIT_SECONDS = 10
+
     def on_rescan_led_positions(self):
-        """Rescan LED positions and restart the application"""
+        """Rescan LED positions, wait for the keyboard to finish (without
+        blocking the window) and then restart the application"""
+        if getattr(self, "_rescan_seconds_left", 0) > 0:
+            return
         try:
-            print("Starting LED rescan process...")
-            
-            # Disable the button to prevent multiple clicks
-            self.rescan_button.setEnabled(False)
-            self.rescan_button.setText("Rescanning... App will restart in 10 seconds")
-            
-            # Force immediate GUI update to show disabled state
-            from PyQt5.QtWidgets import QApplication, QMessageBox
-            QApplication.processEvents()
-            
-            # Send the rescan command
-            if hasattr(self.device.keyboard, 'rescan_led_positions'):
-                self.device.keyboard.rescan_led_positions()
-                print("Rescan LED command sent")
-            else:
+            keyboard = getattr(self.device, "keyboard", None)
+            if keyboard is None or not hasattr(keyboard, 'rescan_led_positions'):
                 print("Rescan LED method not available")
                 self.restore_button()
                 return
-                
-            # Wait 10 seconds for firmware to complete processing
-            print("Waiting 10 seconds for firmware to complete...")
-            import time
-            time.sleep(10.0)
-            
-            print("LED rescan completed, restarting application...")
-            
-            # Try to restart the application
-            self.restart_application()
-            
+
+            # Disable the button to prevent multiple clicks
+            self.rescan_button.setEnabled(False)
+
+            # Send the rescan command
+            print("Starting LED rescan process...")
+            keyboard.rescan_led_positions()
+            print("Rescan LED command sent")
+
+            # Count down on the button while the firmware works
+            self._rescan_seconds_left = self.RESCAN_WAIT_SECONDS
+            if getattr(self, "_rescan_timer", None) is None:
+                self._rescan_timer = QTimer(self)
+                self._rescan_timer.setInterval(1000)
+                self._rescan_timer.timeout.connect(self._on_rescan_tick)
+            self._show_rescan_countdown()
+            self._rescan_timer.start()
+
         except Exception as e:
             print(f"Error during LED rescan process: {e}")
+            self._stop_rescan_wait()
+            self.restore_button()
+
+    def _show_rescan_countdown(self):
+        # Short enough for the button's space beside Save Settings
+        self.rescan_button.setText(tr(
+            "RGBConfigurator", "Rescanning... restart in {} s").format(self._rescan_seconds_left))
+
+    def _stop_rescan_wait(self):
+        self._rescan_seconds_left = 0
+        timer = getattr(self, "_rescan_timer", None)
+        if timer is not None:
+            timer.stop()
+
+    def _on_rescan_tick(self):
+        try:
+            self._rescan_seconds_left -= 1
+            if self._rescan_seconds_left > 0:
+                self._show_rescan_countdown()
+                return
+            self._stop_rescan_wait()
+            if not self.valid():
+                # The keyboard went away while waiting: nothing to refresh,
+                # so no restart; it is read afresh when it comes back.
+                print("Keyboard disconnected during the LED rescan, not restarting")
+                self.restore_button()
+                return
+            print("LED rescan completed, restarting application...")
+            self.restart_application()
+        except Exception as e:
+            print(f"Error during LED rescan process: {e}")
+            self._stop_rescan_wait()
             self.restore_button()
 
     def restart_application(self):
@@ -1743,6 +1776,7 @@ class LayerRGBHandler(BasicHandler):
 
         self.widgets = [self.lbl_layer_rgb_enable, self.layer_rgb_enable, 
                        self.lbl_layer_buttons, self.layer_buttons_widget]
+        ui_mode.advanced_only(*self.widgets)
 
         # Create initial buttons (they will be updated when device connects)
         self.create_layer_buttons()
@@ -1771,8 +1805,14 @@ class LayerRGBHandler(BasicHandler):
             self.layer_buttons_layout.addWidget(button, row, col)
             self.layer_buttons.append(button)
 
+    def set_device(self, device):
+        # A keyboard was connected, replugged or reloaded (factory reset,
+        # restore from a file): read the checkbox from it again.
+        self.initial_load_complete = False
+        super().set_device(device)
+
     def update_from_keyboard(self):
-        """Update from keyboard - NEVER update checkbox after initial load"""
+        """Update from keyboard - the checkbox is read once per connect/reload"""
         if not self.valid():
             return
 
@@ -4392,6 +4432,8 @@ class RGBConfigurator(BasicEditor):
         self.adv_key_lighting_container = QGridLayout()
         self.adv_key_lighting_tab = self._create_tab_with_scroll(self.adv_key_lighting_container)
         self.tabs_widget.addTab(self.adv_key_lighting_tab, tr("RGBConfigurator", "Key Indicators"))
+        # Basic mode: effect, brightness, colour and Save only
+        ui_mode.limit_tabs(self.tabs_widget, {tr("RGBConfigurator", "Custom Lights")})
 
         # Initialize handler for Lighting Configurator tab (per-key RGB)
         self.handler_per_key_rgb = PerKeyRGBHandler(self.lighting_container)
@@ -4491,6 +4533,18 @@ class RGBConfigurator(BasicEditor):
         desc_label.setAlignment(QtCore.Qt.AlignCenter)
         content_layout.addWidget(desc_label)
 
+        # Basic mode has the left-hand controls only, so it says so
+        basic_title = QLabel("Lighting")
+        basic_title.setStyleSheet("font-weight: bold; font-size: 14pt;")
+        basic_title.setAlignment(QtCore.Qt.AlignCenter)
+        content_layout.addWidget(basic_title)
+        basic_desc = QLabel("Choose the keyboard's light effect, colour, brightness and speed.")
+        basic_desc.setStyleSheet("color: palette(dark); font-size: 9pt;")
+        basic_desc.setAlignment(QtCore.Qt.AlignCenter)
+        content_layout.addWidget(basic_desc)
+        ui_mode.advanced_only(title_label, desc_label)
+        ui_mode.basic_only(basic_title, basic_desc)
+
         content_layout.addSpacing(10)
 
         # Side by side layout (centered)
@@ -4519,6 +4573,7 @@ class RGBConfigurator(BasicEditor):
         custom_group_layout.addWidget(custom_widget)
         custom_group.setLayout(custom_group_layout)
         h_layout.addWidget(custom_group)
+        ui_mode.advanced_only(custom_group)
 
         h_layout.addStretch()
         content_layout.addLayout(h_layout)

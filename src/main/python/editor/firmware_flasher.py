@@ -281,7 +281,16 @@ class FirmwareFlasher(BasicEditor):
         self.btn_select.setEnabled(False)
         self.main.lock_ui()
         keep = self.chk_keep.isChecked()
-        threading.Thread(target=self._run, args=(mode, pkg, keep, restore_path), daemon=True).start()
+        try:
+            threading.Thread(target=self._run, args=(mode, pkg, keep, restore_path), daemon=True).start()
+        except Exception as e:
+            # nothing was started, so nothing will report back (_on_done): undo the lock here
+            logging.exception("could not start the firmware update")
+            self.running = False
+            self.btn_select.setEnabled(True)
+            self.main.unlock_ui()
+            self._refresh_status()
+            QMessageBox.critical(None, tr("Flasher", "Firmware update failed"), str(e))
 
     @staticmethod
     def _backup_time(path):
@@ -351,7 +360,7 @@ class FirmwareFlasher(BasicEditor):
         if memory_failed:
             raise upd.UpdateError(
                 "The keyboard restarted but cannot read its settings memory. Unplug the "
-                "keyboard, plug it back in, then press Refresh. If your settings were not "
+                "keyboard and plug it back in. If your settings were not "
                 "put back, load the backup with File > Load keyboard clone.")
         return desc
 

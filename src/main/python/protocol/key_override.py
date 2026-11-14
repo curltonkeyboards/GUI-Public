@@ -98,9 +98,16 @@ class ProtocolKeyOverride(BaseProtocol):
             if entry.replacement == RESET_KEYCODE:
                 Unlocker.unlock(self)
 
+            data = self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_DYNAMIC_ENTRY_OP,
+                                                       DYNAMIC_VIAL_KEY_OVERRIDE_SET, idx) + entry.serialize(),
+                                 retries=20)
+            # The keyboard answers with a status in the first byte (0 = stored).
+            # A refused entry is not taken as stored, so the page keeps
+            # showing it as an unsaved change.
+            if data and data[0] != 0:
+                return False
             self.key_override_entries[idx] = entry
-            self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_DYNAMIC_ENTRY_OP,
-                                                DYNAMIC_VIAL_KEY_OVERRIDE_SET, idx) + entry.serialize())
+        return True
 
     def save_key_override(self):
         return [e.save() for e in self.key_override_entries]

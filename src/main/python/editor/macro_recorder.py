@@ -57,6 +57,9 @@ class MacroRecorder(BasicEditor):
 
         # Macro tabs
         self.tabs = QTabWidget()
+        # The "+" tab: connected once; ignored while the tabs are being rebuilt
+        self._updating_tabs = False
+        self.tabs.currentChanged.connect(self._on_tab_changed)
         self.addWidget(self.tabs)
 
         # Macro usage: percentage + a small bar (green, yellow above 80%, red above 90%)
@@ -102,12 +105,16 @@ class MacroRecorder(BasicEditor):
             self.macro_tab_w.append(w)
 
         # only show the number of macro editors that keyboard supports
-        while self.tabs.count() > 0:
-            self.tabs.removeTab(0)
-        for x, w in enumerate(self.macro_tab_w[:self.keyboard.macro_count]):
-            self.tabs.addTab(w, "")
-            # Update macro index in case of reuse
-            self.macro_tabs[x].set_macro_index(x)
+        self._updating_tabs = True
+        try:
+            while self.tabs.count() > 0:
+                self.tabs.removeTab(0)
+            for x, w in enumerate(self.macro_tab_w[:self.keyboard.macro_count]):
+                self.tabs.addTab(w, "")
+                # Update macro index in case of reuse
+                self.macro_tabs[x].set_macro_index(x)
+        finally:
+            self._updating_tabs = False
 
         # deserialize macros that came from keyboard
         self.deserialize(self.keyboard.macro)
@@ -312,41 +319,34 @@ class MacroRecorder(BasicEditor):
         base_visible = max(1, last_used + 1)
         self._visible_tab_count = min(max_tabs, base_visible + self._manually_expanded_count)
 
-        # Remove all tabs first
-        while self.tabs.count() > 0:
-            self.tabs.removeTab(0)
+        self._updating_tabs = True
+        try:
+            # Remove all tabs first
+            while self.tabs.count() > 0:
+                self.tabs.removeTab(0)
 
-        # Add visible macro tabs
-        for x in range(self._visible_tab_count):
-            self.tabs.addTab(self.macro_tab_w[x], "")
-            self.macro_tabs[x].set_macro_index(x)
+            # Add visible macro tabs
+            for x in range(self._visible_tab_count):
+                self.tabs.addTab(self.macro_tab_w[x], "")
+                self.macro_tabs[x].set_macro_index(x)
 
-        # Add "+" tab if not all tabs are visible
-        if self._visible_tab_count < max_tabs:
-            plus_widget = QWidget()
-            self.tabs.addTab(plus_widget, "+")
-            # Connect tab change to detect "+" click
-            self.tabs.currentChanged.connect(self._on_tab_changed)
-        else:
-            # Disconnect if all tabs shown
-            try:
-                self.tabs.currentChanged.disconnect(self._on_tab_changed)
-            except TypeError:
-                pass  # Not connected
+            # Add "+" tab if not all tabs are visible
+            if self._visible_tab_count < max_tabs:
+                plus_widget = QWidget()
+                self.tabs.addTab(plus_widget, "+")
+        finally:
+            self._updating_tabs = False
 
         self.update_tab_titles()
 
     def _on_tab_changed(self, index):
         """Handle tab change - check if '+' tab was clicked"""
+        if self._updating_tabs or not self.keyboard:
+            return
         # Check if the "+" tab was clicked (last tab when not all visible)
         if self._visible_tab_count < self.keyboard.macro_count and index == self._visible_tab_count:
             # Expand one more tab
             self._manually_expanded_count += 1
-            # Disconnect before updating to avoid recursion
-            try:
-                self.tabs.currentChanged.disconnect(self._on_tab_changed)
-            except TypeError:
-                pass
             self._update_visible_tabs()
             # Update keycode buttons to show new macro count
             self.tabbed_keycodes.refresh_macro_buttons()

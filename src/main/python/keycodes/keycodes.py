@@ -130,13 +130,20 @@ class Keycode:
         """ Converts integer keycode to string """
         if cls.protocol == 6:
             masked = keycodes_v6.masked
+            read_aliases = keycodes_v6.read_aliases
         else:
             masked = keycodes_v5.masked
+            read_aliases = keycodes_v5.read_aliases
 
         if (code & 0xFF00) not in masked:
             kc = RAWCODES_MAP.get(code)
             if kc is not None:
                 return kc.code_id
+            # A second raw value for a key the app writes differently (see
+            # read_aliases in keycodes_v5/v6): shown as that key.
+            alias = read_aliases.get(code)
+            if alias is not None and alias in cls.code_id_to_keycode:
+                return alias
         else:
             outer = RAWCODES_MAP.get(code & 0xFF00)
             inner = RAWCODES_MAP.get(code & 0x00FF)
@@ -164,6 +171,14 @@ class Keycode:
             if reraise:
                 raise
         return 0
+
+    @classmethod
+    def has_read_alias(cls, code_id):
+        """ True for a key that the keyboard may hold under a second raw value
+        (see read_aliases): what the app shows as this key is then not
+        necessarily the value the app itself would write """
+        tables = keycodes_v6 if cls.protocol == 6 else keycodes_v5
+        return code_id in tables.read_aliases.values()
 
     @classmethod
     def normalize(cls, code):
@@ -2386,7 +2401,7 @@ KEYCODES_RGBSAVE = [
 
 KEYCODES_EXWHEEL = [
     K("EXWHEEL_TRA", "Touch\nDial\nTranspose", "Touch dial: transpose"),
-    K("EXWHEEL_VEL", "Touch\nDial\nDynamics", "Touch dial: dynamics (articulation)"),
+    K("EXWHEEL_VEL", "Touch\nDial\nArticulation", "Touch dial: articulation"),
     K("EXWHEEL_CHA", "Touch\nDial\nChannel", "Touch dial: channel"),
     K("EXWHEEL_SC", "Touch\nDial\nSmartChord", "Touch dial: SmartChord (encoder = chord up/down, press = play)"),
     K("EXWHEEL_BPM", "Touch\nDial\nBPM", "Touch dial: BPM (encoder = BPM up/down, press = Tap BPM)"),
@@ -3319,9 +3334,9 @@ def recreate_keyboard_keycodes(keyboard):
     KEYCODES_LAYERS.clear()
 
     if layers >= 4:
-        # Fn 1 / Fn 2 no longer change layer: they are the "held keys" for Key Combos.
-        KEYCODES_LAYERS.append(Keycode("FN_MO13", "Fn 1", "Held key for Key Combos (does not change layer)"))
-        KEYCODES_LAYERS.append(Keycode("FN_MO23", "Fn 2", "Held key for Key Combos (does not change layer)"))
+        # Fn 1 / Fn 2 no longer change layer: they are the "held keys" for Key Shortcuts.
+        KEYCODES_LAYERS.append(Keycode("FN_MO13", "Fn 1", "Held key for Key Shortcuts (does not change layer)"))
+        KEYCODES_LAYERS.append(Keycode("FN_MO23", "Fn 2", "Held key for Key Shortcuts (does not change layer)"))
 
 
     # Layer-tap is unsupported: registered for display only (see KEYCODES_UNSUPPORTED).

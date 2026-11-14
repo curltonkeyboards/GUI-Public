@@ -6,13 +6,28 @@ from keycodes.keycodes import Keycode
 from util import tr
 
 
+def top_window(widget):
+    """The real window `widget` is shown in. The Keymap page's keyboard sits
+    inside a zoomable graphics view, where it belongs to a hidden top-level of
+    its own: a dialog or menu given that as its parent would be drawn inside
+    the view (squeezed into the keyboard's area, and scaled by its zoom)."""
+    window = widget.window() if widget is not None else None
+    for _ in range(4):
+        proxy = window.graphicsProxyWidget() if window is not None else None
+        if proxy is None or proxy.scene() is None or not proxy.scene().views():
+            break
+        window = proxy.scene().views()[0].window()
+    return window if window is not None else QApplication.activeWindow()
+
+
 class KeycodeSearchDialog(QDialog):
     """"Search for a keycode" window opened by double-clicking a key: the same
     searchable browser as the palette's Search tab. Clicking a result picks it
     and closes the window; the pick is in `value`."""
 
     def __init__(self, keycode_filter=None, parent=None):
-        super().__init__(parent)
+        # a window of its own over the app, never inside the Keymap's zoom view
+        super().__init__(top_window(parent) if parent is not None else None)
         # Imported here: tabbed_keycodes imports widgets that import this module.
         from tabbed_keycodes import SearchTab
 

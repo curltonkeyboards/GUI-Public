@@ -1,3 +1,4 @@
+import logging
 import time
 import win32gui, win32con, win32api
 import win32gui_struct
@@ -15,6 +16,10 @@ def device_changed(hwnd, msg, wp, lp):
     global g_device_changes
     if wp in [win32con.DBT_DEVICEARRIVAL, win32con.DBT_DEVICEREMOVECOMPLETE]:
         g_device_changes += 1
+    # A window procedure has to hand a number back. Returning nothing made
+    # pywin32 raise "WPARAM is simple, so must be an int object (got NoneType)"
+    # each time a USB device came or went (a keyboard restarting for an update).
+    return 1
 
 
 class AutorefreshThreadWin(AutorefreshThread):
@@ -42,9 +47,14 @@ class AutorefreshThreadWin(AutorefreshThread):
             for x in range(100):
                 if not self._running:
                     break
-                win32gui.PumpWaitingMessages()
+                try:
+                    win32gui.PumpWaitingMessages()
+                except Exception:
+                    # never let one bad message end the thread: with it gone the
+                    # app would stop noticing keyboards being plugged in
+                    logging.exception("device-change listener")
                 time.sleep(0.01)
 
             if g_device_changes > 0:
                 g_device_changes = 0
-                self.update()
+                self.safe_update()

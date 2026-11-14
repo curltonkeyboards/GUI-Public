@@ -61,7 +61,8 @@ class TestThruLoopConfig(unittest.TestCase):
         self.assertEqual(cfg["restartCCs"], list(range(20, 28)))
         self.assertEqual(cfg["mainCCs"], list(range(30, 70)))
         self.assertEqual(cfg["overdubCCs"], list(range(80, 128)))
-        self.assertTrue(cfg["separateLoopChopCC"])
+        # the keyboard sent 1 = "use the single LoopChop CC", so not separate
+        self.assertFalse(cfg["separateLoopChopCC"])
         self.assertEqual(cfg["masterCC"], 7)
         self.assertEqual(cfg["navCCs"], list(range(60, 68)))
 

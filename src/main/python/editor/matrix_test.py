@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
+import ui_mode
 import math
 import struct
 import json
@@ -302,6 +303,7 @@ class MatrixTest(BasicEditor):
         # Combined container for key travel + EQ (both hidden by default)
         self.advanced_section_widget = QWidget()
         self.advanced_section_widget.setVisible(False)
+        ui_mode.advanced_only(self.advanced_tuning_btn, self.advanced_section_widget)
         advanced_section_layout = QHBoxLayout()
         advanced_section_layout.setSpacing(30)
         advanced_section_layout.setContentsMargins(0, 10, 0, 0)
@@ -909,7 +911,7 @@ class ThruLoopConfigurator(BasicEditor):
             "timing: a coarser grid moves their notes, a finer grid or Off leaves\n"
             "them as they are (the original timing is not kept). A playing loop is\n"
             "re-snapped when it next starts over.\n"
-            "Applies and saves to the keyboard instantly.")
+            "Applies and saves to the MIDIswitch instantly.")
         self.loop_snap.setToolTip(self._loop_snap_help)
         self.loop_snap.currentIndexChanged.connect(self.on_loop_snap_changed)
         basic_layout.addWidget(self.loop_snap, 4, 1)
@@ -1173,6 +1175,26 @@ class ThruLoopConfigurator(BasicEditor):
             from protocol.keyboard_comm import PARAM_MACRO_SYNC_TO_LOOP
             self.device.keyboard.set_keyboard_param_single(
                 PARAM_MACRO_SYNC_TO_LOOP, 1 if self.macro_sync_to_loop.isChecked() else 0)
+            self._remember_macro_sync()
+
+    def _remember_macro_sync(self):
+        """Keep the copy read at connect in step with what was just sent, so a
+        later rebuild of the page does not put the old tick back."""
+        kb = self.device.keyboard
+        if getattr(kb, 'macro_sync_to_loop_device', None) is not None:
+            kb.macro_sync_to_loop_device = self.macro_sync_to_loop.isChecked()
+
+    def _refresh_from_keyboard(self):
+        """Read the loop settings back from the keyboard, show them and keep
+        them as the keyboard's cached copy. False if the keyboard did not answer."""
+        kb = self.device.keyboard
+        config = kb.get_thruloop_config()
+        if not config:
+            return False
+        kb.thruloop_config = config
+        self._shown_kb, self._shown_config = kb, config
+        self.apply_config(config)
+        return True
 
     def get_combos_cc_values(self, combos_array):
         """Get CC values from a 2D array of combos"""
@@ -1266,8 +1288,10 @@ class ThruLoopConfigurator(BasicEditor):
                 raise RuntimeError("Failed to set overdub CCs")
             
             # 4. Send navigation configuration
+            # Byte 0 is the keyboard's "use the single LoopChop CC" flag
+            # (loop_navigate_use_master_cc): 0 = the eight separate CCs.
             nav_config_data = [
-                1 if self.separate_loopchop.isChecked() else 0,
+                0 if self.separate_loopchop.isChecked() else 1,
                 self.get_cc_value(self.master_cc),
             ]
             for combo in self.nav_combos:
@@ -1280,9 +1304,10 @@ class ThruLoopConfigurator(BasicEditor):
             from protocol.keyboard_comm import PARAM_MACRO_SYNC_TO_LOOP
             self.device.keyboard.set_keyboard_param_single(
                 PARAM_MACRO_SYNC_TO_LOOP, 1 if self.macro_sync_to_loop.isChecked() else 0)
+            self._remember_macro_sync()
 
         except Exception as e:
-            QMessageBox.critical(None, "Error", f"Failed to save configuration: {str(e)}")   
+            QMessageBox.critical(None, "Error", f"Failed to save configuration: {str(e)}")
         
     def on_load_from_keyboard(self):
         """Load configuration from keyboard using multi-packet collection"""
@@ -1290,15 +1315,10 @@ class ThruLoopConfigurator(BasicEditor):
             if not self.device or not isinstance(self.device, VialKeyboard):
                 raise RuntimeError("Device not connected")
                 
-            # Request and collect multi-packet configuration
-            config = self.device.keyboard.get_thruloop_config()
-            
-            if not config:
+            # Request and collect multi-packet configuration, apply it to the UI
+            if not self._refresh_from_keyboard():
                 raise RuntimeError("Failed to load config from keyboard")
-            
-            # Apply the configuration to the UI
-            self.apply_config(config)
-                
+
         except Exception as e:
             QMessageBox.critical(None, "Error", f"Failed to load from keyboard: {str(e)}")
     
@@ -1373,8 +1393,11 @@ class ThruLoopConfigurator(BasicEditor):
                     
                 if not self.device.keyboard.reset_thruloop_config():
                     raise RuntimeError("Failed to reset ThruLoop config")
-                    
-                self.reset_ui_to_defaults()
+
+                # Show what the keyboard now holds; the fixed defaults only
+                # if it does not answer.
+                if not self._refresh_from_keyboard():
+                    self.reset_ui_to_defaults()
         except Exception as e:
             QMessageBox.critical(None, "Error", f"Failed to reset configuration: {str(e)}")
     
@@ -1383,7 +1406,8 @@ class ThruLoopConfigurator(BasicEditor):
         self.loop_channel.setCurrentIndex(15)
         self.sync_midi.setChecked(False)
         self.alternate_restart.setChecked(False)
-        self.separate_loopchop.setChecked(False)
+        # the keyboard's reset turns the single LoopChop CC off = separate CCs
+        self.separate_loopchop.setChecked(True)
         self.set_cc_value(self.master_cc, 128)
 
         # Reset all combos to None (128)
@@ -1424,7 +1448,7 @@ class ThruLoopConfigurator(BasicEditor):
             "separateLoopChopCC": self.separate_loopchop.isChecked(),
             "masterCC": self.get_cc_value(self.master_cc),
             "restartCCs": self.get_restart_cc_values(),
-            "mainCCs": self.get_combos_cc_values(self.main_combos[:5]),  # First 5 rows x 8 cols = 40 values
+            "mainCCs": self.get_combos_cc_values_banked(self.main_combos[:5]),  # first 5 rows x 8 cols = 40 values, banked order, matches apply_config
             "overdubCCs": self.get_combos_cc_values_banked(self.overdub_combos),  # banked order, matches apply_config
             "navCCs": [self.get_cc_value(combo) for combo in self.nav_combos]
         }
@@ -1438,9 +1462,17 @@ class ThruLoopConfigurator(BasicEditor):
         if not self.valid():
             return
 
-        # Load ThruLoop configuration from keyboard
-        if hasattr(self.device.keyboard, 'thruloop_config') and self.device.keyboard.thruloop_config:
-            self.apply_config(self.device.keyboard.thruloop_config)
+        # Load ThruLoop configuration from keyboard. The copy the keyboard
+        # object read while connecting is used once; any later rebuild (after
+        # loading a saved layout, say) reads the keyboard again, so the page
+        # shows what the keyboard holds now and not the values from connect time.
+        kb = self.device.keyboard
+        cached = getattr(kb, 'thruloop_config', None)
+        fresh = (kb is not getattr(self, '_shown_kb', None)
+                 or cached is not getattr(self, '_shown_config', None))
+        self._shown_kb, self._shown_config = kb, cached
+        if cached and (fresh or not self._refresh_from_keyboard()):
+            self.apply_config(cached)
 
         # Note snap grid: its own command, loaded without echoing it back.
         snap = self.device.keyboard.get_loop_snap()
@@ -1452,6 +1484,94 @@ class ThruLoopConfigurator(BasicEditor):
         self.loop_snap.setToolTip(self._loop_snap_help if snap is not None
                                   else "Requires a firmware update")
         self.loop_snap.blockSignals(False)
+
+class _TitleHelpGroupBox(QGroupBox):
+    """A titled card with a "?" help button just after its title."""
+
+    def __init__(self, title, help_button):
+        super().__init__(title)
+        self._help = help_button
+        help_button.setParent(self)
+        help_button.show()
+
+    def _place_help(self):
+        from PyQt5.QtWidgets import QStyleOptionGroupBox, QStyle
+        opt = QStyleOptionGroupBox()
+        self.initStyleOption(opt)
+        label = self.style().subControlRect(QStyle.CC_GroupBox, opt, QStyle.SC_GroupBoxLabel, self)
+        button = self._help
+        button.adjustSize()
+        button.move(label.right() + 8, label.center().y() - button.height() // 2 + 1)
+        button.raise_()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._place_help()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._place_help()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QtCore.QEvent.StyleChange, QtCore.QEvent.FontChange):
+            self._place_help()
+
+
+class TickCombo(QCheckBox):
+    """A tick box for an On/Off setting. It answers to the part of a dropdown's
+    interface the settings code uses (currentData, setCurrentIndex, count,
+    itemData, currentIndexChanged), so an On/Off dropdown can become a tick
+    box without touching the code that loads and saves it. `items` is
+    [(label, data when not ticked), (label, data when ticked)]."""
+
+    currentIndexChanged = QtCore.pyqtSignal(int)
+
+    def __init__(self, items, parent=None):
+        super().__init__(parent)
+        self._data = [items[0][1], items[1][1]]
+        self._watchers = []
+        self.setCursor(Qt.PointingHandCursor)
+        self.toggled.connect(self._on_toggled)
+        holder = QWidget()
+        holder_layout = QHBoxLayout(holder)
+        holder_layout.setContentsMargins(0, 0, 0, 0)
+        holder_layout.addWidget(self)
+        self.width_holder = holder
+
+    def count(self):
+        return 2
+
+    def itemData(self, index):
+        return self._data[index] if 0 <= index < 2 else None
+
+    def findData(self, data):
+        return self._data.index(data) if data in self._data else -1
+
+    def currentIndex(self):
+        return int(self.isChecked())
+
+    def setCurrentIndex(self, index):
+        self.setChecked(index == 1)
+        if self.signalsBlocked():
+            self._tell_watchers()
+
+    def _on_toggled(self, on):
+        self.currentIndexChanged.emit(int(on))
+        self._tell_watchers()
+
+    def _tell_watchers(self):
+        for callback in self._watchers:
+            callback()
+
+    def watch(self, callback):
+        """Call `callback` whenever the tick changes, including when it is set
+        from a loaded value with this widget's signals blocked."""
+        self._watchers.append(callback)
+
+    def currentData(self):
+        return self._data[int(self.isChecked())]
+
 
 class MIDIswitchSettingsConfigurator(BasicEditor):
 
@@ -1474,7 +1594,21 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         from widgets.editor_container import EditorContainer
         container = EditorContainer(editor)
         self.tabs_widget.addTab(container, tr("MIDIswitchSettingsConfigurator", label))
+        ui_mode.apply_tab_limits()
         return container
+
+    def take_sub_tab(self, label):
+        """Remove one of this editor's sub-tabs and hand its page over, so it
+        can be shown somewhere else (Multi Channel lives in the QuickBuild
+        tab). The page still belongs to, and is driven by, this editor."""
+        wanted = tr("MIDIswitchSettingsConfigurator", label)
+        for index in range(self.tabs_widget.count()):
+            if self.tabs_widget.tabText(index) == wanted:
+                page = self.tabs_widget.widget(index)
+                self.tabs_widget.removeTab(index)
+                ui_mode.apply_tab_limits()
+                return page
+        return None
 
     def get_stop_mode_mask(self):
         """Build the 5-bit Stop Mode bitmask from the per-family combos."""
@@ -1601,866 +1735,476 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.tabs_widget = QTabWidget()
         self.addWidget(self.tabs_widget)
 
-        # Tab 1: MIDI Settings
+        # Tab 1: MIDI Settings — a header (title + actions), the "Zones" table
+        # (one row per setting, one column per zone) and a two-column grid of
+        # cards (Looping, Stop mode, Routing, Advanced). Basic mode keeps the
+        # header with Save and Reset and the Base column of the table.
+        from PyQt5.QtWidgets import QGraphicsOpacityEffect
+
+        def _t(text):
+            return tr("MIDIswitchSettingsConfigurator", text)
+
+        PAGE_MAX_WIDTH = 1100       # Advanced mode: the grid of cards
+        PAGE_BASIC_WIDTH = 440      # Basic mode: the Base column alone
+        ZONE_VALUE_WIDTH = 150
+        ZONE_ENABLE_WIDTH = 84
+        CARD_VALUE_WIDTH = 210
+
+        def _new_combo(width):
+            """A dropdown `width` wide. The theme's stylesheet sets the minimum
+            width of every dropdown, so the width is held by a plain widget
+            around it (combo.width_holder), which is what goes in the layout."""
+            combo = ArrowComboBox()
+            combo.setMinimumHeight(25)
+            combo.setMaximumHeight(25)
+            holder = QWidget()
+            holder.setFixedWidth(width)
+            holder_layout = QHBoxLayout(holder)
+            holder_layout.setContentsMargins(0, 0, 0, 0)
+            holder_layout.addWidget(combo)
+            combo.width_holder = holder
+            return combo
+
+        def _finish_combo(combo):
+            combo.setEditable(True)
+            combo.lineEdit().setReadOnly(True)
+            combo.lineEdit().setAlignment(Qt.AlignCenter)
+            return combo
+
+        def _combo(width, items, current=0):
+            if [text for text, _ in items] == ["Off", "On"]:
+                tick = TickCombo(items)         # an On/Off setting is a tick box
+                tick.setCurrentIndex(current)
+                return tick
+            combo = _new_combo(width)
+            for text, data in items:
+                combo.addItem(text, data)
+            combo.setCurrentIndex(current)
+            return _finish_combo(combo)
+
+        def _help_row(text, tooltip, bold=False):
+            """A "?" help button followed by a label."""
+            container = QWidget()
+            row_layout = QHBoxLayout(container)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(6)
+            if tooltip:
+                row_layout.addWidget(self.create_help_label(tooltip))
+            label = QLabel(_t(text))
+            if bold:
+                label.setStyleSheet("font-weight: bold;")
+            row_layout.addWidget(label)
+            row_layout.addStretch(1)
+            return container
+
+        def _card(title, help_text=None):
+            """A titled card with label-left / control-right rows (and a "?"
+            after the title when there is `help_text`)."""
+            if help_text:
+                box = _TitleHelpGroupBox(_t(title), self.create_help_label(_t(help_text)))
+            else:
+                box = QGroupBox(_t(title))
+            grid = QGridLayout(box)
+            grid.setHorizontalSpacing(16)
+            grid.setVerticalSpacing(6)
+            grid.setColumnStretch(0, 1)
+            return box, grid
+
+        def _card_row(grid, text, tooltip, control):
+            row = grid.rowCount() if grid.count() else 0
+            grid.addWidget(_help_row(text, tooltip), row, 0)
+            grid.addWidget(control.width_holder, row, 1, Qt.AlignRight | Qt.AlignVCenter)
+
+        ON_OFF = [("Off", False), ("On", True)]
+
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
 
         main_widget = QWidget()
-        main_layout = QVBoxLayout()
-        main_widget.setLayout(main_layout)
+        outer_layout = QHBoxLayout()
+        outer_layout.setContentsMargins(16, 6, 16, 4)
+        main_widget.setLayout(outer_layout)
+
+        # The page is one centred column that never grows past PAGE_MAX_WIDTH
+        page_column = QWidget()
+        main_layout = QVBoxLayout(page_column)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(8)
+        outer_layout.addStretch(1)
+        outer_layout.addWidget(page_column, 1000)
+        outer_layout.addStretch(1)
 
         scroll_area.setWidget(main_widget)
         self.tabs_widget.addTab(scroll_area, "MIDI Settings")
 
-        main_layout.addSpacing(10)
+        # ---------------------------------------------------------------
+        # Header: title on the left, the actions on the right
+        # ---------------------------------------------------------------
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(8)
 
-        # Global MIDI Settings Group - contains title/description on left, then base settings, keysplit, and triplesplit
-        global_midi_group = QGroupBox()
-        global_midi_group_layout = QHBoxLayout()
-        global_midi_group_layout.setSpacing(15)
-        global_midi_group.setLayout(global_midi_group_layout)
-
-        # MIDI Settings title and description container (left side)
-        midi_title_container = QWidget()
-        midi_title_container.setMaximumWidth(200)
-        midi_title_layout = QVBoxLayout()
-        midi_title_layout.setContentsMargins(0, 0, 0, 0)
-        midi_title_container.setLayout(midi_title_layout)
-
-        title_label = QLabel(tr("MIDIswitchSettingsConfigurator", "MIDI Settings"))
+        title_label = QLabel(_t("MIDI settings"))
         title_label.setStyleSheet("font-weight: bold; font-size: 14pt;")
-        title_label.setAlignment(QtCore.Qt.AlignLeft)
-        midi_title_layout.addWidget(title_label)
+        header_layout.addWidget(title_label)
+        header_layout.addStretch(1)
 
-        desc_label = QLabel(tr("MIDIswitchSettingsConfigurator",
-            "Configure global MIDI settings including channel, transpose, articulation, "
-            "sustain behavior, and aftertouch options for your keyboard."))
-        desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("color: palette(dark); font-size: 9pt;")
-        desc_label.setAlignment(QtCore.Qt.AlignLeft)
-        midi_title_layout.addWidget(desc_label)
-
-        midi_title_layout.addSpacing(15)
-
-        # Buttons in the title container with popup menus
         midi_btn_style = "QPushButton { border-radius: 5px; font-size: 9pt; }"
 
-        # Save Settings button with popup menu
-        save_settings_btn = QPushButton(tr("MIDIswitchSettingsConfigurator", "Save Settings"))
-        save_settings_btn.setMinimumHeight(28)
-        save_settings_btn.setMaximumHeight(28)
-        save_settings_btn.setStyleSheet(midi_btn_style)
-        save_settings_btn.setToolTip("Save current settings to a slot")
+        def _header_button(text, tooltip):
+            button = QPushButton(_t(text))
+            button.setMinimumHeight(28)
+            button.setMaximumHeight(28)
+            button.setMinimumWidth(96)
+            button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+            button.setStyleSheet(midi_btn_style)
+            button.setToolTip(tooltip)
+            return button
 
-        save_menu = QMenu(save_settings_btn)
-        save_menu.addAction(tr("MIDIswitchSettingsConfigurator", "Save as Default"), lambda: self.on_save_slot(0))
-        save_menu.addSeparator()
-        for i in range(1, 5):
-            save_menu.addAction(tr("MIDIswitchSettingsConfigurator", f"Save to Slot {i}"), lambda checked=False, slot=i: self.on_save_slot(slot))
-        save_settings_btn.setMenu(save_menu)
-        midi_title_layout.addWidget(save_settings_btn)
-
-        # Load Settings button with popup menu
-        load_settings_btn = QPushButton(tr("MIDIswitchSettingsConfigurator", "Load Settings"))
-        load_settings_btn.setMinimumHeight(28)
-        load_settings_btn.setMaximumHeight(28)
-        load_settings_btn.setStyleSheet(midi_btn_style)
-        load_settings_btn.setToolTip("Load settings from a slot")
-
+        # Load button with popup menu
+        load_settings_btn = _header_button("Load", "Load settings from a slot")
         load_menu = QMenu(load_settings_btn)
         load_menu.addAction(tr("MIDIswitchSettingsConfigurator", "Load Default"), lambda: self.on_load_slot(0))
         load_menu.addSeparator()
         for i in range(1, 5):
             load_menu.addAction(tr("MIDIswitchSettingsConfigurator", f"Load Slot {i}"), lambda checked=False, slot=i: self.on_load_slot(slot))
         load_settings_btn.setMenu(load_menu)
-        midi_title_layout.addWidget(load_settings_btn)
+        header_layout.addWidget(load_settings_btn)
 
-        # Load Active Settings button (individual)
-        load_active_btn = QPushButton(tr("MIDIswitchSettingsConfigurator", "Load Active Settings"))
-        load_active_btn.setMinimumHeight(28)
-        load_active_btn.setMaximumHeight(28)
-        load_active_btn.setStyleSheet(midi_btn_style)
-        load_active_btn.setToolTip("Refresh display with current keyboard settings.\nUpdates all fields to match the keyboard's active configuration.")
+        # Save button with popup menu
+        save_settings_btn = _header_button("Save", "Save current settings to a slot")
+        save_menu = QMenu(save_settings_btn)
+        save_menu.addAction(tr("MIDIswitchSettingsConfigurator", "Save as Default"), lambda: self.on_save_slot(0))
+        save_menu.addSeparator()
+        for i in range(1, 5):
+            save_menu.addAction(tr("MIDIswitchSettingsConfigurator", f"Save to Slot {i}"), lambda checked=False, slot=i: self.on_save_slot(slot))
+        save_settings_btn.setMenu(save_menu)
+        header_layout.addWidget(save_settings_btn)
+
+        # Load active (individual)
+        load_active_btn = _header_button(
+            "Load active",
+            "Refresh display with the MIDIswitch's current settings.\nUpdates all fields to match the MIDIswitch's active configuration.")
         load_active_btn.clicked.connect(self.on_load_current_settings)
-        midi_title_layout.addWidget(load_active_btn)
+        header_layout.addWidget(load_active_btn)
+        # Basic mode keeps Save and Reset only
+        ui_mode.advanced_only(load_settings_btn, load_active_btn)
 
-        # Reset to Defaults button (individual)
-        reset_btn = QPushButton(tr("MIDIswitchSettingsConfigurator", "Reset to Defaults"))
-        reset_btn.setMinimumHeight(28)
-        reset_btn.setMaximumHeight(28)
-        reset_btn.setStyleSheet(midi_btn_style)
-        reset_btn.setToolTip("Reset all MIDI settings to factory defaults.\nThis cannot be undone.")
+        # Reset (individual)
+        reset_btn = _header_button("Reset", "Reset all MIDI settings to factory defaults.\nThis cannot be undone.")
         reset_btn.clicked.connect(self.on_reset)
-        midi_title_layout.addWidget(reset_btn)
+        header_layout.addWidget(reset_btn)
 
-        midi_title_layout.addStretch()
+        main_layout.addLayout(header_layout)
 
-        # Base MIDI Settings container (limited width like keysplit)
-        base_settings_container = QGroupBox(tr("MIDIswitchSettingsConfigurator", "Base Settings"))
-        base_settings_container.setMaximumWidth(300)
-        base_layout = QGridLayout()
-        base_layout.setVerticalSpacing(10)
-        base_layout.setHorizontalSpacing(10)
-        base_settings_container.setLayout(base_layout)
+        # ---------------------------------------------------------------
+        # Zones: one row per setting, one column per zone
+        # ---------------------------------------------------------------
+        zones_card = QGroupBox(_t("Zones"))
+        zones_grid = QGridLayout(zones_card)
+        zones_grid.setHorizontalSpacing(24)
+        zones_grid.setVerticalSpacing(6)
+        ZONE_LABEL_COL, ZONE_BASE_COL, ZONE_KS_COL, ZONE_TS_COL = 0, 1, 2, 3
+        ZONE_HEADER_ROW, ZONE_LINE_ROW, ZONE_FIRST_ROW = 0, 1, 2
 
-        row = 0
+        # Column headers (the split columns carry the help their titles had)
+        zones_grid.addWidget(_help_row("Base", None, bold=True), ZONE_HEADER_ROW, ZONE_BASE_COL)
+        ks_header = _help_row("KeySplit", (
+            "KeySplit allows keys assigned to the KeySplit layer to use\n"
+            "different MIDI settings than the base layer.\n\n"
+            "Enable each parameter to apply separate settings for split keys."
+        ), bold=True)
+        zones_grid.addWidget(ks_header, ZONE_HEADER_ROW, ZONE_KS_COL)
+        ts_header = _help_row("TripleSplit", (
+            "TripleSplit allows keys assigned to the TripleSplit layer to use\n"
+            "different MIDI settings than both base and KeySplit layers.\n\n"
+            "Enable each parameter to apply separate settings for third split keys."
+        ), bold=True)
+        zones_grid.addWidget(ts_header, ZONE_HEADER_ROW, ZONE_TS_COL)
+        ui_mode.advanced_only(ks_header, ts_header)
 
-        # Channel with help
-        channel_label_container = QWidget()
-        channel_label_layout = QHBoxLayout()
-        channel_label_layout.setContentsMargins(0, 0, 0, 0)
-        channel_label_layout.setSpacing(5)
-        channel_label_layout.addWidget(self.create_help_label("MIDI channel for note output (1-16)"))
-        channel_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Channel:")))
-        channel_label_layout.addStretch()
-        channel_label_container.setLayout(channel_label_layout)
-        base_layout.addWidget(channel_label_container, row, 0)
+        zones_line = QFrame()
+        zones_line.setFrameShape(QFrame.HLine)
+        zones_line.setFrameShadow(QFrame.Plain)
+        zones_line.setStyleSheet("color: palette(mid);")
+        zones_grid.addWidget(zones_line, ZONE_LINE_ROW, 0, 1, 4)
 
-        self.global_channel = ArrowComboBox()
-        self.global_channel.setMinimumWidth(80)
-        self.global_channel.setMaximumWidth(120)
-        self.global_channel.setMinimumHeight(25)
-        self.global_channel.setMaximumHeight(25)
-        for i in range(16):
-            self.global_channel.addItem(f"{i + 1}", i)
-        self.global_channel.setCurrentIndex(0)
-        self.global_channel.setEditable(True)
-        self.global_channel.lineEdit().setReadOnly(True)
-        self.global_channel.lineEdit().setAlignment(Qt.AlignCenter)
-        base_layout.addWidget(self.global_channel, row, 1)
-        row += 1
+        def _split_cell(value_combo, enable_combo=None):
+            """A split zone's value with, where it has one, the On/Off combo
+            that says whether the zone uses that value. Hidden in Basic mode."""
+            cell = QWidget()
+            cell_layout = QHBoxLayout(cell)
+            cell_layout.setContentsMargins(0, 0, 0, 0)
+            cell_layout.setSpacing(6)
+            cell_layout.addWidget(value_combo.width_holder)
+            if enable_combo is not None:
+                cell_layout.addWidget(enable_combo.width_holder)
+            cell_layout.addStretch(1)
+            ui_mode.advanced_only(cell)
+            return cell
 
-        # Transpose with help
-        transpose_label_container = QWidget()
-        transpose_label_layout = QHBoxLayout()
-        transpose_label_layout.setContentsMargins(0, 0, 0, 0)
-        transpose_label_layout.setSpacing(5)
-        transpose_label_layout.addWidget(self.create_help_label("Shift all notes up or down by semitones (-64 to +64)"))
-        transpose_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Transpose:")))
-        transpose_label_layout.addStretch()
-        transpose_label_container.setLayout(transpose_label_layout)
-        base_layout.addWidget(transpose_label_container, row, 0)
+        def _enable_combo(zone_name):
+            combo = _combo(ZONE_ENABLE_WIDTH, [("Off", 0), ("On", 1)])
+            combo.setToolTip(
+                "On: {0} keys use this value.\n"
+                "Off: {0} keys follow the Base zone.".format(zone_name))
+            combo.currentIndexChanged.connect(self._on_split_enable_changed)
+            return combo
 
-        self.global_transpose = ArrowComboBox()
-        self.global_transpose.setMinimumWidth(80)
-        self.global_transpose.setMaximumWidth(120)
-        self.global_transpose.setMinimumHeight(25)
-        self.global_transpose.setMaximumHeight(25)
+        def _dim_while_off(value_combo, enable_combo):
+            """A value whose On/Off combo is Off reads as inactive (it stays
+            editable, so it can be set before it is switched on)."""
+            effect = QGraphicsOpacityEffect(value_combo)
+            effect.setOpacity(0.4)
+            value_combo.setGraphicsEffect(effect)
+
+            def sync(*_args):
+                try:
+                    effect.setEnabled(not enable_combo.currentData())
+                except RuntimeError:
+                    pass
+            # (also follows a value loaded from the keyboard, which is set
+            # with the tick box's own signals blocked)
+            enable_combo.watch(sync)
+            sync()
+
+        channel_items = [(f"{i + 1}", i) for i in range(16)]
         # +/-64: matches the firmware's combined main-zone transpose+octave cap
         # (TRANSPOSE_TOTAL_CAP = 64, raised from 60 with the Transpose selector).
-        for i in range(-64, 65):
-            self.global_transpose.addItem(f"{'+' if i >= 0 else ''}{i}", i)
-        self.global_transpose.setCurrentIndex(64)
-        self.global_transpose.setEditable(True)
-        self.global_transpose.lineEdit().setReadOnly(True)
-        self.global_transpose.lineEdit().setAlignment(Qt.AlignCenter)
-        base_layout.addWidget(self.global_transpose, row, 1)
-        row += 1
+        base_transpose_items = [(f"{'+' if i >= 0 else ''}{i}", i) for i in range(-64, 65)]
+        # The split zones use the same +/-64 range: the firmware clamps all
+        # three zones to TRANSPOSE_TOTAL_CAP.
+        split_transpose_items = base_transpose_items
+        sustain_items = [("Ignore", 0), ("Allow", 1)]
+        auto_notes_items = [("Allow", 0), ("Ignore", 1)]
 
-        # Velocity Curve with help
-        velocity_curve_label_container = QWidget()
-        velocity_curve_label_layout = QHBoxLayout()
-        velocity_curve_label_layout.setContentsMargins(0, 0, 0, 0)
-        velocity_curve_label_layout.setSpacing(5)
-        velocity_curve_label_layout.addWidget(self.create_help_label(
+        def _articulation_combo():
+            combo = _new_combo(ZONE_VALUE_WIDTH)
+            populate_articulation_combo(combo)
+            combo.setCurrentIndex(0)
+            return _finish_combo(combo)
+
+        # ---- Channel ----
+        row = ZONE_FIRST_ROW
+        zones_grid.addWidget(_help_row("Channel", "MIDI channel for note output (1-16)"), row, ZONE_LABEL_COL)
+        self.global_channel = _combo(ZONE_VALUE_WIDTH, channel_items)
+        zones_grid.addWidget(self.global_channel.width_holder, row, ZONE_BASE_COL, Qt.AlignLeft)
+
+        self.key_split_channel = _combo(ZONE_VALUE_WIDTH, channel_items)
+        self.key_split_channel.setToolTip("MIDI channel (1-16) for KeySplit keys")
+        self.keysplit_channel_enable = _enable_combo("KeySplit")
+        zones_grid.addWidget(_split_cell(self.key_split_channel, self.keysplit_channel_enable), row, ZONE_KS_COL)
+
+        self.key_split2_channel = _combo(ZONE_VALUE_WIDTH, channel_items)
+        self.key_split2_channel.setToolTip("MIDI channel (1-16) for TripleSplit keys")
+        self.triplesplit_channel_enable = _enable_combo("TripleSplit")
+        zones_grid.addWidget(_split_cell(self.key_split2_channel, self.triplesplit_channel_enable), row, ZONE_TS_COL)
+
+        # ---- Transpose ----
+        row += 1
+        zones_grid.addWidget(_help_row("Transpose", "Shift all notes up or down by semitones (-64 to +64)"), row, ZONE_LABEL_COL)
+        self.global_transpose = _combo(ZONE_VALUE_WIDTH, base_transpose_items, current=64)
+        zones_grid.addWidget(self.global_transpose.width_holder, row, ZONE_BASE_COL, Qt.AlignLeft)
+
+        self.transpose_number2 = _combo(ZONE_VALUE_WIDTH, split_transpose_items, current=64)
+        self.transpose_number2.setToolTip("Combined transposition (octave + key, -64 to +64) for KeySplit keys. Only applies while KeySplit transpose is enabled below; otherwise these keys follow the main transposition.")
+        self.keysplit_transpose_enable = _enable_combo("KeySplit")
+        zones_grid.addWidget(_split_cell(self.transpose_number2, self.keysplit_transpose_enable), row, ZONE_KS_COL)
+
+        self.transpose_number3 = _combo(ZONE_VALUE_WIDTH, split_transpose_items, current=64)
+        self.transpose_number3.setToolTip("Combined transposition (octave + key, -64 to +64) for TripleSplit keys. Only applies while TripleSplit transpose is enabled below; otherwise these keys follow the main transposition.")
+        self.triplesplit_transpose_enable = _enable_combo("TripleSplit")
+        zones_grid.addWidget(_split_cell(self.transpose_number3, self.triplesplit_transpose_enable), row, ZONE_TS_COL)
+
+        # ---- Articulation (velocity curve) ----
+        row += 1
+        zones_grid.addWidget(_help_row("Articulation", (
             "How key press force maps to MIDI velocity.\n"
             "Factory articulations: Softest-Hardest response\n"
             "curves plus Sensitive, Fixed, Drums, Two Toned,\n"
             "Reverse and Random Highlights presets.\n"
             "User 1-50: Custom user-defined curves"
-        ))
-        velocity_curve_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Articulation:")))
-        velocity_curve_label_layout.addStretch()
-        velocity_curve_label_container.setLayout(velocity_curve_label_layout)
-        base_layout.addWidget(velocity_curve_label_container, row, 0)
+        )), row, ZONE_LABEL_COL)
+        self.global_velocity_curve = _articulation_combo()
+        zones_grid.addWidget(self.global_velocity_curve.width_holder, row, ZONE_BASE_COL, Qt.AlignLeft)
 
-        self.global_velocity_curve = ArrowComboBox()
-        self.global_velocity_curve.setMinimumWidth(80)
-        self.global_velocity_curve.setMaximumWidth(120)
-        self.global_velocity_curve.setMinimumHeight(25)
-        self.global_velocity_curve.setMaximumHeight(25)
-        populate_articulation_combo(self.global_velocity_curve)
-        self.global_velocity_curve.setCurrentIndex(0)
-        self.global_velocity_curve.setEditable(True)
-        self.global_velocity_curve.lineEdit().setReadOnly(True)
-        self.global_velocity_curve.lineEdit().setAlignment(Qt.AlignCenter)
-        base_layout.addWidget(self.global_velocity_curve, row, 1)
-        row += 1
-
-        # Velocity min/max removed - now configured per velocity preset
-
-        # Sustain with help
-        sustain_label_container = QWidget()
-        sustain_label_layout = QHBoxLayout()
-        sustain_label_layout.setContentsMargins(0, 0, 0, 0)
-        sustain_label_layout.setSpacing(5)
-        sustain_label_layout.addWidget(self.create_help_label(
-            "How the keyboard responds to sustain pedal:\n"
-            "Ignore: Sustain pedal messages are ignored\n"
-            "Allow: Sustain pedal affects note release"
-        ))
-        sustain_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Sustain:")))
-        sustain_label_layout.addStretch()
-        sustain_label_container.setLayout(sustain_label_layout)
-        base_layout.addWidget(sustain_label_container, row, 0)
-
-        self.base_sustain = ArrowComboBox()
-        self.base_sustain.setMinimumWidth(80)
-        self.base_sustain.setMaximumWidth(120)
-        self.base_sustain.setMinimumHeight(25)
-        self.base_sustain.setMaximumHeight(25)
-        self.base_sustain.addItem("Ignore", 0)
-        self.base_sustain.addItem("Allow", 1)
-        self.base_sustain.setCurrentIndex(0)
-        self.base_sustain.setEditable(True)
-        self.base_sustain.lineEdit().setReadOnly(True)
-        self.base_sustain.lineEdit().setAlignment(Qt.AlignCenter)
-        base_layout.addWidget(self.base_sustain, row, 1)
-        row += 1
-
-        # SmartChord Ignore with help
-        sc_ignore_label_container = QWidget()
-        sc_ignore_label_layout = QHBoxLayout()
-        sc_ignore_label_layout.setContentsMargins(0, 0, 0, 0)
-        sc_ignore_label_layout.setSpacing(5)
-        sc_ignore_label_layout.addWidget(self.create_help_label(
-            "Auto-notes behavior for base zone keys:\n"
-            "Allow: smartchord/delay/dynamic-chord/arpeggiator/doubler apply\n"
-            "Ignore: these keys play ONLY their plain note (looping unaffected)"
-        ))
-        sc_ignore_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Auto-Notes:")))
-        sc_ignore_label_layout.addStretch()
-        sc_ignore_label_container.setLayout(sc_ignore_label_layout)
-        base_layout.addWidget(sc_ignore_label_container, row, 0)
-
-        self.base_smartchord_ignore = ArrowComboBox()
-        self.base_smartchord_ignore.setMinimumWidth(80)
-        self.base_smartchord_ignore.setMaximumWidth(120)
-        self.base_smartchord_ignore.setMinimumHeight(25)
-        self.base_smartchord_ignore.setMaximumHeight(25)
-        self.base_smartchord_ignore.addItem("Allow", 0)
-        self.base_smartchord_ignore.addItem("Ignore", 1)
-        self.base_smartchord_ignore.setCurrentIndex(0)
-        self.base_smartchord_ignore.setEditable(True)
-        self.base_smartchord_ignore.lineEdit().setReadOnly(True)
-        self.base_smartchord_ignore.lineEdit().setAlignment(Qt.AlignCenter)
-        base_layout.addWidget(self.base_smartchord_ignore, row, 1)
-
-        # KeySplit Settings container
-        self.keysplit_offshoot = QGroupBox()
-        self.keysplit_offshoot.setMaximumWidth(350)
-        keysplit_layout = QGridLayout()
-        keysplit_layout.setVerticalSpacing(8)
-        keysplit_layout.setHorizontalSpacing(8)
-        self.keysplit_offshoot.setLayout(keysplit_layout)
-
-        ks_row = 0
-
-        # Channel: Value dropdown | On/Off
-        ch_label = QWidget()
-        ch_label_layout = QHBoxLayout()
-        ch_label_layout.setContentsMargins(0, 0, 0, 0)
-        ch_label_layout.setSpacing(3)
-        ch_label_layout.addWidget(self.create_help_label("MIDI channel (1-16) for KeySplit keys"))
-        ch_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Channel:")))
-        ch_label_layout.addStretch()
-        ch_label.setLayout(ch_label_layout)
-        keysplit_layout.addWidget(ch_label, ks_row, 0)
-
-        self.key_split_channel = ArrowComboBox()
-        self.key_split_channel.setMinimumWidth(60)
-        self.key_split_channel.setMaximumWidth(80)
-        self.key_split_channel.setMinimumHeight(25)
-        self.key_split_channel.setMaximumHeight(25)
-        for i in range(16):
-            self.key_split_channel.addItem(f"{i + 1}", i)
-        self.key_split_channel.setEditable(True)
-        self.key_split_channel.lineEdit().setReadOnly(True)
-        self.key_split_channel.lineEdit().setAlignment(Qt.AlignCenter)
-        keysplit_layout.addWidget(self.key_split_channel, ks_row, 1)
-
-        self.keysplit_channel_enable = ArrowComboBox()
-        self.keysplit_channel_enable.setMinimumWidth(50)
-        self.keysplit_channel_enable.setMaximumWidth(60)
-        self.keysplit_channel_enable.setMinimumHeight(25)
-        self.keysplit_channel_enable.setMaximumHeight(25)
-        self.keysplit_channel_enable.addItem("Off", 0)
-        self.keysplit_channel_enable.addItem("On", 1)
-        self.keysplit_channel_enable.setEditable(True)
-        self.keysplit_channel_enable.lineEdit().setReadOnly(True)
-        self.keysplit_channel_enable.lineEdit().setAlignment(Qt.AlignCenter)
-        self.keysplit_channel_enable.currentIndexChanged.connect(self._on_split_enable_changed)
-        keysplit_layout.addWidget(self.keysplit_channel_enable, ks_row, 2)
-        ks_row += 1
-
-        # Transpose: Value dropdown | On/Off
-        tr_label = QWidget()
-        tr_label_layout = QHBoxLayout()
-        tr_label_layout.setContentsMargins(0, 0, 0, 0)
-        tr_label_layout.setSpacing(3)
-        tr_label_layout.addWidget(self.create_help_label("Combined transposition (octave + key, -64 to +64) for KeySplit keys. Only applies while KeySplit transpose is enabled below; otherwise these keys follow the main transposition."))
-        tr_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Transpose:")))
-        tr_label_layout.addStretch()
-        tr_label.setLayout(tr_label_layout)
-        keysplit_layout.addWidget(tr_label, ks_row, 0)
-
-        self.transpose_number2 = ArrowComboBox()
-        self.transpose_number2.setMinimumWidth(60)
-        self.transpose_number2.setMaximumWidth(80)
-        self.transpose_number2.setMinimumHeight(25)
-        self.transpose_number2.setMaximumHeight(25)
-        # +/-24: matches the firmware's own zone-transpose clamp (TRANSPOSE_MAX)
-        for i in range(-24, 25):
-            self.transpose_number2.addItem(f"{'+' if i >= 0 else ''}{i}", i)
-        self.transpose_number2.setCurrentIndex(24)
-        self.transpose_number2.setEditable(True)
-        self.transpose_number2.lineEdit().setReadOnly(True)
-        self.transpose_number2.lineEdit().setAlignment(Qt.AlignCenter)
-        keysplit_layout.addWidget(self.transpose_number2, ks_row, 1)
-
-        self.keysplit_transpose_enable = ArrowComboBox()
-        self.keysplit_transpose_enable.setMinimumWidth(50)
-        self.keysplit_transpose_enable.setMaximumWidth(60)
-        self.keysplit_transpose_enable.setMinimumHeight(25)
-        self.keysplit_transpose_enable.setMaximumHeight(25)
-        self.keysplit_transpose_enable.addItem("Off", 0)
-        self.keysplit_transpose_enable.addItem("On", 1)
-        self.keysplit_transpose_enable.setEditable(True)
-        self.keysplit_transpose_enable.lineEdit().setReadOnly(True)
-        self.keysplit_transpose_enable.lineEdit().setAlignment(Qt.AlignCenter)
-        self.keysplit_transpose_enable.currentIndexChanged.connect(self._on_split_enable_changed)
-        keysplit_layout.addWidget(self.keysplit_transpose_enable, ks_row, 2)
-        ks_row += 1
-
-        # Velocity Curve: Curve dropdown | On/Off (merged)
-        vc_label = QWidget()
-        vc_label_layout = QHBoxLayout()
-        vc_label_layout.setContentsMargins(0, 0, 0, 0)
-        vc_label_layout.setSpacing(3)
-        vc_label_layout.addWidget(self.create_help_label(
+        self.velocity_curve2 = _articulation_combo()
+        self.velocity_curve2.setToolTip(
             "Velocity response curve for KeySplit keys.\n"
             "Factory articulations: Softest-Hardest response\n"
             "curves plus Sensitive, Fixed, Drums, Two Toned,\n"
             "Reverse and Random Highlights presets."
-        ))
-        vc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Articulation:")))
-        vc_label_layout.addStretch()
-        vc_label.setLayout(vc_label_layout)
-        keysplit_layout.addWidget(vc_label, ks_row, 0)
+        )
+        self.keysplit_velocity_enable = _enable_combo("KeySplit")
+        zones_grid.addWidget(_split_cell(self.velocity_curve2, self.keysplit_velocity_enable), row, ZONE_KS_COL)
 
-        self.velocity_curve2 = ArrowComboBox()
-        self.velocity_curve2.setMinimumWidth(80)
-        self.velocity_curve2.setMaximumWidth(100)
-        self.velocity_curve2.setMinimumHeight(25)
-        self.velocity_curve2.setMaximumHeight(25)
-        populate_articulation_combo(self.velocity_curve2)
-        self.velocity_curve2.setCurrentIndex(0)
-        self.velocity_curve2.setEditable(True)
-        self.velocity_curve2.lineEdit().setReadOnly(True)
-        self.velocity_curve2.lineEdit().setAlignment(Qt.AlignCenter)
-        keysplit_layout.addWidget(self.velocity_curve2, ks_row, 1)
-
-        self.keysplit_velocity_enable = ArrowComboBox()
-        self.keysplit_velocity_enable.setMinimumWidth(50)
-        self.keysplit_velocity_enable.setMaximumWidth(60)
-        self.keysplit_velocity_enable.setMinimumHeight(25)
-        self.keysplit_velocity_enable.setMaximumHeight(25)
-        self.keysplit_velocity_enable.addItem("Off", 0)
-        self.keysplit_velocity_enable.addItem("On", 1)
-        self.keysplit_velocity_enable.setEditable(True)
-        self.keysplit_velocity_enable.lineEdit().setReadOnly(True)
-        self.keysplit_velocity_enable.lineEdit().setAlignment(Qt.AlignCenter)
-        self.keysplit_velocity_enable.currentIndexChanged.connect(self._on_split_enable_changed)
-        keysplit_layout.addWidget(self.keysplit_velocity_enable, ks_row, 2)
-        ks_row += 1
-
-        # Velocity min/max removed - now configured per velocity preset
-
-        # Sustain with help
-        sus_label = QWidget()
-        sus_label_layout = QHBoxLayout()
-        sus_label_layout.setContentsMargins(0, 0, 0, 0)
-        sus_label_layout.setSpacing(3)
-        sus_label_layout.addWidget(self.create_help_label(
-            "Sustain pedal behavior for KeySplit keys:\n"
-            "Ignore: Sustain pedal has no effect\n"
-            "Allow: Notes sustain when pedal is held"
-        ))
-        sus_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Sustain:")))
-        sus_label_layout.addStretch()
-        sus_label.setLayout(sus_label_layout)
-        keysplit_layout.addWidget(sus_label, ks_row, 0)
-
-        self.keysplit_sustain = ArrowComboBox()
-        self.keysplit_sustain.setMinimumWidth(80)
-        self.keysplit_sustain.setMaximumWidth(120)
-        self.keysplit_sustain.setMinimumHeight(25)
-        self.keysplit_sustain.setMaximumHeight(25)
-        self.keysplit_sustain.addItem("Ignore", 0)
-        self.keysplit_sustain.addItem("Allow", 1)
-        self.keysplit_sustain.setCurrentIndex(0)
-        self.keysplit_sustain.setEditable(True)
-        self.keysplit_sustain.lineEdit().setReadOnly(True)
-        self.keysplit_sustain.lineEdit().setAlignment(Qt.AlignCenter)
-        keysplit_layout.addWidget(self.keysplit_sustain, ks_row, 1, 1, 2)
-        ks_row += 1
-
-        # SmartChord Ignore with help
-        ks_sc_label = QWidget()
-        ks_sc_label_layout = QHBoxLayout()
-        ks_sc_label_layout.setContentsMargins(0, 0, 0, 0)
-        ks_sc_label_layout.setSpacing(3)
-        ks_sc_label_layout.addWidget(self.create_help_label(
-            "Auto-notes behavior for KeySplit keys (applies while KeySplit is enabled;\n"
-            "otherwise these keys follow the base zone setting):\n"
-            "Allow: smartchord/delay/dynamic-chord/arpeggiator/doubler apply\n"
-            "Ignore: these keys play ONLY their plain note (looping unaffected)"
-        ))
-        ks_sc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Auto-Notes:")))
-        ks_sc_label_layout.addStretch()
-        ks_sc_label.setLayout(ks_sc_label_layout)
-        keysplit_layout.addWidget(ks_sc_label, ks_row, 0)
-
-        self.keysplit_smartchord_ignore = ArrowComboBox()
-        self.keysplit_smartchord_ignore.setMinimumWidth(80)
-        self.keysplit_smartchord_ignore.setMaximumWidth(120)
-        self.keysplit_smartchord_ignore.setMinimumHeight(25)
-        self.keysplit_smartchord_ignore.setMaximumHeight(25)
-        self.keysplit_smartchord_ignore.addItem("Allow", 0)
-        self.keysplit_smartchord_ignore.addItem("Ignore", 1)
-        self.keysplit_smartchord_ignore.setCurrentIndex(0)
-        self.keysplit_smartchord_ignore.setEditable(True)
-        self.keysplit_smartchord_ignore.lineEdit().setReadOnly(True)
-        self.keysplit_smartchord_ignore.lineEdit().setAlignment(Qt.AlignCenter)
-        keysplit_layout.addWidget(self.keysplit_smartchord_ignore, ks_row, 1, 1, 2)
-
-        # TripleSplit Settings container
-        self.triplesplit_offshoot = QGroupBox()
-        self.triplesplit_offshoot.setMaximumWidth(350)
-        triplesplit_layout = QGridLayout()
-        triplesplit_layout.setVerticalSpacing(8)
-        triplesplit_layout.setHorizontalSpacing(8)
-        self.triplesplit_offshoot.setLayout(triplesplit_layout)
-
-        ts_row = 0
-
-        # Channel: Value dropdown | On/Off
-        ts_ch_label = QWidget()
-        ts_ch_label_layout = QHBoxLayout()
-        ts_ch_label_layout.setContentsMargins(0, 0, 0, 0)
-        ts_ch_label_layout.setSpacing(3)
-        ts_ch_label_layout.addWidget(self.create_help_label("MIDI channel (1-16) for TripleSplit keys"))
-        ts_ch_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Channel:")))
-        ts_ch_label_layout.addStretch()
-        ts_ch_label.setLayout(ts_ch_label_layout)
-        triplesplit_layout.addWidget(ts_ch_label, ts_row, 0)
-
-        self.key_split2_channel = ArrowComboBox()
-        self.key_split2_channel.setMinimumWidth(60)
-        self.key_split2_channel.setMaximumWidth(80)
-        self.key_split2_channel.setMinimumHeight(25)
-        self.key_split2_channel.setMaximumHeight(25)
-        for i in range(16):
-            self.key_split2_channel.addItem(f"{i + 1}", i)
-        self.key_split2_channel.setEditable(True)
-        self.key_split2_channel.lineEdit().setReadOnly(True)
-        self.key_split2_channel.lineEdit().setAlignment(Qt.AlignCenter)
-        triplesplit_layout.addWidget(self.key_split2_channel, ts_row, 1)
-
-        self.triplesplit_channel_enable = ArrowComboBox()
-        self.triplesplit_channel_enable.setMinimumWidth(50)
-        self.triplesplit_channel_enable.setMaximumWidth(60)
-        self.triplesplit_channel_enable.setMinimumHeight(25)
-        self.triplesplit_channel_enable.setMaximumHeight(25)
-        self.triplesplit_channel_enable.addItem("Off", 0)
-        self.triplesplit_channel_enable.addItem("On", 1)
-        self.triplesplit_channel_enable.setEditable(True)
-        self.triplesplit_channel_enable.lineEdit().setReadOnly(True)
-        self.triplesplit_channel_enable.lineEdit().setAlignment(Qt.AlignCenter)
-        self.triplesplit_channel_enable.currentIndexChanged.connect(self._on_split_enable_changed)
-        triplesplit_layout.addWidget(self.triplesplit_channel_enable, ts_row, 2)
-        ts_row += 1
-
-        # Transpose: Value dropdown | On/Off
-        ts_tr_label = QWidget()
-        ts_tr_label_layout = QHBoxLayout()
-        ts_tr_label_layout.setContentsMargins(0, 0, 0, 0)
-        ts_tr_label_layout.setSpacing(3)
-        ts_tr_label_layout.addWidget(self.create_help_label("Combined transposition (octave + key, -64 to +64) for TripleSplit keys. Only applies while TripleSplit transpose is enabled below; otherwise these keys follow the main transposition."))
-        ts_tr_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Transpose:")))
-        ts_tr_label_layout.addStretch()
-        ts_tr_label.setLayout(ts_tr_label_layout)
-        triplesplit_layout.addWidget(ts_tr_label, ts_row, 0)
-
-        self.transpose_number3 = ArrowComboBox()
-        self.transpose_number3.setMinimumWidth(60)
-        self.transpose_number3.setMaximumWidth(80)
-        self.transpose_number3.setMinimumHeight(25)
-        self.transpose_number3.setMaximumHeight(25)
-        # +/-24: matches the firmware's own zone-transpose clamp (TRANSPOSE_MAX)
-        for i in range(-24, 25):
-            self.transpose_number3.addItem(f"{'+' if i >= 0 else ''}{i}", i)
-        self.transpose_number3.setCurrentIndex(24)
-        self.transpose_number3.setEditable(True)
-        self.transpose_number3.lineEdit().setReadOnly(True)
-        self.transpose_number3.lineEdit().setAlignment(Qt.AlignCenter)
-        triplesplit_layout.addWidget(self.transpose_number3, ts_row, 1)
-
-        self.triplesplit_transpose_enable = ArrowComboBox()
-        self.triplesplit_transpose_enable.setMinimumWidth(50)
-        self.triplesplit_transpose_enable.setMaximumWidth(60)
-        self.triplesplit_transpose_enable.setMinimumHeight(25)
-        self.triplesplit_transpose_enable.setMaximumHeight(25)
-        self.triplesplit_transpose_enable.addItem("Off", 0)
-        self.triplesplit_transpose_enable.addItem("On", 1)
-        self.triplesplit_transpose_enable.setEditable(True)
-        self.triplesplit_transpose_enable.lineEdit().setReadOnly(True)
-        self.triplesplit_transpose_enable.lineEdit().setAlignment(Qt.AlignCenter)
-        self.triplesplit_transpose_enable.currentIndexChanged.connect(self._on_split_enable_changed)
-        triplesplit_layout.addWidget(self.triplesplit_transpose_enable, ts_row, 2)
-        ts_row += 1
-
-        # Velocity Curve: Curve dropdown | On/Off (merged)
-        ts_vc_label = QWidget()
-        ts_vc_label_layout = QHBoxLayout()
-        ts_vc_label_layout.setContentsMargins(0, 0, 0, 0)
-        ts_vc_label_layout.setSpacing(3)
-        ts_vc_label_layout.addWidget(self.create_help_label(
+        self.velocity_curve3 = _articulation_combo()
+        self.velocity_curve3.setToolTip(
             "Velocity response curve for TripleSplit keys.\n"
             "Factory articulations: Softest-Hardest response\n"
             "curves plus Sensitive, Fixed, Drums, Two Toned,\n"
             "Reverse and Random Highlights presets."
-        ))
-        ts_vc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Articulation:")))
-        ts_vc_label_layout.addStretch()
-        ts_vc_label.setLayout(ts_vc_label_layout)
-        triplesplit_layout.addWidget(ts_vc_label, ts_row, 0)
-
-        self.velocity_curve3 = ArrowComboBox()
-        self.velocity_curve3.setMinimumWidth(80)
-        self.velocity_curve3.setMaximumWidth(100)
-        self.velocity_curve3.setMinimumHeight(25)
-        self.velocity_curve3.setMaximumHeight(25)
-        populate_articulation_combo(self.velocity_curve3)
-        self.velocity_curve3.setCurrentIndex(0)
-        self.velocity_curve3.setEditable(True)
-        self.velocity_curve3.lineEdit().setReadOnly(True)
-        self.velocity_curve3.lineEdit().setAlignment(Qt.AlignCenter)
-        triplesplit_layout.addWidget(self.velocity_curve3, ts_row, 1)
-
-        self.triplesplit_velocity_enable = ArrowComboBox()
-        self.triplesplit_velocity_enable.setMinimumWidth(50)
-        self.triplesplit_velocity_enable.setMaximumWidth(60)
-        self.triplesplit_velocity_enable.setMinimumHeight(25)
-        self.triplesplit_velocity_enable.setMaximumHeight(25)
-        self.triplesplit_velocity_enable.addItem("Off", 0)
-        self.triplesplit_velocity_enable.addItem("On", 1)
-        self.triplesplit_velocity_enable.setEditable(True)
-        self.triplesplit_velocity_enable.lineEdit().setReadOnly(True)
-        self.triplesplit_velocity_enable.lineEdit().setAlignment(Qt.AlignCenter)
-        self.triplesplit_velocity_enable.currentIndexChanged.connect(self._on_split_enable_changed)
-        triplesplit_layout.addWidget(self.triplesplit_velocity_enable, ts_row, 2)
-        ts_row += 1
+        )
+        self.triplesplit_velocity_enable = _enable_combo("TripleSplit")
+        zones_grid.addWidget(_split_cell(self.velocity_curve3, self.triplesplit_velocity_enable), row, ZONE_TS_COL)
 
         # Velocity min/max removed - now configured per velocity preset
 
-        # Sustain with help
-        ts_sus_label = QWidget()
-        ts_sus_label_layout = QHBoxLayout()
-        ts_sus_label_layout.setContentsMargins(0, 0, 0, 0)
-        ts_sus_label_layout.setSpacing(3)
-        ts_sus_label_layout.addWidget(self.create_help_label(
+        # ---- Sustain ----
+        row += 1
+        zones_grid.addWidget(_help_row("Sustain", (
+            "How the MIDIswitch responds to the sustain pedal:\n"
+            "Ignore: Sustain pedal messages are ignored\n"
+            "Allow: Sustain pedal affects note release"
+        )), row, ZONE_LABEL_COL)
+        self.base_sustain = _combo(ZONE_VALUE_WIDTH, sustain_items)
+        zones_grid.addWidget(self.base_sustain.width_holder, row, ZONE_BASE_COL, Qt.AlignLeft)
+
+        self.keysplit_sustain = _combo(ZONE_VALUE_WIDTH, sustain_items)
+        self.keysplit_sustain.setToolTip(
+            "Sustain pedal behavior for KeySplit keys:\n"
+            "Ignore: Sustain pedal has no effect\n"
+            "Allow: Notes sustain when pedal is held"
+        )
+        zones_grid.addWidget(_split_cell(self.keysplit_sustain), row, ZONE_KS_COL)
+
+        self.triplesplit_sustain = _combo(ZONE_VALUE_WIDTH, sustain_items)
+        self.triplesplit_sustain.setToolTip(
             "Sustain pedal behavior for TripleSplit keys:\n"
             "Ignore: Sustain pedal has no effect\n"
             "Allow: Notes sustain when pedal is held"
+        )
+        zones_grid.addWidget(_split_cell(self.triplesplit_sustain), row, ZONE_TS_COL)
+
+        # ---- Auto notes (SmartChord ignore) — Advanced mode only ----
+        row += 1
+        auto_notes_label = _help_row("Auto notes", (
+            "Auto-notes behavior for base zone keys:\n"
+            "Allow: smartchord/delay/dynamic-chord/arpeggiator/doubler apply\n"
+            "Ignore: these keys play ONLY their plain note (looping unaffected)"
         ))
-        ts_sus_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Sustain:")))
-        ts_sus_label_layout.addStretch()
-        ts_sus_label.setLayout(ts_sus_label_layout)
-        triplesplit_layout.addWidget(ts_sus_label, ts_row, 0)
+        zones_grid.addWidget(auto_notes_label, row, ZONE_LABEL_COL)
+        self.base_smartchord_ignore = _combo(ZONE_VALUE_WIDTH, auto_notes_items)
+        zones_grid.addWidget(self.base_smartchord_ignore.width_holder, row, ZONE_BASE_COL, Qt.AlignLeft)
+        ui_mode.advanced_only(auto_notes_label, self.base_smartchord_ignore.width_holder)
 
-        self.triplesplit_sustain = ArrowComboBox()
-        self.triplesplit_sustain.setMinimumWidth(80)
-        self.triplesplit_sustain.setMaximumWidth(120)
-        self.triplesplit_sustain.setMinimumHeight(25)
-        self.triplesplit_sustain.setMaximumHeight(25)
-        self.triplesplit_sustain.addItem("Ignore", 0)
-        self.triplesplit_sustain.addItem("Allow", 1)
-        self.triplesplit_sustain.setCurrentIndex(0)
-        self.triplesplit_sustain.setEditable(True)
-        self.triplesplit_sustain.lineEdit().setReadOnly(True)
-        self.triplesplit_sustain.lineEdit().setAlignment(Qt.AlignCenter)
-        triplesplit_layout.addWidget(self.triplesplit_sustain, ts_row, 1, 1, 2)
-        ts_row += 1
+        self.keysplit_smartchord_ignore = _combo(ZONE_VALUE_WIDTH, auto_notes_items)
+        self.keysplit_smartchord_ignore.setToolTip(
+            "Auto-notes behavior for KeySplit keys (applies while KeySplit is enabled;\n"
+            "otherwise these keys follow the base zone setting):\n"
+            "Allow: smartchord/delay/dynamic-chord/arpeggiator/doubler apply\n"
+            "Ignore: these keys play ONLY their plain note (looping unaffected)"
+        )
+        zones_grid.addWidget(_split_cell(self.keysplit_smartchord_ignore), row, ZONE_KS_COL)
 
-        # SmartChord Ignore with help
-        ts_sc_label = QWidget()
-        ts_sc_label_layout = QHBoxLayout()
-        ts_sc_label_layout.setContentsMargins(0, 0, 0, 0)
-        ts_sc_label_layout.setSpacing(3)
-        ts_sc_label_layout.addWidget(self.create_help_label(
+        self.triplesplit_smartchord_ignore = _combo(ZONE_VALUE_WIDTH, auto_notes_items)
+        self.triplesplit_smartchord_ignore.setToolTip(
             "Auto-notes behavior for TripleSplit keys (applies while TripleSplit is enabled;\n"
             "otherwise these keys follow the base zone setting):\n"
             "Allow: smartchord/delay/dynamic-chord/arpeggiator/doubler apply\n"
             "Ignore: these keys play ONLY their plain note (looping unaffected)"
-        ))
-        ts_sc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Auto-Notes:")))
-        ts_sc_label_layout.addStretch()
-        ts_sc_label.setLayout(ts_sc_label_layout)
-        triplesplit_layout.addWidget(ts_sc_label, ts_row, 0)
+        )
+        zones_grid.addWidget(_split_cell(self.triplesplit_smartchord_ignore), row, ZONE_TS_COL)
 
-        self.triplesplit_smartchord_ignore = ArrowComboBox()
-        self.triplesplit_smartchord_ignore.setMinimumWidth(80)
-        self.triplesplit_smartchord_ignore.setMaximumWidth(120)
-        self.triplesplit_smartchord_ignore.setMinimumHeight(25)
-        self.triplesplit_smartchord_ignore.setMaximumHeight(25)
-        self.triplesplit_smartchord_ignore.addItem("Allow", 0)
-        self.triplesplit_smartchord_ignore.addItem("Ignore", 1)
-        self.triplesplit_smartchord_ignore.setCurrentIndex(0)
-        self.triplesplit_smartchord_ignore.setEditable(True)
-        self.triplesplit_smartchord_ignore.lineEdit().setReadOnly(True)
-        self.triplesplit_smartchord_ignore.lineEdit().setAlignment(Qt.AlignCenter)
-        triplesplit_layout.addWidget(self.triplesplit_smartchord_ignore, ts_row, 1, 1, 2)
+        for _value, _enable in (
+            (self.key_split_channel, self.keysplit_channel_enable),
+            (self.transpose_number2, self.keysplit_transpose_enable),
+            (self.velocity_curve2, self.keysplit_velocity_enable),
+            (self.key_split2_channel, self.triplesplit_channel_enable),
+            (self.transpose_number3, self.triplesplit_transpose_enable),
+            (self.velocity_curve3, self.triplesplit_velocity_enable),
+        ):
+            _dim_while_off(_value, _enable)
 
-        # Create wrapper for keysplit with title above
-        keysplit_wrapper = QWidget()
-        keysplit_wrapper_layout = QVBoxLayout()
-        keysplit_wrapper_layout.setContentsMargins(0, 0, 0, 0)
-        keysplit_wrapper_layout.setSpacing(5)
-        keysplit_wrapper.setLayout(keysplit_wrapper_layout)
+        main_layout.addWidget(zones_card)
 
-        # KeySplit title with help icon (above container)
-        ks_header = QWidget()
-        ks_header_layout = QHBoxLayout()
-        ks_header_layout.setContentsMargins(0, 0, 0, 0)
-        ks_header_layout.setSpacing(5)
-        ks_header_title = QLabel(tr("MIDIswitchSettingsConfigurator", "KeySplit Settings"))
-        ks_header_title.setStyleSheet("font-weight: bold;")
-        ks_header_layout.addWidget(self.create_help_label(
-            "KeySplit allows keys assigned to the KeySplit layer to use\n"
-            "different MIDI settings than the base layer.\n\n"
-            "Enable each parameter to apply separate settings for split keys."
-        ))
-        ks_header_layout.addWidget(ks_header_title)
-        ks_header_layout.addStretch()
-        ks_header.setLayout(ks_header_layout)
-        keysplit_wrapper_layout.addWidget(ks_header)
-        keysplit_wrapper_layout.addWidget(self.keysplit_offshoot)
+        # ---------------------------------------------------------------
+        # The grid of cards (Advanced mode only)
+        # ---------------------------------------------------------------
+        cards_widget = QWidget()
+        cards_grid = QGridLayout(cards_widget)
+        cards_grid.setContentsMargins(0, 0, 0, 0)
+        cards_grid.setHorizontalSpacing(12)
+        cards_grid.setVerticalSpacing(8)
+        cards_grid.setColumnStretch(0, 1)
+        cards_grid.setColumnStretch(1, 1)
 
-        # Create wrapper for triplesplit with title above
-        triplesplit_wrapper = QWidget()
-        triplesplit_wrapper_layout = QVBoxLayout()
-        triplesplit_wrapper_layout.setContentsMargins(0, 0, 0, 0)
-        triplesplit_wrapper_layout.setSpacing(5)
-        triplesplit_wrapper.setLayout(triplesplit_wrapper_layout)
+        # ---- Looping ----
+        loop_group, loop_layout = _card("Looping")
+        cards_grid.addWidget(loop_group, 0, 0)
 
-        # TripleSplit title with help icon (above container)
-        ts_header = QWidget()
-        ts_header_layout = QHBoxLayout()
-        ts_header_layout.setContentsMargins(0, 0, 0, 0)
-        ts_header_layout.setSpacing(5)
-        ts_header_title = QLabel(tr("MIDIswitchSettingsConfigurator", "TripleSplit Settings"))
-        ts_header_title.setStyleSheet("font-weight: bold;")
-        ts_header_layout.addWidget(self.create_help_label(
-            "TripleSplit allows keys assigned to the TripleSplit layer to use\n"
-            "different MIDI settings than both base and KeySplit layers.\n\n"
-            "Enable each parameter to apply separate settings for third split keys."
-        ))
-        ts_header_layout.addWidget(ts_header_title)
-        ts_header_layout.addStretch()
-        ts_header.setLayout(ts_header_layout)
-        triplesplit_wrapper_layout.addWidget(ts_header)
-        triplesplit_wrapper_layout.addWidget(self.triplesplit_offshoot)
-
-        # Add all containers to the horizontal layout
-        global_midi_group_layout.addWidget(midi_title_container)
-        global_midi_group_layout.addStretch()
-        global_midi_group_layout.addWidget(base_settings_container)
-        global_midi_group_layout.addWidget(keysplit_wrapper)
-        global_midi_group_layout.addWidget(triplesplit_wrapper)
-        global_midi_group_layout.addStretch()
-
-        # Add global MIDI group to main layout
-        main_layout.addWidget(global_midi_group)
-
-        # Loop Settings Group with title on left, container centered
-        loop_row_container = QWidget()
-        loop_row_layout = QHBoxLayout()
-        loop_row_layout.setContentsMargins(0, 0, 0, 0)
-        loop_row_container.setLayout(loop_row_layout)
-
-        # Loop title container (left of centered container, vertically centered)
-        loop_title_widget = QWidget()
-        loop_title_widget.setFixedWidth(150)
-        loop_title_layout = QVBoxLayout()
-        loop_title_layout.setContentsMargins(0, 0, 0, 0)
-        loop_title_widget.setLayout(loop_title_layout)
-
-        loop_title_layout.addStretch()
-        loop_title_label = QLabel(tr("MIDIswitchSettingsConfigurator", "Loop Settings"))
-        loop_title_layout.addWidget(loop_title_label)
-        loop_title_layout.addStretch()
-
-        loop_group = QGroupBox()
-        loop_layout = QGridLayout()
-        loop_group.setLayout(loop_layout)
-        loop_layout.setHorizontalSpacing(25)
-
-        loop_row_layout.addStretch()
-        loop_row_layout.addWidget(loop_title_widget)
-        loop_row_layout.addWidget(loop_group)
-        loop_row_layout.addStretch()
-        main_layout.addWidget(loop_row_container)
-
-        # Sync Mode with help
-        sync_mode_label = QWidget()
-        sync_mode_layout = QHBoxLayout()
-        sync_mode_layout.setContentsMargins(0, 0, 0, 0)
-        sync_mode_layout.setSpacing(5)
-        sync_mode_layout.addWidget(self.create_help_label(
+        self.unsynced_mode = _combo(CARD_VALUE_WIDTH, [
+            ("Loop (Note Prime On)", 0),
+            ("Loop (Note Prime Off)", 4),
+            ("Sync Mode (Note Prime On)", 2),
+            ("Sync Mode (Note Prime Off)", 5),
+            ("BPM Bar", 1),
+            ("BPM Beat", 3),
+        ])
+        _card_row(loop_layout, "Sync mode", (
             "Loop: Free-running loop mode\n"
             "Sync Mode: Synced to external clock\n"
             "BPM Bar/Beat: Sync to BPM timing\n"
             "Note Prime On/Off: Whether notes prime the loop"
-        ))
-        sync_mode_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Sync Mode:")))
-        sync_mode_label.setLayout(sync_mode_layout)
-        loop_layout.addWidget(sync_mode_label, 0, 1)
-        self.unsynced_mode = ArrowComboBox()
-        self.unsynced_mode.setMinimumWidth(120)
-        self.unsynced_mode.setMinimumHeight(25)
-        self.unsynced_mode.setMaximumHeight(25)
-        self.unsynced_mode.setEditable(True)
-        self.unsynced_mode.lineEdit().setReadOnly(True)
-        self.unsynced_mode.lineEdit().setAlignment(Qt.AlignCenter)
-        self.unsynced_mode.addItem("Loop (Note Prime On)", 0)
-        self.unsynced_mode.addItem("Loop (Note Prime Off)", 4)
-        self.unsynced_mode.addItem("Sync Mode (Note Prime On)", 2)
-        self.unsynced_mode.addItem("Sync Mode (Note Prime Off)", 5)
-        self.unsynced_mode.addItem("BPM Bar", 1)
-        self.unsynced_mode.addItem("BPM Beat", 3)
-        loop_layout.addWidget(self.unsynced_mode, 0, 2)
+        ), self.unsynced_mode)
 
-        # Sample Mode with help
-        sample_mode_label = QWidget()
-        sample_mode_label_layout = QHBoxLayout()
-        sample_mode_label_layout.setContentsMargins(0, 0, 0, 0)
-        sample_mode_label_layout.setSpacing(5)
-        sample_mode_label_layout.addWidget(self.create_help_label(
+        self.sample_mode = _combo(CARD_VALUE_WIDTH, ON_OFF)
+        _card_row(loop_layout, "Sample mode", (
             "Enable one-shot sample playback mode.\n"
             "Off: Normal loop behavior\n"
             "On: Loops play once and stop"
-        ))
-        sample_mode_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Sample Mode:")))
-        sample_mode_label.setLayout(sample_mode_label_layout)
-        loop_layout.addWidget(sample_mode_label, 0, 3)
-        self.sample_mode = ArrowComboBox()
-        self.sample_mode.setMinimumWidth(120)
-        self.sample_mode.setMinimumHeight(25)
-        self.sample_mode.setMaximumHeight(25)
-        self.sample_mode.setEditable(True)
-        self.sample_mode.lineEdit().setReadOnly(True)
-        self.sample_mode.lineEdit().setAlignment(Qt.AlignCenter)
-        self.sample_mode.addItem("Off", False)
-        self.sample_mode.addItem("On", True)
-        loop_layout.addWidget(self.sample_mode, 0, 4)
+        ), self.sample_mode)
 
-        # Instant Start moved to the new "Stop Mode" group below (mirrors the
-        # on-device Advanced Settings > Stop Mode menu, where it now lives).
+        # Instant Start lives in the "Stop mode" card (mirrors the on-device
+        # Advanced Settings > Stop Mode menu).
 
-        # CC Loop Recording with help
-        cc_loop_rec_label = QWidget()
-        cc_loop_rec_label_layout = QHBoxLayout()
-        cc_loop_rec_label_layout.setContentsMargins(0, 0, 0, 0)
-        cc_loop_rec_label_layout.setSpacing(5)
-        cc_loop_rec_label_layout.addWidget(self.create_help_label(
+        self.cc_loop_recording = _combo(CARD_VALUE_WIDTH, [
+            ("Off", 0),
+            ("AT Only", 1),
+            ("CC Only", 2),
+            ("CC + AT", 3),
+        ])
+        _card_row(loop_layout, "Loop recording", (
             "Record CC messages in loop recordings.\n"
             "Off: Only note on/off recorded\n"
             "On: CC messages also recorded"
-        ))
-        cc_loop_rec_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Loop Recording:")))
-        cc_loop_rec_label.setLayout(cc_loop_rec_label_layout)
-        loop_layout.addWidget(cc_loop_rec_label, 1, 1)
-        self.cc_loop_recording = ArrowComboBox()
-        self.cc_loop_recording.setMinimumWidth(120)
-        self.cc_loop_recording.setMinimumHeight(25)
-        self.cc_loop_recording.setMaximumHeight(25)
-        self.cc_loop_recording.setEditable(True)
-        self.cc_loop_recording.lineEdit().setReadOnly(True)
-        self.cc_loop_recording.lineEdit().setAlignment(Qt.AlignCenter)
-        self.cc_loop_recording.addItem("Off", 0)
-        self.cc_loop_recording.addItem("AT Only", 1)
-        self.cc_loop_recording.addItem("CC Only", 2)
-        self.cc_loop_recording.addItem("CC + AT", 3)
-        loop_layout.addWidget(self.cc_loop_recording, 1, 2)
+        ), self.cc_loop_recording)
 
-        # Live Note Priority with help
-        macro_override_label = QWidget()
-        macro_override_label_layout = QHBoxLayout()
-        macro_override_label_layout.setContentsMargins(0, 0, 0, 0)
-        macro_override_label_layout.setSpacing(5)
-        macro_override_label_layout.addWidget(self.create_help_label(
+        self.macro_override_live_notes = _combo(CARD_VALUE_WIDTH, [
+            ("Off", True),    # Off = live notes don't have priority = macro_override_live_notes=true
+            ("On", False),    # On = live notes have priority = macro_override_live_notes=false
+        ])
+        _card_row(loop_layout, "Live note priority", (
             "Control how macro playback interacts with live notes.\n"
             "Off: Macro plays notes even when held live\n"
             "On: Live notes take priority, macro skips held notes"
-        ))
-        macro_override_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Live Note Priority:")))
-        macro_override_label.setLayout(macro_override_label_layout)
-        loop_layout.addWidget(macro_override_label, 1, 3)
-        self.macro_override_live_notes = ArrowComboBox()
-        self.macro_override_live_notes.setMinimumWidth(120)
-        self.macro_override_live_notes.setMinimumHeight(25)
-        self.macro_override_live_notes.setMaximumHeight(25)
-        self.macro_override_live_notes.setEditable(True)
-        self.macro_override_live_notes.lineEdit().setReadOnly(True)
-        self.macro_override_live_notes.lineEdit().setAlignment(Qt.AlignCenter)
-        self.macro_override_live_notes.addItem("Off", True)    # Off = live notes don't have priority = macro_override_live_notes=true
-        self.macro_override_live_notes.addItem("On", False)    # On = live notes have priority = macro_override_live_notes=false
-        loop_layout.addWidget(self.macro_override_live_notes, 1, 4)
+        ), self.macro_override_live_notes)
+        loop_layout.setRowStretch(loop_layout.rowCount(), 1)
 
         # =================================================================
-        # Stop Mode Group — per-function Mute/Stop behavior of the stop key.
+        # Stop mode — per-function Mute/Stop behavior of the stop key.
         # Mirrors the on-device Advanced Settings > Stop Mode menu.
         # The 5-bit mask rides keyboard-config packet 1 byte 20 as
         # 0x80 | mask (bit 7 = "field valid" feature-detect marker; old
         # firmware sends 0 there and ignores anything without bit 7 set).
         # =================================================================
-        stopmode_row_container = QWidget()
-        stopmode_row_layout = QHBoxLayout()
-        stopmode_row_layout.setContentsMargins(0, 0, 0, 0)
-        stopmode_row_container.setLayout(stopmode_row_layout)
+        stopmode_group, stopmode_layout = _card("Stop mode", (
+            "What happens when you stop a function (a loop, the step sequencer,\n"
+            "the drum machine...).\n\n"
+            "Mute: it carries on silently in the background, in time, and when\n"
+            "you start it again it comes back in from where it has got to, as if\n"
+            "it had been playing all along.\n\n"
+            "Stop: background playback stops too, and it always starts again\n"
+            "from the beginning."))
+        cards_grid.addWidget(stopmode_group, 0, 1)
 
-        stopmode_title_widget = QWidget()
-        stopmode_title_widget.setFixedWidth(150)
-        stopmode_title_layout = QVBoxLayout()
-        stopmode_title_layout.setContentsMargins(0, 0, 0, 0)
-        stopmode_title_widget.setLayout(stopmode_title_layout)
-
-        stopmode_title_layout.addStretch()
-        stopmode_title_label = QLabel(tr("MIDIswitchSettingsConfigurator", "Stop Mode"))
-        stopmode_title_layout.addWidget(stopmode_title_label)
-        stopmode_title_layout.addStretch()
-
-        stopmode_group = QGroupBox()
-        stopmode_layout = QGridLayout()
-        stopmode_layout.setHorizontalSpacing(25)
-        stopmode_group.setLayout(stopmode_layout)
-
-        stopmode_row_layout.addStretch()
-        stopmode_row_layout.addWidget(stopmode_title_widget)
-        stopmode_row_layout.addWidget(stopmode_group)
-        stopmode_row_layout.addStretch()
-
-        # Instant Start (moved here from Loop Settings — it dictates whether
-        # the Mute/Stop toggles below, and loop play/stop generally, resolve
-        # on the key press or defer to the next loop trigger).
-        instant_start_label = QWidget()
-        instant_start_label_layout = QHBoxLayout()
-        instant_start_label_layout.setContentsMargins(0, 0, 0, 0)
-        instant_start_label_layout.setSpacing(5)
-        instant_start_label_layout.addWidget(self.create_help_label(
+        # Instant Start (it dictates whether the Mute/Stop toggles below, and
+        # loop play/stop generally, resolve on the key press or defer to the
+        # next loop trigger).
+        self.instant_loop_start = _combo(CARD_VALUE_WIDTH, ON_OFF)
+        _card_row(stopmode_layout, "Instant start", (
             "Instant Start for loop playback controls.\n"
             "Off: play/stop/mute wait for the next musical boundary\n"
             "On: loop, overdub and ThruLoop play/stop/mute (and the\n"
@@ -2468,20 +2212,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "time with the other loops (resuming from the current\n"
             "position in the loop).\n\n"
             "Recording start/stop always stays synced to the boundary."
-        ))
-        instant_start_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Instant Start:")))
-        instant_start_label.setLayout(instant_start_label_layout)
-        stopmode_layout.addWidget(instant_start_label, 0, 1)
-        self.instant_loop_start = ArrowComboBox()
-        self.instant_loop_start.setMinimumWidth(120)
-        self.instant_loop_start.setMinimumHeight(25)
-        self.instant_loop_start.setMaximumHeight(25)
-        self.instant_loop_start.setEditable(True)
-        self.instant_loop_start.lineEdit().setReadOnly(True)
-        self.instant_loop_start.lineEdit().setAlignment(Qt.AlignCenter)
-        self.instant_loop_start.addItem("Off", False)
-        self.instant_loop_start.addItem("On", True)
-        stopmode_layout.addWidget(self.instant_loop_start, 0, 2)
+        ), self.instant_loop_start)
 
         # One Mute/Stop combo per transport family. Bit values mirror the
         # firmware STOP_MODE_* defines (process_dynamic_macro.h):
@@ -2496,175 +2227,117 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "Applied when settings are saved. Shared by every instance of\n"
             "the family (all 8 loops share the Loop setting, etc.)."
         )
-        # (label, STOP_MODE_* bit, grid row, grid col-pair)
+        # (label, STOP_MODE_* bit)
         _stopmode_families = [
-            ("Loop",           self.STOP_MODE_LOOP,     0, 3),
-            ("ThruLoop",       self.STOP_MODE_THRULOOP, 0, 5),
-            ("Step Sequencer", self.STOP_MODE_SEQ,      1, 1),
-            ("Drum Machine",   self.STOP_MODE_DRUM,     1, 3),
-            ("Rhythm Engine",  self.STOP_MODE_CPROG,    1, 5),
+            ("Loop",           self.STOP_MODE_LOOP),
+            ("ThruLoop",       self.STOP_MODE_THRULOOP),
+            ("Step sequencer", self.STOP_MODE_SEQ),
+            ("Drum machine",   self.STOP_MODE_DRUM),
+            ("Rhythm engine",  self.STOP_MODE_CPROG),
         ]
         # Assume supported until a GET reports a byte without the bit-7
         # marker (old firmware) — apply_settings() then disables the combos.
         self.stop_mode_supported = True
         self.stop_mode_combos = {}
-        for _sm_name, _sm_bit, _sm_row, _sm_col in _stopmode_families:
-            _sm_label = QWidget()
-            _sm_label_layout = QHBoxLayout()
-            _sm_label_layout.setContentsMargins(0, 0, 0, 0)
-            _sm_label_layout.setSpacing(5)
-            _sm_label_layout.addWidget(self.create_help_label(_stopmode_help))
-            _sm_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", _sm_name + ":")))
-            _sm_label.setLayout(_sm_label_layout)
-            stopmode_layout.addWidget(_sm_label, _sm_row, _sm_col)
-            _sm_combo = ArrowComboBox()
-            _sm_combo.setMinimumWidth(120)
-            _sm_combo.setMinimumHeight(25)
-            _sm_combo.setMaximumHeight(25)
-            _sm_combo.setEditable(True)
-            _sm_combo.lineEdit().setReadOnly(True)
-            _sm_combo.lineEdit().setAlignment(Qt.AlignCenter)
-            _sm_combo.addItem("Mute", 0)   # bit clear = Mute (firmware default)
-            _sm_combo.addItem("Stop", 1)   # bit set = Stop (legacy behavior)
-            stopmode_layout.addWidget(_sm_combo, _sm_row, _sm_col + 1)
+        for _sm_name, _sm_bit in _stopmode_families:
+            _sm_combo = _combo(CARD_VALUE_WIDTH, [
+                ("Mute", 0),   # bit clear = Mute (firmware default)
+                ("Stop", 1),   # bit set = Stop (legacy behavior)
+            ])
+            _card_row(stopmode_layout, _sm_name, _stopmode_help, _sm_combo)
             self.stop_mode_combos[_sm_bit] = _sm_combo
+        stopmode_layout.setRowStretch(stopmode_layout.rowCount(), 1)
 
-        # (The "Enable Aftertouch Modes" / "Enable CC Modes" toggles were moved
-        # out of this Stop Mode grid into the Advanced Settings grid below — see
-        # the AT/CC enable block after the Advanced grid is built. Their wiring
-        # is unchanged.)
+        # ---- Routing ----
+        midi_routing_group, midi_routing_layout = _card("Routing")
+        cards_grid.addWidget(midi_routing_group, 1, 0)
 
-        main_layout.addWidget(stopmode_row_container)
+        self.channel_override = _combo(CARD_VALUE_WIDTH, ON_OFF)
+        _card_row(midi_routing_layout, "Channel override", "Override the channel of incoming MIDI.\nOff: Keep the incoming channel\nOn: Apply MIDIswitch channel settings to input", self.channel_override)
 
-        # Advanced Settings Group with title on left, container centered
-        advanced_row_container = QWidget()
-        advanced_row_layout = QHBoxLayout()
-        advanced_row_layout.setContentsMargins(0, 0, 0, 0)
-        advanced_row_container.setLayout(advanced_row_layout)
+        self.velocity_override = _combo(CARD_VALUE_WIDTH, ON_OFF)
+        _card_row(midi_routing_layout, "Velocity override", (
+            "Override velocity for incoming MIDI notes.\n"
+            "Off: Use incoming velocity values\n"
+            "On: Apply MIDIswitch velocity settings to input"
+        ), self.velocity_override)
 
-        # Advanced title container (left of centered container, vertically centered)
-        advanced_title_widget = QWidget()
-        advanced_title_widget.setFixedWidth(150)
-        advanced_title_layout = QVBoxLayout()
-        advanced_title_layout.setContentsMargins(0, 0, 0, 0)
-        advanced_title_widget.setLayout(advanced_title_layout)
+        self.transpose_override = _combo(CARD_VALUE_WIDTH, ON_OFF)
+        _card_row(midi_routing_layout, "Transpose override", (
+            "Override transpose for incoming MIDI notes.\n"
+            "Off: Use incoming note values\n"
+            "On: Apply MIDIswitch transpose settings to input"
+        ), self.transpose_override)
 
-        advanced_title_layout.addStretch()
-        advanced_title_label = QLabel(tr("MIDIswitchSettingsConfigurator", "Advanced Settings"))
-        advanced_title_layout.addWidget(advanced_title_label)
-        advanced_title_layout.addStretch()
+        _midi_mode_items = [("Process All", 0), ("Thru", 1), ("Clock Only", 2), ("Ignore", 3)]
+        self.midi_in_mode = _combo(CARD_VALUE_WIDTH, _midi_mode_items)
+        _card_row(midi_routing_layout, "MIDI IN mode", (
+            "How incoming MIDI from DIN port is processed.\n"
+            "Process All: Process all incoming MIDI\n"
+            "Thru: Pass MIDI through unchanged\n"
+            "Clock Only: Only process clock messages\n"
+            "Ignore: Ignore all incoming MIDI"
+        ), self.midi_in_mode)
 
-        advanced_group = QGroupBox()
-        advanced_layout = QGridLayout()
-        advanced_layout.setHorizontalSpacing(25)
-        advanced_group.setLayout(advanced_layout)
+        self.usb_midi_mode = _combo(CARD_VALUE_WIDTH, _midi_mode_items)
+        _card_row(midi_routing_layout, "USB MIDI mode", (
+            "How incoming USB MIDI is processed.\n"
+            "Process All: Process all incoming MIDI\n"
+            "Thru: Pass MIDI through unchanged\n"
+            "Clock Only: Only process clock messages\n"
+            "Ignore: Ignore all incoming USB MIDI"
+        ), self.usb_midi_mode)
 
-        advanced_row_layout.addStretch()
-        advanced_row_layout.addWidget(advanced_title_widget)
-        advanced_row_layout.addWidget(advanced_group)
-        advanced_row_layout.addStretch()
+        self.midi_clock_source = _combo(CARD_VALUE_WIDTH, [("Local", 0), ("USB", 1), ("MIDI IN", 2)])
+        _card_row(midi_routing_layout, "Clock source", (
+            "Where MIDI timing clock comes from.\n"
+            "Local: Use internal clock\n"
+            "USB: Sync to USB MIDI clock\n"
+            "MIDI IN: Sync to DIN MIDI input clock"
+        ), self.midi_clock_source)
+        midi_routing_layout.setRowStretch(midi_routing_layout.rowCount(), 1)
 
-        # Velocity Interval with help
-        vel_interval_label = QWidget()
-        vel_interval_label_layout = QHBoxLayout()
-        vel_interval_label_layout.setContentsMargins(0, 0, 0, 0)
-        vel_interval_label_layout.setSpacing(5)
-        vel_interval_label_layout.addWidget(self.create_help_label(
+        # ---- Advanced ----
+        advanced_group, advanced_layout = _card("Advanced")
+        cards_grid.addWidget(advanced_group, 1, 1)
+
+        self.velocity_sensitivity = _combo(CARD_VALUE_WIDTH, [(str(i), i) for i in range(1, 11)])
+        _card_row(advanced_layout, "Velocity interval", (
             "Velocity step amount (1-10).\n"
             "When using velocity +/- keys, this is the\n"
             "amount velocity will increase or decrease."
-        ))
-        vel_interval_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Velocity Interval:")))
-        vel_interval_label.setLayout(vel_interval_label_layout)
-        advanced_layout.addWidget(vel_interval_label, 0, 1)
-        self.velocity_sensitivity = ArrowComboBox()
-        self.velocity_sensitivity.setMinimumWidth(120)
-        self.velocity_sensitivity.setMinimumHeight(25)
-        self.velocity_sensitivity.setMaximumHeight(25)
-        self.velocity_sensitivity.setEditable(True)
-        self.velocity_sensitivity.lineEdit().setReadOnly(True)
-        self.velocity_sensitivity.lineEdit().setAlignment(Qt.AlignCenter)
-        for i in range(1, 11):
-            self.velocity_sensitivity.addItem(str(i), i)
-        advanced_layout.addWidget(self.velocity_sensitivity, 0, 2)
+        ), self.velocity_sensitivity)
 
-        # CC Interval with help
-        cc_interval_label = QWidget()
-        cc_interval_label_layout = QHBoxLayout()
-        cc_interval_label_layout.setContentsMargins(0, 0, 0, 0)
-        cc_interval_label_layout.setSpacing(5)
-        cc_interval_label_layout.addWidget(self.create_help_label(
+        self.cc_sensitivity = _combo(CARD_VALUE_WIDTH, [(str(i), i) for i in range(1, 17)])
+        _card_row(advanced_layout, "CC interval", (
             "CC step amount (1-16).\n"
             "When using CC +/- keys, this is the\n"
             "amount the CC value will increase or decrease."
-        ))
-        cc_interval_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "CC Interval:")))
-        cc_interval_label.setLayout(cc_interval_label_layout)
-        advanced_layout.addWidget(cc_interval_label, 0, 3)
-        self.cc_sensitivity = ArrowComboBox()
-        self.cc_sensitivity.setMinimumWidth(120)
-        self.cc_sensitivity.setMinimumHeight(25)
-        self.cc_sensitivity.setMaximumHeight(25)
-        self.cc_sensitivity.setEditable(True)
-        self.cc_sensitivity.lineEdit().setReadOnly(True)
-        self.cc_sensitivity.lineEdit().setAlignment(Qt.AlignCenter)
-        for i in range(1, 17):
-            self.cc_sensitivity.addItem(str(i), i)
-        advanced_layout.addWidget(self.cc_sensitivity, 0, 4)
+        ), self.cc_sensitivity)
 
-        # Dynamic Range with help
-        dynamic_range_label = QWidget()
-        dynamic_range_label_layout = QHBoxLayout()
-        dynamic_range_label_layout.setContentsMargins(0, 0, 0, 0)
-        dynamic_range_label_layout.setSpacing(5)
-        dynamic_range_label_layout.addWidget(self.create_help_label(
+        self.random_velocity_modifier = _combo(CARD_VALUE_WIDTH, [(str(i), i) for i in range(128)])
+        _card_row(advanced_layout, "Dynamic range", (
             "Maximum allowed spread between Velocity Min and Velocity Max (0-127).\n"
             "When the min/max controls are moved apart beyond this range,\n"
             "the other end is dragged along to keep the spread within it.\n"
             "127 = no restriction."
-        ))
-        dynamic_range_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Dynamic Range:")))
-        dynamic_range_label.setLayout(dynamic_range_label_layout)
-        advanced_layout.addWidget(dynamic_range_label, 1, 1)
-        self.random_velocity_modifier = ArrowComboBox()
-        self.random_velocity_modifier.setMinimumWidth(120)
-        self.random_velocity_modifier.setMinimumHeight(25)
-        self.random_velocity_modifier.setMaximumHeight(25)
-        self.random_velocity_modifier.setEditable(True)
-        self.random_velocity_modifier.lineEdit().setReadOnly(True)
-        self.random_velocity_modifier.lineEdit().setAlignment(Qt.AlignCenter)
-        for i in range(128):
-            self.random_velocity_modifier.addItem(str(i), i)
-        advanced_layout.addWidget(self.random_velocity_modifier, 1, 2)
+        ), self.random_velocity_modifier)
 
-        # Virtual Instrument with help (formerly "OLED Keyboard") — selects the
-        # LCD display mode: piano keyboards or guitar-tab views.
-        oled_label = QWidget()
-        oled_label_layout = QHBoxLayout()
-        oled_label_layout.setContentsMargins(0, 0, 0, 0)
-        oled_label_layout.setSpacing(5)
-        oled_label_layout.addWidget(self.create_help_label(
+        # Virtual Instrument (formerly "OLED Keyboard") — selects the LCD
+        # display mode: piano keyboards or guitar-tab views.
+        self.oled_keyboard = _combo(CARD_VALUE_WIDTH, [
+            ("Keyboard 1", 0),
+            ("Keyboard 2", 1),
+            ("Keyboard 3", 5),  # firmware enum value 5
+            ("Guitar Low", 2),
+            ("Guitar Med", 3),
+            ("Guitar High", 4),
+        ])
+        _card_row(advanced_layout, "Virtual instrument", (
             "LCD virtual instrument / display style.\n"
             "Keyboard 1/2/3: piano keyboard at different octaves\n"
             "Guitar Low/Med/High: guitar tablature views"
-        ))
-        oled_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Virtual Instrument:")))
-        oled_label.setLayout(oled_label_layout)
-        advanced_layout.addWidget(oled_label, 1, 3)
-        self.oled_keyboard = ArrowComboBox()
-        self.oled_keyboard.setMinimumWidth(120)
-        self.oled_keyboard.setMinimumHeight(25)
-        self.oled_keyboard.setMaximumHeight(25)
-        self.oled_keyboard.setEditable(True)
-        self.oled_keyboard.lineEdit().setReadOnly(True)
-        self.oled_keyboard.lineEdit().setAlignment(Qt.AlignCenter)
-        self.oled_keyboard.addItem("Keyboard 1", 0)
-        self.oled_keyboard.addItem("Keyboard 2", 1)
-        self.oled_keyboard.addItem("Keyboard 3", 5)  # firmware enum value 5
-        self.oled_keyboard.addItem("Guitar Low", 2)
-        self.oled_keyboard.addItem("Guitar Med", 3)
-        self.oled_keyboard.addItem("Guitar High", 4)
-        advanced_layout.addWidget(self.oled_keyboard, 1, 4)
+        ), self.oled_keyboard)
 
         # LCD Theme with help — global LCD colour theme. Lives in its own
         # EEPROM region on the keyboard and is synced over a dedicated HID
@@ -2677,7 +2350,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         lcd_theme_label_layout.addWidget(self.create_help_label(
             "LCD colour theme — recolours the text + keyboard on the LCD.\n"
             "Orange, Matrix Green, White, Light Blue (bright on black).\n"
-            "Applies and saves to the keyboard instantly."
+            "Applies and saves to the MIDIswitch instantly."
         ))
         lcd_theme_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "LCD Theme:")))
         lcd_theme_label.setLayout(lcd_theme_label_layout)
@@ -2705,12 +2378,12 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         perf_label_layout.setContentsMargins(0, 0, 0, 0)
         perf_label_layout.setSpacing(5)
         perf_label_layout.addWidget(self.create_help_label(
-            "How the keyboard shares its time between the screen/lights and MIDI.\n"
+            "How the MIDIswitch shares its time between the screen/lights and MIDI.\n"
             "Responsive: tightest note timing, the screen and lights update less smoothly.\n"
             "Balanced: the default.\n"
             "Smooth / Smoothest: smoother screen and lighting animations, notes can be\n"
             "up to a few milliseconds later while the screen is busy.\n"
-            "Applies and saves to the keyboard instantly."
+            "Applies and saves to the MIDIswitch instantly."
         ))
         perf_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Smoothness:")))
         perf_label.setLayout(perf_label_layout)
@@ -2755,29 +2428,12 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.smart_chord_light_mode.addItem("All on: Guitar EADGB", 3)
         self.smart_chord_light_mode.addItem("All on: Guitar ADGBE", 4)
 
-        # Colorblind Mode with help
-        colorblind_label = QWidget()
-        colorblind_label_layout = QHBoxLayout()
-        colorblind_label_layout.setContentsMargins(0, 0, 0, 0)
-        colorblind_label_layout.setSpacing(5)
-        colorblind_label_layout.addWidget(self.create_help_label(
+        self.colorblind_mode = _combo(CARD_VALUE_WIDTH, [("Off", 0), ("On", 1)])
+        _card_row(advanced_layout, "Colorblind mode", (
             "Enable colorblind-friendly LED colors.\n"
             "Off: Standard color scheme\n"
             "On: High-contrast colors for better visibility"
-        ))
-        colorblind_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Colorblind Mode:")))
-        colorblind_label.setLayout(colorblind_label_layout)
-        advanced_layout.addWidget(colorblind_label, 2, 1)
-        self.colorblind_mode = ArrowComboBox()
-        self.colorblind_mode.setMinimumWidth(120)
-        self.colorblind_mode.setMinimumHeight(25)
-        self.colorblind_mode.setMaximumHeight(25)
-        self.colorblind_mode.setEditable(True)
-        self.colorblind_mode.lineEdit().setReadOnly(True)
-        self.colorblind_mode.lineEdit().setAlignment(Qt.AlignCenter)
-        self.colorblind_mode.addItem("Off", 0)
-        self.colorblind_mode.addItem("On", 1)
-        advanced_layout.addWidget(self.colorblind_mode, 2, 2)
+        ), self.colorblind_mode)
 
         # RGB Layer Mode with help
         rgb_layer_label = QWidget()
@@ -2792,67 +2448,28 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         rgb_layer_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "RGB Layer Mode:")))
         rgb_layer_label.setLayout(rgb_layer_label_layout)
         self._adv_rgb_layer_label = rgb_layer_label   # placed on the Advanced Settings tab
-        self.custom_layer_animations = ArrowComboBox()
-        self.custom_layer_animations.setMinimumWidth(120)
-        self.custom_layer_animations.setMinimumHeight(25)
-        self.custom_layer_animations.setMaximumHeight(25)
-        self.custom_layer_animations.setEditable(True)
-        self.custom_layer_animations.lineEdit().setReadOnly(True)
-        self.custom_layer_animations.lineEdit().setAlignment(Qt.AlignCenter)
-        self.custom_layer_animations.addItem("Off", False)
-        self.custom_layer_animations.addItem("On", True)
+        self.custom_layer_animations = TickCombo([("Off", False), ("On", True)])
 
-        # True Sustain with help
-        true_sustain_label = QWidget()
-        true_sustain_label_layout = QHBoxLayout()
-        true_sustain_label_layout.setContentsMargins(0, 0, 0, 0)
-        true_sustain_label_layout.setSpacing(5)
-        true_sustain_label_layout.addWidget(self.create_help_label(
+        self.true_sustain = _combo(CARD_VALUE_WIDTH, ON_OFF)
+        _card_row(advanced_layout, "True sustain", (
             "Enable true sustain pedal behavior.\n"
             "Off: Standard sustain behavior\n"
             "On: More realistic piano-style sustain"
-        ))
-        true_sustain_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "True Sustain:")))
-        true_sustain_label.setLayout(true_sustain_label_layout)
-        advanced_layout.addWidget(true_sustain_label, 2, 3)
-        self.true_sustain = ArrowComboBox()
-        self.true_sustain.setMinimumWidth(120)
-        self.true_sustain.setMinimumHeight(25)
-        self.true_sustain.setMaximumHeight(25)
-        self.true_sustain.setEditable(True)
-        self.true_sustain.lineEdit().setReadOnly(True)
-        self.true_sustain.lineEdit().setAlignment(Qt.AlignCenter)
-        self.true_sustain.addItem("Off", False)
-        self.true_sustain.addItem("On", True)
-        advanced_layout.addWidget(self.true_sustain, 2, 4)
+        ), self.true_sustain)
 
-        # Chord Display with help — global setting controlling how the chord
+        # Chord Display — global setting controlling how the chord
         # progression OLED menu labels each progression.
-        chord_display_label = QWidget()
-        chord_display_label_layout = QHBoxLayout()
-        chord_display_label_layout.setContentsMargins(0, 0, 0, 0)
-        chord_display_label_layout.setSpacing(5)
-        chord_display_label_layout.addWidget(self.create_help_label(
+        self.chord_display_mode = _combo(CARD_VALUE_WIDTH, [
+            ("Chords", 0),
+            ("Numerals", 1),
+            ("Name", 2),
+        ], current=2)  # Default: Name (legacy behavior)
+        _card_row(advanced_layout, "Chord display", (
             "How the chord-progression OLED menu labels each progression.\n"
             "Chords: absolute chord names in the chosen key (e.g. C Am F G)\n"
             "Numerals: key-independent roman numerals (e.g. I vi IV V)\n"
             "Name: the progression's name (e.g. 50s Progression)"
-        ))
-        chord_display_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Chord Display:")))
-        chord_display_label.setLayout(chord_display_label_layout)
-        advanced_layout.addWidget(chord_display_label, 3, 1)
-        self.chord_display_mode = ArrowComboBox()
-        self.chord_display_mode.setMinimumWidth(120)
-        self.chord_display_mode.setMinimumHeight(25)
-        self.chord_display_mode.setMaximumHeight(25)
-        self.chord_display_mode.setEditable(True)
-        self.chord_display_mode.lineEdit().setReadOnly(True)
-        self.chord_display_mode.lineEdit().setAlignment(Qt.AlignCenter)
-        self.chord_display_mode.addItem("Chords", 0)
-        self.chord_display_mode.addItem("Numerals", 1)
-        self.chord_display_mode.addItem("Name", 2)
-        self.chord_display_mode.setCurrentIndex(2)  # Default: Name (legacy behavior)
-        advanced_layout.addWidget(self.chord_display_mode, 3, 2)
+        ), self.chord_display_mode)
 
         # SmartChord Mode widget removed — only tap-toggle remains on the
         # firmware side.  A hidden ArrowComboBox pinned to "Toggle" stays
@@ -2864,51 +2481,24 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.smartchord_mode.setCurrentIndex(0)
         self.smartchord_mode.setVisible(False)
 
-        # Aftertouch is now per-layer (configured in Layer Actuation section)
-        aftertouch_note = QLabel(tr("MIDIswitchSettingsConfigurator", "Aftertouch: Per-Layer"))
-        aftertouch_note.setStyleSheet("QLabel { color: palette(dark); font-style: italic; }")
-        aftertouch_note.setToolTip(
-            "Aftertouch settings are configured per-layer.\n"
-            "Go to the Layer Actuation section to configure\n"
-            "aftertouch mode and CC number for each layer."
-        )
-        advanced_layout.addWidget(aftertouch_note, 5, 1, 1, 2)  # Moved to row 5
-
         # AT/CC Mode enable flags — two global On/Off toggles that gate the
-        # second factory velocity-preset band (curve indices 73-98). Placed in
-        # the Advanced grid (row 6). They ride the SAME keyboard-config byte as
-        # the Stop Mode mask (packet 1 byte 20): bit5 = Aftertouch Modes,
-        # bit6 = CC Modes (bit7 = validity marker). All save/load wiring lives in
-        # get_current_settings / apply_settings / pack_basic_data (byte 20) and
-        # is unchanged by the move.
+        # second factory velocity-preset band (curve indices 73-98). They ride
+        # the SAME keyboard-config byte as the Stop Mode mask (packet 1 byte
+        # 20): bit5 = Aftertouch Modes, bit6 = CC Modes (bit7 = validity
+        # marker). All save/load wiring lives in get_current_settings /
+        # apply_settings / pack_basic_data (byte 20).
         _atcc_help = (
             "Unlock the AT/CC Mode velocity presets (a second factory band).\n"
             "Aftertouch Modes: Vibrato Slow/Fast, Rising, Slow Rise, Wind Chords.\n"
             "CC Modes: the same five as CC-flavored variants.\n"
             "While a group is Off, its presets stay locked in the Velocity tab."
         )
-        for _atcc_name, _atcc_attr, _atcc_col in (
-            ("Enable Aftertouch Modes", "enable_at_modes", 1),
-            ("Enable CC Modes",         "enable_cc_modes", 3),
+        for _atcc_name, _atcc_attr in (
+            ("Enable aftertouch modes", "enable_at_modes"),
+            ("Enable CC modes",         "enable_cc_modes"),
         ):
-            _atcc_label = QWidget()
-            _atcc_label_layout = QHBoxLayout()
-            _atcc_label_layout.setContentsMargins(0, 0, 0, 0)
-            _atcc_label_layout.setSpacing(5)
-            _atcc_label_layout.addWidget(self.create_help_label(_atcc_help))
-            _atcc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", _atcc_name + ":")))
-            _atcc_label.setLayout(_atcc_label_layout)
-            advanced_layout.addWidget(_atcc_label, 6, _atcc_col)
-            _atcc_combo = ArrowComboBox()
-            _atcc_combo.setMinimumWidth(120)
-            _atcc_combo.setMinimumHeight(25)
-            _atcc_combo.setMaximumHeight(25)
-            _atcc_combo.setEditable(True)
-            _atcc_combo.lineEdit().setReadOnly(True)
-            _atcc_combo.lineEdit().setAlignment(Qt.AlignCenter)
-            _atcc_combo.addItem("Off", False)
-            _atcc_combo.addItem("On", True)
-            advanced_layout.addWidget(_atcc_combo, 6, _atcc_col + 1)
+            _atcc_combo = _combo(CARD_VALUE_WIDTH, ON_OFF)
+            _card_row(advanced_layout, _atcc_name, _atcc_help, _atcc_combo)
             setattr(self, _atcc_attr, _atcc_combo)
         # Toggling either enable live-updates which AT/CC band rows are shown in
         # the zone Articulation combos.
@@ -2924,232 +2514,37 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "When On, changing a zone's MIDI channel switches that zone to the\n"
             "articulation mapped to the new channel."
         )
-        _ca_label = QWidget()
-        _ca_label_layout = QHBoxLayout()
-        _ca_label_layout.setContentsMargins(0, 0, 0, 0)
-        _ca_label_layout.setSpacing(5)
-        _ca_label_layout.addWidget(self.create_help_label(_ca_help))
-        _ca_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator",
-                                             "Enable Channel Articulations:")))
-        _ca_label.setLayout(_ca_label_layout)
-        advanced_layout.addWidget(_ca_label, 7, 1)
-        self.enable_channel_artic = ArrowComboBox()
-        self.enable_channel_artic.setMinimumWidth(120)
-        self.enable_channel_artic.setMinimumHeight(25)
-        self.enable_channel_artic.setMaximumHeight(25)
-        self.enable_channel_artic.setEditable(True)
-        self.enable_channel_artic.lineEdit().setReadOnly(True)
-        self.enable_channel_artic.lineEdit().setAlignment(Qt.AlignCenter)
-        self.enable_channel_artic.addItem("Off", False)
-        self.enable_channel_artic.addItem("On", True)
+        self.enable_channel_artic = _combo(CARD_VALUE_WIDTH, ON_OFF)
         self.enable_channel_artic.currentIndexChanged.connect(
             self._on_channel_artic_enable_changed)
-        advanced_layout.addWidget(self.enable_channel_artic, 7, 2)
+        _card_row(advanced_layout, "Enable channel articulations", _ca_help, self.enable_channel_artic)
 
         # Articulation CC: the CC# that AT/CC articulations set to "CC Default"
         # send on. Global (rides the same dedicated HID region); writes immediately.
-        _artcc_label = QWidget()
-        _artcc_label_layout = QHBoxLayout()
-        _artcc_label_layout.setContentsMargins(0, 0, 0, 0)
-        _artcc_label_layout.setSpacing(5)
-        _artcc_label_layout.addWidget(self.create_help_label(
-            "The CC number that AT/CC articulations set to 'CC Default'\n"
-            "actually send on. Change it to re-point every 'CC Default'\n"
-            "articulation at once."))
-        _artcc_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator",
-                                                "Articulation CC:")))
-        _artcc_label.setLayout(_artcc_label_layout)
-        advanced_layout.addWidget(_artcc_label, 7, 3)
-        self.articulation_cc_combo = ArrowComboBox()
-        self.articulation_cc_combo.setMinimumWidth(120)
-        self.articulation_cc_combo.setMinimumHeight(25)
-        self.articulation_cc_combo.setMaximumHeight(25)
-        self.articulation_cc_combo.setEditable(True)
-        self.articulation_cc_combo.lineEdit().setReadOnly(True)
-        self.articulation_cc_combo.lineEdit().setAlignment(Qt.AlignCenter)
-        for _cc in range(128):
-            self.articulation_cc_combo.addItem("CC#{}".format(_cc), _cc)
+        self.articulation_cc_combo = _combo(CARD_VALUE_WIDTH, [("CC#{}".format(_cc), _cc) for _cc in range(128)])
         self.articulation_cc_combo.currentIndexChanged.connect(
             self._on_articulation_cc_changed)
-        advanced_layout.addWidget(self.articulation_cc_combo, 7, 4)
+        _card_row(advanced_layout, "Articulation CC", (
+            "The CC number that AT/CC articulations set to 'CC Default'\n"
+            "actually send on. Change it to re-point every 'CC Default'\n"
+            "articulation at once."), self.articulation_cc_combo)
+        advanced_layout.setRowStretch(advanced_layout.rowCount(), 1)
 
-        # MIDI Routing Settings Group with title on left, container centered
-        routing_row_container = QWidget()
-        routing_row_layout = QHBoxLayout()
-        routing_row_layout.setContentsMargins(0, 0, 0, 0)
-        routing_row_container.setLayout(routing_row_layout)
+        main_layout.addWidget(cards_widget)
+        main_layout.addStretch(1)
+        # Basic mode: the page is just the header and the Base column
+        ui_mode.advanced_only(cards_widget)
 
-        # Routing title container (left of centered container, vertically centered)
-        routing_title_widget = QWidget()
-        routing_title_widget.setFixedWidth(150)
-        routing_title_layout = QVBoxLayout()
-        routing_title_layout.setContentsMargins(0, 0, 0, 0)
-        routing_title_widget.setLayout(routing_title_layout)
-
-        routing_title_layout.addStretch()
-        routing_title_label = QLabel(tr("MIDIswitchSettingsConfigurator", "MIDI Routing"))
-        routing_title_layout.addWidget(routing_title_label)
-        routing_title_layout.addStretch()
-
-        midi_routing_group = QGroupBox()
-        midi_routing_layout = QGridLayout()
-        midi_routing_layout.setHorizontalSpacing(25)
-        midi_routing_group.setLayout(midi_routing_layout)
-
-        routing_row_layout.addStretch()
-        routing_row_layout.addWidget(routing_title_widget)
-        routing_row_layout.addWidget(midi_routing_group)
-        routing_row_layout.addStretch()
-
-        # Row 0: Override settings with help icons
-        ch_override_label = QWidget()
-        ch_override_layout = QHBoxLayout()
-        ch_override_layout.setContentsMargins(0, 0, 0, 0)
-        ch_override_layout.setSpacing(5)
-        ch_override_layout.addWidget(self.create_help_label("Override channel for incoming MIDI"))
-        ch_override_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Channel Override:")))
-        ch_override_label.setLayout(ch_override_layout)
-        midi_routing_layout.addWidget(ch_override_label, 0, 1)
-        self.channel_override = ArrowComboBox()
-        self.channel_override.setMinimumWidth(80)
-        self.channel_override.setMinimumHeight(25)
-        self.channel_override.setMaximumHeight(25)
-        self.channel_override.setEditable(True)
-        self.channel_override.lineEdit().setReadOnly(True)
-        self.channel_override.lineEdit().setAlignment(Qt.AlignCenter)
-        self.channel_override.addItem("Off", False)
-        self.channel_override.addItem("On", True)
-        midi_routing_layout.addWidget(self.channel_override, 0, 2)
-
-        vel_override_label = QWidget()
-        vel_override_label_layout = QHBoxLayout()
-        vel_override_label_layout.setContentsMargins(0, 0, 0, 0)
-        vel_override_label_layout.setSpacing(5)
-        vel_override_label_layout.addWidget(self.create_help_label(
-            "Override velocity for incoming MIDI notes.\n"
-            "Off: Use incoming velocity values\n"
-            "On: Apply keyboard velocity settings to input"
-        ))
-        vel_override_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Velocity Override:")))
-        vel_override_label.setLayout(vel_override_label_layout)
-        midi_routing_layout.addWidget(vel_override_label, 0, 3)
-        self.velocity_override = ArrowComboBox()
-        self.velocity_override.setMinimumWidth(80)
-        self.velocity_override.setMinimumHeight(25)
-        self.velocity_override.setMaximumHeight(25)
-        self.velocity_override.setEditable(True)
-        self.velocity_override.lineEdit().setReadOnly(True)
-        self.velocity_override.lineEdit().setAlignment(Qt.AlignCenter)
-        self.velocity_override.addItem("Off", False)
-        self.velocity_override.addItem("On", True)
-        midi_routing_layout.addWidget(self.velocity_override, 0, 4)
-
-        trans_override_label = QWidget()
-        trans_override_label_layout = QHBoxLayout()
-        trans_override_label_layout.setContentsMargins(0, 0, 0, 0)
-        trans_override_label_layout.setSpacing(5)
-        trans_override_label_layout.addWidget(self.create_help_label(
-            "Override transpose for incoming MIDI notes.\n"
-            "Off: Use incoming note values\n"
-            "On: Apply keyboard transpose settings to input"
-        ))
-        trans_override_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Transpose Override:")))
-        trans_override_label.setLayout(trans_override_label_layout)
-        midi_routing_layout.addWidget(trans_override_label, 0, 5)
-        self.transpose_override = ArrowComboBox()
-        self.transpose_override.setMinimumWidth(80)
-        self.transpose_override.setMinimumHeight(25)
-        self.transpose_override.setMaximumHeight(25)
-        self.transpose_override.setEditable(True)
-        self.transpose_override.lineEdit().setReadOnly(True)
-        self.transpose_override.lineEdit().setAlignment(Qt.AlignCenter)
-        self.transpose_override.addItem("Off", False)
-        self.transpose_override.addItem("On", True)
-        midi_routing_layout.addWidget(self.transpose_override, 0, 6)
-
-        # Row 1: MIDI routing modes with help
-        midi_in_label = QWidget()
-        midi_in_label_layout = QHBoxLayout()
-        midi_in_label_layout.setContentsMargins(0, 0, 0, 0)
-        midi_in_label_layout.setSpacing(5)
-        midi_in_label_layout.addWidget(self.create_help_label(
-            "How incoming MIDI from DIN port is processed.\n"
-            "Process All: Process all incoming MIDI\n"
-            "Thru: Pass MIDI through unchanged\n"
-            "Clock Only: Only process clock messages\n"
-            "Ignore: Ignore all incoming MIDI"
-        ))
-        midi_in_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "MIDI IN Mode:")))
-        midi_in_label.setLayout(midi_in_label_layout)
-        midi_routing_layout.addWidget(midi_in_label, 1, 1)
-        self.midi_in_mode = ArrowComboBox()
-        self.midi_in_mode.setMinimumWidth(120)
-        self.midi_in_mode.setMinimumHeight(25)
-        self.midi_in_mode.setMaximumHeight(25)
-        self.midi_in_mode.setEditable(True)
-        self.midi_in_mode.lineEdit().setReadOnly(True)
-        self.midi_in_mode.lineEdit().setAlignment(Qt.AlignCenter)
-        self.midi_in_mode.addItem("Process All", 0)
-        self.midi_in_mode.addItem("Thru", 1)
-        self.midi_in_mode.addItem("Clock Only", 2)
-        self.midi_in_mode.addItem("Ignore", 3)
-        midi_routing_layout.addWidget(self.midi_in_mode, 1, 2)
-
-        usb_midi_label = QWidget()
-        usb_midi_label_layout = QHBoxLayout()
-        usb_midi_label_layout.setContentsMargins(0, 0, 0, 0)
-        usb_midi_label_layout.setSpacing(5)
-        usb_midi_label_layout.addWidget(self.create_help_label(
-            "How incoming USB MIDI is processed.\n"
-            "Process All: Process all incoming MIDI\n"
-            "Thru: Pass MIDI through unchanged\n"
-            "Clock Only: Only process clock messages\n"
-            "Ignore: Ignore all incoming USB MIDI"
-        ))
-        usb_midi_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "USB MIDI Mode:")))
-        usb_midi_label.setLayout(usb_midi_label_layout)
-        midi_routing_layout.addWidget(usb_midi_label, 1, 3)
-        self.usb_midi_mode = ArrowComboBox()
-        self.usb_midi_mode.setMinimumWidth(120)
-        self.usb_midi_mode.setMinimumHeight(25)
-        self.usb_midi_mode.setMaximumHeight(25)
-        self.usb_midi_mode.setEditable(True)
-        self.usb_midi_mode.lineEdit().setReadOnly(True)
-        self.usb_midi_mode.lineEdit().setAlignment(Qt.AlignCenter)
-        self.usb_midi_mode.addItem("Process All", 0)
-        self.usb_midi_mode.addItem("Thru", 1)
-        self.usb_midi_mode.addItem("Clock Only", 2)
-        self.usb_midi_mode.addItem("Ignore", 3)
-        midi_routing_layout.addWidget(self.usb_midi_mode, 1, 4)
-
-        clock_source_label = QWidget()
-        clock_source_label_layout = QHBoxLayout()
-        clock_source_label_layout.setContentsMargins(0, 0, 0, 0)
-        clock_source_label_layout.setSpacing(5)
-        clock_source_label_layout.addWidget(self.create_help_label(
-            "Where MIDI timing clock comes from.\n"
-            "Local: Use internal clock\n"
-            "USB: Sync to USB MIDI clock\n"
-            "MIDI IN: Sync to DIN MIDI input clock"
-        ))
-        clock_source_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Clock Source:")))
-        clock_source_label.setLayout(clock_source_label_layout)
-        midi_routing_layout.addWidget(clock_source_label, 1, 5)
-        self.midi_clock_source = ArrowComboBox()
-        self.midi_clock_source.setMinimumWidth(120)
-        self.midi_clock_source.setMinimumHeight(25)
-        self.midi_clock_source.setMaximumHeight(25)
-        self.midi_clock_source.setEditable(True)
-        self.midi_clock_source.lineEdit().setReadOnly(True)
-        self.midi_clock_source.lineEdit().setAlignment(Qt.AlignCenter)
-        self.midi_clock_source.addItem("Local", 0)
-        self.midi_clock_source.addItem("USB", 1)
-        self.midi_clock_source.addItem("MIDI IN", 2)
-        midi_routing_layout.addWidget(self.midi_clock_source, 1, 6)
-
-        # Add MIDI Routing before Advanced Settings (swapped order)
-        main_layout.addWidget(routing_row_container)
-        main_layout.addWidget(advanced_row_container)
+        def _follow_mode():
+            """Basic mode narrows the page to the Base column; the columns of
+            the hidden zones give their share of the width back."""
+            basic = ui_mode.pages_simplified()
+            page_column.setMaximumWidth(PAGE_BASIC_WIDTH if basic else PAGE_MAX_WIDTH)
+            zones_grid.setColumnStretch(ZONE_BASE_COL, 1)
+            zones_grid.setColumnStretch(ZONE_KS_COL, 0 if basic else 1)
+            zones_grid.setColumnStretch(ZONE_TS_COL, 0 if basic else 1)
+        ui_mode.on_change(_follow_mode)
+        _follow_mode()
 
         # Apply stylesheet to center combo box text and remove padding
         main_widget.setStyleSheet("""
@@ -3268,8 +2663,14 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         # Multi Channel tab (16 channel-echo presets: target + 3 multi channels)
         self.setup_multichannel_tab()
 
+        # Voice Leading tab (the same page as QuickBuild > SmartChord's voice leading)
+        self.setup_voice_leading_tab()
+
         # Advanced Settings tab (Macro Settings + display / lighting options)
         self.setup_advanced_settings_tab()
+
+        # Basic mode shows the MIDI Settings page alone
+        ui_mode.limit_tabs(self.tabs_widget, {"MIDI Settings"})
 
     # =====================================================================
     # DRUM SETTINGS (global default drum-machine channel + voice bindings)
@@ -3313,6 +2714,19 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         container = QWidget()
         container.setLayout(self.thruloop_tab)
         self.tabs_widget.addTab(container, tr("MIDIswitchSettingsConfigurator", "Loop Settings"))
+
+    def setup_voice_leading_tab(self):
+        """Voice Leading sub-tab: how SmartChords move from one to the next.
+        The same controls as on QuickBuild > SmartChord."""
+        from editor.qb_pages import VoiceLeadingPage
+        self.voice_leading_page = VoiceLeadingPage()
+        self.tabs_widget.addTab(self.voice_leading_page,
+                                tr("MIDIswitchSettingsConfigurator", "Voice Leading"))
+        self.tabs_widget.currentChanged.connect(self._on_settings_sub_tab_changed)
+
+    def _on_settings_sub_tab_changed(self, _index):
+        if self.tabs_widget.currentWidget() is self.voice_leading_page:
+            self.voice_leading_page.shown()
 
     def setup_advanced_settings_tab(self):
         """Advanced Settings sub-tab: the Macro Settings (firmware timing values,
@@ -3402,13 +2816,13 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         title.setStyleSheet("font-weight: bold; font-size: 14pt;")
         layout.addWidget(title)
         desc = QLabel(tr("MIDIswitchSettingsConfigurator",
-            "16 channel-echo presets. While a preset is ON, everything the keyboard outputs "
+            "16 channel-echo presets. While a preset is ON, everything the MIDIswitch outputs "
             "on its Target channel (live keys, loops, step sequencer, arpeggiator, rhythm "
             "engine...) is duplicated onto its Multi channels, each with its own optional "
             "octave transpose (-3..+3; an echoed note that would fall outside 0-127 is "
             "skipped). Toggle a preset with its "
             "'Multi CH' keycode or a QuickBuild master button (hold the key to edit these "
-            "same settings on the device). Changes save to the keyboard immediately."))
+            "same settings on the device). Changes save to the MIDIswitch immediately."))
         desc.setWordWrap(True)
         desc.setStyleSheet("color: palette(dark);")
         layout.addWidget(desc)
@@ -3416,20 +2830,45 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
 
         self._multichannel_loading = False
 
+        # Columns: Preset | Target Channel | gap | (Added Channel, Octave) x 3
+        # with a gap between each pair, then the spare width.
+        MC_COMBO_WIDTH = 96
+        MC_GAP = 28
+
+        def _mc_place(combo, row, column):
+            """A dropdown held to MC_COMBO_WIDTH (the theme sets a minimum
+            width on every dropdown, so a plain widget around it holds it)."""
+            holder = QWidget()
+            holder.setFixedWidth(MC_COMBO_WIDTH)
+            holder_layout = QHBoxLayout(holder)
+            holder_layout.setContentsMargins(0, 0, 0, 0)
+            holder_layout.addWidget(combo)
+            grid.addWidget(holder, row, column)
+
+        def _mc_added_col(e):
+            return 3 + e * 3
+
         grid_group = QGroupBox(tr("MIDIswitchSettingsConfigurator", "Presets"))
         grid = QGridLayout()
+        grid.setHorizontalSpacing(8)
         grid_group.setLayout(grid)
-        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Preset")), 0, 0)
-        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Target")), 0, 1)
+
+        def _mc_title(text, column):
+            label = QLabel(tr("MIDIswitchSettingsConfigurator", text))
+            label.setStyleSheet("font-weight: bold;")
+            grid.addWidget(label, 0, column)
+
+        _mc_title("Preset", 0)
+        _mc_title("Target Channel", 1)
         for e in range(3):
-            grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Multi {}").format(e + 1)), 0, 2 + e * 2)
-            grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Oct")), 0, 3 + e * 2)
-        grid.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "State")), 0, 8)
+            grid.setColumnMinimumWidth(_mc_added_col(e) - 1, MC_GAP)
+            _mc_title("Added Channel", _mc_added_col(e))
+            _mc_title("Octave", _mc_added_col(e) + 1)
+        grid.setColumnStretch(_mc_added_col(2) + 2, 1)
 
         self.multichannel_target_combos = []
         self.multichannel_echo_combos = []
         self.multichannel_oct_combos = []
-        self.multichannel_state_labels = []
         for p in range(self.MULTICHANNEL_COUNT):
             grid.addWidget(QLabel("Multi CH{}".format(p + 1)), p + 1, 0)
 
@@ -3439,7 +2878,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             target_combo.setCurrentIndex(p if p < 16 else 0)
             target_combo.currentIndexChanged.connect(
                 lambda _idx, preset=p: self.on_multichannel_changed(preset))
-            grid.addWidget(target_combo, p + 1, 1)
+            _mc_place(target_combo, p + 1, 1)
             self.multichannel_target_combos.append(target_combo)
 
             echo_row = []
@@ -3452,7 +2891,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                 echo_combo.setCurrentIndex(0)
                 echo_combo.currentIndexChanged.connect(
                     lambda _idx, preset=p: self.on_multichannel_changed(preset))
-                grid.addWidget(echo_combo, p + 1, 2 + e * 2)
+                _mc_place(echo_combo, p + 1, _mc_added_col(e))
                 echo_row.append(echo_combo)
 
                 oct_combo = QComboBox()
@@ -3462,15 +2901,11 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                 oct_combo.setEnabled(False)    # enabled once its Multi channel is set
                 oct_combo.currentIndexChanged.connect(
                     lambda _idx, preset=p: self.on_multichannel_changed(preset))
-                grid.addWidget(oct_combo, p + 1, 3 + e * 2)
+                _mc_place(oct_combo, p + 1, _mc_added_col(e) + 1)
                 oct_row.append(oct_combo)
             self.multichannel_echo_combos.append(echo_row)
             self.multichannel_oct_combos.append(oct_row)
 
-            state_label = QLabel("-")
-            state_label.setStyleSheet("color: palette(dark);")
-            grid.addWidget(state_label, p + 1, 8)
-            self.multichannel_state_labels.append(state_label)
 
         layout.addWidget(grid_group)
         layout.addStretch()
@@ -3487,7 +2922,6 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                 if octaves is not None and e < len(octaves) and octaves[e] is not None:
                     oct_v = max(-3, min(3, int(octaves[e])))
                 self.multichannel_oct_combos[preset][e].setCurrentIndex(oct_v + 3)
-            self.multichannel_state_labels[preset].setText("ON" if active else "off")
             self._sync_multichannel_oct_enabled(preset)
         finally:
             self._multichannel_loading = False
@@ -4292,8 +3726,14 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             if not self.device.keyboard.save_midi_slot(slot, basic_data):
                 raise RuntimeError(f"Failed to save basic data to slot {slot}")
 
-            print(f"[MIDI Settings] Basic data saved OK, sending advanced data in 50ms...")
-            QtCore.QTimer.singleShot(50, lambda: self._send_advanced_data(settings))
+            # The advanced packet must be the very next command the keyboard
+            # receives: the slot stays armed only until any other command
+            # arrives, after which the advanced fields would be saved to the
+            # active settings instead of this slot. So it is sent right here,
+            # not from a timer that lets other traffic in between. (The reply
+            # to the basic packet has already been read; no gap is needed.)
+            print(f"[MIDI Settings] Basic data saved OK, sending advanced data...")
+            self._send_advanced_data(settings)
 
         except Exception as e:
             print(f"[MIDI Settings] Save error: {e}")
@@ -4335,14 +3775,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
     def _load_config_after_slot_load(self, slot):
         """Get and apply configuration after slot load"""
         try:
-            config = self.device.keyboard.get_midi_config()
-
-            if not config:
+            if not self._refresh_from_keyboard():
                 raise RuntimeError("Failed to get config after slot load")
-
-            print(f"[MIDI Settings] Loaded config from slot {slot}: {config}")
-            self.apply_settings(config)
-            print(f"[MIDI Settings] Settings applied to UI")
+            print(f"[MIDI Settings] Slot {slot} settings applied to UI")
 
         except Exception as e:
             print(f"[MIDI Settings] Apply config error: {e}")
@@ -4354,16 +3789,24 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             if not self.device or not isinstance(self.device, VialKeyboard):
                 raise RuntimeError("Device not connected")
             
-            config = self.device.keyboard.get_midi_config()
-            
-            if not config:
+            if not self._refresh_from_keyboard():
                 raise RuntimeError("Failed to load current settings")
-            
-            self.apply_settings(config)
-                
+
         except Exception as e:
             QMessageBox.critical(None, "Error", f"Failed to load current settings: {str(e)}")
-    
+
+    def _refresh_from_keyboard(self):
+        """Read the settings back from the keyboard, show them and keep them
+        as the keyboard's cached copy. False if the keyboard did not answer."""
+        kb = self.device.keyboard
+        config = kb.get_midi_config()
+        if not config:
+            return False
+        kb.midi_config = config
+        self._shown_kb, self._shown_config = kb, config
+        self.apply_settings(config)
+        return True
+
     def on_reset(self):
         """Reset to default settings"""
         try:
@@ -4376,8 +3819,12 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                     
                 if not self.device.keyboard.reset_midi_config():
                     raise RuntimeError("Failed to reset settings")
-                    
-                self.reset_ui_to_defaults()
+
+                # The keyboard's reset leaves some values alone (sustain, the
+                # three articulations, chord display), so show what it reports
+                # now; the fixed defaults only if it does not answer.
+                if not self._refresh_from_keyboard():
+                    self.reset_ui_to_defaults()
         except Exception as e:
             QMessageBox.critical(None, "Error", f"Failed to reset settings: {str(e)}")
     
@@ -4439,11 +3886,20 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
     def rebuild(self, device):
         super().rebuild(device)
         if not self.valid():
+            self.voice_leading_page.set_app_config(None)
             return
 
-        # Load MIDI configuration from keyboard
-        if hasattr(self.device.keyboard, 'midi_config') and self.device.keyboard.midi_config:
-            self.apply_settings(self.device.keyboard.midi_config)
+        # Load MIDI configuration from keyboard. The copy the keyboard object
+        # read while connecting is used once; any later rebuild (after loading
+        # a saved layout, say) reads the keyboard again, so the page shows what
+        # the keyboard holds now and not the values from connect time.
+        kb = self.device.keyboard
+        cached = getattr(kb, 'midi_config', None)
+        fresh = (kb is not getattr(self, '_shown_kb', None)
+                 or cached is not getattr(self, '_shown_config', None))
+        self._shown_kb, self._shown_config = kb, cached
+        if cached and (fresh or not self._refresh_from_keyboard()):
+            self.apply_settings(cached)
 
         # Load the global drum keybinds (drum machine voice bindings)
         self.load_drum_keybinds_from_keyboard()
@@ -4455,6 +3911,10 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.thruloop_tab.device = self.device
         self.thruloop_tab.rebuild(device)
         self.macro_settings_group.rebuild(device)
+
+        # Voice Leading sub-tab
+        from protocol.app_config import AppConfig
+        self.voice_leading_page.set_app_config(AppConfig(self.device.keyboard))
 
 # SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -6551,6 +6011,9 @@ class GamingConfigurator(BasicEditor):
         if self.valid():
             self.keyboard = device.keyboard
             self._load_gaming_data()
+        else:
+            # no keyboard any more: the buttons must not talk to the old one
+            self.keyboard = None
 
     def activate(self):
         """Called when tab is selected"""

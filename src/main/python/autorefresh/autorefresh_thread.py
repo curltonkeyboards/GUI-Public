@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 import sys
 
@@ -40,13 +41,22 @@ class AutorefreshThread(QThread):
 
     def run(self):
         while self._running:
-            self.update()
+            self.safe_update()
             # Sleep in short slices so stop() is honored within ~50ms instead of
             # blocking app exit for up to a full second.
             for _ in range(20):
                 if not self._running:
                     break
                 time.sleep(0.05)
+
+    def safe_update(self):
+        """update() for the background loop: listing the devices can fail (a
+        device going away halfway through), and an error that got out would
+        end this thread, after which the app never notices a keyboard again."""
+        try:
+            self.update()
+        except Exception:
+            logging.exception("looking for keyboards failed")
 
     def lock(self):
         with self.mutex:

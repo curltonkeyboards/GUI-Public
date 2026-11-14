@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 import json
+import ui_mode
 import struct
 
 import sys
@@ -8,8 +9,8 @@ from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWid
                               QGroupBox, QSlider, QCheckBox, QPushButton, QComboBox, QFrame,
                               QSizePolicy, QScrollArea, QTabWidget, QDialog, QDialogButtonBox,
                               QSpinBox, QGridLayout, QMenu, QToolButton, QAction, QInputDialog,
-                              QGraphicsView, QGraphicsScene)
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSettings, QEvent
+                              QGraphicsView, QGraphicsScene, QStyle)
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QSettings, QEvent, QPointF
 from PyQt5.QtGui import QCursor, QPainter
 
 from widgets.combo_box import ArrowComboBox
@@ -494,7 +495,8 @@ class QuickActuationWidget(QWidget):
         self.save_btn = QPushButton(tr("QuickActuationWidget", "Save to All Layers"))
         self.save_btn.setMaximumHeight(24)
         self.save_btn.setStyleSheet("padding: 2px 6px; font-size: 9pt;")
-        self.save_btn.clicked.connect(self.on_save_actuation)
+        # Not connected: this tab is never shown. The actuation points are
+        # saved by the Actuation slider above MIDI Settings and by the Advanced tab.
         layout.addWidget(self.save_btn)
 
         return tab
@@ -629,6 +631,12 @@ class QuickActuationWidget(QWidget):
         self.midi_settings_layout.addWidget(self.midi_tabs)
         self.midi_tabs.setVisible(False)  # Hidden by default, shown when advanced mode is on
 
+        # Basic mode: the simple Channel / Transposition / Articulation controls
+        # only. The split options stay as they are on the keyboard, out of sight.
+        ui_mode.advanced_only(self.midi_advanced_checkbox, self.keysplit_enable_widget,
+                              self.triplesplit_enable_widget, self.midi_tabs)
+        ui_mode.on_change(self.apply_mode)
+
         layout.addStretch()
 
         return tab
@@ -679,8 +687,9 @@ class QuickActuationWidget(QWidget):
         trans_row.addWidget(trans_label)
 
         self.simple_transpose_slider = QSlider(Qt.Horizontal)
-        self.simple_transpose_slider.setMinimum(-12)
-        self.simple_transpose_slider.setMaximum(12)
+        # +/-64: the keyboard's combined transposition range
+        self.simple_transpose_slider.setMinimum(-64)
+        self.simple_transpose_slider.setMaximum(64)
         self.simple_transpose_slider.setValue(0)
         self.simple_transpose_slider.valueChanged.connect(lambda v: self.on_simple_transpose_changed(v))
         trans_row.addWidget(self.simple_transpose_slider, 1)
@@ -766,8 +775,9 @@ class QuickActuationWidget(QWidget):
         trans_row.addWidget(trans_label)
 
         self.midi_transpose_slider = QSlider(Qt.Horizontal)
-        self.midi_transpose_slider.setMinimum(-12)
-        self.midi_transpose_slider.setMaximum(12)
+        # +/-64: the keyboard's combined transposition range
+        self.midi_transpose_slider.setMinimum(-64)
+        self.midi_transpose_slider.setMaximum(64)
         self.midi_transpose_slider.setValue(0)
         self.midi_transpose_slider.valueChanged.connect(lambda v: self.on_midi_transpose_changed(v))
         trans_row.addWidget(self.midi_transpose_slider, 1)
@@ -898,8 +908,9 @@ class QuickActuationWidget(QWidget):
         trans_row.addWidget(trans_label)
 
         self.keysplit_transpose_slider = QSlider(Qt.Horizontal)
-        self.keysplit_transpose_slider.setMinimum(-12)
-        self.keysplit_transpose_slider.setMaximum(12)
+        # +/-64: the keyboard's combined transposition range
+        self.keysplit_transpose_slider.setMinimum(-64)
+        self.keysplit_transpose_slider.setMaximum(64)
         self.keysplit_transpose_slider.setValue(0)
         self.keysplit_transpose_slider.valueChanged.connect(lambda v: self.on_keysplit_transpose_changed(v))
         trans_row.addWidget(self.keysplit_transpose_slider, 1)
@@ -1052,8 +1063,9 @@ class QuickActuationWidget(QWidget):
         trans_row.addWidget(trans_label)
 
         self.triplesplit_transpose_slider = QSlider(Qt.Horizontal)
-        self.triplesplit_transpose_slider.setMinimum(-12)
-        self.triplesplit_transpose_slider.setMaximum(12)
+        # +/-64: the keyboard's combined transposition range
+        self.triplesplit_transpose_slider.setMinimum(-64)
+        self.triplesplit_transpose_slider.setMaximum(64)
         self.triplesplit_transpose_slider.setValue(0)
         self.triplesplit_transpose_slider.valueChanged.connect(lambda v: self.on_triplesplit_transpose_changed(v))
         trans_row.addWidget(self.triplesplit_transpose_slider, 1)
@@ -1595,7 +1607,7 @@ class QuickActuationWidget(QWidget):
         # Toggle between simple controls and tabs
         if show_advanced:
             # Hide simple widget, show tabs
-            self.simple_midi_widget.setVisible(False)
+            self.simple_midi_widget.setVisible(ui_mode.pages_simplified())
             self.midi_tabs.setVisible(True)
             # Sync values from simple to advanced controls
             self.sync_simple_to_advanced()
@@ -1610,6 +1622,12 @@ class QuickActuationWidget(QWidget):
             # Uncheck keysplit/triplesplit when leaving advanced mode
             self.keysplit_enabled_checkbox.setChecked(False)
             self.triplesplit_enabled_checkbox.setChecked(False)
+
+    def apply_mode(self):
+        """Basic mode always shows the simple MIDI controls, whatever
+        "Show Advanced" (hidden in that mode) is set to."""
+        advanced = self.midi_advanced_checkbox.isChecked()
+        self.simple_midi_widget.setVisible(ui_mode.pages_simplified() or not advanced)
 
     def sync_simple_to_advanced(self):
         """Sync values from simple controls to advanced tab controls"""
@@ -1695,10 +1713,6 @@ class QuickActuationWidget(QWidget):
 
     def on_keysplit_enabled_toggled(self):
         """Toggle KeySplit settings - switch to tabbed view when enabled"""
-        # Adjust status values when disabling keysplit
-        if not self.keysplit_enabled_checkbox.isChecked():
-            self._adjust_status_values_on_keysplit_close()
-
         self.update_midi_container_view()
         if not self.syncing:
             self.save_midi_ui_to_memory()
@@ -1710,9 +1724,6 @@ class QuickActuationWidget(QWidget):
             # Auto-tick keysplit when triplesplit is enabled
             if not self.keysplit_enabled_checkbox.isChecked():
                 self.keysplit_enabled_checkbox.setChecked(True)
-        else:
-            # Adjust status values when disabling triplesplit
-            self._adjust_status_values_on_triplesplit_close()
 
         self.update_midi_container_view()
         if not self.syncing:
@@ -1722,70 +1733,6 @@ class QuickActuationWidget(QWidget):
     def set_matrix_test_reference(self, matrix_test):
         """Set reference to MatrixTest widget for status value adjustments"""
         self.matrix_test = matrix_test
-
-    def _adjust_status_values_on_keysplit_close(self):
-        """Adjust status values when keysplit window is closed
-        - Status 3 (Both Splits On) -> 2 (TripleSplit On)
-        - Status 1 (KeySplit On) -> 0 (Disable Keysplit)
-        """
-        if not self.matrix_test:
-            return
-
-        try:
-            # Adjust channel split status
-            current_value = self.matrix_test.key_split_status.currentData()
-            if current_value == 3:  # Both Splits On -> TripleSplit On
-                self.matrix_test.key_split_status.setCurrentIndex(2)
-            elif current_value == 1:  # KeySplit On -> Disable Keysplit
-                self.matrix_test.key_split_status.setCurrentIndex(0)
-
-            # Adjust transpose split status
-            current_value = self.matrix_test.key_split_transpose_status.currentData()
-            if current_value == 3:  # Both Splits On -> TripleSplit On
-                self.matrix_test.key_split_transpose_status.setCurrentIndex(2)
-            elif current_value == 1:  # KeySplit On -> Disable Keysplit
-                self.matrix_test.key_split_transpose_status.setCurrentIndex(0)
-
-            # Adjust velocity split status
-            current_value = self.matrix_test.key_split_velocity_status.currentData()
-            if current_value == 3:  # Both Splits On -> TripleSplit On
-                self.matrix_test.key_split_velocity_status.setCurrentIndex(2)
-            elif current_value == 1:  # KeySplit On -> Disable Keysplit
-                self.matrix_test.key_split_velocity_status.setCurrentIndex(0)
-        except Exception as e:
-            pass
-
-    def _adjust_status_values_on_triplesplit_close(self):
-        """Adjust status values when triplesplit window is closed
-        - Status 3 (Both Splits On) -> 1 (KeySplit On)
-        - Status 2 (TripleSplit On) -> 0 (Disable Keysplit)
-        """
-        if not self.matrix_test:
-            return
-
-        try:
-            # Adjust channel split status
-            current_value = self.matrix_test.key_split_status.currentData()
-            if current_value == 3:  # Both Splits On -> KeySplit On
-                self.matrix_test.key_split_status.setCurrentIndex(1)
-            elif current_value == 2:  # TripleSplit On -> Disable Keysplit
-                self.matrix_test.key_split_status.setCurrentIndex(0)
-
-            # Adjust transpose split status
-            current_value = self.matrix_test.key_split_transpose_status.currentData()
-            if current_value == 3:  # Both Splits On -> KeySplit On
-                self.matrix_test.key_split_transpose_status.setCurrentIndex(1)
-            elif current_value == 2:  # TripleSplit On -> Disable Keysplit
-                self.matrix_test.key_split_transpose_status.setCurrentIndex(0)
-
-            # Adjust velocity split status
-            current_value = self.matrix_test.key_split_velocity_status.currentData()
-            if current_value == 3:  # Both Splits On -> KeySplit On
-                self.matrix_test.key_split_velocity_status.setCurrentIndex(1)
-            elif current_value == 2:  # TripleSplit On -> Disable Keysplit
-                self.matrix_test.key_split_velocity_status.setCurrentIndex(0)
-        except Exception as e:
-            pass
 
     def update_midi_container_view(self):
         """Update tabs based on split settings - always show tabs"""
@@ -1874,86 +1821,6 @@ class QuickActuationWidget(QWidget):
         self.midi_settings['triplesplit_velocity_curve'] = self.triplesplit_velocity_curve.currentData()
         self.midi_settings['triplesplit_velocity_min'] = self.triplesplit_velocity_min.value()
         self.midi_settings['triplesplit_velocity_max'] = self.triplesplit_velocity_max.value()
-
-    def on_save_actuation(self):
-        """Save actuation settings - to all layers or current layer depending on mode
-        NOTE: velocity_mode, aftertouch settings are now GLOBAL and saved via Advanced tab.
-        This function only saves actuation points (normal, midi) per-layer.
-        """
-        try:
-            if not self.device or not isinstance(self.device, VialKeyboard):
-                raise RuntimeError("Device not connected")
-
-            # Get global settings for backward compatibility with firmware protocol
-            global_settings = self.global_midi_settings
-
-            if self.per_layer_enabled:
-                # Save to current layer only
-                data = self.layer_data[self.current_layer]
-                flags = 0
-                if data.get('rapidfire_enabled', False):
-                    flags |= 0x01
-                if data.get('midi_rapidfire_enabled', False):
-                    flags |= 0x02
-
-                vibrato_decay = global_settings.get('vibrato_decay_time', 10)
-                # Protocol: 11 bytes (layer + 10 data bytes)
-                # velocity/aftertouch fields use GLOBAL settings
-                payload = bytearray([
-                    self.current_layer,
-                    data['normal'],
-                    data['midi'],
-                    global_settings.get('velocity_mode', 3),   # GLOBAL: Speed+Peak
-                    10,  # vel_speed deprecated, use default
-                    flags,
-                    global_settings.get('aftertouch_mode', 0),      # GLOBAL
-                    global_settings.get('aftertouch_cc', 255),      # GLOBAL
-                    global_settings.get('vibrato_sensitivity', 50), # GLOBAL
-                    vibrato_decay & 0xFF,
-                    (vibrato_decay >> 8) & 0xFF
-                ])
-
-                if not self.device.keyboard.set_layer_actuation(payload):
-                    raise RuntimeError(f"Failed to set actuation for layer {self.current_layer}")
-
-                QMessageBox.information(None, "Success",
-                    f"Layer {self.current_layer + 1} actuation saved successfully!")
-            else:
-                # Save to all 12 layers
-                vibrato_decay = global_settings.get('vibrato_decay_time', 10)
-                for layer in range(12):
-                    data = self.layer_data[layer]
-                    flags = 0
-                    if data.get('rapidfire_enabled', False):
-                        flags |= 0x01
-                    if data.get('midi_rapidfire_enabled', False):
-                        flags |= 0x02
-
-                    # Protocol: 11 bytes (layer + 10 data bytes)
-                    # velocity/aftertouch fields use GLOBAL settings
-                    payload = bytearray([
-                        layer,
-                        data['normal'],
-                        data['midi'],
-                        global_settings.get('velocity_mode', 3),   # GLOBAL: Speed+Peak
-                        10,  # vel_speed deprecated, use default
-                        flags,
-                        global_settings.get('aftertouch_mode', 0),      # GLOBAL
-                        global_settings.get('aftertouch_cc', 255),      # GLOBAL
-                        global_settings.get('vibrato_sensitivity', 50), # GLOBAL
-                        vibrato_decay & 0xFF,
-                        (vibrato_decay >> 8) & 0xFF
-                    ])
-
-                    if not self.device.keyboard.set_layer_actuation(payload):
-                        raise RuntimeError(f"Failed to set actuation for layer {layer}")
-
-                QMessageBox.information(None, "Success",
-                    "Actuation saved to all layers successfully!")
-
-        except Exception as e:
-            QMessageBox.critical(None, "Error",
-                f"Failed to save actuation settings: {str(e)}")
 
     def update_user_curve_names(self, names):
         """Update user curve names in all velocity curve dropdowns (simple, basic, keysplit, triplesplit)"""
@@ -2068,6 +1935,16 @@ class QuickActuationWidget(QWidget):
                 if self.triplesplit_velocity_curve.itemData(i) == ts_curve:
                     self.triplesplit_velocity_curve.setCurrentIndex(i)
                     break
+
+            # Sustain and Auto-Notes (0 = Allow, 1 = Ignore on the keyboard)
+            for combo, key in ((self.midi_sustain_combo, 'base_sustain'),
+                               (self.keysplit_sustain_combo, 'keysplit_sustain'),
+                               (self.triplesplit_sustain_combo, 'triplesplit_sustain'),
+                               (self.keysplit_autonotes_combo, 'keysplit_smartchord_ignore'),
+                               (self.triplesplit_autonotes_combo, 'triplesplit_smartchord_ignore')):
+                idx = combo.findData(1 if config.get(key, 0) == 1 else 0)
+                if idx >= 0:
+                    combo.setCurrentIndex(idx)
 
             # Split status - determine which splits are enabled
             ks_status = config.get('key_split_status', 0)
@@ -2460,18 +2337,14 @@ class EncoderAssignWidget(QWidget):
             "Footswitch"
         ]
 
-        self.setMinimumWidth(185)
-        self.setMaximumWidth(185)
-        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        # Sized and placed by OverlayContainer over the left part of the keyboard
+        # photo; the buttons are placed on the photo's screen and knob by
+        # place_on_photo().
+        self.resize(185, 345)
 
         # Make background transparent so keyboard background shows through
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setStyleSheet("background: transparent;")
-
-        layout = QVBoxLayout()
-        layout.setSpacing(10)
-        layout.setContentsMargins(5, 45, 5, 10)  # 45px top margin
-        self.setLayout(layout)
 
         # Create buttons in logical order (indices 0-3) before adding to UI
         # Index 0: Encoder Up
@@ -2494,25 +2367,14 @@ class EncoderAssignWidget(QWidget):
         sustain_btn.clicked.connect(lambda: self.on_button_clicked(3))
         self.buttons.append(sustain_btn)
 
-        # Now add to UI layout in display order (sustain at top, then encoder)
-        # Sustain pedal group - at top, center aligned with 20px left shift
-        sustain_label = QLabel("Footswitch")
+        # The footswitch: its title and button on the photo's screen
+        sustain_label = QLabel("Footswitch", self)
         # Always white so it stays legible over both light and dark backgrounds.
         sustain_label.setStyleSheet("QLabel { font-size: 11px; font-weight: bold; color: white; background: transparent; }")
         sustain_label.setAlignment(Qt.AlignCenter)
-        sustain_label_container = QHBoxLayout()
-        sustain_label_container.addWidget(sustain_label)
-        layout.addLayout(sustain_label_container)
-
-        sustain_layout = QHBoxLayout()
-        sustain_layout.setSpacing(5)
-        sustain_layout.addSpacing(63)  # 20px left shift
-        sustain_layout.addWidget(sustain_btn)
-        sustain_layout.addStretch()
-        layout.addLayout(sustain_layout)
-
-        # Add 10px spacer below sustain button
-        layout.addSpacing(23)
+        sustain_btn.setParent(self)
+        self.sustain_label = sustain_label
+        self.sustain_btn = sustain_btn
 
         # Encoder group (single encoder) — absolutely-positioned buttons.
         # No "Encoder"/UP/DOWN/PUSH titles. Up and Down sit level, each shifted
@@ -2527,7 +2389,7 @@ class EncoderAssignWidget(QWidget):
         col_up = 0
         col_push = (BTN + SPACING) * 2  # 120 — old Push column
 
-        encoder_container = QWidget()
+        encoder_container = QWidget(self)
         encoder_container.setAttribute(Qt.WA_TranslucentBackground)
         encoder_container.setStyleSheet("background: transparent;")
         encoder_container.setFixedSize(col_push + BTN, Q3 * 2 + BTN + 18)
@@ -2559,8 +2421,24 @@ class EncoderAssignWidget(QWidget):
         click_label.setAlignment(Qt.AlignCenter)
         click_label.setGeometry(col_push_center, Q3 * 2 - 16, BTN, 14)
 
-        layout.addWidget(encoder_container)
-        layout.addStretch()
+        self.encoder_container = encoder_container
+        # The point of the encoder group that goes on the knob's centre: midway
+        # between the rotate buttons' row and the Click button, under Click.
+        self.knob_point = QPointF(col_push_center + BTN / 2.0, 1.5 * Q3 + BTN / 2.0)
+
+        # Where they sit until the keyboard picture is laid out
+        self.place_on_photo(QPointF(93, 126), QPointF(93, 283))
+
+    def place_on_photo(self, foot_centre, knob_centre):
+        """Put the footswitch button (with its title above it) centred on
+        `foot_centre`, the photo's screen, and the encoder group on
+        `knob_centre`, the photo's knob. Both in this widget's coordinates."""
+        b = self.sustain_btn
+        b.move(round(foot_centre.x() - b.width() / 2.0), round(foot_centre.y() - b.height() / 2.0))
+        title_h = self.sustain_label.sizeHint().height()
+        self.sustain_label.setGeometry(round(foot_centre.x()) - 70, b.y() - title_h - 6, 140, title_h)
+        c = self.encoder_container
+        c.move(round(knob_centre.x() - self.knob_point.x()), round(knob_centre.y() - self.knob_point.y()))
 
     def on_button_clicked(self, index):
         """Handle button click - mark as selected and notify parent"""
@@ -2682,13 +2560,28 @@ class OverlayContainer(QWidget):
         # Make encoder widget a child of this container for overlay
         encoder_widget.setParent(self)
         encoder_widget.raise_()  # Bring to front
+        # the buttons follow the keyboard picture when a theme switch changes it
+        if hasattr(keyboard_widget, "photo_changed"):
+            keyboard_widget.photo_changed.connect(self.place_encoder_widget)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        # Position encoder widget to overlay the left side of keyboard widget
-        # Position it at the left edge of the keyboard widget, offset down by 30 pixels
-        keyboard_pos = self.keyboard_widget.pos()
-        self.encoder_widget.move(keyboard_pos.x(), keyboard_pos.y() + 30)
+        self.place_encoder_widget()
+
+    def place_encoder_widget(self):
+        """Lay the encoder / footswitch buttons over the keyboard photo: the
+        widget covers the photo's left part (up to the first key, so it never
+        takes a key's clicks), the footswitch goes on the photo's screen and
+        the encoder buttons around its knob."""
+        kw = self.keyboard_widget
+        pos = kw.pos()
+        if not hasattr(kw, "photo_rect") or kw.photo_rect.isEmpty():
+            self.encoder_widget.setGeometry(pos.x(), pos.y() + 30, 185, max(kw.rect().height(), 345))
+            return
+        width = max(60, int(kw.keys_left()) - 2)
+        self.encoder_widget.setGeometry(pos.x(), pos.y(), width, kw.rect().height())
+        knob, _radius = kw.photo_knob()
+        self.encoder_widget.place_on_photo(kw.photo_screen_rect().center(), knob)
 
 
 class ZoomView(QGraphicsView):
@@ -2809,6 +2702,7 @@ class KeymapEditor(BasicEditor):
             "layer should always keep a full A-Z alphabet, the arrow keys and "
             "ESC, or menus on the device may become impossible to navigate."))
         layout_labels_container.addWidget(nav_help)
+        ui_mode.advanced_only(self.nav_layer_checkbox, nav_help)
         layout_labels_container.addStretch()
 
         # Preset menu button with nested submenus (applies on selection)
@@ -2846,6 +2740,8 @@ class KeymapEditor(BasicEditor):
         self.encoder_menu_btn.setPopupMode(QToolButton.InstantPopup)
         self._build_encoder_menu()
         layout_labels_container.addWidget(self.encoder_menu_btn)
+        ui_mode.advanced_only(enc_label, self.encoder_menu_btn)
+        ui_mode.on_change(self._build_preset_menu)
 
         layout_labels_container.addSpacing(10)
         layout_labels_container.addLayout(self.layout_size)
@@ -2881,7 +2777,11 @@ class KeymapEditor(BasicEditor):
         keyboard_layout = QHBoxLayout()
         keyboard_layout.setSpacing(0)  # No spacing between widgets
         keyboard_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
-        keyboard_layout.addStretch(1)  # Add stretch before
+        # (the space to the left of the keyboard: the "Basic mode" switch is at
+        # the top right of the window now)
+        left_space = QVBoxLayout()
+        left_space.addStretch(1)
+        keyboard_layout.addLayout(left_space, 1)
 
         # The helper panel (layer name, actuation, MIDI settings) is tucked away until asked for.
         self.helper_toggle = QPushButton()
@@ -2945,6 +2845,54 @@ class KeymapEditor(BasicEditor):
         self._rescan_timer.setInterval(1000)
         self._rescan_timer.timeout.connect(self._do_ram_rescan)
 
+        # Follow keymap edits made on the keyboard itself (the Key Mapper
+        # menu): poll the keyboard's change count while this page is shown.
+        self._device_km_timer = QTimer()
+        self._device_km_timer.setInterval(1000)
+        self._device_km_timer.timeout.connect(self._poll_device_keymap)
+        self._device_km_timer.start()
+
+    def _poll_device_keymap(self):
+        """Redraw keys that were changed on the keyboard itself. Does nothing
+        while the page is hidden, while a transfer owns the keyboard, or on a
+        keyboard that does not report its own edits. Never raises."""
+        try:
+            kb = getattr(self, "keyboard", None)
+            if not self.valid() or kb is None or not hasattr(kb, "poll_device_keymap_changes"):
+                return
+            if kb is not getattr(self.device, "keyboard", None):
+                return
+            # The keyboard picture lives in a graphics scene (ZoomView), where it
+            # counts as shown whatever page is open: ask the view, which sits in
+            # the page, whether the Keymap page is on screen.
+            view = self.keyboard_zoom
+            if not view.isVisible() or view.window().isMinimized():
+                return
+            from util import is_hid_transfer_active
+            if is_hid_transfer_active():
+                return
+            if kb.poll_device_keymap_changes():
+                self.refresh_layer_display()
+                self.encoder_assign.set_layer(self.current_layer, kb)
+        except Exception:
+            pass
+
+    def _prime_device_keymap_sync(self):
+        """Take the keyboard's count of its own keymap edits now, right after
+        the keymap was read: edits made on the keyboard before the Keymap page
+        is first shown are then still picked up by the poll (its first call
+        would otherwise only record the count, edits included). Never raises."""
+        try:
+            kb = self.keyboard
+            if kb is None or not hasattr(kb, "poll_device_keymap_changes"):
+                return
+            from util import is_hid_transfer_active
+            if is_hid_transfer_active():
+                return
+            kb.poll_device_keymap_changes()
+        except Exception:
+            pass
+
     def _do_ram_rescan(self):
         """Send keymap from GUI RAM to firmware and trigger fast rescan."""
         if self.keyboard and hasattr(self.keyboard, 'send_keymap_for_ram_rescan'):
@@ -2964,6 +2912,9 @@ class KeymapEditor(BasicEditor):
         """Build nested menu with categories as submenus. Selecting applies immediately."""
         menu = QMenu(self.preset_menu_btn)
         for cat_name, entries in PRESET_CATEGORIES:
+            # Basic mode: whole-keyboard layouts only (no splits or QuickBuild fills)
+            if ui_mode.pages_simplified() and cat_name not in ("Typing", "Music"):
+                continue
             submenu = menu.addMenu(cat_name)
             for name, description, generator, preset_type in entries:
                 action = submenu.addAction(name)
@@ -3083,6 +3034,7 @@ class KeymapEditor(BasicEditor):
                 self.keyboard.set_key(layer, matrix_row, col, keycode)
 
         self.refresh_layer_display()
+        self._schedule_rescan()
 
     def _apply_quickbuild_fill(self, name, description, generator, column):
         """Fill one row (14 keys) or one column (5 keys) with QuickBuild keys,
@@ -3160,6 +3112,7 @@ class KeymapEditor(BasicEditor):
             self.keyboard.set_key(layer, row, col, kc)
 
         self.refresh_layer_display()
+        self._schedule_rescan()
 
     def _on_individual_encoder_selected(self, entry):
         """Handle encoder preset — confirm and apply to the single encoder."""
@@ -3191,6 +3144,7 @@ class KeymapEditor(BasicEditor):
 
         self.encoder_assign.set_layer(self.current_layer, self.keyboard)
         self.refresh_layer_display()
+        self._schedule_rescan()
 
     def on_empty_space_clicked(self):
         self.container.deselect()
@@ -3252,13 +3206,45 @@ class KeymapEditor(BasicEditor):
 
     def _fit_keyboard_area(self):
         self._keyboard_page.layout().activate()
-        height = self._keyboard_page.sizeHint().height() + 2 * self._keyboard_scroll.frameWidth() + 2
-        self._keyboard_scroll.setMaximumHeight(height)
+        sa = self._keyboard_scroll
+        page = self._keyboard_page.sizeHint()
+        height = page.height() + 2 * sa.frameWidth() + 2
+        # a page wider than the area gets a horizontal scroll bar, which takes height too
+        if page.width() > sa.width() - 2 * sa.frameWidth():
+            height += sa.style().pixelMetric(QStyle.PM_ScrollBarExtent, None, sa)
+        if sa.maximumHeight() != height:
+            sa.setMaximumHeight(height)
+        self._share_height()
+
+    def _share_height(self):
+        """The keyboard area gets its whole height first, the keycode panel the
+        rest (never less than its own minimum). Done by capping the panel's
+        height, which (unlike a minimum on the keyboard area) never stops the
+        window from being made smaller."""
+        sa = self._keyboard_scroll
+        holder = sa.parentWidget()
+        if holder is None:
+            return
+        if not getattr(self, "_watching_holder", None) is holder:
+            holder.installEventFilter(self)
+            self._watching_holder = holder
+        m = self.contentsMargins()
+        room = holder.height() - m.top() - m.bottom() - max(0, self.spacing())
+        panel_min = self.tabbed_keycodes.minimumSizeHint().height()
+        cap = max(panel_min, room - sa.maximumHeight())
+        if self.tabbed_keycodes.maximumHeight() != cap:
+            self.tabbed_keycodes.setMaximumHeight(cap)
+
+    def eventFilter(self, obj, ev):
+        if obj is getattr(self, "_watching_holder", None) and ev.type() == QEvent.Resize:
+            self._fit_keyboard_area()
+        return super().eventFilter(obj, ev)
 
     def rebuild(self, device):
         super().rebuild(device)
         if self.valid():
             self.keyboard = device.keyboard
+            self._prime_device_keymap_sync()
 
             # get number of layers
             self.rebuild_layers()
@@ -3429,7 +3415,8 @@ class KeymapEditor(BasicEditor):
     def _joystick_remove_menu(self, row, col):
         # Act on the pick instead of waiting in exec_(): the web build cannot
         # run a nested event loop.
-        menu = QMenu(self.container)
+        from keycode_search_dialog import top_window
+        menu = QMenu(top_window(self.container))       # not inside the zoom view
         act = menu.addAction(tr("KeymapEditor", "Remove Joystick button"))
         act.triggered.connect(lambda _=False, r=row, c=col: self._set_joystick(r, c, 0))
         menu.aboutToHide.connect(menu.deleteLater)
@@ -3657,7 +3644,19 @@ class KeymapEditor(BasicEditor):
             if not self._nav_layer_edit_allowed(l, r, c, keycode):
                 return
 
-            self.keyboard.set_key(l, r, c, keycode)
+            # Picking Space for a key that already shows Space still writes it:
+            # the keyboard may hold the other raw value for that key (see
+            # read_aliases in keycodes_v6.py), which set_key would skip as
+            # "unchanged".
+            if keycode == self.keyboard.layout.get((l, r, c)) and Keycode.has_read_alias(keycode):
+                self.keyboard.layout[(l, r, c)] = None
+                try:
+                    self.keyboard.set_key(l, r, c, keycode)
+                finally:
+                    if self.keyboard.layout.get((l, r, c)) is None:
+                        self.keyboard.layout[(l, r, c)] = keycode
+            else:
+                self.keyboard.set_key(l, r, c, keycode)
             self.refresh_layer_display()
             self._schedule_rescan()
 
@@ -3726,6 +3725,8 @@ class KeymapEditor(BasicEditor):
             return
 
         self.container.update_layout()
+        # the footswitch / encoder buttons follow the keyboard photo
+        self.keyboard_overlay.place_encoder_widget()
         self.refresh_layer_display()
         self.keyboard.set_layout_options(self.layout_editor.pack())
 

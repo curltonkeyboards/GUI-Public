@@ -26,8 +26,7 @@ class Unlocker(QDialog):
 
         layout.addWidget(QLabel(tr("Unlocker", "In order to proceed, the keyboard must be set into unlocked mode.\n"
                                                "You should only perform this operation on computers that you trust.")))
-        layout.addWidget(QLabel(tr("Unlocker", "To exit this mode, you will need to replug the keyboard\n"
-                                               "or select Security->Lock from the menu.")))
+        layout.addWidget(QLabel(tr("Unlocker", "To leave this mode, unplug the keyboard and plug it back in.")))
         layout.addWidget(QLabel(tr("Unlocker", "Press and hold the following keys until the progress bar "
                                                "below fills up:")))
 
@@ -125,13 +124,15 @@ class Unlocker(QDialog):
         dlg = cls(cls.global_layout_editor, keyboard)
         dlg.finished.connect(cls.on_dialog_finished)
         cls.global_main_window.lock_ui()
-        dlg.setModal(True)
-        dlg.show()
-        while cls.dlg_retval is None:
-            time.sleep(0.05)
-            QCoreApplication.processEvents()
-        ret = cls.dlg_retval
-        cls.global_main_window.unlock_ui()
+        try:
+            dlg.setModal(True)
+            dlg.show()
+            while cls.dlg_retval is None:
+                time.sleep(0.05)
+                QCoreApplication.processEvents()
+            ret = cls.dlg_retval
+        finally:
+            cls.global_main_window.unlock_ui()
         return ret
 
     def keyPressEvent(self, ev):

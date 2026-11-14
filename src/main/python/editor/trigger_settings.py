@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+import ui_mode
 import time
 
 from PyQt5.QtWidgets import (QHBoxLayout, QGridLayout, QLabel, QVBoxLayout, QMessageBox, QWidget,
                               QInputDialog,
                               QSlider, QCheckBox, QPushButton, QComboBox, QFrame,
                               QSizePolicy, QScrollArea, QTabWidget, QApplication,
-                              QInputDialog)
-from PyQt5.QtCore import Qt, pyqtSignal, QEvent
+                              QInputDialog, QStyle)
+from PyQt5.QtCore import Qt, pyqtSignal, QEvent, QSize
 from PyQt5.QtGui import QColor, QPalette, QPainter, QPen, QBrush, QFont
 
 from editor.basic_editor import BasicEditor
@@ -27,6 +28,37 @@ from protocol.nullbind_protocol import (ProtocolNullBind, NullBindGroup,
                                          NULLBIND_BEHAVIOR_DISTANCE, NULLBIND_BEHAVIOR_PRIORITY_BASE,
                                          NULLBIND_LAYER_ALL,
                                          get_behavior_name, get_behavior_choices)
+
+
+class _KeyboardScrollArea(QScrollArea):
+    """A scroll area that asks for its content's whole height (up to its
+    maximum). A plain QScrollArea asks for at most 24 lines of text, which is
+    less than the keyboard picture needs, so the page would scroll even with
+    room to spare."""
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        content = self.widget()
+        if content is None:
+            return hint
+        height = content.sizeHint().height() + 2 * self.frameWidth()
+        if content.sizeHint().width() > self.width() - 2 * self.frameWidth():
+            height += self.style().pixelMetric(QStyle.PM_ScrollBarExtent, None, self)
+        return QSize(hint.width(), min(height, self.maximumHeight()))
+
+    def setWidget(self, widget):
+        super().setWidget(widget)
+        widget.installEventFilter(self)         # its height changes with the keyboard layout
+
+    def eventFilter(self, obj, ev):
+        if obj is self.widget() and ev.type() == QEvent.LayoutRequest:
+            self.updateGeometry()
+        return super().eventFilter(obj, ev)
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        if ev.oldSize().width() != ev.size().width():
+            self.updateGeometry()               # a horizontal scroll bar may come or go
 
 
 class ClickableWidget(QWidget):
@@ -84,6 +116,22 @@ class TriggerVisualizerWidget(QWidget):
         # Enable mouse tracking for cursor changes
         self.setMouseTracking(True)
 
+        # 1.0 = normal. Below 1 the whole bar (labels included) is drawn
+        # smaller, for a narrow window; see _ScaledVisualRow.
+        self.paint_scale = 1.0
+
+    def _logical_height(self):
+        """Widget height in the unscaled coordinates everything is drawn in"""
+        if self.paint_scale == 1.0:
+            return self.height()
+        return int(round(self.height() / self.paint_scale))
+
+    def _logical_pos(self, event):
+        """Mouse position in the unscaled coordinates everything is drawn in"""
+        if self.paint_scale == 1.0:
+            return event.x(), event.y()
+        return event.x() / self.paint_scale, event.y() / self.paint_scale
+
     def set_label_mode(self, mode):
         """Set the label mode (LABEL_MODE_GLOBAL or LABEL_MODE_PER_KEY)"""
         self.label_mode = mode
@@ -111,7 +159,7 @@ class TriggerVisualizerWidget(QWidget):
 
     def _get_bar_geometry(self):
         """Calculate bar geometry for drawing and hit testing"""
-        height = self.height()
+        height = self._logical_height()
         margin_top = 40
         margin_bottom = 20
         bar_width = 30
@@ -136,7 +184,7 @@ class TriggerVisualizerWidget(QWidget):
         """Handle mouse press - start dragging if clicking on an actuation point"""
         if event.button() == Qt.LeftButton:
             bar_x, margin_top, margin_bottom, bar_width, bar_height = self._get_bar_geometry()
-            x, y = event.x(), event.y()
+            x, y = self._logical_pos(event)
 
             # Check if clicking on a press actuation point (left side)
             for i, (actuation, enabled) in enumerate(self.press_actuations):
@@ -192,7 +240,7 @@ class TriggerVisualizerWidget(QWidget):
         bar_x, margin_top, margin_bottom, bar_width, bar_height = self._get_bar_geometry()
 
         if self.dragging:
-            y = event.y()
+            y = self._logical_pos(event)[1]
 
             if self.rapidfire_mode:
                 # In rapidfire mode, calculate sensitivity relative to actuation/release point
@@ -223,7 +271,7 @@ class TriggerVisualizerWidget(QWidget):
                     self.actuationDragged.emit(self.drag_point_index, actuation)
         else:
             # Update cursor based on hover position
-            x, y = event.x(), event.y()
+            x, y = self._logical_pos(event)
             hovering_point = False
 
             # Check press points
@@ -290,8 +338,10 @@ class TriggerVisualizerWidget(QWidget):
         is_dark = brightness < 127
 
         # Calculate drawing area
+        if self.paint_scale != 1.0:
+            painter.scale(self.paint_scale, self.paint_scale)
         width = self.width()
-        height = self.height()
+        height = self._logical_height()
         margin_top = 40
         margin_bottom = 20
         bar_width = 30
@@ -688,6 +738,61 @@ class TriggerVisualizerWidget(QWidget):
                 painter.drawText(label_x, mm_y, mm_text)
 
 
+class _PreferredWidthWidget(QWidget):
+    """A widget that would like to be `width` wide but can be squeezed down
+    to its minimum width."""
+
+    def __init__(self, width):
+        super().__init__()
+        self._preferred_width = width
+
+    def sizeHint(self):
+        return QSize(self._preferred_width, super().sizeHint().height())
+
+
+class _ScaledVisualRow(QWidget):
+    """The keyswitch picture with the travel bar beside it.
+
+    When there is room both sit exactly where they always have. When the
+    window is too narrow for that, the pair is drawn smaller (down to
+    MIN_SCALE) instead of forcing the whole window to stay wide."""
+
+    FULL_WIDTH = 578
+    FULL_HEIGHT = 303
+    DIAGRAM_RECT = (0, 0, 450, 305)         # x, y, width, height at full size
+    VISUALIZER_RECT = (289, 0, 400, 303)
+    MIN_SCALE = 0.68
+
+    def __init__(self, diagram, visualizer):
+        super().__init__()
+        self.diagram = diagram
+        self.visualizer = visualizer
+        for child in (diagram, visualizer):
+            child.setParent(self)
+            # this row sizes them from here on
+            child.setMinimumSize(0, 0)
+            child.setMaximumSize(16777215, 16777215)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+
+    def sizeHint(self):
+        return QSize(self.FULL_WIDTH, self.FULL_HEIGHT)
+
+    def minimumSizeHint(self):
+        return QSize(int(self.FULL_WIDTH * self.MIN_SCALE) + 1, self.FULL_HEIGHT)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        scale = max(self.MIN_SCALE, min(1.0, self.width() / float(self.FULL_WIDTH)))
+        left = max(0, (self.width() - int(round(self.FULL_WIDTH * scale))) // 2)
+        top = max(0, (self.height() - int(round(self.FULL_HEIGHT * scale))) // 2)
+        for child, (x, y, w, h) in ((self.diagram, self.DIAGRAM_RECT),
+                                    (self.visualizer, self.VISUALIZER_RECT)):
+            child.paint_scale = scale
+            child.setGeometry(left + int(round(x * scale)), top + int(round(y * scale)),
+                              int(round(w * scale)), int(round(h * scale)))
+            child.update()
+
+
 class _MirroredSaveButton(QPushButton):
     """The editor's single Save state. It is never placed in a layout; each
     settings tab has its own visible Save button that follows it."""
@@ -704,17 +809,27 @@ class _MirroredSaveButton(QPushButton):
 
 class TriggerSettingsTab(BasicEditor):
 
-    def _desc_column(self, desc_container):
+    def _desc_column(self, desc_container, min_width=None):
         """Left column of a settings tab: the description (scrolls when the
         window is short, so nothing gets clipped) with that tab's Save
-        button pinned underneath."""
+        button pinned underneath. With `min_width` the description may be
+        squeezed down to that width when the window is narrow (its text
+        re-wraps and scrolls); otherwise the column keeps its full width."""
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setWidget(desc_container)
-        column = QWidget()
-        column.setFixedWidth(desc_container.width() + scroll.verticalScrollBar().sizeHint().width() + 2)
+        extra = scroll.verticalScrollBar().sizeHint().width() + 2
+        full_width = desc_container.width() + extra
+        if min_width is None:
+            column = QWidget()
+            column.setFixedWidth(full_width)
+        else:
+            desc_container.setMinimumWidth(0)       # never wider than it was, but may shrink
+            column = _PreferredWidthWidget(full_width)
+            column.setMinimumWidth(min_width + extra)
+            column.setMaximumWidth(full_width)
         lay = QVBoxLayout(column)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(6)
@@ -861,6 +976,11 @@ class TriggerSettingsTab(BasicEditor):
         self.reset_btn.clicked.connect(self.on_reset_all)
         selection_buttons_layout.addWidget(self.reset_btn)
 
+        # Basic mode sets one actuation point for the whole keyboard, so the
+        # tools for picking keys and copying between layers are not needed
+        ui_mode.advanced_only(self.select_all_btn, self.unselect_all_btn, self.invert_selection_btn,
+                              self.copy_layer_btn, self.copy_all_layers_btn, self.reset_btn)
+
         # Not shown itself: its enabled state drives the Save button placed
         # in each settings tab (Actuation / RapidTrigger / SOCD).
         self.save_btn = _MirroredSaveButton(tr("TriggerSettings", "Save"))
@@ -892,7 +1012,7 @@ class TriggerSettingsTab(BasicEditor):
         w.clicked.connect(self.on_empty_space_clicked)
 
         # Wrap keyboard area in scroll area with max height
-        scroll_area = QScrollArea()
+        scroll_area = _KeyboardScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -1441,6 +1561,7 @@ class TriggerSettingsTab(BasicEditor):
         per_layer_desc.setWordWrap(True)
         per_layer_desc.setStyleSheet("color: palette(dark); font-size: 9pt; margin-left: 24px;")
         actuation_desc_layout.addWidget(per_layer_desc)
+        ui_mode.advanced_only(self.enable_checkbox, per_key_desc, self.per_layer_checkbox, per_layer_desc)
 
         actuation_desc_layout.addStretch()
         actuation_desc_container.setLayout(actuation_desc_layout)
@@ -1556,7 +1677,7 @@ class TriggerSettingsTab(BasicEditor):
 
         nullbind_desc_layout.addStretch()
         nullbind_desc_container.setLayout(nullbind_desc_layout)
-        nullbind_layout.addWidget(self._desc_column(nullbind_desc_container))
+        nullbind_layout.addWidget(self._desc_column(nullbind_desc_container, min_width=200))
 
         # Right side: Controls
         self.nullbind_container = self.create_nullbind_container()
@@ -1579,12 +1700,17 @@ class TriggerSettingsTab(BasicEditor):
         nullbind_tab.setLayout(nullbind_layout)
         self.settings_tabs.addTab(nullbind_tab, "SOCD/Null Bind")
 
+        ui_mode.limit_tabs(self.settings_tabs, {"Actuation"})
+        self._fit_settings_tabs_to_current()
+
         tabs_layout.addWidget(self.settings_tabs)
         tabs_container.setLayout(tabs_layout)
         left_layout.addWidget(tabs_container)
 
         left_container.setLayout(left_layout)
-        main_layout.addWidget(left_container, 2)
+        # The settings take whatever width is left over; the visualisation
+        # keeps its full size until the window gets too narrow for both.
+        main_layout.addWidget(left_container, 1)
 
         # Right side: Visualization container (crossection + actuation visualizer)
         viz_container = QFrame()
@@ -1600,33 +1726,40 @@ class TriggerSettingsTab(BasicEditor):
         # Import keyswitch diagram from dks_settings
         from editor.dks_settings import KeyswitchDiagramWidget
 
-        # Horizontal layout for diagram and travel bar
-        viz_h_layout = QHBoxLayout()
-        viz_h_layout.setSpacing(0)  # No spacing between diagram and visualizer
-        viz_h_layout.setContentsMargins(0, 0, 0, 0)
-
         # Keyswitch diagram
         self.keyswitch_diagram = KeyswitchDiagramWidget()
-        viz_h_layout.addWidget(self.keyswitch_diagram)
 
         # Vertical travel bar - using TriggerVisualizerWidget for custom labels and dragging
         self.actuation_visualizer = TriggerVisualizerWidget()
         self.actuation_visualizer.actuationDragged.connect(self.on_visualizer_actuation_dragged)
         self.actuation_visualizer.pressSensDragged.connect(self.on_visualizer_press_sens_dragged)
         self.actuation_visualizer.releaseSensDragged.connect(self.on_visualizer_release_sens_dragged)
-        viz_h_layout.addWidget(self.actuation_visualizer)
 
-        viz_layout.addLayout(viz_h_layout)
+        # Diagram and travel bar side by side; drawn smaller in a narrow window
+        viz_layout.addWidget(_ScaledVisualRow(self.keyswitch_diagram, self.actuation_visualizer))
         viz_layout.addStretch()
 
         viz_container.setLayout(viz_layout)
-        main_layout.addWidget(viz_container, 1)
+        main_layout.addWidget(viz_container)
 
         widget.setLayout(main_layout)
         return widget
 
+    def _fit_settings_tabs_to_current(self):
+        """Let only the tab being shown decide how narrow the settings area
+        may get. (A tab widget normally reserves room for its widest tab,
+        which kept the whole window wide for the sake of the SOCD tab.)"""
+        current = self.settings_tabs.currentIndex()
+        for index in range(self.settings_tabs.count()):
+            page = self.settings_tabs.widget(index)
+            policy = page.sizePolicy()
+            policy.setHorizontalPolicy(QSizePolicy.Preferred if index == current else QSizePolicy.Ignored)
+            page.setSizePolicy(policy)
+        self.settings_tabs.updateGeometry()
+
     def on_tab_changed(self, index):
         """Handle tab change - update active_tab and refresh display"""
+        self._fit_settings_tabs_to_current()
         tab_names = ['actuation', 'rapidfire', 'nullbind']
         if index >= 0 and index < len(tab_names):
             self.active_tab = tab_names[index]

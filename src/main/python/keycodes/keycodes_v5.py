@@ -2407,6 +2407,13 @@ class keycodes_v5:
 
     masked = set()
 
+    # Raw values that are READ as another key but never written. The keyboard's
+    # factory keymap uses the plain USB Space (0x002C); the app writes Space as
+    # the MIDIswitch spacebar keycode (KC_SPACE above), which the keyboard
+    # turns into one Space however many switches sit under the space bar.
+    # Both show as Space; only the unmasked value is aliased.
+    read_aliases = {0x002C: "KC_SPACE"}
+
 
 for x in range(128):
     keycodes_v5.kc["MI_CC_{}_TOG".format(x)] = keycodes_v5.kc["MI_CC_0_TOG"] + x

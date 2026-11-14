@@ -26,7 +26,9 @@ tr = QCoreApplication.translate
 # the designated reader; the pollers must stand down. Both the loop manager and
 # the pollers run on the Qt main thread, so this plain flag is set/checked
 # without a race relative to the pollers.
-_hid_transfer_active = False
+# (A count of the transfers in progress, not a yes/no: see set_hid_transfer_active.)
+_hid_transfer_active = 0
+_hid_transfer_guard = threading.Lock()
 
 # --- Cross-thread HID transaction lock ---------------------------------------
 # One RLock per raw hid device handle, shared by every consumer of that handle:
@@ -103,14 +105,22 @@ class PlaySharedDevice:
 
 
 def set_hid_transfer_active(active):
-    """Mark a loop transfer as in progress so live pollers pause their HID reads."""
+    """Mark a transfer as in progress (True) or finished (False) so live
+    pollers pause their HID reads. Transfers nest (the firmware updater pauses
+    the pollers for its whole run and the settings backup inside it does so
+    again), so this counts: the pollers resume when every True has had its
+    False. Called from the GUI thread and from transfer worker threads."""
     global _hid_transfer_active
-    _hid_transfer_active = bool(active)
+    with _hid_transfer_guard:
+        if active:
+            _hid_transfer_active += 1
+        elif _hid_transfer_active > 0:
+            _hid_transfer_active -= 1
 
 
 def is_hid_transfer_active():
-    """True while a loop transfer owns the HID handle; pollers should skip."""
-    return _hid_transfer_active
+    """True while a transfer owns the HID handle; pollers should skip."""
+    return _hid_transfer_active > 0
 
 
 # Device identity: the MIDIswitch keyboard's USB vendor/product IDs and the
@@ -267,6 +277,9 @@ def find_vial_devices(via_stack_json, sideload_vid=None, sideload_pid=None, quie
     import time
     t0 = time.time()
     all_devices = list(hid.enumerate())
+    if os.environ.get("MIDISWITCH_VIRTUAL_ONLY"):
+        # for testing: never open a real keyboard, only the software one
+        all_devices = []
     startup_log(f"Found {len(all_devices)} HID devices ({time.time()-t0:.2f}s)")
 
     filtered = []
@@ -308,6 +321,9 @@ def find_vial_devices(via_stack_json, sideload_vid=None, sideload_pid=None, quie
     if sideload_vid == sideload_pid == 0:
         filtered.append(VialDummyKeyboard())
     elif sideload_vid == sideload_pid == VIRTUAL_KEYBOARD_ID:
+        if os.environ.get("MIDISWITCH_VIRTUAL_ONLY"):
+            # for testing: the software keyboard alone, leaving a real one untouched
+            filtered = []
         filtered.append(VialVirtualKeyboard())
 
     startup_log(f"Found {len(filtered)} MIDIswitch device(s)")

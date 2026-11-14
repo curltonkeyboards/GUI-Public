@@ -936,12 +936,27 @@ class ToggleSettingsTab(BasicEditor):
         if reply == QMessageBox.Yes:
             if self.toggle_protocol.reset_all_slots():
                 QMessageBox.information(None, "Success", "All slots reset to defaults")
-                # Reload current tab (silent since reset already showed success)
-                current_idx = self.tabs.currentIndex()
-                if 0 <= current_idx < self._visible_tab_count:
-                    self._entry(current_idx)._on_load(silent=True)
+                # Every slot changed on the keyboard: show them all again
+                self._reload_all_slots()
             else:
                 QMessageBox.warning(None, "Error", "Failed to reset slots")
+
+    def _reload_all_slots(self):
+        """Read every slot from the keyboard again (after a reset of all slots
+        or a reload from EEPROM). Every tab then shows what the keyboard holds,
+        opened or not, so a later edit on one cannot send back what it showed
+        before."""
+        current = self.tabs.currentIndex()
+        self.loaded_slots.clear()
+        self._scanned_slots.clear()
+        self._scan_and_update_visible_tabs()
+        for idx, entry in self._entries.items():
+            if idx in self._scanned_slots:
+                # shows the keyboard's contents: nothing left to save
+                entry.pending_changes = False
+                entry.save_btn.setEnabled(False)
+        self.on_entry_changed()
+        self.tabs.setCurrentIndex(max(0, min(current, self._visible_tab_count - 1)))
 
     def _on_load_eeprom(self):
         """Load all slots from EEPROM"""
@@ -950,10 +965,8 @@ class ToggleSettingsTab(BasicEditor):
 
         if self.toggle_protocol.load_from_eeprom():
             QMessageBox.information(None, "Success", "Toggle configurations loaded from EEPROM")
-            # Reload current tab (silent since load already showed success)
-            current_idx = self.tabs.currentIndex()
-            if 0 <= current_idx < self._visible_tab_count:
-                self._entry(current_idx)._on_load(silent=True)
+            # Every slot may have changed on the keyboard: show them all again
+            self._reload_all_slots()
         else:
             QMessageBox.warning(None, "Error", "Failed to load from EEPROM")
 

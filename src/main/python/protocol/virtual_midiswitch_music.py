@@ -57,7 +57,7 @@ SEQ_MAX = SEQ_USER_START + 40           # 156
 PRESET_NOTES_MAX = 255
 POOL_MAX_NOTES = 3897
 TYPE_ARP, TYPE_SEQ = 0, 1
-ARP_MODES = 5
+ARP_MODES = 11                           # play modes 0-10 (the keyboard's ARPMODE_COUNT)
 
 _NV_QUARTER, _NV_EIGHTH, _NV_SIXTEENTH = 0, 1, 2
 _VS_FLAT, _VS_RISE, _VS_FALL = 0, 1, 2
@@ -273,6 +273,8 @@ class MusicMixin:
         self.mus_drum_extras = list(_DRUM_EXTRAS)
         self.mus_mc = [[i, 0xFF, 0xFF, 0xFF] for i in range(16)]
         self.mus_nav_layer = 0
+        from protocol.virtual_app_config import VirtualAppConfig
+        self.mus_app_config = VirtualAppConfig()
         self.mus_daw = [0, 0]
         self.mus_lcd_theme = 0
         self.mus_chartic = {"enabled": 0, "map": [0xFF] * 16, "cc": 1}
@@ -310,6 +312,8 @@ class MusicMixin:
             return self._mus_macro_family(cmd, msg)
         if (0xC0 <= cmd <= 0xCC) or cmd == 0xCE:
             return self._mus_arp(cmd, msg)
+        if cmd == 0x8F:
+            return self.mus_app_config.handle(msg)
         handler = {
             0x92: self._mus_active_layer, 0x93: self._mus_fw_version,
             0x94: self._mus_clone, 0x95: self._mus_macro_modes_get,
@@ -622,6 +626,25 @@ class MusicMixin:
     def _mus_used_notes(self):
         return sum(p["note_count"] for p in list(self.mus_arp_user.values()) + list(self.mus_seq_user.values()))
 
+    @staticmethod
+    def _mus_preset_valid(e):
+        """The keyboard's check of a preset (arp_validate_preset): gate, length,
+        and every counted note placed before the end of the pattern. A note
+        the edit buffer was never sent reads as zero (step 0)."""
+        if e["gate"] > 100 or not 1 <= e["length"] <= 127:
+            return False
+        for i in range(e["note_count"]):
+            packed = e["notes"][i][0] if i < len(e["notes"]) else 0
+            timing = (packed & 0x7F) | ((packed >> 8) & 0x80)
+            if timing >= e["length"]:
+                return False
+        return True
+
+    @staticmethod
+    def _mus_highest_used(store, start):
+        """Highest used user slot + 1 (0 when none is used)."""
+        return max([pid - start + 1 for pid, x in store.items() if x["note_count"] > 0], default=0)
+
     def _mus_arp(self, cmd, msg):
         r = bytearray(msg)
         p = r                       # parameters start at byte 4
@@ -633,6 +656,12 @@ class MusicMixin:
             struct.pack_into("<HH", r, o + 7, free, POOL_MAX_NOTES)
             r[o + 11] = sum(1 for x in self.mus_arp_user.values() if x["note_count"] > 0)
             r[o + 12] = sum(1 for x in self.mus_seq_user.values() if x["note_count"] > 0)
+            # Highest used slot + 1. A keyboard with older firmware does not
+            # fill these two bytes (they stay as sent, 0): set
+            # mus_info_highest = False to answer like one.
+            if getattr(self, "mus_info_highest", True):
+                r[o + 13] = self._mus_highest_used(self.mus_arp_user, ARP_USER_START)
+                r[o + 14] = self._mus_highest_used(self.mus_seq_user, SEQ_USER_START)
         elif cmd == 0xC7:
             s = self.mus_arp_state
             r[o:o + 6] = bytes([0, s["active"], s["sync"], s["latch"], s["mode"], s["preset"]])
@@ -679,7 +708,10 @@ class MusicMixin:
             e["length"] = (p[o + 3] << 8) | p[o + 4]
             e["gate"], e["timing"], e["note_value"] = p[o + 5], p[o + 6], p[o + 7]
             self.mus_edit_mode = p[o + 8]
-            r[o] = 0 if (e["gate"] <= 100 and 1 <= e["length"] <= 127) else 1
+            # The notes counted are the ones already in the edit buffer (the
+            # stored preset's, until new ones are sent): they are checked
+            # against the length just set.
+            r[o] = 0 if self._mus_preset_valid(e) else 1
         elif cmd in (0xCA, 0xCB):
             pid = p[o]
             e = self.mus_edit
@@ -724,7 +756,7 @@ class MusicMixin:
                     store = self.mus_seq_user
                 else:
                     store = None
-                if store is not None and e["gate"] <= 100 and 1 <= e["length"] <= 127:
+                if store is not None and self._mus_preset_valid(e):
                     saved = copy.deepcopy(e)
                     saved["notes"] = (saved["notes"] + [(0, 0)] * saved["note_count"])[:saved["note_count"]]
                     saved["mode"] = self.mus_edit_mode if self.mus_edit_mode < ARP_MODES else 0
@@ -836,8 +868,8 @@ class MusicMixin:
                 self.mus_delay_user[slot - DELAY_FACTORY] = bytes(c)
             r[4] = 1
             return r
-        # Bulk read: one report per slot on the keyboard. Only the first is
-        # returned here, matching how many the app's reader consumes.
+        # Bulk read: one report per slot, as the keyboard sends them
+        # (status [4], slot [5], factory flag [6], settings [7..22]).
         start, count = msg[6], msg[7]
         end = min(start + count, DELAY_FACTORY + DELAY_USER)
         out = []
@@ -846,8 +878,7 @@ class MusicMixin:
             rr[4], rr[5], rr[6] = 1, s, 1 if s < DELAY_FACTORY else 0
             rr[7:23] = self._mus_delay_cfg(s)
             out.append(rr)
-            break
-        return out[0] if out else None
+        return out or None
 
     # ---- drums ------------------------------------------------------------------------
 

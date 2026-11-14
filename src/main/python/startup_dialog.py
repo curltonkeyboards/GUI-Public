@@ -103,6 +103,7 @@ class StartupDialog(QDialog):
         self._should_start = False
         self._is_running = False
         self._startup_complete = False
+        self._pumping = False
 
         self._setup_ui()
         self._setup_logger()
@@ -191,8 +192,18 @@ class StartupDialog(QDialog):
         cursor = self.log_output.textCursor()
         cursor.movePosition(QTextCursor.End)
         self.log_output.setTextCursor(cursor)
-        # Process events to update UI
-        QApplication.processEvents()
+        # Process events to update UI. Only while this window is the one on
+        # show: the logger stays connected after startup, and letting events
+        # run from inside every later log line (they are written in the middle
+        # of connecting to a keyboard) would let a second device change start
+        # before the first has finished. Never from inside itself either.
+        if self._startup_complete or self._pumping or not self.isVisible():
+            return
+        self._pumping = True
+        try:
+            QApplication.processEvents()
+        finally:
+            self._pumping = False
 
     def _on_copy(self):
         """Copy all log text to clipboard."""

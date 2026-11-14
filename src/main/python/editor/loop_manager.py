@@ -1387,13 +1387,17 @@ class LoopManager(BasicEditor):
 
     def stop_hid_listener(self):
         """Stop the HID listener thread"""
+        was_listening = self.hid_listening
         self.hid_listening = False
         if getattr(self, '_transfer_watchdog', None) is not None:
             self._transfer_watchdog.stop()
         if self.hid_listener_thread:
             self.hid_listener_thread.join(timeout=1.0)
         # Release exclusive HID access so the live pollers resume. (H3)
-        set_hid_transfer_active(False)
+        # Only if this listener took it: the flag is a counter shared with the
+        # updater and clone transfers, so a stray release would end theirs.
+        if was_listening:
+            set_hid_transfer_active(False)
 
     def hid_listener_loop(self):
         """Background thread loop to receive HID data"""

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPoint
+import ui_mode
 from PyQt5.QtWidgets import QTabWidget, QWidget, QScrollArea, QApplication, QVBoxLayout, QHBoxLayout, QComboBox, QSizePolicy, QLabel, QGridLayout, QStyleOptionComboBox, QDialog, QLineEdit, QFrame, QListView, QScrollBar, QPushButton, QSlider, QGroupBox, QMessageBox, QStackedWidget
 from PyQt5.QtGui import QPalette, QPainter, QPolygon, QPen, QColor, QBrush, QPixmap, QPainterPath, QRegion
 
@@ -2501,6 +2502,7 @@ class LoopTab(QScrollArea):
                     extra_loop_layout.addWidget(_make_loop_btn(keycode))
         extra_loop_group.setLayout(extra_loop_layout)
         self.main_layout.addWidget(extra_loop_group)
+        ui_mode.advanced_only(extra_loop_group)
 
         # Save buttons
         modifier_group = QGroupBox("Modifiers")
@@ -2516,6 +2518,7 @@ class LoopTab(QScrollArea):
                 modifier_layout.addWidget(btn)
         modifier_group.setLayout(modifier_layout)
         self.main_layout.addWidget(modifier_group)
+        ui_mode.advanced_only(modifier_group)
 
         # BeatSkip section
         beatskip_group = QGroupBox("BeatSkip")
@@ -2531,6 +2534,7 @@ class LoopTab(QScrollArea):
                 beatskip_layout.addWidget(btn)
         beatskip_group.setLayout(beatskip_layout)
         self.main_layout.addWidget(beatskip_group)
+        ui_mode.advanced_only(beatskip_group)
 
         # Speed Controls section - only individual speed/slow buttons and reset
         speed_group = QGroupBox("Speed Controls")
@@ -2546,6 +2550,7 @@ class LoopTab(QScrollArea):
                 speed_layout.addWidget(btn)
         speed_group.setLayout(speed_layout)
         self.main_layout.addWidget(speed_group)
+        ui_mode.advanced_only(speed_group)
 
         # Row 3: Navigation - play/pause + speed controls + navigation combined
         nav_group = QGroupBox("Navigation")
@@ -2568,6 +2573,7 @@ class LoopTab(QScrollArea):
                 nav_layout.addWidget(_make_loop_btn(keycode))
         nav_group.setLayout(nav_layout)
         self.main_layout.addWidget(nav_group)
+        ui_mode.advanced_only(nav_group)
 
         self.main_layout.addStretch(1)
 
@@ -3553,27 +3559,256 @@ class MacroTab(QScrollArea):
                 btn.setText(custom if custom else btn.keycode.label)
 
 
+class AdvancedKeysTab(QWidget):
+    """The "Advanced Keys" tab: the keys of the user's macros, toggles, tap/hold
+    and dynamic keystroke slots.
+
+    Normally the four kinds are titled sections one under another (the look of
+    the Music tab's Loop Control page). When any one kind has more than
+    SIDE_TABS_ABOVE keys to show, the tab uses one side tab per kind instead, so
+    a long list does not make the page endless. Which layout is used is decided
+    again every time the buttons are recreated (the counts follow the editors)."""
+
+    keycode_changed = pyqtSignal(str)
+
+    # (kind, title) in display order
+    SECTIONS = (("macro", "Macros"), ("toggle", "Toggle"),
+                ("tapdance", "Tap/Hold"), ("dks", "Dynamic Keystroke"))
+    SIDE_TABS_ABOVE = 20
+
+    # How many slots each kind has: same rules as the old separate tabs
+    update_counts = MacroTab.update_counts
+    _make_button = MacroTab._make_button
+
+    def __init__(self, parent, label="Advanced Keys"):
+        super().__init__(parent)
+        self.label = label
+        self.keyboard = None
+        self.current_keycode_filter = None
+
+        self.macro_recorder = None
+        self.tap_dance_editor = None
+        self.dks_settings = None
+        self.toggle_settings = None
+        self.delay_settings = None
+
+        self.macro_count = 1
+        self.tapdance_count = 1
+        self.dks_count = 1
+        self.toggle_count = 1
+        self.delay_count = 50
+
+        self.buttons = []
+        self.section_counts = {}
+        self.side_tabs_shown = False
+        self.current_section = self.SECTIONS[0][0]
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        self.pages = QStackedWidget()
+        outer.addWidget(self.pages)
+
+        # Page 0: the sections one under another
+        self.sections_scroll = QScrollArea()
+        self.sections_scroll.setWidgetResizable(True)
+        self.sections_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.sections_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        sections_content = QWidget()
+        sections_layout = QVBoxLayout(sections_content)
+        sections_layout.setSpacing(20)
+        sections_layout.setContentsMargins(20, 15, 20, 15)
+        sections_layout.setAlignment(Qt.AlignTop)
+        self.groups = {}
+        self.group_flows = {}
+        for kind, title in self.SECTIONS:
+            group = QGroupBox(title)
+            flow = FlowLayout()
+            group.setLayout(flow)
+            sections_layout.addWidget(group)
+            self.groups[kind] = group
+            self.group_flows[kind] = flow
+        sections_layout.addStretch(1)
+        self.sections_scroll.setWidget(sections_content)
+        self.pages.addWidget(self.sections_scroll)
+
+        # Page 1: one side tab per kind (same look as the Music tab)
+        side_page = QWidget()
+        side_layout = QHBoxLayout(side_page)
+        side_layout.setSpacing(0)
+        side_layout.setContentsMargins(0, 0, 0, 0)
+
+        side_tabs_container = QWidget()
+        side_tabs_container.setObjectName("side_tabs_container")
+        side_tabs_container.setStyleSheet("""
+            QWidget#side_tabs_container {
+                background: transparent;
+                border: none;
+            }
+        """)
+        side_tabs_layout = QVBoxLayout(side_tabs_container)
+        side_tabs_layout.setSpacing(0)
+        side_tabs_layout.setContentsMargins(0, 0, 0, 0)
+        self.side_tab_buttons = {}
+        for kind, title in self.SECTIONS:
+            btn = QPushButton(title.replace(" ", "\n") if len(title) > 12 else title)
+            btn.setCheckable(True)
+            btn.setMinimumHeight(40)
+            btn.setMinimumWidth(120)
+            btn.setProperty("side_tab", True)     # styled by the theme (themes.py)
+            btn.clicked.connect(lambda checked, k=kind: self.show_section(k))
+            side_tabs_layout.addWidget(btn)
+            self.side_tab_buttons[kind] = btn
+        side_tabs_filler = QWidget()
+        side_tabs_filler.setObjectName("side_tabs_filler")
+        side_tabs_filler.setStyleSheet("QWidget#side_tabs_filler { border-right: 1px solid palette(mid); }")
+        side_tabs_layout.addWidget(side_tabs_filler, 1)
+        side_layout.addWidget(side_tabs_container)
+
+        content_wrapper = QWidget()
+        content_wrapper.setObjectName("content_wrapper")
+        content_wrapper.setStyleSheet("""
+            QWidget#content_wrapper {
+                border: 1px solid palette(mid);
+                border-left: none;
+                background: palette(window);
+            }
+        """)
+        content_layout = QVBoxLayout(content_wrapper)
+        content_layout.setSpacing(0)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        self.side_stack = QStackedWidget()
+        content_layout.addWidget(self.side_stack)
+        self.side_scrolls = {}
+        self.side_flows = {}
+        for kind, title in self.SECTIONS:
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.NoFrame)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            content = QWidget()
+            padded = QVBoxLayout(content)     # FlowLayout has no margins of its own
+            padded.setContentsMargins(20, 15, 20, 15)
+            padded.setAlignment(Qt.AlignTop)
+            holder = QWidget()
+            flow = FlowLayout()
+            holder.setLayout(flow)
+            padded.addWidget(holder)
+            padded.addStretch(1)
+            scroll.setWidget(content)
+            self.side_stack.addWidget(scroll)
+            self.side_scrolls[kind] = scroll
+            self.side_flows[kind] = flow
+        side_layout.addWidget(content_wrapper, 1)
+        self.pages.addWidget(side_page)
+
+        self.update_counts()
+        self.recreate_buttons(None)
+
+    # --- what the palette calls -------------------------------------------
+    def set_keyboard(self, keyboard):
+        self.keyboard = keyboard
+        self.refresh_buttons()
+
+    def set_editors(self, macro_recorder=None, tap_dance_editor=None, dks_settings=None, toggle_settings=None, delay_settings=None):
+        """The editors report how many slots of each kind the user has set up."""
+        self.macro_recorder = macro_recorder
+        self.tap_dance_editor = tap_dance_editor
+        self.dks_settings = dks_settings
+        self.toggle_settings = toggle_settings
+        self.delay_settings = delay_settings
+        self.refresh_buttons()
+
+    def refresh_buttons(self):
+        self.update_counts()
+        self.recreate_buttons(self.current_keycode_filter)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.keyboard is not None or self.macro_recorder is not None:
+            self.refresh_buttons()
+
+    def _section_keycodes(self, kind):
+        """The keys one kind shows, before the palette's filter."""
+        if kind == "macro":
+            keycodes = list(KEYCODES_MACRO[:self.macro_count]) if self.macro_count > 0 else []
+            all_off = Keycode.find_by_code_id("QK_MACRO_ALL_OFF")
+            if all_off:
+                keycodes.append(all_off)
+            return keycodes
+        if kind == "toggle":
+            keycodes = list(KEYCODES_TOGGLE[:self.toggle_count]) if self.toggle_count > 0 else []
+            return keycodes + list(KEYCODES_TOGGLE_ACTIONS)    # bulk-reset actions always shown
+        if kind == "tapdance":
+            return list(KEYCODES_TAP_DANCE[:self.tapdance_count]) if self.tapdance_count > 0 else []
+        if kind == "dks":
+            return list(KEYCODES_DKS[:self.dks_count]) if self.dks_count > 0 else []
+        return []
+
+    def recreate_buttons(self, keycode_filter=None):
+        self.current_keycode_filter = keycode_filter
+        self.update_counts()
+
+        for flow in list(self.group_flows.values()) + list(self.side_flows.values()):
+            clear_layout_widgets(flow)
+        self.buttons = []
+
+        shown = {}
+        for kind, _title in self.SECTIONS:
+            shown[kind] = [kc for kc in self._section_keycodes(kind)
+                           if keycode_filter is None or keycode_filter(kc.code_id)]
+        self.section_counts = {kind: len(keycodes) for kind, keycodes in shown.items()}
+        self.side_tabs_shown = any(count > self.SIDE_TABS_ABOVE for count in self.section_counts.values())
+
+        flows = self.side_flows if self.side_tabs_shown else self.group_flows
+        for kind, _title in self.SECTIONS:
+            for keycode in shown[kind]:
+                btn = self._make_button(keycode)
+                flows[kind].addWidget(btn)
+                self.buttons.append(btn)
+            # A kind the filter leaves nothing of has no section / side tab
+            self.groups[kind].setVisible(bool(shown[kind]))
+            self.side_tab_buttons[kind].setVisible(bool(shown[kind]))
+
+        self.pages.setCurrentIndex(1 if self.side_tabs_shown else 0)
+        if self.side_tabs_shown:
+            self.show_section(self.current_section)
+
+    def show_section(self, kind):
+        """Side-tab layout: show one kind (the first that has keys if `kind` has none)."""
+        kinds = [k for k, _title in self.SECTIONS]
+        if kind not in kinds or not self.section_counts.get(kind):
+            kind = next((k for k in kinds if self.section_counts.get(k)), kinds[0])
+        self.current_section = kind
+        for k, btn in self.side_tab_buttons.items():
+            btn.setChecked(k == kind)
+        self.side_stack.setCurrentWidget(self.side_scrolls[kind])
+
+    def has_buttons(self):
+        return len(self.buttons) > 0
+
+    def relabel_buttons(self):
+        for btn in self.buttons:
+            if hasattr(btn, 'keycode') and btn.keycode:
+                custom = KeycodeDisplay.get_custom_name_label(btn.keycode.code_id)
+                btn.setText(custom if custom else btn.keycode.label)
+
+
 def palette_tabs(parent, layer_tab=None):
-    """Top-level palette tabs in display order: Keyboard, Music, Layers,
-    Lighting, Gaming, Macro, Toggle, Tap/Hold, Dynamic Keystroke, Advanced,
-    Search. `layer_tab` replaces the default Layers tab (the toggle editor
-    passes its overlay-safe LightingTab2)."""
-    def macro_tab(label, section):
-        return MacroTab(parent, label, KEYCODES_MACRO_BASE, KEYCODES_MACRO, KEYCODES_TAP_DANCE,
-                        include_layer=False, sections=(section,))
+    """Top-level palette tabs in display order: Keyboard, Advanced Keys, Music,
+    Layers, Lighting, Gaming, Extra keys, Search. `layer_tab` replaces the
+    default Layers tab (the toggle editor passes its overlay-safe LightingTab2)."""
     if layer_tab is None:
         layer_tab = LayerTab(parent, "Layers", KEYCODES_LAYERS_DF, KEYCODES_LAYERS_MO, KEYCODES_LAYERS_OSL)
     return [
         KeyboardTab(parent),
+        AdvancedKeysTab(parent),
         MusicTab(parent),
         layer_tab,
         LightingTab(parent, "Lighting", KEYCODES_BACKLIGHT, KEYCODES_RGBSAVE,
                     KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_COLOR, KEYCODES_RGB_KC_CUSTOM2),
         GamingTab(parent, "Gaming", KEYCODES_GAMING),
-        macro_tab("Macro", "macro"),
-        macro_tab("Toggle", "toggle"),
-        macro_tab("Tap/Hold", "tapdance"),
-        macro_tab("Dynamic Keystroke", "dks"),
         MIDITab(parent),
         SearchTab(parent),
     ]
@@ -4110,6 +4345,7 @@ class midiTab(QScrollArea):
         self.right_arrow = self._create_nav_arrow("Show\nKeySplit \u25B6")
         self.left_arrow.clicked.connect(lambda: self._update_keyboard_view(2))
         self.right_arrow.clicked.connect(lambda: self._update_keyboard_view(1))
+        ui_mode.advanced_only(self.left_arrow, self.right_arrow)
 
         # Basic Piano Keyboard
         midi_mappings = {kc.code_id: kc for kc in self.inversion_keycodes
@@ -4196,7 +4432,7 @@ class midiTab(QScrollArea):
             # BPM
             ("BPM_UP", "BPM\nUp"), ("BPM_DOWN", "BPM\nDown"),
             # Touch Dials
-            ("EXWHEEL_TRA", "Touch\nDial\nTranspose"), ("EXWHEEL_VEL", "Touch\nDial\nDynamics"), ("EXWHEEL_CHA", "Touch\nDial\nChannel"), ("EXWHEEL_SC", "Touch\nDial\nSmartChord"), ("EXWHEEL_BPM", "Touch\nDial\nBPM"),
+            ("EXWHEEL_TRA", "Touch\nDial\nTranspose"), ("EXWHEEL_VEL", "Touch\nDial\nArticulation"), ("EXWHEEL_CHA", "Touch\nDial\nChannel"), ("EXWHEEL_SC", "Touch\nDial\nSmartChord"), ("EXWHEEL_BPM", "Touch\nDial\nBPM"),
             # Loops
             ("DM_MACRO_1", "Loop\n1"), ("DM_MACRO_2", "Loop\n2"),
             ("DM_MACRO_3", "Loop\n3"), ("DM_MACRO_4", "Loop\n4"),
@@ -4868,7 +5104,7 @@ class MusicTab(QWidget):
         self.current_keycode_filter = keycode_filter_any
 
         # Create the individual tabs. (DrumLIVE, Arpeggiator, Step Sequencer
-        # and Delay moved to the Advanced tab; Ear Training and Chord
+        # and Delay moved to the Extra keys tab; Ear Training and Chord
         # Progressions are retired.) The Quickbuild side-tab holds all 100
         # Quickbuild slot buttons (formerly a single chooser button in
         # MIDIswitch).
@@ -4927,6 +5163,9 @@ class MusicTab(QWidget):
             btn.clicked.connect(lambda checked, dn=display_name: self.show_section(dn))
             side_tabs_layout.addWidget(btn)
             self.side_tab_buttons[display_name] = btn
+            if display_name in self.ADVANCED_SECTIONS:
+                ui_mode.advanced_only(btn)
+        ui_mode.on_change(self.apply_mode)
 
         # Below the last tab, carry on the line that separates the tabs from the content
         side_tabs_filler = QWidget()
@@ -4966,8 +5205,21 @@ class MusicTab(QWidget):
         # Show first section by default
         self.show_section("MIDIswitch")
 
+    # Sections that Basic mode (the Mode menu) leaves out
+    ADVANCED_SECTIONS = ("Quick\nBuild", "DAW")
+
+    def apply_mode(self):
+        """Going to Basic mode while on a section it leaves out: back to the first."""
+        if ui_mode.pages_simplified():
+            for name in self.ADVANCED_SECTIONS:
+                if name in self.section_widgets and not self.section_widgets[name].isHidden():
+                    self.show_section("MIDIswitch")
+
     def show_section(self, section_name):
         """Show the specified section and update tab button states"""
+        if ui_mode.pages_simplified() and section_name in self.ADVANCED_SECTIONS:
+            section_name = "MIDIswitch"
+
         # Hide all section widgets
         for widget in self.section_widgets.values():
             widget.hide()
@@ -5017,13 +5269,13 @@ class MusicTab(QWidget):
 
 
 class MIDITab(midiadvancedTab):
-    """The "Advanced" tab: all MIDI advanced sections plus the DrumLIVE,
+    """The "Extra keys" tab: all MIDI advanced sections plus the DrumLIVE,
     Arpeggiator, Step Sequencer and Delay sections as side tabs."""
 
     _STD_SECTIONS = ["Channel", "CC Options", "Transposition", "KeySplit",
                      "Advanced MIDI", "Velocity", "In/Out", "Touch Dial", "Presets"]
 
-    def __init__(self, parent, label="Advanced", include_sections=None, with_external=True):
+    def __init__(self, parent, label="Extra keys", include_sections=None, with_external=True):
         external = []
         if with_external:
             self.drumlive_tab = DrumLIVETab(parent, "DrumLIVE", KEYCODES_DRUMLIVE)
@@ -5399,12 +5651,27 @@ class FilteredTabbedKeycodes(QTabWidget):
 
         self.recreate_keycode_buttons()
         KeycodeDisplay.notify_keymap_override(self)
+        ui_mode.on_change(self.apply_mode)
 
     def on_keycode_changed(self, code):
         if code == "Any":
             self.anykey.emit()
         else:
             self.keycode_changed.emit(Keycode.normalize(code))
+
+    # The tabs Basic mode (the Mode menu) keeps; " " is the blank "clear" key
+    BASIC_TABS = ("Keyboard", "Music", "Layers", "Lighting", " ")
+
+    def apply_mode(self):
+        basic = ui_mode.pages_simplified()
+        first_visible = -1
+        for index in range(self.count()):
+            visible = (not basic) or self.widget(index).label in self.BASIC_TABS
+            self.setTabVisible(index, visible)
+            if visible and first_visible < 0:
+                first_visible = index
+        if first_visible >= 0 and not self.isTabVisible(self.currentIndex()):
+            self.setCurrentIndex(first_visible)
 
     def recreate_keycode_buttons(self):
         prev_tab = self.tabText(self.currentIndex()) if self.currentIndex() >= 0 else ""
@@ -5417,6 +5684,7 @@ class FilteredTabbedKeycodes(QTabWidget):
                 self.addTab(tab, tr("TabbedKeycodes", tab.label))
                 if tab.label == prev_tab:
                     self.setCurrentIndex(self.count() - 1)
+        self.apply_mode()
 
     def on_keymap_override(self):
         for tab in self.tabs:

@@ -2,7 +2,7 @@
 import struct
 import logging
 from datetime import datetime
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPoint
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPoint, QSize, QEvent
 from PyQt5.QtGui import QPainter, QColor, QPen, QFont, QPalette
 from PyQt5.QtWidgets import (QWidget, QPushButton, QHBoxLayout, QVBoxLayout,
                              QLabel, QGroupBox, QMessageBox, QGridLayout,
@@ -18,6 +18,54 @@ from vial_device import VialKeyboard
 from widgets.combo_box import ArrowComboBox
 
 logger = logging.getLogger(__name__)
+
+# A pattern has between 1 and 128 steps
+MIN_STEPS = 1
+MAX_STEPS = 128
+
+# Width of the settings rail on the left of the grid
+RAIL_WIDTH = 180
+
+# Dropdowns in the rail: less padding than the theme's, so the longest names fit
+RAIL_COMBO_STYLE = "QComboBox { padding-left: 4px; padding-right: 20px; }"
+
+# The "+" / "−" step buttons of the Basic grids
+STEP_BUTTON_STYLE = "QPushButton { padding: 0px 6px; border-radius: 4px; }"
+
+
+class ElidedLabel(QLabel):
+    """One-line label that shortens its text with "…" when there is not enough
+    room. The whole text is in the tooltip."""
+
+    def __init__(self, text="", parent=None):
+        super().__init__(parent)
+        self._full_text = ""
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.setText(text)
+
+    def setText(self, text):
+        self._full_text = text
+        self.setToolTip(text)
+        self.updateGeometry()
+        self._refit()
+
+    def text(self):
+        return self._full_text
+
+    def _refit(self):
+        shown = self.fontMetrics().elidedText(self._full_text, Qt.ElideRight, max(0, self.width()))
+        super().setText(shown)
+
+    def sizeHint(self):
+        metrics = self.fontMetrics()
+        return QSize(metrics.horizontalAdvance(self._full_text) + 4, metrics.height() + 4)
+
+    def minimumSizeHint(self):
+        return QSize(0, self.fontMetrics().height() + 4)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._refit()
 
 
 # =============================================================================
@@ -260,8 +308,10 @@ class GridCell(QFrame):
             # Step sequencer - 50x50
             self.setFixedSize(50, 50)
         else:
-            # Arpeggiator - 30x30
-            self.setFixedSize(30, 30)
+            # Arpeggiator - 30x30 (smaller when the grid has little room, see
+            # BasicArpeggiatorGrid._fit_cells)
+            size = getattr(parent, 'cell_size', 30)
+            self.setFixedSize(size, size)
         self.setFrameStyle(QFrame.Box)
         self.setLineWidth(1)
 
@@ -318,6 +368,11 @@ class GridCell(QFrame):
         # Use theme-based border colors (no special border for column 0)
         border_color_qcolor = highlight.darker(150) if self.active else highlight.darker(300)
         border_color = border_color_qcolor.name()
+        if not self.in_scale:
+            # Out of the selected scale: fade the outline with the fill, or the
+            # cell looks no different on themes where a field is the page colour
+            border_color = (f"rgba({border_color_qcolor.red()}, {border_color_qcolor.green()}, "
+                            f"{border_color_qcolor.blue()}, 0.3)")
         border_width = 1
 
         if self.active:
@@ -555,11 +610,14 @@ class BasicStepSequencerGrid(QWidget):
     """Grid widget for step sequencer basic tab with dynamic rows"""
 
     dataChanged = pyqtSignal()  # Emitted when grid data changes
+    stepAddRequested = pyqtSignal()  # "+" to the right of the last step
+    stepRemoveRequested = pyqtSignal()  # "−" under it: remove the last step
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.is_arpeggiator = False  # For octave color logic
         self.num_steps = 8  # Default number of columns
+        self._header_widgets = []  # the "Step" title and the step numbers
         self.default_velocity = 255  # Default velocity for new cells
         self.rows = []  # List of row data: {'note': 0, 'octave': 4, 'cells': [GridCell, ...]}
 
@@ -581,12 +639,16 @@ class BasicStepSequencerGrid(QWidget):
         self.grid_container.setLayout(self.grid_layout)
 
         scroll.setWidget(self.grid_container)
+        self.scroll = scroll
         self.main_layout.addWidget(scroll, 1)
 
         self.setLayout(self.main_layout)
 
         # Create header row (step numbers)
         self.rebuild_header()
+
+        # "+" / "−" to the right of the last step column (positioned with the rows)
+        self._ensure_step_buttons()
 
         # Create "+" button (will be positioned after rows) - same size as note buttons
         self.btn_add_note = QToolButton()
@@ -609,9 +671,59 @@ class BasicStepSequencerGrid(QWidget):
         # Position the "+" button after all rows
         self._update_add_button_position()
 
+    def _ensure_step_buttons(self):
+        """The column to the right of the last step: a tall "+" that adds a step
+        and a small "−" that removes the last one (recreated if Qt deleted it)."""
+        try:
+            self.step_buttons.isVisible()
+            return
+        except (RuntimeError, AttributeError):
+            pass
+        self.step_buttons = QWidget()
+        column = QVBoxLayout(self.step_buttons)
+        column.setContentsMargins(4, 0, 0, 0)
+        column.setSpacing(2)
+        self.btn_add_step = QPushButton("+")
+        self.btn_add_step.setToolTip("Add a step")
+        self.btn_add_step.setFixedWidth(30)
+        self.btn_add_step.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self.btn_add_step.setStyleSheet(STEP_BUTTON_STYLE)
+        self.btn_add_step.setCursor(Qt.PointingHandCursor)
+        self.btn_add_step.clicked.connect(self._on_add_step_clicked)
+        column.addWidget(self.btn_add_step, 1)
+        self.btn_remove_step = QPushButton("\u2212")
+        self.btn_remove_step.setToolTip("Remove the last step")
+        self.btn_remove_step.setFixedSize(30, 24)
+        self.btn_remove_step.setStyleSheet(STEP_BUTTON_STYLE)
+        self.btn_remove_step.setCursor(Qt.PointingHandCursor)
+        self.btn_remove_step.clicked.connect(self.stepRemoveRequested)
+        column.addWidget(self.btn_remove_step)
+
+    def _on_add_step_clicked(self):
+        self.stepAddRequested.emit()
+        # keep the "+" in view when the grid is wider than the window
+        QTimer.singleShot(0, self._show_step_buttons)
+
+    def _show_step_buttons(self):
+        try:
+            # lay the new column out first, or the grid still has its old width
+            QApplication.sendPostedEvents(None, QEvent.LayoutRequest)
+            self.scroll.ensureWidgetVisible(self.step_buttons, 8, 0)
+        except RuntimeError:
+            pass
+
+    def _update_step_buttons(self):
+        """Put the step buttons right of the last step, as tall as the note rows"""
+        self._ensure_step_buttons()
+        self.grid_layout.removeWidget(self.step_buttons)
+        self.grid_layout.addWidget(self.step_buttons, 2, self.num_steps + 2, max(1, len(self.rows)), 1)
+        self.btn_add_step.setEnabled(self.num_steps < MAX_STEPS)
+        self.btn_remove_step.setEnabled(self.num_steps > MIN_STEPS)
+
     def _update_add_button_position(self):
         """Update the position of the '+' button to be after all note rows"""
         self._ensure_add_note_label()
+        self._update_step_buttons()
 
         # Remove the button and label from their current positions if they exist
         try:
@@ -670,6 +782,11 @@ class BasicStepSequencerGrid(QWidget):
                 self.grid_layout.removeWidget(self.add_note_label)
         except RuntimeError:
             pass
+        try:
+            if hasattr(self, 'step_buttons'):
+                self.grid_layout.removeWidget(self.step_buttons)
+        except RuntimeError:
+            pass
 
     def _update_note_label_position(self):
         """Update the position of the 'Note' label to span all note rows"""
@@ -682,18 +799,24 @@ class BasicStepSequencerGrid(QWidget):
 
     def rebuild_header(self):
         """Rebuild the header rows with Step title and step numbers"""
-        # Clear first two rows
-        for row in range(2):
-            for col in range(self.grid_layout.columnCount()):
-                item = self.grid_layout.itemAtPosition(row, col)
-                if item and item.widget():
-                    item.widget().deleteLater()
+        # Clear the old header. The widgets are taken out of the layout as well as
+        # deleted, so a second rebuild before Qt deletes them cannot leave a stale
+        # title or number behind.
+        for widget in self._header_widgets:
+            try:
+                self.grid_layout.removeWidget(widget)
+                widget.hide()
+                widget.deleteLater()
+            except RuntimeError:
+                pass
+        self._header_widgets = []
 
         # Row 0: "Step" label above step columns (cols 2+)
         step_title = QLabel("Step")
         step_title.setAlignment(Qt.AlignCenter)
         step_title.setStyleSheet("font-weight: bold;")
         self.grid_layout.addWidget(step_title, 0, 2, 1, self.num_steps)
+        self._header_widgets.append(step_title)
 
         # Row 1: Step numbers (cols 2+)
         for step in range(self.num_steps):
@@ -701,11 +824,7 @@ class BasicStepSequencerGrid(QWidget):
             lbl.setAlignment(Qt.AlignCenter)
             lbl.setStyleSheet("font-weight: bold;")
             self.grid_layout.addWidget(lbl, 1, step + 2)
-
-        # Add hint label to the right of step numbers
-        steps_hint = QLabel("To add or remove steps, adjust the Number of Steps setting below")
-        steps_hint.setStyleSheet("color: palette(dark); font-style: italic; padding-left: 10px;")
-        self.grid_layout.addWidget(steps_hint, 1, self.num_steps + 2)
+            self._header_widgets.append(lbl)
 
     def on_steps_changed(self, new_steps):
         """Handle number of steps changed"""
@@ -791,6 +910,7 @@ class BasicStepSequencerGrid(QWidget):
 
         note_widget.setLayout(note_layout)
         self.grid_layout.addWidget(note_widget, row_idx + 2, 1)  # Row offset +2 for headers, col 1
+        row_data['note_widget'] = note_widget
 
         # Create cells for this row (cols 2+)
         for step in range(self.num_steps):
@@ -932,11 +1052,15 @@ class BasicStepSequencerGrid(QWidget):
         # Remove persistent widgets from grid before clearing to prevent deletion
         self._remove_persistent_widgets_from_grid()
 
-        # Clear grid widgets
+        # Clear grid widgets (taken out of the layout too, so nothing stale stays in it)
         for i in reversed(range(self.grid_layout.count())):
             item = self.grid_layout.itemAt(i)
             if item and item.widget():
-                item.widget().deleteLater()
+                widget = item.widget()
+                self.grid_layout.removeWidget(widget)
+                widget.hide()
+                widget.deleteLater()
+        self._header_widgets = []
 
         note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
@@ -983,6 +1107,7 @@ class BasicStepSequencerGrid(QWidget):
 
             note_widget.setLayout(note_layout)
             self.grid_layout.addWidget(note_widget, row_idx + 2, 1)  # Row offset +2, col 1
+            row_data['note_widget'] = note_widget
 
             # Create NEW cells and restore their states
             new_cells = []
@@ -1160,10 +1285,15 @@ class BasicStepSequencerGrid(QWidget):
             for cell in row_data['cells']:
                 self.grid_layout.removeWidget(cell)
                 cell.deleteLater()
-            # Remove and delete note label widget (row offset +2 for headers, col 1)
-            item = self.grid_layout.itemAtPosition(i + 2, 1)
-            if item and item.widget():
-                item.widget().deleteLater()
+            # Remove and delete note label widget
+            note_widget = row_data.get('note_widget')
+            if note_widget is not None:
+                try:
+                    self.grid_layout.removeWidget(note_widget)
+                    note_widget.hide()
+                    note_widget.deleteLater()
+                except RuntimeError:
+                    pass
 
         self.rows.clear()
 
@@ -1245,6 +1375,7 @@ class BasicStepSequencerGrid(QWidget):
 
             note_widget.setLayout(note_layout)
             self.grid_layout.addWidget(note_widget, row_idx + 2, 1)  # Row offset +2 for headers, col 1
+            row_data['note_widget'] = note_widget
 
             # Create cells
             for step in range(num_steps):
@@ -1274,10 +1405,18 @@ class BasicArpeggiatorGrid(QWidget):
     """Grid widget for arpeggiator basic tab with fixed 23 rows (intervals -11 to +11)"""
 
     dataChanged = pyqtSignal()  # Emitted when grid data changes
+    stepAddRequested = pyqtSignal()  # "+ Add step" under the last step
+    stepRemoveRequested = pyqtSignal()  # "−" next to it: remove the last step
+
+    # A cell is 30 px square, down to 22 px when the window is small
+    CELL_MAX = 30
+    CELL_MIN = 22
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.is_arpeggiator = True  # For octave color logic
+        self.step_labels = []  # the step number at the start of each row
+        self.cell_size = self.CELL_MAX  # side of a cell, see _fit_cells
         self.num_steps = 8  # Default number of rows
         self.default_velocity = 255  # Default velocity for new cells
         self.cells = []  # num_steps rows x 23 columns (intervals)
@@ -1301,14 +1440,12 @@ class BasicArpeggiatorGrid(QWidget):
         self.grid_container.setLayout(self.grid_layout)
 
         scroll.setWidget(self.grid_container)
+        self.scroll = scroll
         self.main_layout.addWidget(scroll, 1)
 
-        # Scale selector
-        scale_layout = QHBoxLayout()
-        scale_layout.addWidget(QLabel("Scale:"))
-
+        # Scale selector. The editor shows it in the settings rail on the left
+        # of the grid, so it is not laid out here.
         self.combo_scale = ArrowComboBox()
-        self.combo_scale.setMinimumWidth(150)
         self.combo_scale.setMaximumHeight(30)
         self.combo_scale.setEditable(True)
         self.combo_scale.lineEdit().setReadOnly(True)
@@ -1338,55 +1475,76 @@ class BasicArpeggiatorGrid(QWidget):
         self.combo_scale.setCurrentText('Chromatic')
         self.combo_scale.setToolTip("Select scale to highlight intervals")
         self.combo_scale.currentTextChanged.connect(self.on_scale_changed)
-        scale_layout.addWidget(self.combo_scale)
-        scale_layout.addStretch()
-        self.main_layout.addLayout(scale_layout)
 
-        # Add octave color legend note
-        legend_layout = QHBoxLayout()
-        legend_label = QLabel("Octave colors use theme-relative hue shifts (0 = root, ±1-4 = shifted hues)")
-        # Use theme-based muted text color
-        palette = self.palette()
-        muted_color = palette.color(QPalette.WindowText).lighter(150)
-        legend_label.setStyleSheet(f"color: {muted_color.name()}; font-size: 10px; font-style: italic;")
-        legend_layout.addWidget(legend_label)
-        legend_layout.addStretch()
-        self.main_layout.addLayout(legend_layout)
-
-        # Create steps hint label (will be positioned in the grid)
-        self.steps_hint = QLabel("To add or remove steps, adjust the Number of Steps setting below")
-        self.steps_hint.setStyleSheet(f"color: {muted_color.name()}; font-size: 10px; font-style: italic; padding-top: 5px;")
+        # Octave color legend note (the editor shows it in the rail, under the scale)
+        self.legend_label = QLabel("Octave colors use theme-relative hue shifts (0 = root, ±1-4 = shifted hues)")
+        self.legend_label.setWordWrap(True)
+        self.legend_label.setStyleSheet("color: palette(dark); font-size: 10px; font-style: italic;")
 
         self.setLayout(self.main_layout)
 
         # Build grid
         self.build_grid()
 
-    def _ensure_steps_hint(self):
-        """Ensure steps_hint QLabel exists and is valid (recreate if C++ object was deleted)"""
+    def _ensure_step_buttons(self):
+        """The row under the last step: "+ Add step" across the grid and a small
+        "−" that removes the last step (recreated if Qt deleted it)."""
         try:
-            self.steps_hint.isVisible()
+            self.step_buttons.isVisible()
+            return
         except (RuntimeError, AttributeError):
-            palette = self.palette()
-            muted_color = palette.color(QPalette.WindowText).lighter(150)
-            self.steps_hint = QLabel("To add or remove steps, adjust the Number of Steps setting below")
-            self.steps_hint.setStyleSheet(f"color: {muted_color.name()}; font-size: 10px; font-style: italic; padding-top: 5px;")
+            pass
+        self.step_buttons = QWidget()
+        row = QHBoxLayout(self.step_buttons)
+        row.setContentsMargins(0, 4, 0, 0)
+        row.setSpacing(2)
+        self.btn_add_step = QPushButton("+ Add step")
+        self.btn_add_step.setToolTip("Add a step")
+        self.btn_add_step.setFixedHeight(26)
+        self.btn_add_step.setStyleSheet(STEP_BUTTON_STYLE)
+        self.btn_add_step.setCursor(Qt.PointingHandCursor)
+        self.btn_add_step.clicked.connect(self._on_add_step_clicked)
+        row.addWidget(self.btn_add_step, 1)
+        self.btn_remove_step = QPushButton("\u2212")
+        self.btn_remove_step.setToolTip("Remove the last step")
+        self.btn_remove_step.setFixedSize(30, 26)
+        self.btn_remove_step.setStyleSheet(STEP_BUTTON_STYLE)
+        self.btn_remove_step.setCursor(Qt.PointingHandCursor)
+        self.btn_remove_step.clicked.connect(self.stepRemoveRequested)
+        row.addWidget(self.btn_remove_step)
+
+    def _on_add_step_clicked(self):
+        self.stepAddRequested.emit()
+        # keep the button in view when the grid is taller than the window
+        QTimer.singleShot(0, self._show_step_buttons)
+
+    def _show_step_buttons(self):
+        try:
+            # lay the new row out first, or the grid still has its old height
+            QApplication.sendPostedEvents(None, QEvent.LayoutRequest)
+            self.scroll.ensureWidgetVisible(self.step_buttons, 0, 8)
+        except RuntimeError:
+            pass
 
     def build_grid(self):
         """Build the complete grid - swapped axes: steps as rows, intervals as columns"""
         # Remove persistent widgets from grid before mass deletion to prevent them being destroyed
         try:
-            self.grid_layout.removeWidget(self.steps_hint)
-        except RuntimeError:
+            self.grid_layout.removeWidget(self.step_buttons)
+        except (RuntimeError, AttributeError):
             pass
 
-        # Clear existing
+        # Clear existing (taken out of the layout too, so nothing stale stays in it)
         for i in reversed(range(self.grid_layout.count())):
             item = self.grid_layout.itemAt(i)
             if item and item.widget():
-                item.widget().deleteLater()
+                widget = item.widget()
+                self.grid_layout.removeWidget(widget)
+                widget.hide()
+                widget.deleteLater()
 
         self.cells = []
+        self.step_labels = []
 
         # Header row 0: "Interval" label above interval columns (cols 2-24)
         interval_title = QLabel("Interval")
@@ -1424,6 +1582,7 @@ class BasicArpeggiatorGrid(QWidget):
             lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             lbl.setStyleSheet("min-width: 30px; padding-right: 5px; font-weight: bold;")
             self.grid_layout.addWidget(lbl, row + 2, 1)
+            self.step_labels.append(lbl)
 
             # Create cells for this row (cols 2-24)
             row_cells = []
@@ -1440,22 +1599,57 @@ class BasicArpeggiatorGrid(QWidget):
         # Position "Step" label spanning all step rows (col 0, rows 2 to num_steps+1)
         self.grid_layout.addWidget(self.step_title, 2, 0, self.num_steps, 1)
 
-        # Add steps hint below the last step row
-        self._update_steps_hint_position()
+        # "+ Add step" below the last step row
+        self._update_step_buttons()
+        self._reapply_scale()
 
-    def _update_steps_hint_position(self):
-        """Position the steps hint below the last step row"""
-        self._ensure_steps_hint()
-        # Remove from current position if it exists
-        self.grid_layout.removeWidget(self.steps_hint)
-        # Add at row after all steps (num_steps + 2 accounts for 2 header rows)
-        # Span all 25 columns (col 0=Step label, col 1=numbers, cols 2-24=intervals)
-        self.grid_layout.addWidget(self.steps_hint, self.num_steps + 2, 0, 1, 25)
+    def _update_step_buttons(self):
+        """Put the step buttons under the last step row, as wide as the cells"""
+        self._ensure_step_buttons()
+        self.grid_layout.removeWidget(self.step_buttons)
+        # Row after all steps (num_steps + 2 accounts for 2 header rows), under
+        # the interval columns (cols 2-24)
+        self.grid_layout.addWidget(self.step_buttons, self.num_steps + 2, 2, 1, 23)
+        self.btn_add_step.setEnabled(self.num_steps < MAX_STEPS)
+        self.btn_remove_step.setEnabled(self.num_steps > MIN_STEPS)
+
+    def _fit_cells(self):
+        """Size the cells so the 23 interval columns fit across the grid area
+        without a horizontal scroll bar, between CELL_MIN and CELL_MAX."""
+        spacing = self.grid_layout.spacing()
+        # Room across, as if the vertical scroll bar were always there: the
+        # size must not depend on whether it is, or the two would chase each other
+        room = self.scroll.width() - self.scroll.verticalScrollBar().sizeHint().width() - 2 * self.scroll.frameWidth()
+        try:
+            beside = self.step_title.sizeHint().width()
+        except (RuntimeError, AttributeError):
+            beside = 30
+        beside += 36 + 2 * spacing      # the step numbers (30 px + padding)
+        size = (room - beside) // 23 - spacing
+        size = max(self.CELL_MIN, min(self.CELL_MAX, size))
+        if size == self.cell_size:
+            return
+        self.cell_size = size
+        for row_cells in self.cells:
+            for cell in row_cells:
+                cell.setFixedSize(size, size)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit_cells()
+
+    def _reapply_scale(self):
+        """New cells start in scale: dim them again if a scale is selected"""
+        scale_name = self.combo_scale.currentText()
+        if scale_name != 'Chromatic':
+            self.on_scale_changed(scale_name)
 
     def on_steps_changed(self, new_steps):
         """Handle number of steps changed - preserve existing data"""
         old_steps = self.num_steps
         self.num_steps = new_steps
+        # notes kept for cells of removed steps go with those steps
+        self._extra_notes = [n for n in getattr(self, '_extra_notes', []) if n[0] < new_steps]
 
         if new_steps > old_steps:
             # Add rows - append new rows with all 23 interval cells
@@ -1465,6 +1659,7 @@ class BasicArpeggiatorGrid(QWidget):
                 lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 lbl.setStyleSheet("min-width: 30px; padding-right: 5px; font-weight: bold;")
                 self.grid_layout.addWidget(lbl, step + 2, 1)
+                self.step_labels.append(lbl)
 
                 # Create cells for this row (cols 2-24)
                 row_cells = []
@@ -1482,9 +1677,13 @@ class BasicArpeggiatorGrid(QWidget):
             for step in range(new_steps, old_steps):
                 if step < len(self.cells):
                     # Remove step number label (col 1)
-                    label_item = self.grid_layout.itemAtPosition(step + 2, 1)
-                    if label_item and label_item.widget():
-                        label_item.widget().deleteLater()
+                    if step < len(self.step_labels):
+                        try:
+                            self.grid_layout.removeWidget(self.step_labels[step])
+                            self.step_labels[step].hide()
+                            self.step_labels[step].deleteLater()
+                        except RuntimeError:
+                            pass
 
                     # Remove all cells in this row
                     row_cells = self.cells[step]
@@ -1494,6 +1693,7 @@ class BasicArpeggiatorGrid(QWidget):
 
             # Trim cells list
             self.cells = self.cells[:new_steps]
+            self.step_labels = self.step_labels[:new_steps]
 
         # Update "Step" label to span new number of rows
         try:
@@ -1504,8 +1704,10 @@ class BasicArpeggiatorGrid(QWidget):
             self.step_title.setStyleSheet("font-weight: bold;")
         self.grid_layout.addWidget(self.step_title, 2, 0, self.num_steps, 1)
 
-        # Update hint position
-        self._update_steps_hint_position()
+        # Move the "+ Add step" row under the new last step
+        self._update_step_buttons()
+        if new_steps > old_steps:
+            self._reapply_scale()
         self.dataChanged.emit()
 
     def on_default_velocity_changed(self, value):
@@ -1532,6 +1734,9 @@ class BasicArpeggiatorGrid(QWidget):
             cell.set_active(True, self.default_velocity, 0)
             cell.is_tie = False
             self._drag_mode = 'paint'
+
+        if not cell.active:
+            self._drop_extra_notes(row, col)
 
         # Track drag start for sustain painting
         # Arpeggiator: steps are on Y axis (rows), so drag along rows
@@ -1563,7 +1768,13 @@ class BasicArpeggiatorGrid(QWidget):
             if cell.active:
                 cell.set_active(False, self.default_velocity, 0)
                 cell.is_tie = False
+                self._drop_extra_notes(row, col)
                 self.dataChanged.emit()
+
+    def _drop_extra_notes(self, row, col):
+        """A cleared cell takes the notes kept behind it (see set_grid_data) with it"""
+        self._extra_notes = [n for n in getattr(self, '_extra_notes', [])
+                             if (n[0], n[1]) != (row, col)]
 
     def on_cell_right_click(self, row, col):
         """Handle right click - activate and configure
@@ -1622,6 +1833,19 @@ class BasicArpeggiatorGrid(QWidget):
                         'is_tie': getattr(cell, 'is_tie', False)
                     })
 
+        # Notes the grid holds but has no cell for (see set_grid_data). They go
+        # with their cell: clearing the cell, or removing its step, drops them.
+        for step_idx, col_idx, note in getattr(self, '_extra_notes', []):
+            if step_idx < len(self.cells) and self.cells[step_idx][col_idx].active:
+                extra = dict(note)
+                extra['timing_16ths'] = step_idx * rate_16ths
+                extra['note_index'] = extra['semitone_offset'] = col_idx - 11
+                extra.setdefault('octave_offset', 0)
+                extra.setdefault('velocity', 127)
+                extra['raw_travel'] = extra['velocity']
+                extra.setdefault('is_tie', False)
+                notes.append(extra)
+
         return notes
 
     def set_grid_data(self, notes_data, num_steps=8, rate_16ths=16):
@@ -1637,6 +1861,13 @@ class BasicArpeggiatorGrid(QWidget):
         self.num_steps = num_steps
         self.build_grid()
 
+        # A cell shows one note. A second note on the same step and interval
+        # (the same interval in another octave) is kept here, as (step, column,
+        # note), and handed back by get_grid_data, so saving from this grid
+        # does not lose it.
+        self._extra_notes = []
+        taken = set()
+
         # Populate cells
         for note in notes_data:
             interval = note.get('semitone_offset', note.get('note_index', 0))
@@ -1651,6 +1882,10 @@ class BasicArpeggiatorGrid(QWidget):
             col = interval + 11
 
             if 0 <= step < self.num_steps and 0 <= col < 23:
+                if (step, col) in taken:
+                    self._extra_notes.append((step, col, dict(note)))
+                    continue
+                taken.add((step, col))
                 cell = self.cells[step][col]
                 cell.is_tie = note.get('is_tie', False)
                 cell.set_active(True, velocity, octave)
@@ -1667,7 +1902,7 @@ class BasicArpeggiatorGrid(QWidget):
             in_scale = interval in allowed_intervals
 
             # Darken the interval label if not in scale - grey out LOTS
-            label_item = self.grid_layout.itemAtPosition(1, col + 1)
+            label_item = self.grid_layout.itemAtPosition(1, col + 2)  # interval labels are in cols 2-24
             if label_item and label_item.widget():
                 label = label_item.widget()
                 palette_grid = self.palette()
@@ -1675,9 +1910,10 @@ class BasicArpeggiatorGrid(QWidget):
                     # Restore base styling - all intervals bold
                     label.setStyleSheet("font-weight: bold;")
                 else:
-                    # Grey out label significantly - use theme-based dark color, keep bold
-                    dark_color = palette_grid.color(QPalette.WindowText).darker(300)
-                    label.setStyleSheet(f"font-weight: bold; color: {dark_color.name()};")
+                    # Fade the label - the theme's text colour, mostly transparent, keep bold
+                    text_color = palette_grid.color(QPalette.WindowText)
+                    label.setStyleSheet(f"font-weight: bold; color: rgba({text_color.red()}, "
+                                        f"{text_color.green()}, {text_color.blue()}, 0.3);")
 
             # Darken all cells in this column if not in scale - keep them selectable
             for row in range(len(self.cells)):
@@ -2638,46 +2874,120 @@ class Arpeggiator(BasicEditor):
         self.preset_tabs.currentChanged.connect(self.on_preset_tab_changed)
         main_layout.addWidget(self.preset_tabs, 1)
 
-        # === Bottom Section: Parameters and Actions ===
-        bottom_layout = QHBoxLayout()
-        bottom_layout.addStretch(1)
+        # The action toolbar and the settings rail. There is one of each; they
+        # are shown inside whichever preset is selected (see
+        # _setup_current_preset_entry).
+        self._build_toolbar(default_steps=8)
+        self._build_rail(with_mode=True)
 
-        # Left Container: Preset Parameters
-        params_group = QGroupBox()
-        params_group.setMaximumWidth(500)
-        params_layout = QGridLayout()
+        # Debug console
+        self.debug_console = DebugConsole("Arpeggiator Debug Console")
+        main_layout.addWidget(self.debug_console)
 
-        # Arpeggiator Mode
-        lbl_mode = QLabel("Arpeggiator Mode:")
-        self.combo_mode = ArrowComboBox()
-        self.combo_mode.setMinimumWidth(150)
-        self.combo_mode.setMaximumHeight(30)
-        self.combo_mode.setEditable(True)
-        self.combo_mode.lineEdit().setReadOnly(True)
-        self.combo_mode.lineEdit().setAlignment(Qt.AlignCenter)
-        self.combo_mode.addItem("Single Note Synced", 0)
-        self.combo_mode.addItem("Single Note Unsynced", 1)
-        self.combo_mode.addItem("Chord Synced", 2)
-        self.combo_mode.addItem("Chord Unsynced", 3)
-        self.combo_mode.addItem("Chord Advanced", 4)
-        # Advanced chord-ordering variants (one note per step, visited in a
-        # pitch-derived order). Mirror the firmware arp_mode_t enum values 5-10
-        # and the on-device quick-build "Sync" labels (Asc/Desc/Up-Down/...).
-        self.combo_mode.addItem("Chord Ascending", 5)
-        self.combo_mode.addItem("Chord Descending", 6)
-        self.combo_mode.addItem("Chord Up-Down", 7)
-        self.combo_mode.addItem("Chord Down-Up", 8)
-        self.combo_mode.addItem("Chord Mix 1", 9)
-        self.combo_mode.addItem("Chord Mix 2", 10)
-        self.combo_mode.setToolTip("Select how the arpeggiator plays notes")
-        self.combo_mode.currentIndexChanged.connect(self.on_mode_changed)
-        params_layout.addWidget(lbl_mode, 0, 0)
-        params_layout.addWidget(self.combo_mode, 0, 1)
+        self.addLayout(main_layout)
 
-        # Pattern Rate
-        lbl_pattern_rate = QLabel("Pattern Rate:")
+        # Initialize with first preset
+        self._setup_current_preset_entry()
+        self.rebuild_steps()
+        self.update_pattern_length_display()
+
+    def _build_toolbar(self, default_steps):
+        """The row above the grid: Load / Save / Copy / Paste / Reset, then the
+        "N steps · rhythm" readout, the status text and the memory use."""
+        self.toolbar = QWidget()
+        row = QHBoxLayout(self.toolbar)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+
+        button_style = ("QPushButton { min-height: 24px; max-height: 24px; "
+                        "border-radius: 5px; padding: 0px 12px; }")
+
+        def action(text, tooltip, handler):
+            button = QPushButton(text)
+            button.setToolTip(tooltip)
+            button.setStyleSheet(button_style)
+            button.clicked.connect(handler)
+            row.addWidget(button)
+            return button
+
+        self.btn_load = action("Load", "Load from keyboard", self.load_preset)
+        self.btn_save = action("Save", "Save to keyboard", self.save_preset)
+        self.btn_copy = action("Copy", "Copy preset", self.copy_preset_to_clipboard)
+        self.btn_paste = action("Paste", "Paste preset", self.paste_preset_from_clipboard)
+        self.btn_reset_all = action("Reset", "Reset all steps", self.reset_all_steps)
+
+        row.addStretch(1)
+
+        # "8 steps · 2/4": the number of steps and the pattern rhythm
+        self.lbl_readout = QLabel("")
+        self.lbl_readout.setToolTip("Number of steps and pattern rhythm (from the steps and the rate)")
+        row.addWidget(self.lbl_readout)
+        row.addSpacing(8)
+
+        # Status text, shortened when there is no room (the whole text is its tooltip)
+        self.lbl_status = ElidedLabel("")
+        self.lbl_status.setStyleSheet("color: palette(highlight); font-size: 8pt;")
+        self.lbl_status.setText("Ready. Select a preset tab to begin.")
+        row.addWidget(self.lbl_status)
+        row.addSpacing(8)
+
+        self.lbl_memory = QLabel("")
+        self.lbl_memory.setStyleSheet("font-size: 8pt;")
+        row.addWidget(self.lbl_memory)
+
+        # The number of steps is set with the "+" / "−" of the Basic grid. This
+        # spin box is not shown, but it stays the one place that holds the
+        # number: add_step / remove_last_step change its value, and everything
+        # else follows from valueChanged as before.
+        self.spin_num_steps = QSpinBox(self.toolbar)
+        self.spin_num_steps.setRange(MIN_STEPS, MAX_STEPS)
+        self.spin_num_steps.setValue(default_steps)
+        self.spin_num_steps.valueChanged.connect(self.on_num_steps_changed)
+        self.spin_num_steps.hide()
+
+        # Pattern rhythm on its own ("2/4"); shown as part of the readout
+        self.lbl_pattern_length = QLabel("", self.toolbar)
+        self.lbl_pattern_length.hide()
+
+    def _build_rail(self, with_mode):
+        """The settings column on the left of the grid: label above field"""
+        self.rail = QWidget()
+        column = QVBoxLayout(self.rail)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(3)
+
+        def field(label, widget):
+            column.addWidget(QLabel(label))
+            column.addWidget(widget)
+            column.addSpacing(8)
+
+        if with_mode:
+            self.combo_mode = ArrowComboBox()
+            self.combo_mode.setStyleSheet(RAIL_COMBO_STYLE)
+            self.combo_mode.setMaximumHeight(30)
+            self.combo_mode.setEditable(True)
+            self.combo_mode.lineEdit().setReadOnly(True)
+            self.combo_mode.lineEdit().setAlignment(Qt.AlignCenter)
+            self.combo_mode.addItem("Single Note Synced", 0)
+            self.combo_mode.addItem("Single Note Unsynced", 1)
+            self.combo_mode.addItem("Chord Synced", 2)
+            self.combo_mode.addItem("Chord Unsynced", 3)
+            self.combo_mode.addItem("Chord Advanced", 4)
+            # Advanced chord-ordering variants (one note per step, visited in a
+            # pitch-derived order). Mirror the firmware arp_mode_t enum values 5-10
+            # and the on-device quick-build "Sync" labels (Asc/Desc/Up-Down/...).
+            self.combo_mode.addItem("Chord Ascending", 5)
+            self.combo_mode.addItem("Chord Descending", 6)
+            self.combo_mode.addItem("Chord Up-Down", 7)
+            self.combo_mode.addItem("Chord Down-Up", 8)
+            self.combo_mode.addItem("Chord Mix 1", 9)
+            self.combo_mode.addItem("Chord Mix 2", 10)
+            self.combo_mode.setToolTip("Select how the arpeggiator plays notes")
+            self.combo_mode.currentIndexChanged.connect(self.on_mode_changed)
+            field("Mode", self.combo_mode)
+
         self.combo_pattern_rate = ArrowComboBox()
-        self.combo_pattern_rate.setMinimumWidth(150)
+        self.combo_pattern_rate.setStyleSheet(RAIL_COMBO_STYLE)
         self.combo_pattern_rate.setMaximumHeight(30)
         self.combo_pattern_rate.setEditable(True)
         self.combo_pattern_rate.lineEdit().setReadOnly(True)
@@ -2694,145 +3004,143 @@ class Arpeggiator(BasicEditor):
         self.combo_pattern_rate.setCurrentIndex(6)
         self.combo_pattern_rate.setToolTip("Note subdivision and timing mode (T=triplet, .=dotted)")
         self.combo_pattern_rate.currentIndexChanged.connect(self.on_pattern_rate_changed)
-        params_layout.addWidget(lbl_pattern_rate, 1, 0)
-        params_layout.addWidget(self.combo_pattern_rate, 1, 1)
+        field("Rate", self.combo_pattern_rate)
 
-        # Number of steps
-        lbl_num_steps = QLabel("Number of Steps:")
-        self.spin_num_steps = QSpinBox()
-        self.spin_num_steps.setRange(1, 128)
-        self.spin_num_steps.setValue(8)
-        self.spin_num_steps.setButtonSymbols(QSpinBox.UpDownArrows)
-        self.spin_num_steps.setToolTip("Number of steps in the pattern")
-        self.spin_num_steps.valueChanged.connect(self.on_num_steps_changed)
-        params_layout.addWidget(lbl_num_steps, 2, 0)
-        params_layout.addWidget(self.spin_num_steps, 2, 1)
-
-        # Pattern rhythm
-        lbl_rhythm = QLabel("Pattern Rhythm:")
-        self.lbl_pattern_length = QLabel("4/16")
-        self.lbl_pattern_length.setToolTip("Total pattern rhythm (auto-calculated from steps/rate)")
-        params_layout.addWidget(lbl_rhythm, 3, 0)
-        params_layout.addWidget(self.lbl_pattern_length, 3, 1)
-
-        # Gate length
-        lbl_gate = QLabel("Gate Length:")
         self.spin_gate = QSpinBox()
         self.spin_gate.setRange(10, 100)
         self.spin_gate.setValue(80)
         self.spin_gate.setSuffix("%")
         self.spin_gate.setButtonSymbols(QSpinBox.UpDownArrows)
         self.spin_gate.setToolTip("Note gate length percentage")
-        params_layout.addWidget(lbl_gate, 4, 0)
-        params_layout.addWidget(self.spin_gate, 4, 1)
+        field("Gate", self.spin_gate)
 
-        # Default velocity
-        lbl_default_velocity = QLabel("Default Velocity:")
         self.spin_default_velocity = QSpinBox()
         self.spin_default_velocity.setRange(1, 127)
         self.spin_default_velocity.setValue(127)
         self.spin_default_velocity.setButtonSymbols(QSpinBox.UpDownArrows)
         self.spin_default_velocity.setToolTip("Default velocity for new notes in basic grid")
         self.spin_default_velocity.valueChanged.connect(self.on_default_velocity_changed)
-        params_layout.addWidget(lbl_default_velocity, 5, 0)
-        params_layout.addWidget(self.spin_default_velocity, 5, 1)
+        field("Velocity", self.spin_default_velocity)
 
-        params_group.setLayout(params_layout)
-        bottom_layout.addWidget(params_group)
+    def _build_entry_body(self, layout, side_tabs, basic_grid):
+        """Lay out a preset under its name: a slot for the toolbar row, then the
+        settings rail on the left of the Basic/Advanced tabs. Returns the two
+        layouts the shared toolbar and rail are put into while this preset is
+        the one showing."""
+        toolbar_slot = QVBoxLayout()
+        toolbar_slot.setContentsMargins(0, 0, 0, 0)
+        layout.addLayout(toolbar_slot)
 
-        # Right Container: Actions
-        actions_group = QGroupBox()
-        actions_group.setMaximumWidth(500)
-        actions_layout = QGridLayout()
+        body = QHBoxLayout()
+        body.setSpacing(12)
 
-        button_style = "QPushButton { min-height: 30px; max-height: 30px; border-radius: 5px; }"
+        rail_holder = QWidget()
+        rail_holder.setFixedWidth(RAIL_WIDTH)
+        rail_column = QVBoxLayout(rail_holder)
+        rail_column.setContentsMargins(0, 0, 0, 0)
+        rail_column.setSpacing(3)
+        rail_slot = QVBoxLayout()
+        rail_slot.setContentsMargins(0, 0, 0, 0)
+        rail_column.addLayout(rail_slot)
 
-        self.btn_load = QPushButton("Load from Device")
-        self.btn_load.setStyleSheet(button_style)
-        self.btn_load.clicked.connect(self.load_preset)
-        self.btn_save = QPushButton("Save to Device")
-        self.btn_save.setStyleSheet(button_style)
-        self.btn_save.clicked.connect(self.save_preset)
+        # The arpeggiator grid has a scale of its own (one per preset)
+        combo_scale = getattr(basic_grid, 'combo_scale', None)
+        if combo_scale is not None:
+            combo_scale.setStyleSheet(RAIL_COMBO_STYLE)
+            rail_column.addWidget(QLabel("Scale"))
+            rail_column.addWidget(combo_scale)
+            rail_column.addSpacing(8)
+            rail_column.addWidget(basic_grid.legend_label)
+            # the scale dims columns of the Basic grid only
+            side_tabs.currentChanged.connect(lambda tab, combo=combo_scale: combo.setEnabled(tab == 0))
+        rail_column.addStretch(1)
 
-        actions_layout.addWidget(self.btn_load, 0, 0, 1, 2)
-        actions_layout.addWidget(self.btn_save, 1, 0, 1, 2)
+        body.addWidget(rail_holder)
+        body.addWidget(side_tabs, 1)
+        layout.addLayout(body, 1)
 
-        # Copy and Paste buttons
-        copy_paste_layout = QHBoxLayout()
-        copy_paste_layout.setSpacing(5)
+        # "+" / "−" of the Basic grid
+        basic_grid.stepAddRequested.connect(self.add_step)
+        basic_grid.stepRemoveRequested.connect(self.remove_last_step)
 
-        self.btn_copy = QPushButton("Copy Preset")
-        self.btn_copy.setStyleSheet(button_style)
-        self.btn_copy.clicked.connect(self.copy_preset_to_clipboard)
-        self.btn_paste = QPushButton("Paste Preset")
-        self.btn_paste.setStyleSheet(button_style)
-        self.btn_paste.clicked.connect(self.paste_preset_from_clipboard)
+        return toolbar_slot, rail_slot
 
-        copy_paste_layout.addWidget(self.btn_copy)
-        copy_paste_layout.addWidget(self.btn_paste)
-        actions_layout.addLayout(copy_paste_layout, 2, 0, 1, 2)
+    def _show_shared_controls_in(self, entry):
+        """Move the toolbar and the rail into the preset that is showing"""
+        if not hasattr(self, 'toolbar') or not hasattr(self, 'rail'):
+            return
+        shown_in = getattr(self, '_controls_entry', None)
+        if shown_in is entry:
+            return
+        if shown_in is not None:
+            shown_in['toolbar_slot'].removeWidget(self.toolbar)
+            shown_in['rail_slot'].removeWidget(self.rail)
+        entry['toolbar_slot'].addWidget(self.toolbar)
+        entry['rail_slot'].addWidget(self.rail)
+        self._controls_entry = entry
 
-        # Reset All Steps button
-        self.btn_reset_all = QPushButton("Reset All Steps")
-        self.btn_reset_all.setStyleSheet(button_style)
-        self.btn_reset_all.clicked.connect(self.reset_all_steps)
-        actions_layout.addWidget(self.btn_reset_all, 3, 0, 1, 2)
+    def add_step(self):
+        """Add one step at the end (the "+" of the Basic grid)"""
+        self.spin_num_steps.setValue(self.spin_num_steps.value() + 1)
 
-        actions_group.setLayout(actions_layout)
-        bottom_layout.addWidget(actions_group)
+    def remove_last_step(self):
+        """Remove the last step (the "−" of the Basic grid)"""
+        self.spin_num_steps.setValue(self.spin_num_steps.value() - 1)
 
-        bottom_layout.addStretch(1)
-        main_layout.addLayout(bottom_layout)
-
-        # Status and memory layout
-        status_row = QHBoxLayout()
-        self.lbl_status = QLabel("Ready. Select a preset tab to begin.")
-        palette_status = self.lbl_status.palette()
-        info_color = palette_status.color(QPalette.Highlight)
-        self.lbl_status.setStyleSheet(f"color: {info_color.name()}; padding: 5px;")
-        status_row.addWidget(self.lbl_status)
-        status_row.addStretch()
-        self.lbl_memory = QLabel("")
-        self.lbl_memory.setStyleSheet("padding: 5px;")
-        status_row.addWidget(self.lbl_memory)
-        main_layout.addLayout(status_row)
-
-        # Debug console
-        self.debug_console = DebugConsole("Arpeggiator Debug Console")
-        main_layout.addWidget(self.debug_console)
-
-        self.addLayout(main_layout)
-
-        # Initialize with first preset
-        self._setup_current_preset_entry()
-        self.rebuild_steps()
-        self.update_pattern_length_display()
+    def _name_feature(self):
+        """Which set of preset names (protocol.feature_names) the tabs carry"""
+        from protocol.feature_names import FEATURE_ARP, FEATURE_SEQ
+        return FEATURE_SEQ if self.is_step_sequencer else FEATURE_ARP
 
     def _update_visible_preset_tabs(self):
-        """Update which preset tabs are visible based on used count and manual expansion"""
+        """Update which preset tabs are visible: up to the highest used slot,
+        plus the ones opened with "+". The preset that is showing stays the
+        one showing."""
+        from protocol.feature_names import get_feature_name_manager
+        mgr = get_feature_name_manager()
+        feature = self._name_feature()
+        tabs = self.preset_tabs
+
         max_tabs = len(self.entry_widgets)
         base_visible = max(1, self._user_presets_used)
-        self._visible_tab_count = min(max_tabs, base_visible + self._manually_expanded_count)
+        count = min(max_tabs, base_visible + self._manually_expanded_count)
+        plus_wanted = 1 if count < max_tabs else 0
 
-        # Block signals to avoid triggering on_preset_tab_changed during rebuild
-        self.preset_tabs.blockSignals(True)
+        if count == self._visible_tab_count and tabs.count() == count + plus_wanted:
+            # Same tabs as before: nothing to take out or put in
+            for x in range(count):
+                tabs.setTabText(x, mgr.get_name(feature, x))
+            return
 
-        # Remove all tabs
-        while self.preset_tabs.count() > 0:
-            self.preset_tabs.removeTab(0)
+        current = tabs.currentIndex()
+        shown = self._visible_tab_count
+        self._visible_tab_count = count
 
-        # Add visible preset tabs with names from feature manager
-        from protocol.feature_names import get_feature_name_manager, FEATURE_ARP
-        mgr = get_feature_name_manager()
-        for x in range(self._visible_tab_count):
-            self.preset_tabs.addTab(self.entry_widgets[x]['widget'], mgr.get_name(FEATURE_ARP, x))
+        # No on_preset_tab_changed while the tabs are put in order
+        tabs.blockSignals(True)
+        while tabs.count() > shown:              # the "+" tab
+            plus = tabs.widget(tabs.count() - 1)
+            tabs.removeTab(tabs.count() - 1)
+            plus.deleteLater()
+        while tabs.count() > count:              # presets no longer shown
+            tabs.removeTab(tabs.count() - 1)
+        for x in range(tabs.count(), count):     # presets newly shown
+            tabs.addTab(self.entry_widgets[x]['widget'], mgr.get_name(feature, x))
+        for x in range(count):
+            tabs.setTabText(x, mgr.get_name(feature, x))
+        if plus_wanted:
+            tabs.addTab(QWidget(), "+")
+        current = max(0, min(current, count - 1))
+        tabs.setCurrentIndex(current)
+        tabs.blockSignals(False)
 
-        # Add "+" tab if not all tabs are visible
-        if self._visible_tab_count < max_tabs:
-            plus_widget = QWidget()
-            self.preset_tabs.addTab(plus_widget, "+")
-
-        self.preset_tabs.blockSignals(False)
+        # The tab that is now showing must be the preset being edited, with the
+        # toolbar and the settings in it. It is unless its tab went away or
+        # the "+" was the one selected.
+        entry = self.entry_widgets[current]
+        if (getattr(self, '_controls_entry', None) is not entry
+                or self.current_preset_id != entry['preset_id']):
+            self.on_preset_tab_changed(current)
 
     def _create_preset_entry(self, index, preset_id):
         """Create a preset entry widget with top tabs for Basic/Advanced"""
@@ -2841,8 +3149,8 @@ class Arpeggiator(BasicEditor):
         # Main container widget
         container = QWidget()
         layout = QVBoxLayout()
-        layout.setSpacing(12)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(8)
+        layout.setContentsMargins(16, 12, 16, 12)
 
         # Header with title and rename button
         header_layout = QHBoxLayout()
@@ -2857,16 +3165,15 @@ class Arpeggiator(BasicEditor):
         btn_rename.setStyleSheet("QPushButton { font-size: 8pt; border-radius: 3px; padding: 2px 6px; }")
         btn_rename.clicked.connect(lambda checked, idx=index, lbl=title_label: self._on_rename_arp(idx, lbl))
         header_layout.addWidget(btn_rename)
-
-        header_layout.addStretch()
-        layout.addLayout(header_layout)
+        header_layout.addSpacing(12)
 
         # Description
         desc = QLabel("Configure arpeggiator pattern with intervals relative to the played notes.\n"
                       "Click cells to toggle notes on/off. Right-click for velocity and octave settings.")
         desc.setWordWrap(True)
         desc.setStyleSheet("color: palette(dark); font-size: 9pt;")
-        layout.addWidget(desc)
+        header_layout.addWidget(desc, 1)
+        layout.addLayout(header_layout)
 
         # Top tabs for Basic/Advanced
         side_tabs = QTabWidget()
@@ -2897,11 +3204,14 @@ class Arpeggiator(BasicEditor):
         advanced_tab.setLayout(advanced_layout)
         side_tabs.addTab(advanced_tab, "Advanced")
 
-        layout.addWidget(side_tabs, 1)
+        # Toolbar row, then the rail on the left of the grid
+        toolbar_slot, rail_slot = self._build_entry_body(layout, side_tabs, basic_grid)
         container.setLayout(layout)
 
         return {
             'widget': container,
+            'toolbar_slot': toolbar_slot,
+            'rail_slot': rail_slot,
             'title_label': title_label,
             'basic_grid': basic_grid,
             'side_tabs': side_tabs,
@@ -2919,12 +3229,25 @@ class Arpeggiator(BasicEditor):
             return
 
         entry = self.entry_widgets[current_idx]
+        self._show_shared_controls_in(entry)
+        # The editor listens to the grid and the Basic/Advanced tabs of the
+        # preset that is showing, and only to those: connected once, when the
+        # preset becomes the one showing (this runs again on every reconnect).
+        listening_to = getattr(self, '_listening_entry', None)
+        if listening_to is not entry:
+            if listening_to is not None:
+                try:
+                    listening_to['basic_grid'].dataChanged.disconnect(self.on_basic_grid_changed)
+                    listening_to['side_tabs'].currentChanged.disconnect(self.on_tab_changed)
+                except (TypeError, RuntimeError):
+                    pass
+            entry['basic_grid'].dataChanged.connect(self.on_basic_grid_changed)
+            entry['side_tabs'].currentChanged.connect(self.on_tab_changed)
+            self._listening_entry = entry
         self.basic_grid = entry['basic_grid']
-        self.basic_grid.dataChanged.connect(self.on_basic_grid_changed)
         self.step_layout = entry['step_layout']
         self.step_widgets = entry['step_widgets']
         self.tabs = entry['side_tabs']
-        self.tabs.currentChanged.connect(self.on_tab_changed)
         self.current_preset_id = entry['preset_id']
 
         # Initialize basic grid settings
@@ -2946,19 +3269,8 @@ class Arpeggiator(BasicEditor):
         if index < 0 or index >= len(self.entry_widgets):
             return
 
-        # Disconnect old signals
-        if hasattr(self, 'basic_grid') and self.basic_grid:
-            try:
-                self.basic_grid.dataChanged.disconnect(self.on_basic_grid_changed)
-            except:
-                pass
-        if hasattr(self, 'tabs') and self.tabs:
-            try:
-                self.tabs.currentChanged.disconnect(self.on_tab_changed)
-            except:
-                pass
-
-        # Setup new preset entry
+        # Setup new preset entry (it also moves the editor's listening from the
+        # old preset's grid and tabs to this one's)
         self._setup_current_preset_entry()
 
         # Rebuild steps for this entry
@@ -2968,8 +3280,8 @@ class Arpeggiator(BasicEditor):
         if self.valid():
             self.load_preset()
         else:
-            from protocol.feature_names import get_feature_name_manager, FEATURE_ARP
-            self.update_status(f"{get_feature_name_manager().get_name(FEATURE_ARP, index)} selected")
+            from protocol.feature_names import get_feature_name_manager
+            self.update_status(f"{get_feature_name_manager().get_name(self._name_feature(), index)} selected")
 
     def _on_rename_arp(self, index, title_label):
         """Open rename dialog for an arp preset"""
@@ -2989,32 +3301,32 @@ class Arpeggiator(BasicEditor):
 
     def rebuild_steps(self):
         """Rebuild step widgets based on step count - preserve existing data"""
-        # Save existing step data before clearing
-        old_step_data = []
-        for widget in self.step_widgets:
-            old_step_data.append(widget.get_step_data())
-
-        # Clear existing steps
-        for widget in self.step_widgets:
-            self.step_layout.removeWidget(widget)
-            widget.deleteLater()
-        self.step_widgets.clear()
-
-        # Remove stretch if it exists
-        while self.step_layout.count() > 0:
-            item = self.step_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        # Create new steps (they will be added from left to right)
+        # The steps that stay keep their widgets (and so their data); only the
+        # end of the row changes. Building every step again on each change made
+        # adding steps one at a time slow on long patterns.
         step_count = self.spin_num_steps.value()
-        for i in range(step_count):
+
+        # Take out the stretch, and anything in the row that is not a current step
+        for i in reversed(range(self.step_layout.count())):
+            item = self.step_layout.itemAt(i)
+            if item.widget() is None:
+                self.step_layout.takeAt(i)
+            elif item.widget() not in self.step_widgets:
+                stray = item.widget()
+                self.step_layout.removeWidget(stray)
+                stray.hide()
+                stray.deleteLater()
+
+        # Remove steps from the end
+        while len(self.step_widgets) > step_count:
+            widget = self.step_widgets.pop()
+            self.step_layout.removeWidget(widget)
+            widget.hide()
+            widget.deleteLater()
+
+        # Add steps at the end (they are laid out from left to right)
+        for i in range(len(self.step_widgets), step_count):
             step_widget = StepWidget(i, is_step_sequencer=self.is_step_sequencer)
-
-            # Restore existing step data if available from old widgets
-            if i < len(old_step_data):
-                step_widget.set_step_data(old_step_data[i])
-
             self.step_widgets.append(step_widget)
             self.step_layout.addWidget(step_widget, 0, Qt.AlignLeft)  # Explicitly align left
 
@@ -3103,6 +3415,8 @@ class Arpeggiator(BasicEditor):
             y = y // 2
 
         self.lbl_pattern_length.setText(f"{x}/{y}")
+        if hasattr(self, 'lbl_readout'):
+            self.lbl_readout.setText(f"{num_steps} {'step' if num_steps == 1 else 'steps'} \u00b7 {x}/{y}")
 
     def _get_complete_steps_from_grid(self, grid_data, num_steps, rate_16ths):
         """Helper: Convert basic grid data to steps array (no empty placeholders needed)"""
@@ -3225,6 +3539,9 @@ class Arpeggiator(BasicEditor):
         if reply == QMessageBox.Yes:
             for widget in self.step_widgets:
                 widget.set_step_data([])  # Empty list of notes
+            # Clear the Basic grid as well (it keeps its own cells)
+            if hasattr(self, 'basic_grid') and self.basic_grid:
+                self.sync_advanced_to_basic()
             self.update_status("All steps reset to empty")
 
     def copy_preset_to_clipboard(self):
@@ -3630,6 +3947,10 @@ class Arpeggiator(BasicEditor):
             # Arpeggiator: sign bit means negative interval
             if sign_bit:
                 note['note_index'] = -note_index
+            # The step widgets and the Basic grid read the interval from
+            # 'semitone_offset' (as the grid's own get_grid_data supplies it);
+            # without it every loaded note fell back to interval 0.
+            note['semitone_offset'] = note['note_index']
 
         return note
 
@@ -3729,11 +4050,19 @@ class Arpeggiator(BasicEditor):
                                    f"arp={arp_used} seq={seq_used} presets", "DATA")
                     self.update_status(f"Pool: {pool_used}/{pool_max} notes ({pool_pct}% used)")
 
-                    # Store used count and update visible tabs
-                    if self.is_step_sequencer:
-                        self._user_presets_used = seq_used
-                    else:
-                        self._user_presets_used = arp_used
+                    # Tabs are shown up to the highest used slot. The count
+                    # alone is not enough: a preset in slot 5 with 1-4 empty
+                    # counts as one. Newer keyboards send "highest used slot
+                    # + 1" in data[17] (arp) / data[18] (seq); older ones leave
+                    # those bytes 0, and the slots are looked up instead.
+                    used = seq_used if self.is_step_sequencer else arp_used
+                    at = 18 if self.is_step_sequencer else 17
+                    highest = data[at] if len(data) > at else 0
+                    if used == 0:
+                        highest = 0
+                    elif highest < used:
+                        highest = self._find_highest_used_slot(used)
+                    self._user_presets_used = highest
                     self._update_visible_preset_tabs()
 
                     # Update persistent memory label
@@ -3741,11 +4070,11 @@ class Arpeggiator(BasicEditor):
                     if hasattr(self, 'lbl_memory'):
                         self.lbl_memory.setText(mem_text)
                         if pool_pct >= 90:
-                            self.lbl_memory.setStyleSheet("QLabel { color: red; padding: 5px; }")
+                            self.lbl_memory.setStyleSheet("QLabel { color: red; font-size: 8pt; }")
                         elif pool_pct >= 75:
-                            self.lbl_memory.setStyleSheet("QLabel { color: orange; padding: 5px; }")
+                            self.lbl_memory.setStyleSheet("QLabel { color: orange; font-size: 8pt; }")
                         else:
-                            self.lbl_memory.setStyleSheet("padding: 5px;")
+                            self.lbl_memory.setStyleSheet("font-size: 8pt;")
 
             elif cmd == self.ARP_CMD_GET_PRESET:
                 # Parse preset data (new protocol without name field)
@@ -3805,6 +4134,56 @@ class Arpeggiator(BasicEditor):
             self.debug_log(f"HID RX ERROR: {cmd_name} returned status 0x{status:02X}: {error_msg}", "ERROR")
             self.update_status(error_msg, error=True)
 
+    def _user_preset_start(self):
+        """Id of the first user preset (the ones below are factory presets)"""
+        return 116 if self.is_step_sequencer else 119
+
+    def _find_highest_used_slot(self, used):
+        """Highest used user slot + 1, for a keyboard that reports only how
+        many slots are used. Asks for the slots in order until `used` of them
+        were found (an empty one answers at once, without data), so presets
+        kept in the first slots cost one request each. The answers are not
+        applied to the editor; the request does put the preset in the
+        keyboard's edit buffer, which every load and save here fills again."""
+        if getattr(self, '_slots_found', None) is not None and self._slots_found[0] == used:
+            return self._slots_found[1]      # one save changes one slot: same count, same slots
+        start = self._user_preset_start()
+        selector = 2 if self.is_step_sequencer else 1
+        found = 0
+        highest = 0
+        for slot in range(len(self.entry_widgets)):
+            if found >= used:
+                break
+            response = self.send_hid_command(self.ARP_CMD_GET_PRESET, [start + slot, selector],
+                                             return_response=True)
+            if response is None:
+                return max(highest, used)    # no answer: show at least as many as are used
+            if len(response) > 6 and response[4] == 0 and response[6] > 0:
+                found += 1
+                highest = slot + 1
+        highest = max(highest, used)
+        self._slots_found = (used, highest)
+        return highest
+
+    def _show_empty_preset(self, preset_id):
+        """Show a user slot that has nothing stored as an empty pattern"""
+        self.preset_data['note_count'] = 0
+        self.preset_data['steps'] = []
+        self.preset_data['pattern_length_16ths'] = 16 if self.is_step_sequencer else 8
+        self.preset_data['gate_length_percent'] = 80
+        self.preset_data['timing_mode'] = 0
+        self.preset_data['note_value'] = 2
+        self.preset_data['mode'] = 0
+        self.apply_preset_data()
+        # An empty slot has the default play mode, not the last preset's
+        if not self.is_step_sequencer and hasattr(self, 'combo_mode'):
+            idx = self.combo_mode.findData(0)
+            if idx >= 0:
+                self.combo_mode.blockSignals(True)
+                self.combo_mode.setCurrentIndex(idx)
+                self.combo_mode.blockSignals(False)
+        self.update_status(f"Preset {preset_id} is empty")
+
     def load_preset(self):
         """Load preset from device via HID"""
         if hasattr(self, 'debug_console'):
@@ -3816,12 +4195,26 @@ class Arpeggiator(BasicEditor):
 
         # params[1] = explicit type selector (1=arp, 2=seq): arp/seq preset ID
         # ranges overlap, so the firmware cannot infer the pool from the ID alone
-        if self.send_hid_command(self.ARP_CMD_GET_PRESET, [preset_id, 2 if self.is_step_sequencer else 1]):
-            # Response was processed in _process_hid_response which calls apply_preset_data
+        response = self.send_hid_command(self.ARP_CMD_GET_PRESET,
+                                         [preset_id, 2 if self.is_step_sequencer else 1],
+                                         return_response=True)
+        status = response[4] if response is not None and len(response) > 4 else 0xFF
+        if response is not None and status == 1 and preset_id >= self._user_preset_start():
+            # The keyboard answers "could not load" for a user slot with
+            # nothing in it. That is an empty preset, not a fault.
+            self.debug_log(f"LOAD: preset {preset_id} is an empty slot", "INFO")
+            self._show_empty_preset(preset_id)
+            if hasattr(self, 'debug_console'):
+                self.debug_console.mark_operation_end(success=True)
+        elif response is not None and status == 0:
+            # _process_hid_response reads the notes, calls apply_preset_data
             # and sets status to "Loaded preset X"
+            self._process_hid_response(response)
             if hasattr(self, 'debug_console'):
                 self.debug_console.mark_operation_end(success=True)
         else:
+            if response is not None:
+                self._process_hid_response(response)   # logs the keyboard's error status
             self.update_status(f"Error: Failed to load preset {preset_id}", error=True)
             if hasattr(self, 'debug_console'):
                 self.debug_console.mark_operation_end(success=False)
@@ -3929,32 +4322,47 @@ class Arpeggiator(BasicEditor):
 
         self.debug_log(f"SAVE Step 1/3: Sending metadata via SET_PRESET", "INFO")
 
-        # Step 1: Send preset metadata
-        if self.send_hid_command(self.ARP_CMD_SET_PRESET, params):
-            self.update_status(f"Saving preset {self.current_preset_id} (metadata sent)...")
+        # Step 1: Send preset metadata, with a note count of 0. The keyboard
+        # checks the notes it already holds for this preset against the length
+        # sent here, so the real count before the new notes made it refuse a
+        # pattern that had been shortened (its old notes lie past the new end).
+        # With no notes counted there is nothing to check; the real count
+        # follows the notes (see _save_preset_send_notes).
+        preset_id = self.current_preset_id
+        first_params = list(params)
+        first_params[2] = 0
+        if self.send_hid_command(self.ARP_CMD_SET_PRESET, first_params):
+            self.update_status(f"Saving preset {preset_id} (metadata sent)...")
 
             # Step 2: Send note data in chunks (after a short delay)
             if firmware_note_count > 0:
                 self.debug_log(f"SAVE Step 2/3: Scheduling note send ({firmware_note_count} notes, 50ms delay)", "INFO")
                 QTimer.singleShot(50, lambda: self._save_preset_send_notes(
-                    self.current_preset_id, firmware_notes))
+                    preset_id, firmware_notes, params))
             else:
                 self.debug_log(f"SAVE Step 2/3: No notes to send, skipping to EEPROM write", "INFO")
                 # No notes to send, go straight to EEPROM save
-                QTimer.singleShot(50, lambda: self._save_preset_finalize(
-                    self.current_preset_id))
+                QTimer.singleShot(50, lambda: self._save_preset_finalize(preset_id))
         else:
             self.debug_log(f"SAVE Step 1/3: FAILED - SET_PRESET command failed", "ERROR")
             self.update_status(f"Error: Failed to save preset {self.current_preset_id}", error=True)
             if hasattr(self, 'debug_console'):
                 self.debug_console.mark_operation_end(success=False)
 
-    def _save_preset_send_notes(self, preset_id, notes):
-        """Helper: Send note data after metadata (step 2 of save)"""
+    def _save_preset_send_notes(self, preset_id, notes, params=None):
+        """Helper: Send note data after metadata (step 2 of save), then the
+        metadata again (`params`) with the real note count"""
         self.debug_log(f"SAVE Step 2/3: Sending {len(notes)} notes for preset {preset_id}", "INFO")
         self.update_status(f"Saving preset {preset_id} (sending {len(notes)} notes)...")
 
-        if self.send_notes_chunked(preset_id, notes):
+        sent = self.send_notes_chunked(preset_id, notes)
+        if sent and params is not None:
+            # The notes are in place: now the keyboard can be told how many
+            # there are (it checks these new notes against the length).
+            sent = self.send_hid_command(self.ARP_CMD_SET_PRESET, params)
+            if not sent:
+                self.debug_log("SAVE Step 2/3: FAILED - keyboard refused the note count", "ERROR")
+        if sent:
             self.debug_log(f"SAVE Step 2/3: Notes sent OK, scheduling EEPROM write (100ms delay)", "INFO")
             # Step 3: Save to EEPROM (after notes are sent)
             QTimer.singleShot(100, lambda: self._save_preset_finalize(preset_id))
@@ -3985,15 +4393,13 @@ class Arpeggiator(BasicEditor):
     def update_status(self, message, error=False):
         """Update status label and debug console"""
         logger.info(message)
-        self.lbl_status.setText(message)
         # Use theme-based colors for status
-        palette_upd = self.lbl_status.palette()
         if error:
             error_color = QColor.fromHsv(0, 200, 200)  # Red hue
-            self.lbl_status.setStyleSheet(f"color: {error_color.name()}; padding: 5px;")
+            self.lbl_status.setStyleSheet(f"color: {error_color.name()}; font-size: 8pt;")
         else:
-            info_color = palette_upd.color(QPalette.Highlight)
-            self.lbl_status.setStyleSheet(f"color: {info_color.name()}; padding: 5px;")
+            self.lbl_status.setStyleSheet("color: palette(highlight); font-size: 8pt;")
+        self.lbl_status.setText(message)
 
         # Also log to debug console
         if hasattr(self, 'debug_console'):
@@ -4018,6 +4424,7 @@ class Arpeggiator(BasicEditor):
             self.update_status("Arpeggiator ready")
             # Reset manual expansion on device change
             self._manually_expanded_count = 0
+            self._slots_found = None   # look the used slots up again on this keyboard
             # Setup widget references for the currently selected preset tab
             # This must happen before load_preset() so that step_layout, basic_grid,
             # and current_preset_id are properly initialized
@@ -4094,137 +4501,10 @@ class StepSequencer(Arpeggiator):
         self.preset_tabs.currentChanged.connect(self.on_preset_tab_changed)
         main_layout.addWidget(self.preset_tabs, 1)
 
-        # === Bottom Section: Parameters and Actions ===
-        bottom_layout = QHBoxLayout()
-        bottom_layout.addStretch(1)
-
-        # Left Container: Preset Parameters
-        params_group = QGroupBox()
-        params_group.setMaximumWidth(500)
-        params_layout = QGridLayout()
-
-        # Pattern Rate
-        lbl_pattern_rate = QLabel("Pattern Rate:")
-        self.combo_pattern_rate = ArrowComboBox()
-        self.combo_pattern_rate.setMinimumWidth(150)
-        self.combo_pattern_rate.setMaximumHeight(30)
-        self.combo_pattern_rate.setEditable(True)
-        self.combo_pattern_rate.lineEdit().setReadOnly(True)
-        self.combo_pattern_rate.lineEdit().setAlignment(Qt.AlignCenter)
-        self.combo_pattern_rate.addItem("1/4", 0)
-        self.combo_pattern_rate.addItem("1/4T", 1)
-        self.combo_pattern_rate.addItem("1/4.", 2)
-        self.combo_pattern_rate.addItem("1/8", 3)
-        self.combo_pattern_rate.addItem("1/8T", 4)
-        self.combo_pattern_rate.addItem("1/8.", 5)
-        self.combo_pattern_rate.addItem("1/16", 6)
-        self.combo_pattern_rate.addItem("1/16T", 7)
-        self.combo_pattern_rate.addItem("1/16.", 8)
-        self.combo_pattern_rate.setCurrentIndex(6)
-        self.combo_pattern_rate.setToolTip("Note subdivision and timing mode (T=triplet, .=dotted)")
-        self.combo_pattern_rate.currentIndexChanged.connect(self.on_pattern_rate_changed)
-        params_layout.addWidget(lbl_pattern_rate, 0, 0)
-        params_layout.addWidget(self.combo_pattern_rate, 0, 1)
-
-        # Number of steps
-        lbl_num_steps = QLabel("Number of Steps:")
-        self.spin_num_steps = QSpinBox()
-        self.spin_num_steps.setRange(1, 128)
-        self.spin_num_steps.setValue(16)  # Default 16 for step sequencer
-        self.spin_num_steps.setButtonSymbols(QSpinBox.UpDownArrows)
-        self.spin_num_steps.setToolTip("Number of steps in the pattern")
-        self.spin_num_steps.valueChanged.connect(self.on_num_steps_changed)
-        params_layout.addWidget(lbl_num_steps, 1, 0)
-        params_layout.addWidget(self.spin_num_steps, 1, 1)
-
-        # Pattern rhythm
-        lbl_rhythm = QLabel("Pattern Rhythm:")
-        self.lbl_pattern_length = QLabel("16/16")
-        self.lbl_pattern_length.setToolTip("Total pattern rhythm (auto-calculated from steps/rate)")
-        params_layout.addWidget(lbl_rhythm, 2, 0)
-        params_layout.addWidget(self.lbl_pattern_length, 2, 1)
-
-        # Gate length
-        lbl_gate = QLabel("Gate Length:")
-        self.spin_gate = QSpinBox()
-        self.spin_gate.setRange(10, 100)
-        self.spin_gate.setValue(80)
-        self.spin_gate.setSuffix("%")
-        self.spin_gate.setButtonSymbols(QSpinBox.UpDownArrows)
-        self.spin_gate.setToolTip("Note gate length percentage")
-        params_layout.addWidget(lbl_gate, 3, 0)
-        params_layout.addWidget(self.spin_gate, 3, 1)
-
-        # Default velocity
-        lbl_default_velocity = QLabel("Default Velocity:")
-        self.spin_default_velocity = QSpinBox()
-        self.spin_default_velocity.setRange(1, 127)
-        self.spin_default_velocity.setValue(127)
-        self.spin_default_velocity.setButtonSymbols(QSpinBox.UpDownArrows)
-        self.spin_default_velocity.setToolTip("Default velocity for new notes in basic grid")
-        self.spin_default_velocity.valueChanged.connect(self.on_default_velocity_changed)
-        params_layout.addWidget(lbl_default_velocity, 4, 0)
-        params_layout.addWidget(self.spin_default_velocity, 4, 1)
-
-        params_group.setLayout(params_layout)
-        bottom_layout.addWidget(params_group)
-
-        # Right Container: Actions
-        actions_group = QGroupBox()
-        actions_group.setMaximumWidth(500)
-        actions_layout = QGridLayout()
-
-        button_style = "QPushButton { min-height: 30px; max-height: 30px; border-radius: 5px; }"
-
-        self.btn_load = QPushButton("Load from Device")
-        self.btn_load.setStyleSheet(button_style)
-        self.btn_load.clicked.connect(self.load_preset)
-        self.btn_save = QPushButton("Save to Device")
-        self.btn_save.setStyleSheet(button_style)
-        self.btn_save.clicked.connect(self.save_preset)
-
-        actions_layout.addWidget(self.btn_load, 0, 0, 1, 2)
-        actions_layout.addWidget(self.btn_save, 1, 0, 1, 2)
-
-        # Copy and Paste buttons
-        copy_paste_layout = QHBoxLayout()
-        copy_paste_layout.setSpacing(5)
-
-        self.btn_copy = QPushButton("Copy Preset")
-        self.btn_copy.setStyleSheet(button_style)
-        self.btn_copy.clicked.connect(self.copy_preset_to_clipboard)
-        self.btn_paste = QPushButton("Paste Preset")
-        self.btn_paste.setStyleSheet(button_style)
-        self.btn_paste.clicked.connect(self.paste_preset_from_clipboard)
-
-        copy_paste_layout.addWidget(self.btn_copy)
-        copy_paste_layout.addWidget(self.btn_paste)
-        actions_layout.addLayout(copy_paste_layout, 2, 0, 1, 2)
-
-        # Reset All Steps button
-        self.btn_reset_all = QPushButton("Reset All Steps")
-        self.btn_reset_all.setStyleSheet(button_style)
-        self.btn_reset_all.clicked.connect(self.reset_all_steps)
-        actions_layout.addWidget(self.btn_reset_all, 3, 0, 1, 2)
-
-        actions_group.setLayout(actions_layout)
-        bottom_layout.addWidget(actions_group)
-
-        bottom_layout.addStretch(1)
-        main_layout.addLayout(bottom_layout)
-
-        # Status and memory layout
-        status_row = QHBoxLayout()
-        self.lbl_status = QLabel("Ready. Select a preset tab to begin.")
-        palette_status = self.lbl_status.palette()
-        info_color = palette_status.color(QPalette.Highlight)
-        self.lbl_status.setStyleSheet(f"color: {info_color.name()}; padding: 5px;")
-        status_row.addWidget(self.lbl_status)
-        status_row.addStretch()
-        self.lbl_memory = QLabel("")
-        self.lbl_memory.setStyleSheet("padding: 5px;")
-        status_row.addWidget(self.lbl_memory)
-        main_layout.addLayout(status_row)
+        # The action toolbar and the settings rail (one of each, shown inside
+        # whichever preset is selected). 16 steps by default.
+        self._build_toolbar(default_steps=16)
+        self._build_rail(with_mode=False)
 
         # Debug console
         self.debug_console = DebugConsole("Step Sequencer Debug Console")
@@ -4244,8 +4524,8 @@ class StepSequencer(Arpeggiator):
         # Main container widget
         container = QWidget()
         layout = QVBoxLayout()
-        layout.setSpacing(12)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(8)
+        layout.setContentsMargins(16, 12, 16, 12)
 
         # Header with title and rename button
         header_layout = QHBoxLayout()
@@ -4260,16 +4540,15 @@ class StepSequencer(Arpeggiator):
         btn_rename.setStyleSheet("QPushButton { font-size: 8pt; border-radius: 3px; padding: 2px 6px; }")
         btn_rename.clicked.connect(lambda checked, idx=index, lbl=title_label: self._on_rename_seq(idx, lbl))
         header_layout.addWidget(btn_rename)
-
-        header_layout.addStretch()
-        layout.addLayout(header_layout)
+        header_layout.addSpacing(12)
 
         # Description
         desc = QLabel("Configure step sequence with absolute MIDI notes.\n"
                       "Click cells to toggle notes on/off. Right-click for velocity settings.")
         desc.setWordWrap(True)
         desc.setStyleSheet("color: palette(dark); font-size: 9pt;")
-        layout.addWidget(desc)
+        header_layout.addWidget(desc, 1)
+        layout.addLayout(header_layout)
 
         # Top tabs for Basic/Advanced
         side_tabs = QTabWidget()
@@ -4300,11 +4579,14 @@ class StepSequencer(Arpeggiator):
         advanced_tab.setLayout(advanced_layout)
         side_tabs.addTab(advanced_tab, "Advanced")
 
-        layout.addWidget(side_tabs, 1)
+        # Toolbar row, then the rail on the left of the grid
+        toolbar_slot, rail_slot = self._build_entry_body(layout, side_tabs, basic_grid)
         container.setLayout(layout)
 
         return {
             'widget': container,
+            'toolbar_slot': toolbar_slot,
+            'rail_slot': rail_slot,
             'title_label': title_label,
             'basic_grid': basic_grid,
             'side_tabs': side_tabs,
@@ -4315,68 +4597,9 @@ class StepSequencer(Arpeggiator):
             'step_widgets': []
         }
 
-    def _update_visible_preset_tabs(self):
-        """Update which preset tabs are visible - uses FEATURE_SEQ names"""
-        max_tabs = len(self.entry_widgets)
-        base_visible = max(1, self._user_presets_used)
-        self._visible_tab_count = min(max_tabs, base_visible + self._manually_expanded_count)
-
-        # Block signals to avoid triggering on_preset_tab_changed during rebuild
-        self.preset_tabs.blockSignals(True)
-
-        # Remove all tabs
-        while self.preset_tabs.count() > 0:
-            self.preset_tabs.removeTab(0)
-
-        # Add visible preset tabs with names from feature manager
-        from protocol.feature_names import get_feature_name_manager, FEATURE_SEQ
-        mgr = get_feature_name_manager()
-        for x in range(self._visible_tab_count):
-            self.preset_tabs.addTab(self.entry_widgets[x]['widget'], mgr.get_name(FEATURE_SEQ, x))
-
-        # Add "+" tab if not all tabs are visible
-        if self._visible_tab_count < max_tabs:
-            plus_widget = QWidget()
-            self.preset_tabs.addTab(plus_widget, "+")
-
-        self.preset_tabs.blockSignals(False)
-
-    def on_preset_tab_changed(self, index):
-        """Handle preset tab change - including '+' tab expansion"""
-        # Check if "+" tab was clicked
-        if self._visible_tab_count < len(self.entry_widgets) and index == self._visible_tab_count:
-            self._manually_expanded_count += 1
-            self._update_visible_preset_tabs()
-            self.preset_tabs.setCurrentIndex(self._visible_tab_count - 1)
-            return
-
-        if index < 0 or index >= len(self.entry_widgets):
-            return
-
-        # Disconnect old signals
-        if hasattr(self, 'basic_grid') and self.basic_grid:
-            try:
-                self.basic_grid.dataChanged.disconnect(self.on_basic_grid_changed)
-            except:
-                pass
-        if hasattr(self, 'tabs') and self.tabs:
-            try:
-                self.tabs.currentChanged.disconnect(self.on_tab_changed)
-            except:
-                pass
-
-        # Setup new preset entry
-        self._setup_current_preset_entry()
-
-        # Rebuild steps for this entry
-        self.rebuild_steps()
-
-        # Auto-load preset from device
-        if self.valid():
-            self.load_preset()
-        else:
-            from protocol.feature_names import get_feature_name_manager, FEATURE_SEQ
-            self.update_status(f"{get_feature_name_manager().get_name(FEATURE_SEQ, index)} selected")
+    # The preset tabs (which are shown, switching between them) are the
+    # arpeggiator's: _update_visible_preset_tabs and on_preset_tab_changed take
+    # the names from _name_feature().
 
     def _on_rename_seq(self, index, title_label):
         """Open rename dialog for a seq preset"""

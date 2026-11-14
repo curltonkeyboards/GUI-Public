@@ -9,6 +9,7 @@ This tab provides:
 4. Min/max travel time calibration for velocity scaling
 """
 
+import ui_mode
 from PyQt5.QtWidgets import (QVBoxLayout, QPushButton, QWidget, QHBoxLayout, QLabel,
                            QSizePolicy, QGroupBox, QGridLayout, QComboBox, QCheckBox,
                            QFrame, QScrollArea, QSlider, QSpinBox, QButtonGroup,
@@ -509,6 +510,7 @@ class VelocityTab(BasicEditor):
         # Hide the preset selector widget for zone curve editors
         controls['curve_editor'].preset_selector_widget.setVisible(False)
         left_col.addWidget(controls['curve_editor'])
+        ui_mode.advanced_only(controls['curve_editor'])
         left_col.addStretch()
         main_layout.addLayout(left_col)
 
@@ -540,6 +542,20 @@ class VelocityTab(BasicEditor):
         controls['velocity_range_slider'].setProperty('zone', zone_name)
         vel_container.addWidget(controls['velocity_range_slider'])
         layout.addLayout(vel_container)
+
+        # Everything below the velocity range is for Advanced mode: from here
+        # on `layout` is the layout of a part that Basic mode hides.
+        advanced_part = QWidget()
+        outer_layout = layout
+        layout = QVBoxLayout()
+        layout.setSpacing(4)
+        layout.setContentsMargins(0, 0, 0, 0)
+        advanced_part.setLayout(layout)
+        outer_layout.addWidget(advanced_part, 1)
+        basic_filler = QWidget()
+        outer_layout.addWidget(basic_filler, 1)
+        ui_mode.advanced_only(advanced_part)
+        ui_mode.basic_only(basic_filler)
 
         # Separator
         line = QFrame()
@@ -1522,6 +1538,10 @@ class VelocityTab(BasicEditor):
                                    "its settings into the editor (press Save to persist)")
         self.import_btn.clicked.connect(self.on_import_articulation)
         buttons_layout.addWidget(self.import_btn)
+        # Basic mode: pick a preset, set its velocity range, Save
+        ui_mode.advanced_only(self.new_preset_btn, self.save_as_btn, self.export_btn, self.import_btn)
+        ui_mode.limit_tabs(self.preset_settings_tabs, {tr("VelocityTab", "Preset Settings")})
+        ui_mode.on_change(self.update_atcc_rows_enabled)
 
         # Inside the Preset Settings tab (NOT the group layout) so the Channel
         # Articulations tab doesn't inherit the preset New/Save/Save As/Export
@@ -2191,6 +2211,10 @@ class VelocityTab(BasicEditor):
                 item.setForeground(self.preset_list_widget.palette().text().color())
             else:
                 item.setForeground(Qt.gray)
+            # Basic mode leaves a locked band out of the list altogether
+            item.setHidden(ui_mode.pages_simplified() and not enabled)
+        self.atcc_cc_separator.setHidden(ui_mode.pages_simplified() and not self.atcc_cc_enabled)
+        self.atcc_at_separator.setHidden(ui_mode.pages_simplified() and not self.atcc_at_enabled)
 
 
     def _show_atcc_locked_page(self, is_cc):

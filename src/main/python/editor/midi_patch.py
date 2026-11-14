@@ -234,6 +234,12 @@ class MIDIPatchBay(BasicEditor):
             # Create new MIDI input for this connection
             midi_in = rtmidi.MidiIn()
             midi_in.open_port(input_port_idx)
+            # rtmidi drops MIDI clock, active sensing and SysEx unless told
+            # otherwise. Clock is one of the "System" messages this page
+            # offers to pass on (start / stop / continue already arrive), so
+            # let it through; active sensing is only noise for the keyboard,
+            # and SysEx is never forwarded (see create_callback).
+            midi_in.ignore_types(sysex=True, timing=False, active_sense=True)
 
             # Create MIDI output for MIDIswitch
             midi_out = rtmidi.MidiOut()
@@ -259,6 +265,7 @@ class MIDIPatchBay(BasicEditor):
                 'input': midi_in,
                 'output': midi_out,
                 'name': input_port_name,
+                'target': self.midiswitch_output[1],
                 'callback': callback,
                 'filters': filters
             }
@@ -394,14 +401,17 @@ class MIDIPatchBay(BasicEditor):
             return
 
         try:
-            conn = self.active_connections[input_port_idx]
+            # Taken off the list whatever happens below: a port that fails to
+            # close (its device already gone) must not leave the connection
+            # listed with no way to remove it.
+            conn = self.active_connections.pop(input_port_idx)
 
             # Close MIDI ports
-            conn['input'].close_port()
-            conn['output'].close_port()
-
-            # Remove from active connections
-            del self.active_connections[input_port_idx]
+            for port in (conn['input'], conn['output']):
+                try:
+                    port.close_port()
+                except Exception as e:
+                    print(f"Failed to close a MIDI port: {e}")
 
             # Hide filter panel if this was the selected connection
             if self.selected_connection_id == input_port_idx:
@@ -428,8 +438,12 @@ class MIDIPatchBay(BasicEditor):
         """Update the active connections list widget"""
         self.connections_list.clear()
 
+        # (the keyboard's port is None once the keyboard has been unplugged;
+        # the connections made to it are still listed so they can be removed)
+        target = self.midiswitch_output[1] if self.midiswitch_output else \
+            tr("MIDIPatchBay", "MIDIswitch (not connected)")
         for port_idx, conn in self.active_connections.items():
-            item_text = f"{conn['name']} → {self.midiswitch_output[1]}"
+            item_text = f"{conn['name']} → {conn.get('target') or target}"
             item = QListWidgetItem(item_text)
             item.setData(QtCore.Qt.UserRole, port_idx)
             self.connections_list.addItem(item)

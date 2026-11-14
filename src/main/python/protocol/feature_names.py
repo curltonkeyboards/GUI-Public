@@ -40,8 +40,11 @@ DEFAULT_FORMATS = {
     FEATURE_LAYER: "Layer {}",
 }
 
-# Maximum name length (must match firmware CUSTOM_NAME_LENGTH)
-MAX_NAME_LENGTH = 16
+# The name field the keyboard stores and the HID packet carries (firmware
+# CUSTOM_NAME_LENGTH: 15 characters and the terminating zero), and so the most
+# characters a name can have (what the rename prompts say and cut to).
+NAME_FIELD_BYTES = 16
+MAX_NAME_LENGTH = NAME_FIELD_BYTES - 1
 
 # HID command ID (must match firmware custom_names.h)
 # Single command 0xCD with sub-commands in payload[0] (data[4])
@@ -123,7 +126,9 @@ class FeatureNameManager:
         names = self._names.get(feature_type, {})
         custom = names.get(str(index))
         if custom:
-            return custom
+            # (a name saved by an older version could be a letter longer than
+            # the keyboard keeps)
+            return custom[:MAX_NAME_LENGTH]
         fmt = DEFAULT_FORMATS.get(feature_type, "Item {}")
         # Arp/Seq/Delay and Layer use 1-based display index (layers are 0-11
         # internally but shown to the user as 1-12)
@@ -139,7 +144,9 @@ class FeatureNameManager:
         if feature_type not in self._names:
             self._names[feature_type] = {}
 
-        name = name.strip()[:MAX_NAME_LENGTH]
+        # the keyboard keeps MAX_NAME_LENGTH characters (see _hid_set_name):
+        # keep the same here, so the app never shows a letter the keyboard dropped
+        name = name.strip()[:MAX_NAME_LENGTH].strip()
         # Layer names are always uppercase (matches OLED display)
         if feature_type == FEATURE_LAYER:
             name = name.upper()
@@ -202,8 +209,8 @@ class FeatureNameManager:
             return False
 
         # Build payload: [sub_cmd, cat, index, name_bytes[16]]
-        name_bytes = (name or "").encode("ascii", errors="replace")[:MAX_NAME_LENGTH - 1]
-        payload = bytearray(3 + MAX_NAME_LENGTH)
+        name_bytes = (name or "").encode("ascii", errors="replace")[:MAX_NAME_LENGTH]
+        payload = bytearray(3 + NAME_FIELD_BYTES)
         payload[0] = CN_SUB_SET_NAME
         payload[1] = cat_id
         payload[2] = index & 0xFF

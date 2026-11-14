@@ -8,6 +8,8 @@ Each delay slot has configurable rate, feedback, repeats, channel, and transpose
 
 import struct
 
+from util import hid_lock_for
+
 # HID Command Codes (0xD6-0xD8)
 HID_CMD_DELAY_GET_SLOT = 0xD6     # Get single slot config
 HID_CMD_DELAY_SET_SLOT = 0xD7     # Set single slot config (0xFF = save to EEPROM)
@@ -146,8 +148,9 @@ class ProtocolDelay:
             if not response or len(response) < (5 + DELAY_CONFIG_SIZE):
                 return None
 
-            # Status at index 4 (0x01 = success)
-            if response[4] != 0x01:
+            # The answer must be to this command (not a late answer to another
+            # one), with status 0x01 = success at index 4
+            if response[3] != HID_CMD_DELAY_GET_SLOT or response[4] != 0x01:
                 return None
 
             # Config data at index 5
@@ -173,7 +176,8 @@ class ProtocolDelay:
             packet = self.keyboard._create_hid_packet(HID_CMD_DELAY_SET_SLOT, 0, bytes(data))
             response = self.keyboard.usb_send(self.keyboard.dev, packet, retries=3)
 
-            success = response and len(response) > 4 and response[4] == 0x01
+            success = bool(response and len(response) > 4
+                           and response[3] == HID_CMD_DELAY_SET_SLOT and response[4] == 0x01)
 
             if success:
                 self.slots_cache[slot_num] = slot
@@ -199,25 +203,61 @@ class ProtocolDelay:
             return False
 
     def get_bulk(self, start, count):
-        """Get multiple slot configurations (chunked)"""
+        """Get `count` slot configurations from `start` with one request.
+
+        The keyboard answers with one report per slot (status [4], slot [5],
+        factory flag [6], settings [7..22]). The request is sent once; the
+        first report comes back from usb_send and the rest are read from the
+        device, all under the device's transaction lock so no other reader
+        takes them. Returns [(slot, DelaySlot), ...] for the slots that
+        arrived: the caller reads any missing one on its own."""
+        dev = self.keyboard.dev
+        slots = []
+        seen = set()
+
+        def take(report):
+            # The custom family (7D 00 4D <cmd>) has no command alias: its
+            # reports carry 0xD8 itself, read raw or through usb_send.
+            if (not report or len(report) < (7 + DELAY_CONFIG_SIZE)
+                    or bytes(report[:3]) != b"\x7d\x00\x4d"
+                    or report[3] != HID_CMD_DELAY_GET_BULK or report[4] != 0x01):
+                return
+            slot_idx = report[5]
+            if slot_idx in seen or not start <= slot_idx < start + count:
+                return
+            seen.add(slot_idx)
+            slot = DelaySlot.from_bytes(report[7:7 + DELAY_CONFIG_SIZE])
+            self.slots_cache[slot_idx] = slot
+            slots.append((slot_idx, slot))
+
         try:
-            data = bytearray([start, count])
-            packet = self.keyboard._create_hid_packet(HID_CMD_DELAY_GET_BULK, 0, bytes(data))
-
-            slots = []
-            for i in range(count):
-                response = self.keyboard.usb_send(self.keyboard.dev, packet if i == 0 else None, retries=3)
-                if not response or len(response) < (7 + DELAY_CONFIG_SIZE):
-                    break
-
-                slot_idx = response[5]
-                slot_data = response[7:7 + DELAY_CONFIG_SIZE]
-                slot = DelaySlot.from_bytes(slot_data)
-                self.slots_cache[slot_idx] = slot
-                slots.append((slot_idx, slot))
-
+            packet = self.keyboard._create_hid_packet(HID_CMD_DELAY_GET_BULK, 0, bytes([start, count]))
+            with hid_lock_for(dev):
+                # Sent once (retries=1): sending it again would make the
+                # keyboard answer every slot a second time.
+                take(self.keyboard.usb_send(dev, packet, retries=1))
+                if not hasattr(dev, 'read'):
+                    return slots
+                # The remaining reports follow at once. Reports of other
+                # commands in between are skipped (a bounded number of them);
+                # the read stops when all slots are in or nothing more comes.
+                other = 0
+                while len(slots) < count and other < 8:
+                    report = bytes(dev.read(32, timeout_ms=150))
+                    if not report:
+                        break
+                    before = len(slots)
+                    take(report)
+                    if len(slots) == before:
+                        other += 1
+                # Whatever is still queued is left over from this answer (no
+                # other request is out while the lock is held): read it away
+                # so the next command does not take it for its answer.
+                for _ in range(count + 8):
+                    if not dev.read(32, timeout_ms=5):
+                        break
             return slots
 
         except Exception as e:
             print(f"Delay: Error getting bulk slots: {e}")
-            return []
+            return slots
