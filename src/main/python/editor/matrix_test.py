@@ -1575,6 +1575,78 @@ class TickCombo(QCheckBox):
 
 class MIDIswitchSettingsConfigurator(BasicEditor):
 
+    # LCD visualisers, in the firmware's numbering (lcd_viz.h: LCD_VIZ_* - 1;
+    # saved in the keyboard settings, so never renumbered)...
+    VIZ_NAMES = ["Ripple 1", "Ripple 2", "Ripple 3", "Circles 1", "Circles 2", "Circles 3", "Piano Roll", "Note Bars", "Tunnel", "Starfield",
+                 "Rain", "Key Map", "Chord Wheel", "Heartbeat", "Fireworks", "Mirror Bars", "Random Loop", "Random BPM", "Roll Down", "Code Rain",
+                 "Snow", "Lightning", "Stack", "Curtains", "Roll Up", "Bubbles", "Fountain", "Flames", "Rockets", "LED Meter",
+                 "Tunnel 2", "Tunnel 3", "Helix", "Helix V", "Wave", "Orbits", "Sunburst", "Bounce", "Meteors", "Leaves",
+                 "Hail", "Waterfall", "Confetti", "Plinko", "Sand", "Stripes", "Icicles", "Note Fall", "Balloons", "Embers",
+                 "Smoke Rings", "Vines", "Skyline", "Geyser", "Sonar", "Lava", "Arrows", "Hills", "Kaleidoscope", "Flowers",
+                 "Twinkle", "Pixels", "Spiral", "Vortex", "Pulse", "Radar", "Mandala", "Lasers", "Hexagons", "Spinners",
+                 "Splash", "Snowflakes", "Dot to Dot", "Ripple Grid", "Web", "Pinwheel", "Supernova", "Spirograph", "Hex Tunnel", "Tri Tunnel",
+                 "Twist Tunnel", "Oct Tunnel", "Galaxy", "Swirl", "Flow", "Worms", "Life", "Fireflies", "Ring Tunnel", "Zip Lines",
+                 "Ribbons", "Chord Square", "Helix \\", "Helix /", "Rain \\", "Rain /", "Code Rain \\", "Code Rain /", "Mirror V"]
+    # ...and the order they are listed in (lcd_viz_menu_order[]): grouped by kind.
+    VIZ_RANDOMS = (16, 17)                    # Random Loop, Random BPM (their numbers - 1)
+    # Retired visualisers (still in VIZ_NAMES, so the numbers stay put): a saved
+    # one shows as the visualiser in its place, as the firmware does.
+    VIZ_RETIRED = {0: 1, 3: 4, 5: 4, 21: 10, 22: 10, 23: 7, 25: 49, 26: 28, 30: 8, 31: 8, 34: 32, 36: 7, 37: 28, 38: 10, 40: 20, 41: 10, 42: 39, 43: 10, 45: 19, 46: 10, 47: 20, 48: 49, 50: 49, 51: 49, 52: 7, 53: 27, 54: 49, 55: 49, 56: 49, 57: 32, 59: 58, 60: 87, 65: 62, 67: 9, 69: 68, 70: 1, 71: 87, 73: 1, 74: 66, 75: 62, 76: 82, 78: 8, 79: 8, 80: 8, 81: 8, 83: 4, 85: 84}
+    VIZ_MENU_ORDER = ["Ripple 2", "Ripple 3", "Circles 2", "Kaleidoscope", "Pixels", "Hexagons", "Dot to Dot", "Zip Lines", "Ribbons", "Fireflies",
+                      "Flow", "Life", "Tunnel", "Ring Tunnel", "Starfield", "Spiral", "Vortex", "Galaxy", "Spirograph", "Pulse",
+                      "Mandala", "Piano Roll", "Roll Up", "Roll Down", "Note Bars", "Mirror Bars", "Mirror V", "LED Meter", "Flames", "Rain",
+                      "Rain \\", "Rain /", "Code Rain", "Code Rain \\", "Code Rain /", "Snow", "Leaves", "Sand", "Rockets", "Fireworks",
+                      "Embers", "Helix", "Helix V", "Helix \\", "Helix /", "Heartbeat", "Orbits", "Chord Wheel", "Chord Square", "Key Map",
+                      "Random Loop", "Random BPM"]
+
+    @staticmethod
+    def oled_keyboard_unpack(value):
+        """The firmware's oledkeyboard value -> (style, visualiser, colour,
+        minimalist). Low byte: style (0-5 keyboards / guitars, 6 Visualiser);
+        bits 8-15: the visualiser; bit 16 Minimalist; bit 17 Multicolor; bit 18
+        Both (a Random picks theme or multicolour each time). Colour: 0 Theme,
+        1 Multicolor, 2 Both."""
+        value = int(value or 0) & 0xFFFFFFFF
+        if value == 12:                       # pre-5-state "Keyboard 2"
+            value = 1
+        if 7 <= value <= 10:                  # 1.1.46: Ripple 2/3, Piano Roll, Note Bars
+            value = 6 | ([1, 2, 6, 7][value - 7] << 8) | (1 << 17)
+        style = value & 0xFF
+        viz = (value >> 8) & 0xFF
+        if style > 6:
+            style, viz, value = 0, 0, 0
+        if viz >= len(MIDIswitchSettingsConfigurator.VIZ_NAMES):
+            viz = 0
+        viz = MIDIswitchSettingsConfigurator.VIZ_RETIRED.get(viz, viz)
+        colour = 2 if (value >> 18) & 1 else (value >> 17) & 1
+        if colour == 2 and viz not in MIDIswitchSettingsConfigurator.VIZ_RANDOMS:
+            colour = 1                        # Both is for the Randoms
+        return style, viz, colour, (value >> 16) & 1
+
+    def oled_keyboard_value(self):
+        return ((self.oled_keyboard.currentData() or 0)
+                | ((self.viz_kind.currentData() or 0) << 8)
+                | ((self.viz_minimal.currentData() or 0) << 16)
+                | ((1 << 17) if self.viz_color.currentData() == 1 else 0)
+                | ((1 << 18) if self.viz_color.currentData() == 2 else 0))
+
+    def _update_viz_color_items(self, *_):
+        """Both (theme or multicolour, picked at random each time) is offered
+        only while a Random visualiser is chosen."""
+        random_viz = self.viz_kind.currentData() in self.VIZ_RANDOMS
+        both = self.viz_color.findData(2)
+        if random_viz and both < 0:
+            self.viz_color.addItem("Both", 2)
+        elif not random_viz and both >= 0:
+            if self.viz_color.currentData() == 2:
+                self.viz_color.setCurrentIndex(self.viz_color.findData(1))
+            self.viz_color.removeItem(both)
+
+    def _update_viz_rows(self, *_):
+        show = self.oled_keyboard.currentData() == 6
+        for w in getattr(self, "_viz_rows", []):
+            w.setVisible(show)
+
     # Per-function Stop Mode bits — mirror the firmware STOP_MODE_* defines
     # (process_dynamic_macro.h). Bit CLEAR = Mute (default), bit SET = Stop.
     STOP_MODE_LOOP     = 0x01
@@ -2323,8 +2395,9 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "127 = no restriction."
         ), self.random_velocity_modifier)
 
-        # Virtual Instrument (formerly "OLED Keyboard") — selects the LCD
-        # display mode: piano keyboards or guitar-tab views.
+        # Virtual Instrument (formerly "OLED Keyboard") — the LCD's Style:
+        # piano keyboards, guitar-tab views or a visualiser. The firmware keeps
+        # it all in one 32-bit value (see oled_keyboard_value()).
         self.oled_keyboard = _combo(CARD_VALUE_WIDTH, [
             ("Keyboard 1", 0),
             ("Keyboard 2", 1),
@@ -2332,12 +2405,54 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             ("Guitar Low", 2),
             ("Guitar Med", 3),
             ("Guitar High", 4),
+            ("Visualiser", 6),  # firmware 1.1.47+
         ])
         _card_row(advanced_layout, "Virtual instrument", (
             "LCD virtual instrument / display style.\n"
             "Keyboard 1/2/3: piano keyboard at different octaves\n"
-            "Guitar Low/Med/High: guitar tablature views"
+            "Guitar Low/Med/High: guitar tablature views\n"
+            "Visualiser: an animation that reacts to every note and key\n"
+            "press (needs keyboard firmware 1.1.47 or later; 1.1.54 for this list)"
         ), self.oled_keyboard)
+
+        # The Visualiser's settings, shown while Visualiser is chosen.
+        self._viz_rows = []
+
+        def _viz_row(text, tooltip, control):
+            row = advanced_layout.rowCount() if advanced_layout.count() else 0
+            _card_row(advanced_layout, text, tooltip, control)
+            self._viz_rows += [advanced_layout.itemAtPosition(row, 0).widget(), control.width_holder]
+
+        self.viz_kind = _combo(CARD_VALUE_WIDTH, [(name, self.VIZ_NAMES.index(name)) for name in self.VIZ_MENU_ORDER])
+        _viz_row("Visualiser", (
+            "Which visualiser the LCD shows.\n"
+            "Ripple 1/2/3: squares, double squares, blooming blocks\n"
+            "Circles 1/2/3: rings, double rings, blooming discs\n"
+            "Tunnel 2: a rainbow stream; Tunnel 3: frames falling inwards\n"
+            "Piano Roll / Roll Up / Roll Down scroll at the tempo\n"
+            "Rain to Note Fall in the list come down from the top\n"
+            "Bubbles to Hills in the list rise from the bottom\n"
+            "Helix / Helix V: a DNA helix turning at the tempo\n"
+            "Key Map lights the keys you press\n"
+            "Random Loop: a random one, changing each time a loop comes round\n"
+            "Random BPM: a random one, changing every 8 beats"
+        ), self.viz_kind)
+        self.viz_color = _combo(CARD_VALUE_WIDTH, [("Theme", 0), ("Multicolor", 1)])
+        _viz_row("Visualiser color", (
+            "Theme: the visualiser in the LCD theme's colour only.\n"
+            "Multicolor: coloured by note (blooms by how hard you play).\n"
+            "Both (Random Loop / Random BPM only): each time it changes,\n"
+            "the new one is in the theme colour or multicolour, at random."
+        ), self.viz_color)
+        self.viz_kind.currentIndexChanged.connect(self._update_viz_color_items)
+        self.viz_minimal = _combo(CARD_VALUE_WIDTH, [("Off", 0), ("On", 1)])
+        _viz_row("Minimalist", (
+            "On: the visualiser alone, on the whole screen (channel, keysplit,\n"
+            "action bars and the rest are hidden until a menu opens).\n"
+            "Off: the visualiser in the keyboard's place on the main page."
+        ), self.viz_minimal)
+        self.oled_keyboard.currentIndexChanged.connect(self._update_viz_rows)
+        self._update_viz_rows()
 
         # LCD Theme with help — global LCD colour theme. Lives in its own
         # EEPROM region on the keyboard and is synced over a dedicated HID
@@ -3341,7 +3456,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "transpose_number2": self.transpose_number2.currentData(),
             "transpose_number3": self.transpose_number3.currentData(),
             "random_velocity_modifier": self.random_velocity_modifier.currentData(),
-            "oled_keyboard": self.oled_keyboard.currentData(),
+            "oled_keyboard": self.oled_keyboard_value(),
             # Per-function Stop Mode bitmask (rides basic packet byte 20 as
             # 0x80 | mask; replaces the old reserved/overdub byte)
             "stop_mode": self.get_stop_mode_mask(),
@@ -3437,14 +3552,13 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         set_combo_by_data(self.transpose_number2, config.get("transpose_number2"), 0)
         set_combo_by_data(self.transpose_number3, config.get("transpose_number3"), 0)
         set_combo_by_data(self.random_velocity_modifier, config.get("random_velocity_modifier"), 0)
-        # Legacy migration: older firmware stored the "Screenboard 2" mode as 12.
-        # Map any legacy value into the new 5-state enum before populating the combo.
-        _oled_kbd_value = config.get("oled_keyboard", 0)
-        if _oled_kbd_value == 12:
-            _oled_kbd_value = 1
-        elif _oled_kbd_value is None or _oled_kbd_value < 0 or _oled_kbd_value > 5:
-            _oled_kbd_value = 0  # valid modes: 0-5 (5 = Keyboard 3)
-        set_combo_by_data(self.oled_keyboard, _oled_kbd_value, 0)
+        style, viz, multi, minimal = self.oled_keyboard_unpack(config.get("oled_keyboard", 0))
+        set_combo_by_data(self.oled_keyboard, style, 0)
+        set_combo_by_data(self.viz_kind, viz, 0)
+        self._update_viz_color_items()        # Both, if a Random
+        set_combo_by_data(self.viz_color, multi, 0)
+        set_combo_by_data(self.viz_minimal, minimal, 0)
+        self._update_viz_rows()
 
         # Per-function Stop Mode (basic packet byte 20). A GET from real
         # hardware reports "stop_mode_supported" (bit 7 marker present);
