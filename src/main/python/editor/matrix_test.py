@@ -1591,13 +1591,13 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
     VIZ_RANDOMS = (16, 17)                    # Random Loop, Random BPM (their numbers - 1)
     # Retired visualisers (still in VIZ_NAMES, so the numbers stay put): a saved
     # one shows as the visualiser in its place, as the firmware does.
-    VIZ_RETIRED = {0: 1, 3: 4, 5: 4, 21: 10, 22: 10, 23: 7, 25: 49, 26: 28, 30: 8, 31: 8, 34: 32, 36: 7, 37: 28, 38: 10, 40: 20, 41: 10, 42: 39, 43: 10, 45: 19, 46: 10, 47: 20, 48: 49, 50: 49, 51: 49, 52: 7, 53: 27, 54: 49, 55: 49, 56: 49, 57: 32, 59: 58, 60: 87, 65: 62, 67: 9, 69: 68, 70: 1, 71: 87, 73: 1, 74: 66, 75: 62, 76: 82, 78: 8, 79: 8, 80: 8, 81: 8, 83: 4, 85: 84}
+    VIZ_RETIRED = {0: 1, 3: 4, 5: 4, 21: 10, 22: 10, 23: 7, 25: 49, 26: 28, 30: 8, 31: 8, 34: 32, 36: 7, 37: 28, 38: 10, 40: 20, 41: 10, 42: 39, 43: 10, 45: 19, 46: 10, 47: 20, 48: 49, 50: 49, 51: 49, 52: 7, 53: 27, 54: 49, 55: 49, 56: 49, 57: 32, 59: 58, 60: 87, 65: 62, 67: 9, 69: 68, 70: 1, 71: 87, 73: 1, 74: 66, 75: 62, 76: 82, 78: 8, 79: 8, 80: 8, 81: 8, 83: 4, 85: 84, 91: 12}
     VIZ_MENU_ORDER = ["Ripple 2", "Ripple 3", "Circles 2", "Kaleidoscope", "Pixels", "Hexagons", "Dot to Dot", "Zip Lines", "Ribbons", "Fireflies",
                       "Flow", "Life", "Tunnel", "Ring Tunnel", "Starfield", "Spiral", "Vortex", "Galaxy", "Spirograph", "Pulse",
                       "Mandala", "Piano Roll", "Roll Up", "Roll Down", "Note Bars", "Mirror Bars", "Mirror V", "LED Meter", "Flames", "Rain",
                       "Rain \\", "Rain /", "Code Rain", "Code Rain \\", "Code Rain /", "Snow", "Leaves", "Sand", "Rockets", "Fireworks",
-                      "Embers", "Helix", "Helix V", "Helix \\", "Helix /", "Heartbeat", "Orbits", "Chord Wheel", "Chord Square", "Key Map",
-                      "Random Loop", "Random BPM"]
+                      "Embers", "Helix", "Helix V", "Helix \\", "Helix /", "Heartbeat", "Orbits", "Chord Wheel", "Key Map", "Random Loop",
+                      "Random BPM"]
 
     @staticmethod
     def oled_keyboard_unpack(value):
@@ -2412,7 +2412,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "Keyboard 1/2/3: piano keyboard at different octaves\n"
             "Guitar Low/Med/High: guitar tablature views\n"
             "Visualiser: an animation that reacts to every note and key\n"
-            "press (needs keyboard firmware 1.1.47 or later; 1.1.54 for this list)"
+            "press (needs keyboard firmware 1.1.47 or later; 1.1.55 for this list)"
         ), self.oled_keyboard)
 
         # The Visualiser's settings, shown while Visualiser is chosen.
