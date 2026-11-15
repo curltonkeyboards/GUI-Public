@@ -552,11 +552,25 @@ KEYCODES_ISO.extend(KEYCODES_ISO_KR)
 KEYCODES_LAYERS = []
 
 KEYCODES_OLED = [
-    K("OLED_1", "Screen\nKeyboard\nShift", "Momentarily turn on layer when pressed"),
+    K("OLED_1", "Screen\nStyle\nNext", "Steps the screen style: Keyboard 1-3, Guitar Low / Med / High, Visualiser"),
     K("OLED_2", "Smart\nChord\nLight\nMode", "Momentarily turn on layer when pressed"),
    # K("OLED_3", "SmartChord\nPiano\nModes", "Momentarily turn on layer when pressed"),
   #  K("OLED_1", "Hold\nLayer\n4", "Momentarily turn on layer when pressed"),
   #  K("OLED_1", "Hold\nLayer\n5", "Momentarily turn on layer when pressed"),
+]
+
+# The screen: the visualiser on / off and next / previous (in the LCD
+# Settings > Viz order), and each screen style.
+KEYCODES_SCREEN = [
+    K("VIZ_TOGGLE", "Visualiser\nOn/Off", "Turns the screen's visualiser on (as it was last set), and off back to the keyboard / guitar screen"),
+    K("VIZ_NEXT", "Next\nVisualiser", "The next visualiser (turns the visualiser on if it is off)"),
+    K("VIZ_PREV", "Previous\nVisualiser", "The previous visualiser (turns the visualiser on if it is off)"),
+    K("SCREEN_KB_1", "Screen\nKeyboard\n1", "Screen style Keyboard 1"),
+    K("SCREEN_KB_2", "Screen\nKeyboard\n2", "Screen style Keyboard 2"),
+    K("SCREEN_KB_3", "Screen\nKeyboard\n3", "Screen style Keyboard 3"),
+    K("SCREEN_GTR_LOW", "Screen\nGuitar\nLow", "Screen style Guitar Low (guitar tab 1)"),
+    K("SCREEN_GTR_MED", "Screen\nGuitar\nMed", "Screen style Guitar Med (guitar tab 2)"),
+    K("SCREEN_GTR_HIGH", "Screen\nGuitar\nHigh", "Screen style Guitar High (guitar tab 3)"),
 ]
 
 KEYCODES_LAYERS_MO = [
@@ -1630,7 +1644,7 @@ KEYCODES_MIDI_ADVANCED = [
     K("MI_MOD", "Modulation", "Midi Modulation"),
     K("MI_SUS", "Sustain\nPedal", "Midi Sustain"),
     K("MI_SOFT", "Soft\nSPedal", "Midi Soft Pedal"),
-    K("OLED_1", "Screen\nKeyboard\nShift", "Momentarily turn on layer when pressed"),
+    K("OLED_1", "Screen\nStyle\nNext", "Steps the screen style: Keyboard 1-3, Guitar Low / Med / High, Visualiser"),
     K("MI_TAP", "Set\nBPM", "Set BPM"),
     K("BPM_UP", "BPM\nUp", "Set BPM"),
     K("BPM_DOWN", "BPM\nDown", "Set BPM"),
@@ -2079,7 +2093,7 @@ KEYCODES_MIDI_SMARTCHORDBUTTONS = [
     K("COLORBLIND_TOGGLE", "Colorblind\nMode\nOn/Off", "Colorblind"),
     #K("SMARTCHORDCOLOR_TOGGLE", "Smartchord\nRGB\nOn/Off", "Smartchord LEDs Toggle"),
     K("OLED_2", "Smart\nChord\nRGB", "Toggle Smartchord Light mode"),
-    K("OLED_1", "Screen\nKeyboard\nShift", "Adjust Keyboard Screen"),
+    K("OLED_1", "Screen\nStyle\nNext", "Steps the screen style: Keyboard 1-3, Guitar Low / Med / High, Visualiser"),
     # K("OLED_3", "SmartChord\nPiano\nModes", "Momentarily turn on layer when pressed"),
     K("SOLO_MODE", "Solo\nMode", "Toggle solo mode (monophonic - one note at a time)"),
 
@@ -3261,7 +3275,7 @@ def recreate_keycodes():
 
     KEYCODES.clear()
     KEYCODES.extend(KEYCODES_SPECIAL + KEYCODES_BASIC + KEYCODES_SHIFTED + KEYCODES_ISO + KEYCODES_LAYERS + KEYCODES_LAYERS_DF + KEYCODES_LAYERS_MO + KEYCODES_LAYERS_TG + KEYCODES_LAYERS_TT + KEYCODES_LAYERS_OSL + KEYCODES_LAYERS_TO + KEYCODES_LAYERS_LT +
-                    KEYCODES_BOOT + KEYCODES_MODIFIERS + KEYCODES_QUANTUM + KEYCODES_BACKLIGHT + KEYCODES_MEDIA + KEYCODES_MEDIA_UNSUPPORTED + KEYCODES_OLED + KEYCODES_CLEAR + KEYCODES_RGB_KC_COLOR + KEYCODES_MIDI_OCTAVE2 + KEYCODES_MIDI_OCTAVE3 + KEYCODES_MIDI_KEY2 + KEYCODES_MIDI_KEY3 + KEYCODES_MIDI_VELOCITY2 + KEYCODES_MIDI_VELOCITY3 +
+                    KEYCODES_BOOT + KEYCODES_MODIFIERS + KEYCODES_QUANTUM + KEYCODES_BACKLIGHT + KEYCODES_MEDIA + KEYCODES_MEDIA_UNSUPPORTED + KEYCODES_OLED + KEYCODES_SCREEN + KEYCODES_CLEAR + KEYCODES_RGB_KC_COLOR + KEYCODES_MIDI_OCTAVE2 + KEYCODES_MIDI_OCTAVE3 + KEYCODES_MIDI_KEY2 + KEYCODES_MIDI_KEY3 + KEYCODES_MIDI_VELOCITY2 + KEYCODES_MIDI_VELOCITY3 +
                     KEYCODES_TAP_DANCE + KEYCODES_MACRO + KEYCODES_MACRO_BASE + KEYCODES_EARTRAINER + KEYCODES_SAVE + KEYCODES_SETTINGS1 + KEYCODES_SETTINGS2 + KEYCODES_SETTINGS3 + KEYCODES_CHORDTRAINER + KEYCODES_USER + KEYCODES_HIDDEN + KEYCODES_MIDI+ KEYCODES_MIDI_CHANNEL_OS + KEYCODES_MIDI_CHANNEL_HOLD + KEYCODES_RGB_KC_CUSTOM + KEYCODES_RGB_KC_CUSTOM2 + KEYCODES_RGBSAVE + KEYCODES_MIDI_CHANNEL_KEYSPLIT + KEYCODES_MIDI_CHANNEL_KEYSPLIT2 + KEYCODES_KEYSPLIT_BUTTONS + KEYCODES_KEYSPLIT_PRESETS + KEYCODES_MIDI_TRANSPOSE_SELECT + KEYCODES_MIDI_KS_TRANSPOSE_SELECT + KEYCODES_MIDI_TS_TRANSPOSE_SELECT +
                     KEYCODES_MIDI_CC_FIXED+KEYCODES_MIDI_CC+KEYCODES_MIDI_CC_DOWN+KEYCODES_MIDI_CC_UP+KEYCODES_MOD_PRESS+KEYCODES_MIDI_BANK+KEYCODES_Program_Change+KEYCODES_MIDI_SMARTCHORDBUTTONS+KEYCODES_VELOCITY_STEPSIZE+KEYCODES_VELOCITY_SHUFFLE + KEYCODES_CC_ENCODERVALUE+ KEYCODES_EXWHEEL +
                     KEYCODES_MIDI_VELOCITY+KEYCODES_CC_STEPSIZE+KEYCODES_MIDI_CHANNEL+KEYCODES_MULTICHANNEL+KEYCODES_MIDI_UPDOWN+KEYCODES_MIDI_CHORD_0+KEYCODES_MIDI_CHORD_1+KEYCODES_MIDI_CHORD_2+KEYCODES_MIDI_CHORD_3+KEYCODES_MIDI_CHORD_4+KEYCODES_MIDI_CHORD_5+KEYCODES_MIDI_SPLIT+KEYCODES_MIDI_SPLIT2+

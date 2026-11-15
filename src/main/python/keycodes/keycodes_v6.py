@@ -799,9 +799,9 @@ class keycodes_v6:
         
         "OLED_1": 0xC458,
         "OLED_2": 0xC459,
-        "OLED_3": 0xC45A,
-        "OLED_4": 0xC45B,
-        "OLED_5": 0xC45C,
+        "VIZ_TOGGLE": 0xC45A,
+        "VIZ_NEXT": 0xC45B,
+        "VIZ_PREV": 0xC45C,
         "OLED_6": 0xC45D,        
 
         "RGB_KC_1": 0xC460,
@@ -1703,6 +1703,12 @@ class keycodes_v6:
         "PROG_OCTAVE_UP": 0xCA00,
         "PROG_OCTAVE_DOWN": 0xCA01,
         "SOLO_MODE": 0xCA02,
+        "SCREEN_KB_1": 0xCA03,
+        "SCREEN_KB_2": 0xCA04,
+        "SCREEN_KB_3": 0xCA05,
+        "SCREEN_GTR_LOW": 0xCA06,
+        "SCREEN_GTR_MED": 0xCA07,
+        "SCREEN_GTR_HIGH": 0xCA08,
 
         "PROG_VOICING_BASIC": 0xCA0A,
         "PROG_VOICING_ADVANCED": 0xCA0B,

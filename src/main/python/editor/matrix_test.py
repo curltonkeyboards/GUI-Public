@@ -1576,27 +1576,15 @@ class TickCombo(QCheckBox):
 class MIDIswitchSettingsConfigurator(BasicEditor):
 
     # LCD visualisers, in the firmware's numbering (lcd_viz.h: LCD_VIZ_* - 1;
-    # saved in the keyboard settings, so never renumbered)...
-    VIZ_NAMES = ["Ripple 1", "Ripple 2", "Ripple 3", "Circles 1", "Circles 2", "Circles 3", "Piano Roll", "Note Bars", "Tunnel", "Starfield",
-                 "Rain", "Key Map", "Chord Wheel", "Heartbeat", "Fireworks", "Mirror Bars", "Random Loop", "Random BPM", "Roll Down", "Code Rain",
-                 "Snow", "Lightning", "Stack", "Curtains", "Roll Up", "Bubbles", "Fountain", "Flames", "Rockets", "LED Meter",
-                 "Tunnel 2", "Tunnel 3", "Helix", "Helix V", "Wave", "Orbits", "Sunburst", "Bounce", "Meteors", "Leaves",
-                 "Hail", "Waterfall", "Confetti", "Plinko", "Sand", "Stripes", "Icicles", "Note Fall", "Balloons", "Embers",
-                 "Smoke Rings", "Vines", "Skyline", "Geyser", "Sonar", "Lava", "Arrows", "Hills", "Kaleidoscope", "Flowers",
-                 "Twinkle", "Pixels", "Spiral", "Vortex", "Pulse", "Radar", "Mandala", "Lasers", "Hexagons", "Spinners",
-                 "Splash", "Snowflakes", "Dot to Dot", "Ripple Grid", "Web", "Pinwheel", "Supernova", "Spirograph", "Hex Tunnel", "Tri Tunnel",
-                 "Twist Tunnel", "Oct Tunnel", "Galaxy", "Swirl", "Flow", "Worms", "Life", "Fireflies", "Ring Tunnel", "Zip Lines",
-                 "Ribbons", "Chord Square", "Helix \\", "Helix /", "Rain \\", "Rain /", "Code Rain \\", "Code Rain /", "Mirror V"]
-    # ...and the order they are listed in (lcd_viz_menu_order[]): grouped by kind.
-    VIZ_RANDOMS = (16, 17)                    # Random Loop, Random BPM (their numbers - 1)
-    # Retired visualisers (still in VIZ_NAMES, so the numbers stay put): a saved
-    # one shows as the visualiser in its place, as the firmware does.
-    VIZ_RETIRED = {0: 1, 3: 1, 4: 1, 5: 1, 21: 10, 22: 10, 23: 7, 25: 49, 26: 28, 30: 8, 31: 8, 34: 32, 36: 7, 37: 28, 38: 10, 40: 20, 41: 10, 42: 39, 43: 10, 45: 19, 46: 10, 47: 20, 48: 49, 50: 49, 51: 49, 52: 7, 53: 27, 54: 49, 55: 49, 56: 49, 57: 32, 59: 58, 60: 87, 65: 62, 67: 9, 68: 1, 69: 1, 70: 1, 71: 87, 73: 1, 74: 66, 75: 62, 76: 82, 78: 8, 79: 8, 80: 8, 81: 8, 83: 1, 85: 84, 88: 8, 91: 12}
-    VIZ_MENU_ORDER = ["Ripple 2", "Ripple 3", "Kaleidoscope", "Pixels", "Dot to Dot", "Zip Lines", "Ribbons", "Fireflies", "Flow", "Life",
-                      "Tunnel", "Starfield", "Spiral", "Vortex", "Galaxy", "Spirograph", "Pulse", "Mandala", "Piano Roll", "Roll Up",
-                      "Roll Down", "Note Bars", "Mirror Bars", "Mirror V", "LED Meter", "Flames", "Rain", "Rain \\", "Rain /", "Code Rain",
-                      "Code Rain \\", "Code Rain /", "Snow", "Leaves", "Sand", "Rockets", "Fireworks", "Embers", "Helix", "Helix V",
-                      "Helix \\", "Helix /", "Heartbeat", "Orbits", "Chord Wheel", "Key Map", "Random Loop", "Random BPM"]
+    # saved in the keyboard settings). 1.1.57 numbered them afresh, in the
+    # order they are listed in (lcd_viz_menu_order[]): grouped by kind.
+    VIZ_NAMES = ["Ripple 2", "Ripple 3", "Kaleidoscope", "Pixels", "Dot to Dot", "Zip Lines", "Ribbons", "Fireflies", "Flow", "Life",
+                 "Tunnel", "Starfield", "Spiral", "Vortex", "Galaxy", "Spirograph", "Pulse", "Mandala", "Piano Roll", "Roll Up",
+                 "Roll Down", "Note Bars", "Mirror Bars", "Mirror V", "LED Meter", "Flames", "Rain", "Rain \\", "Rain /", "Code Rain",
+                 "Code Rain \\", "Code Rain /", "Snow", "Leaves", "Rockets", "Fireworks", "Embers", "Helix", "Helix V", "Helix \\",
+                 "Helix /", "Heartbeat", "Orbits", "Chord Wheel", "Key Map", "Random Loop", "Random BPM"]
+    VIZ_MENU_ORDER = VIZ_NAMES
+    VIZ_RANDOMS = (45, 46)                    # Random Loop, Random BPM (their numbers - 1)
 
     @staticmethod
     def oled_keyboard_unpack(value):
@@ -1608,15 +1596,12 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         value = int(value or 0) & 0xFFFFFFFF
         if value == 12:                       # pre-5-state "Keyboard 2"
             value = 1
-        if 7 <= value <= 10:                  # 1.1.46: Ripple 2/3, Piano Roll, Note Bars
-            value = 6 | ([1, 2, 6, 7][value - 7] << 8) | (1 << 17)
         style = value & 0xFF
         viz = (value >> 8) & 0xFF
         if style > 6:
             style, viz, value = 0, 0, 0
         if viz >= len(MIDIswitchSettingsConfigurator.VIZ_NAMES):
             viz = 0
-        viz = MIDIswitchSettingsConfigurator.VIZ_RETIRED.get(viz, viz)
         colour = 2 if (value >> 18) & 1 else (value >> 17) & 1
         if colour == 2 and viz not in MIDIswitchSettingsConfigurator.VIZ_RANDOMS:
             colour = 1                        # Both is for the Randoms
@@ -2394,7 +2379,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "127 = no restriction."
         ), self.random_velocity_modifier)
 
-        # Virtual Instrument (formerly "OLED Keyboard") — the LCD's Style:
+        # Screen style (formerly "Virtual instrument" / "OLED Keyboard") — the LCD's Style:
         # piano keyboards, guitar-tab views or a visualiser. The firmware keeps
         # it all in one 32-bit value (see oled_keyboard_value()).
         self.oled_keyboard = _combo(CARD_VALUE_WIDTH, [
@@ -2406,38 +2391,40 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             ("Guitar High", 4),
             ("Visualiser", 6),  # firmware 1.1.47+
         ])
-        _card_row(advanced_layout, "Virtual instrument", (
-            "LCD virtual instrument / display style.\n"
+        self._adv_style_label = _help_row("Screen style:", (
+            "The LCD's screen style (LCD Settings > Style on the keyboard).\n"
             "Keyboard 1/2/3: piano keyboard at different octaves\n"
             "Guitar Low/Med/High: guitar tablature views\n"
-            "Visualiser: an animation that reacts to every note and key\n"
-            "press (needs keyboard firmware 1.1.47 or later; 1.1.56 for this list)"
-        ), self.oled_keyboard)
+            "Visualiser: an animation that reacts to every note and key press\n"
+            "(keyboard firmware 1.1.57 or later for this list).\n"
+            "Keys for each style, and Visualiser On/Off / Next / Previous,\n"
+            "are on the keymap's Lighting tab."
+        ))
 
         # The Visualiser's settings, shown while Visualiser is chosen.
         self._viz_rows = []
+        self._viz_label_rows = []
 
         def _viz_row(text, tooltip, control):
-            row = advanced_layout.rowCount() if advanced_layout.count() else 0
-            _card_row(advanced_layout, text, tooltip, control)
-            self._viz_rows += [advanced_layout.itemAtPosition(row, 0).widget(), control.width_holder]
+            label = _help_row(text, tooltip)
+            self._viz_label_rows.append((label, control))
+            self._viz_rows += [label, control.width_holder]
 
         self.viz_kind = _combo(CARD_VALUE_WIDTH, [(name, self.VIZ_NAMES.index(name)) for name in self.VIZ_MENU_ORDER])
-        _viz_row("Visualiser", (
-            "Which visualiser the LCD shows.\n"
-            "Ripple 1/2/3: squares, double squares, blooming blocks\n"
-            "Circles 1/2/3: rings, double rings, blooming discs\n"
-            "Tunnel 2: a rainbow stream; Tunnel 3: frames falling inwards\n"
+        _viz_row("Visualiser:", (
+            "Which visualiser the LCD shows (LCD Settings > Viz on the keyboard).\n"
+            "Ripple 2 / 3: double squares spreading / blooming where notes play\n"
+            "Dot to Dot, Zip Lines, Ribbons: lines across the screen\n"
+            "Tunnel to Mandala in the list: patterns from the middle\n"
             "Piano Roll / Roll Up / Roll Down scroll at the tempo\n"
-            "Rain to Note Fall in the list come down from the top\n"
-            "Bubbles to Hills in the list rise from the bottom\n"
-            "Helix / Helix V: a DNA helix turning at the tempo\n"
+            "Rain to Leaves in the list come down from the top\n"
+            "Helix / Helix V / \\ / /: a DNA helix turning at the tempo\n"
             "Key Map lights the keys you press\n"
             "Random Loop: a random one, changing each time a loop comes round\n"
             "Random BPM: a random one, changing every 8 beats"
         ), self.viz_kind)
         self.viz_color = _combo(CARD_VALUE_WIDTH, [("Theme", 0), ("Multicolor", 1)])
-        _viz_row("Visualiser color", (
+        _viz_row("Visualiser color:", (
             "Theme: the visualiser in the LCD theme's colour only.\n"
             "Multicolor: coloured by note (blooms by how hard you play).\n"
             "Both (Random Loop / Random BPM only): each time it changes,\n"
@@ -2445,7 +2432,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ), self.viz_color)
         self.viz_kind.currentIndexChanged.connect(self._update_viz_color_items)
         self.viz_minimal = _combo(CARD_VALUE_WIDTH, [("Off", 0), ("On", 1)])
-        _viz_row("Minimalist", (
+        _viz_row("Minimalist:", (
             "On: the visualiser alone, on the whole screen (channel, keysplit,\n"
             "action bars and the rest are hidden until a menu opens).\n"
             "Off: the visualiser in the keyboard's place on the main page."
@@ -2521,7 +2508,8 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         guide_lights_label_layout.setSpacing(5)
         guide_lights_label_layout.addWidget(self.create_help_label(
             "SmartChord guide light behavior.\n"
-            "All Off: No guide lights\n"
+            "All Off: No guide lights or key indicators: every key\n"
+            "lights with the RGB effect like any other\n"
             "SmartChord Off: Guide lights off for SmartChord\n"
             "All On: Dynamic: Lights follow chord changes\n"
             "Guitar EADGB/ADGBE: Guitar string tuning layouts"
@@ -2865,7 +2853,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         title_label.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(title_label)
         desc_label = QLabel(tr("MIDIswitchSettingsConfigurator",
-            "Macro timing, LCD theme and lighting behaviour."))
+            "Macro timing, the LCD (theme, screen style, visualiser) and lighting behaviour."))
         desc_label.setStyleSheet("color: palette(dark); font-size: 9pt;")
         desc_label.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(desc_label)
@@ -2886,17 +2874,25 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         display_layout.setHorizontalSpacing(25)
         display_layout.addWidget(self._adv_lcd_theme_label, 0, 0)
         display_layout.addWidget(self.lcd_theme, 0, 1)
-        display_layout.addWidget(self._adv_perf_label, 3, 0)
-        display_layout.addWidget(self.perf_mode, 3, 1)
-        display_layout.addWidget(self._adv_guide_lights_label, 1, 0)
-        display_layout.addWidget(self.smart_chord_light_mode, 1, 1)
-        display_layout.addWidget(self._adv_rgb_layer_label, 2, 0)
-        display_layout.addWidget(self.custom_layer_animations, 2, 1)
+        display_layout.addWidget(self._adv_perf_label, 1, 0)
+        display_layout.addWidget(self.perf_mode, 1, 1)
+        # The screen style and the Visualiser's settings (shown while it is chosen)
+        display_layout.addWidget(self._adv_style_label, 2, 0)
+        display_layout.addWidget(self.oled_keyboard.width_holder, 2, 1)
+        for n, (label, control) in enumerate(self._viz_label_rows):
+            display_layout.addWidget(label, 3 + n, 0)
+            display_layout.addWidget(control.width_holder, 3 + n, 1)
+        row = 3 + len(self._viz_label_rows)
+        display_layout.addWidget(self._adv_guide_lights_label, row, 0)
+        display_layout.addWidget(self.smart_chord_light_mode, row, 1)
+        display_layout.addWidget(self._adv_rgb_layer_label, row + 1, 0)
+        display_layout.addWidget(self.custom_layer_animations, row + 1, 1)
         note = QLabel(tr("MIDIswitchSettingsConfigurator",
-            "LCD Theme and Smoothness apply and save instantly. Guide Lights and RGB Layer Mode are part of\n"
-            "the MIDI Settings and are saved with them (Save as Default / Save to Slot)."))
+            "LCD Theme and Smoothness apply and save instantly. The screen style, the Visualiser,\n"
+            "Guide Lights and RGB Layer Mode are part of the MIDI Settings and are saved with them\n"
+            "(Save as Default / Save to Slot)."))
         note.setStyleSheet("color: palette(dark); font-size: 9pt;")
-        display_layout.addWidget(note, 4, 0, 1, 2)
+        display_layout.addWidget(note, row + 2, 0, 1, 2)
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         btn_save_default = QPushButton(tr("MIDIswitchSettingsConfigurator", "Save as Default"))
@@ -2906,7 +2902,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         btn_save_default.setStyleSheet("QPushButton { border-radius: 5px; }")
         btn_save_default.clicked.connect(lambda: self.on_save_slot(0))
         btn_row.addWidget(btn_save_default)
-        display_layout.addLayout(btn_row, 5, 0, 1, 2)
+        display_layout.addLayout(btn_row, row + 3, 0, 1, 2)
         display_group.setLayout(display_layout)
         display_row = QHBoxLayout()
         display_row.addStretch()

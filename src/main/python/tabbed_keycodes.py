@@ -16,7 +16,7 @@ from keycodes.keycodes import unsupported_ids, KEYCODES_BASIC, KEYCODES_ISO, KEY
     KEYCODES_DAW, \
     KEYCODES_TAP_DANCE, KEYCODES_MIDI, KEYCODES_MIDI_SPLIT, KEYCODES_MIDI_SPLIT2, KEYCODES_MIDI_CHANNEL_KEYSPLIT, KEYCODES_KEYSPLIT_BUTTONS, KEYCODES_KEYSPLIT_PRESETS, KEYCODES_MIDI_CHANNEL_KEYSPLIT2, KEYCODES_BASIC_NUMPAD, KEYCODES_BASIC_NAV, KEYCODES_ISO_KR, BASIC_KEYCODES, \
     KEYCODES_ARPEGGIATOR, KEYCODES_ARPEGGIATOR_PRESETS, KEYCODES_STEP_SEQUENCER, KEYCODES_STEP_SEQUENCER_PRESETS, KEYCODES_DRUM_SLOTS, KEYCODES_DKS, KEYCODES_TOGGLE, KEYCODES_TOGGLE_ACTIONS, KEYCODES_DELAY_CLEAR, KEYCODES_DELAY, KEYCODES_DELAY_FACTORY, KEYCODES_DELAY_USER, KEYCODES_DELAY_QB, KEYCODES_CHORD_QB, KEYCODES_DYNCHORD_QB, KEYCODES_FADER_QB, KEYCODES_QB_MASTER, KEYCODES_EARTRAINER_QB, \
-    KEYCODES_MIDI_CC, KEYCODES_MIDI_BANK, KEYCODES_Program_Change, KEYCODES_CC_STEPSIZE, KEYCODES_MIDI_VELOCITY, KEYCODES_Program_Change_UPDOWN, KEYCODES_MIDI_BANK, KEYCODES_MIDI_BANK_LSB, KEYCODES_MIDI_BANK_MSB, KEYCODES_MIDI_CC_FIXED, KEYCODES_OLED, KEYCODES_EARTRAINER, KEYCODES_SAVE, KEYCODES_CHORDTRAINER, \
+    KEYCODES_MIDI_CC, KEYCODES_MIDI_BANK, KEYCODES_Program_Change, KEYCODES_CC_STEPSIZE, KEYCODES_MIDI_VELOCITY, KEYCODES_Program_Change_UPDOWN, KEYCODES_MIDI_BANK, KEYCODES_MIDI_BANK_LSB, KEYCODES_MIDI_BANK_MSB, KEYCODES_MIDI_CC_FIXED, KEYCODES_OLED, KEYCODES_SCREEN, KEYCODES_EARTRAINER, KEYCODES_SAVE, KEYCODES_CHORDTRAINER, \
     KEYCODES_MIDI_OCTAVE2, KEYCODES_MIDI_OCTAVE3, KEYCODES_MIDI_KEY2, KEYCODES_MIDI_KEY3, KEYCODES_MIDI_VELOCITY2, KEYCODES_MIDI_VELOCITY3, KEYCODES_MIDI_ADVANCED, KEYCODES_MIDI_SMARTCHORDBUTTONS, KEYCODES_VELOCITY_STEPSIZE, KEYCODES_MIDI_CHANNEL_OS, KEYCODES_MIDI_CHANNEL_HOLD, \
     KEYCODES_HE_VELOCITY_CURVE, KEYCODES_HE_VELOCITY_RANGE, \
     KEYCODES_MIDI_CHANNEL, KEYCODES_MULTICHANNEL, KEYCODES_MIDI_UPDOWN, KEYCODES_MIDI_CHORD_0, KEYCODES_MIDI_CHORD_1, KEYCODES_MIDI_CHORD_2, KEYCODES_MIDI_CHORD_3, KEYCODES_MIDI_CHORD_4, KEYCODES_MIDI_CHORD_5, KEYCODES_MIDI_INVERSION, KEYCODES_MIDI_SCALES, KEYCODES_MIDI_TRANSPOSE_SELECT, KEYCODES_MIDI_CC_UP, KEYCODES_MIDI_CC_DOWN, KEYCODES_MIDI_PEDAL, KEYCODES_MIDI_INOUT, \
@@ -2833,8 +2833,9 @@ class ScrollableComboBox(CenteredComboBox):
 class LightingTab(QScrollArea):
     keycode_changed = pyqtSignal(str)
 
-    def __init__(self, parent, label, inversion_keycodes, inversion_keycodes4, smartchord_LSB, smartchord_MSB, smartchord_LSB2):
+    def __init__(self, parent, label, inversion_keycodes, inversion_keycodes4, smartchord_LSB, smartchord_MSB, smartchord_LSB2, screen_keycodes=()):
         super().__init__(parent)
+        self.screen_keycodes = list(screen_keycodes)
         self.label = label     
         self.inversion_keycodes = inversion_keycodes
         self.inversion_keycodes4 = inversion_keycodes4
@@ -2934,6 +2935,25 @@ class LightingTab(QScrollArea):
         
         self.main_layout.addLayout(self.row3_layout)
 
+        # Screen & Visualiser Controls: the screen style and visualiser keys
+        self.screen_label = QLabel("Screen & Visualiser Controls")
+        self.screen_label.setAlignment(Qt.AlignCenter)
+        self.screen_label.setStyleSheet("font-size: 13px;")
+        self.main_layout.addItem(QSpacerItem(0, 20, QSizePolicy.Minimum, QSizePolicy.Fixed))
+        self.main_layout.addWidget(self.screen_label)
+        self.main_layout.addItem(QSpacerItem(0, 2, QSizePolicy.Minimum, QSizePolicy.Fixed))
+        self.buttons3_container = QWidget()
+        self.buttons3_layout = QGridLayout(self.buttons3_container)
+        self.buttons3_layout.setHorizontalSpacing(5)
+        self.buttons3_layout.setVerticalSpacing(5)
+        self.centered_buttons3_layout = QHBoxLayout()
+        self.centered_buttons3_layout.addStretch()
+        self.centered_buttons3_layout.addWidget(self.buttons3_container)
+        self.centered_buttons3_layout.addStretch()
+        self.main_layout.addLayout(self.centered_buttons3_layout)
+        self.screen_label.setVisible(bool(self.screen_keycodes))
+        self.buttons3_container.setVisible(bool(self.screen_keycodes))
+
         # Populate all buttons
         self.populate_buttons()
 
@@ -2986,9 +3006,10 @@ class LightingTab(QScrollArea):
         return dropdown
 
     def populate_buttons(self, keycode_filter=None):
-        # Clear previous widgets in both button layouts
+        # Clear previous widgets in the button layouts
         clear_layout_widgets(self.buttons1_layout)
         clear_layout_widgets(self.buttons2_layout)
+        clear_layout_widgets(self.buttons3_layout)
 
         # Add buttons from inversion_keycodes to the first button grid
         row = 0
@@ -3030,6 +3051,19 @@ class LightingTab(QScrollArea):
                 if col >= max_columns:
                     col = 0
                     row += 1
+
+        # The screen & visualiser keys
+        col = 0
+        for keycode in self.screen_keycodes:
+            if keycode_filter is None or keycode_filter(keycode.code_id):
+                btn = SquareButton()
+                btn.setFixedHeight(50)
+                btn.setFixedWidth(50)
+                btn.setText(Keycode.label(keycode.code_id))
+                btn.clicked.connect(lambda _, k=keycode.code_id: self.keycode_changed.emit(k))
+                btn.keycode = keycode
+                self.buttons3_layout.addWidget(btn, 0, col)
+                col += 1
 
     def recreate_buttons(self, keycode_filter=None):
         # Clear and recreate the dropdowns in row 1
@@ -3084,9 +3118,16 @@ class LightingTab(QScrollArea):
                 if keycode:
                     widget.setText(Keycode.label(keycode.code_id))
 
+        for widget in iter_layout_widgets(self.buttons3_layout):
+            if isinstance(widget, SquareButton):
+                keycode = widget.keycode
+                if keycode:
+                    widget.setText(Keycode.label(keycode.code_id))
+
     def has_buttons(self):
         """Check if there are buttons or dropdown items."""
-        return (self.buttons1_layout.count() > 0 or self.buttons2_layout.count() > 0)
+        return (self.buttons1_layout.count() > 0 or self.buttons2_layout.count() > 0
+                or self.buttons3_layout.count() > 0)
 
 class LightingTab2(QScrollArea):
     keycode_changed = pyqtSignal(str)
@@ -3807,7 +3848,8 @@ def palette_tabs(parent, layer_tab=None):
         MusicTab(parent),
         layer_tab,
         LightingTab(parent, "Lighting", KEYCODES_BACKLIGHT, KEYCODES_RGBSAVE,
-                    KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_COLOR, KEYCODES_RGB_KC_CUSTOM2),
+                    KEYCODES_RGB_KC_CUSTOM, KEYCODES_RGB_KC_COLOR, KEYCODES_RGB_KC_CUSTOM2,
+                    [k for k in KEYCODES_OLED if k.code_id == "OLED_1"] + KEYCODES_SCREEN),
         GamingTab(parent, "Gaming", KEYCODES_GAMING),
         MIDITab(parent),
         SearchTab(parent),
