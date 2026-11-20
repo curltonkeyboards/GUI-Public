@@ -5,3 +5,6 @@ __pycache__
 .idea
 oldworkingversion/
 vial-qmk-public/
+
+# The knowledge base lives in the private vial-gui-custom repo; a local CLAUDE.md is never committed here
+CLAUDE.md
