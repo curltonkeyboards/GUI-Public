@@ -19,7 +19,7 @@ from keycodes.keycodes import unsupported_ids, KEYCODES_BASIC, KEYCODES_ISO, KEY
     KEYCODES_MIDI_CC, KEYCODES_MIDI_BANK, KEYCODES_Program_Change, KEYCODES_CC_STEPSIZE, KEYCODES_MIDI_VELOCITY, KEYCODES_Program_Change_UPDOWN, KEYCODES_MIDI_BANK, KEYCODES_MIDI_BANK_LSB, KEYCODES_MIDI_BANK_MSB, KEYCODES_MIDI_CC_FIXED, KEYCODES_OLED, KEYCODES_SCREEN, KEYCODES_EARTRAINER, KEYCODES_SAVE, KEYCODES_CHORDTRAINER, \
     KEYCODES_MIDI_OCTAVE2, KEYCODES_MIDI_OCTAVE3, KEYCODES_MIDI_KEY2, KEYCODES_MIDI_KEY3, KEYCODES_MIDI_VELOCITY2, KEYCODES_MIDI_VELOCITY3, KEYCODES_MIDI_ADVANCED, KEYCODES_MIDI_SMARTCHORDBUTTONS, KEYCODES_VELOCITY_STEPSIZE, KEYCODES_MIDI_CHANNEL_OS, KEYCODES_MIDI_CHANNEL_HOLD, \
     KEYCODES_HE_VELOCITY_CURVE, KEYCODES_HE_VELOCITY_RANGE, \
-    KEYCODES_MIDI_CHANNEL, KEYCODES_MULTICHANNEL, KEYCODES_MIDI_UPDOWN, KEYCODES_MIDI_CHORD_0, KEYCODES_MIDI_CHORD_1, KEYCODES_MIDI_CHORD_2, KEYCODES_MIDI_CHORD_3, KEYCODES_MIDI_CHORD_4, KEYCODES_MIDI_CHORD_5, KEYCODES_MIDI_INVERSION, KEYCODES_MIDI_SCALES, KEYCODES_MIDI_TRANSPOSE_SELECT, KEYCODES_MIDI_CC_UP, KEYCODES_MIDI_CC_DOWN, KEYCODES_MIDI_PEDAL, KEYCODES_MIDI_INOUT, \
+    KEYCODES_MIDI_CHANNEL, KEYCODES_MULTICHANNEL, KEYCODES_MIDI_UPDOWN, KEYCODES_MIDI_CHORD_0, KEYCODES_MIDI_CHORD_1, KEYCODES_MIDI_CHORD_2, KEYCODES_MIDI_CHORD_3, KEYCODES_MIDI_CHORD_4, KEYCODES_MIDI_CHORD_5, KEYCODES_MIDI_INVERSION, KEYCODES_MIDI_SCALES, KEYCODES_MIDI_SMARTCHORD_SETS, KEYCODES_MIDI_TRANSPOSE_SELECT, KEYCODES_MIDI_CC_UP, KEYCODES_MIDI_CC_DOWN, KEYCODES_MIDI_PEDAL, KEYCODES_MIDI_INOUT, \
     KEYCODES_OCTAVE_DOUBLER, KEYCODES
 from widgets.square_button import SquareButton
 from widgets.big_square_button import BigSquareButton
@@ -635,9 +635,10 @@ from PyQt5.QtCore import Qt, pyqtSignal
 class SmartChordTab(QScrollArea):
     keycode_changed = pyqtSignal(str)
 
-    def __init__(self, parent, label, smartchord_keycodes_0, smartchord_keycodes_1, smartchord_keycodes_2, smartchord_keycodes_3, smartchord_keycodes_4, smartchord_keycodes_5, scales_modes_keycodes, inversion_keycodes, chord_qb_keycodes=None, dynchord_qb_keycodes=None):
+    def __init__(self, parent, label, smartchord_keycodes_0, smartchord_keycodes_1, smartchord_keycodes_2, smartchord_keycodes_3, smartchord_keycodes_4, smartchord_keycodes_5, scales_modes_keycodes, inversion_keycodes, chord_qb_keycodes=None, dynchord_qb_keycodes=None, sets_keycodes=None):
         super().__init__(parent)
         self.label = label
+        self.sets_keycodes = sets_keycodes or []
         self.smartchord_keycodes_0 = smartchord_keycodes_0
         self.smartchord_keycodes_1 = smartchord_keycodes_1
         self.smartchord_keycodes_2 = smartchord_keycodes_2
@@ -720,6 +721,8 @@ class SmartChordTab(QScrollArea):
     def populate_tree(self):
         """Populate the QTreeWidget with categories and keycodes."""
         # Create the QTreeWidgetItems for each category
+        if self.sets_keycodes:      # SmartChord Sets: a chord for every key
+            self.create_keycode_tree(self.sets_keycodes, "Sets")
         self.create_keycode_tree(self.smartchord_keycodes_0, "Intervals")
         self.create_keycode_tree(self.smartchord_keycodes_1, "3 Note Chords")
         self.create_keycode_tree(self.smartchord_keycodes_2, "4 Note Chords")
@@ -5155,7 +5158,8 @@ class MusicTab(QWidget):
         self.smartchord_tab = SmartChordTab(parent, "SmartChord", KEYCODES_MIDI_CHORD_0, KEYCODES_MIDI_CHORD_1,
                                            KEYCODES_MIDI_CHORD_2, KEYCODES_MIDI_CHORD_3, KEYCODES_MIDI_CHORD_4,
                                            KEYCODES_MIDI_CHORD_5, KEYCODES_MIDI_SCALES,
-                                           KEYCODES_MIDI_SMARTCHORDBUTTONS+KEYCODES_MIDI_INVERSION)
+                                           KEYCODES_MIDI_SMARTCHORDBUTTONS+KEYCODES_MIDI_INVERSION,
+                                           sets_keycodes=KEYCODES_MIDI_SMARTCHORD_SETS)
         self.quickbuild_tab = SimpleTab(parent, "Quickbuild", KEYCODES_QB_MASTER)
         self.daw_tab = DAWTab(parent)
 

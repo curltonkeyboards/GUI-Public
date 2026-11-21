@@ -170,6 +170,9 @@ class MainWindow(QMainWindow):
         # Initialize the new configurators
         t0 = time.time()
         self.MIDIswitchSettingsConfigurator = MIDIswitchSettingsConfigurator()
+        # The screen's settings (colour, style, visualiser) live with the MIDI
+        # settings but are shown on the Lighting page
+        self.rgb_configurator.add_page(self.MIDIswitchSettingsConfigurator.screen_page, "Screen")
         self.gaming_configurator = GamingConfigurator()
 
         # Initialize MIDI Patch and Loop Manager tabs
@@ -192,8 +195,9 @@ class MainWindow(QMainWindow):
         self.quickbuild.add_editor(self.step_sequencer, "Step Sequencer")
         self.quickbuild.add_editor(self.delay_tab, "Delay")
         from editor.qb_pages import (KeySplitPage, DrumLivePage, RhythmEnginePage, DrumMachinePage,
-                                     AutoFaderPage, SmartChordPage)
+                                     AutoFaderPage, SmartChordPage, SmartChordSetsPage)
         self.quickbuild.add_page(SmartChordPage(), "SmartChord")
+        self.quickbuild.add_page(SmartChordSetsPage(), "SmartChord Sets")
         self.quickbuild.add_page(KeySplitPage(), "KeySplit")
         self.quickbuild.add_page(
             self.MIDIswitchSettingsConfigurator.take_sub_tab("Multi Channel Settings"), "Multi Channel")
@@ -232,7 +236,7 @@ class MainWindow(QMainWindow):
             "Keymap": "Choose what each key, the knob and the footswitch do, layer by layer",
             "Actuation": "How far each key goes down before it plays, and rapid trigger",
             "Articulation": "How your playing turns into velocity, aftertouch and legato",
-            "Lighting": "Light effects, colours, brightness and key indicators",
+            "Lighting": "Light effects, colours, brightness, key indicators, and the LCD screen: its colour, style and visualiser",
             "Advanced Keys": "Macros, toggles, tap/hold keys, key shortcuts and dynamic keystrokes",
             "QuickBuild": "One-press arpeggios, sequences, delays, chords, drums and more",
             "MIDI Link": "Pass MIDI between the MIDIswitch and other devices and apps",

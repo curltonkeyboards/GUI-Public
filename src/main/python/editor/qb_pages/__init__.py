@@ -8,6 +8,7 @@ from editor.qb_pages.rhythm_page import RhythmEnginePage
 from editor.qb_pages.drum_machine_page import DrumMachinePage
 from editor.qb_pages.autofader_page import AutoFaderPage
 from editor.qb_pages.smartchord_page import SmartChordPage, VoiceLeadingPage
+from editor.qb_pages.smartchord_sets_page import SmartChordSetsPage
 
 __all__ = ["KeySplitPage", "DrumLivePage", "RhythmEnginePage", "DrumMachinePage", "AutoFaderPage",
-           "SmartChordPage", "VoiceLeadingPage"]
+           "SmartChordPage", "VoiceLeadingPage", "SmartChordSetsPage"]

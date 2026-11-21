@@ -41,7 +41,7 @@ ATCC_BASE_NAMES = [
     "Leg Vib Slow", "Leg Vib Fast", "Leg Vib Smooth",
     "Vib Slow", "Vib Fast", "Vib Smooth",
     "Fast Swell", "Slow Swell", "Reverse Swell",
-    "Fast Fall", "Slow Fall", "Shimmer Me", "Shimmer Leg",
+    "Deep Fast", "Deep Slow", "Shimmer Me", "Shimmer Leg",
 ]
 
 DIVIDER_USER = "─── User Articulations ───"

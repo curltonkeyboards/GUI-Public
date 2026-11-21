@@ -20,7 +20,54 @@ CHAIN_MIN = 2               # one bar is not a chain
 # The keyboard's own menu sorts the patterns into these folders (genres[] and
 # the sub_*[] tables in the firmware's seq_drum_patterns.c): folder, folder
 # inside it (None = the patterns sit in the folder itself), first, count.
-PATTERN_CATEGORIES = [
+_FOLDERS_564 = [
+    ("Pop", "Pop", 0, 23),
+    ("Pop", "Synth Pop", 23, 3),
+    ("Pop", "Ballad", 26, 10),
+    ("Pop", "Slow", 36, 11),
+    ("Pop", "Fills", 47, 21),
+    ("Rock", "Rock", 68, 29),
+    ("Rock", "Twist", 97, 7),
+    ("Rock", "Fills", 104, 22),
+    ("Funk", "Funk", 126, 44),
+    ("Funk", "Breakbeats", 170, 25),
+    ("Funk", "Fills", 195, 30),
+    ("R&B", "R&B", 225, 22),
+    ("R&B", "Fills", 247, 11),
+    ("Disco", "Disco", 258, 22),
+    ("Disco", "Fills", 280, 14),
+    ("Hip Hop", "Hip Hop", 294, 16),
+    ("Hip Hop", "West Coast", 310, 5),
+    ("Hip Hop", "Trap & Electro", 315, 5),
+    ("Electronic", "Electro", 320, 9),
+    ("Electronic", "House & Techno", 329, 9),
+    ("Electronic", "D&B & Jungle", 338, 13),
+    ("Electronic", "Dubstep/Garage", 351, 5),
+    ("Electronic", "Bass/Footwork", 356, 5),
+    ("Reggae & Ska", "Reggae", 361, 21),
+    ("Reggae & Ska", "Dub", 382, 4),
+    ("Reggae & Ska", "Ska", 386, 5),
+    ("Reggae & Ska", "Fills", 391, 18),
+    ("Latin", "Afro-Cuban", 409, 18),
+    ("Latin", "Bossa Nova", 427, 10),
+    ("Latin", "Samba", 437, 11),
+    ("Latin", "Cha-Cha", 448, 5),
+    ("Latin", "Reggaeton", 453, 4),
+    ("Latin", "Claves & Bells", 457, 5),
+    ("Latin", "Fills", 462, 26),
+    ("Blues/Shuffle", "Blues", 488, 10),
+    ("Blues/Shuffle", "Shuffle", 498, 10),
+    ("Blues/Shuffle", "Boogie", 508, 3),
+    ("Blues/Shuffle", "Fills", 511, 13),
+    ("Jazz & Swing", "Jazz", 524, 6),
+    ("Jazz & Swing", "Swing", 530, 13),
+    ("Jazz & Swing", "Fills", 543, 10),
+    ("Fills/Endings", "Drum Rolls", 553, 6),
+    ("Fills/Endings", "Endings", 559, 5),
+]
+
+# The layout before firmware 1.1.58's re-filing (578 patterns).
+_FOLDERS_578 = [
     ("Funk", None, 0, 101),
     ("Latin", "Afro-Cuban", 101, 30), ("Latin", "Bossa Nova", 131, 16), ("Latin", "Samba", 147, 18),
     ("Latin", "Cha-Cha", 165, 9), ("Latin", "Latin Misc", 174, 6),
@@ -38,6 +85,11 @@ PATTERN_CATEGORIES = [
     ("Electronic", "Misc", 536, 13),
     ("Jazz & Swing", "Jazz", 549, 9), ("Jazz & Swing", "Swing", 558, 20),
 ]
+
+# The firmware does not send its folders, so the layout is picked by how many
+# patterns the keyboard reports; an unknown count uses the newest.
+PATTERN_LAYOUTS = {564: _FOLDERS_564, 578: _FOLDERS_578}
+PATTERN_CATEGORIES = _FOLDERS_564
 
 
 # The user's own step sequences can be used as drum patterns too. They are
@@ -69,6 +121,22 @@ class DrumMachinePage(QbPage):
         self._user_listed = set()   # the user's sequences added to the dropdowns so far
         self._patterns = Loader(self, self._fetch_pattern, batch=10)
         self._patterns.loaded.connect(self._on_pattern_loaded)
+
+        swing_row = QHBoxLayout()
+        swing_row.addWidget(QLabel(_t("Default swing")))
+        self.swing = Combo()
+        self.swing.addItem(_t("Auto"), 0)
+        self.swing.addItem(_t("Off"), 1)
+        for step in range(1, 11):
+            self.swing.addItem("{}%".format(step * 10), step + 1)
+        self.swing.currentIndexChanged.connect(self._on_swing_chosen)
+        swing_row.addWidget(self.swing)
+        self.swing_note = hint_label(_t("Auto gives each pattern the swing its style is played with (hip hop, R&B, "
+                                       "house, garage, reggae, breakbeats); the rest stay straight. A percentage "
+                                       "swings every pattern by that much (100% = triplets). Blues, shuffle, jazz "
+                                       "and swing patterns are already on a triplet grid."))
+        swing_row.addWidget(self.swing_note, 1)
+        layout.addLayout(swing_row)
 
         row = QHBoxLayout()
         row.setSpacing(12)
@@ -134,6 +202,23 @@ class DrumMachinePage(QbPage):
         width = CHAIN_COLUMNS * (CHAIN_BAR_WIDTH + CHAIN_NUMBER_WIDTH) + (CHAIN_COLUMNS * 2 - 1) * 8
         place.addItem(QSpacerItem(width, 0, QSizePolicy.Minimum, QSizePolicy.Fixed))
         form.addRow(self.pattern_label, place)
+
+        # this slot's own swing
+        self.slot_swing = Combo()
+        self.slot_swing.setMinimumContentsLength(11)
+        self.slot_swing.addItem(_t("Auto"), 0)
+        self.slot_swing.addItem(_t("Off"), 1)
+        for step in range(1, 11):
+            self.slot_swing.addItem("{}%".format(step * 10), step + 1)
+        self.slot_swing.setToolTip(_t("How much this slot's off 16th notes are delayed. Auto follows the "
+                                      "Default swing above (and, when that is Auto too, the pattern's own)."))
+        self.slot_swing.currentIndexChanged.connect(self._on_slot_swing_chosen)
+        self.slot_swing_note = hint_label("")
+        slot_swing_row = QHBoxLayout()
+        slot_swing_row.addWidget(self.slot_swing)
+        slot_swing_row.addSpacing(12)
+        slot_swing_row.addWidget(self.slot_swing_note, 1)
+        form.addRow(QLabel(_t("Swing")), slot_swing_row)
 
         # the rest is the same either way
         self.channel = channel_combo(first_is_master=False)
@@ -272,6 +357,11 @@ class DrumMachinePage(QbPage):
         count = self.call("dm_pattern_count")
         if count is None:
             return False
+        swing = self.call("dm_swing_get")
+        self.swing.setEnabled(swing is not None)       # older firmware has no swing
+        if swing is not None:
+            with self.quiet():
+                self.swing.set_data(swing)
         if self.pattern.item_count() == 0 or self._patterns.count != count:
             self._patterns.reset()
             self._user_listed = set()
@@ -306,12 +396,49 @@ class DrumMachinePage(QbPage):
         self._show_names_note()
         return True
 
+    def _show_slot_swing(self, slot, swing=None):
+        """The slot's own swing, read from the keyboard (it depends on the slot's
+        pattern and on the default swing, so it is asked for afresh)."""
+        if swing is None:
+            swing = self.call("dm_slot_swing_get", slot)
+        self.slot_swing.setEnabled(swing is not None)
+        if swing is None:                       # older firmware
+            self.slot_swing_note.setText("")
+            return
+        with self.quiet():
+            self.slot_swing.setItemText(0, _t("Auto ({}%)").format(swing["auto"]))
+            self.slot_swing.set_data(swing["value"])
+        self.slot_swing_note.setText(_t("Triplet patterns (12/8) are not affected."))
+
+    def _on_slot_swing_chosen(self, *_):
+        if self._quiet:
+            return
+        slot = self._slot()
+        result = self.call("dm_slot_swing_set", slot, self.slot_swing.currentData() or 0)
+        if result is None:
+            self.refused()
+            return
+        self._show_slot_swing(slot, result)
+        self.set_status(_t("Swing saved."))
+
+    def _on_swing_chosen(self, *_):
+        if self._quiet:
+            return
+        result = self.call("dm_swing_set", self.swing.currentData() or 0)
+        if result is None:
+            self.refused()
+            return
+        with self.quiet():
+            self.swing.set_data(result)
+        self._show_slot_swing(self._slot())
+        self.set_status(_t("Swing saved."))
+
     @staticmethod
     def _folders(count):
         """(folder, pattern) for every pattern, in the keyboard's folders; any
         it has beyond them go in "Other"."""
         out, placed = [], set()
-        for name, inner, first, length in PATTERN_CATEGORIES:
+        for name, inner, first, length in PATTERN_LAYOUTS.get(count, PATTERN_CATEGORIES):
             folder = (_t(name), _t(inner)) if inner else _t(name)
             for index in range(first, min(first + length, count)):
                 out.append((folder, index))
@@ -325,6 +452,7 @@ class DrumMachinePage(QbPage):
     def _show(self, slot):
         self.slot_title.setText(_t("Slot {}").format(slot + 1))
         self._show_chain(slot)
+        self._show_slot_swing(slot)
         config = self._slots.get(slot)
         if config is None:
             return
@@ -405,6 +533,7 @@ class DrumMachinePage(QbPage):
         config["velocities"] = [slider.value() for slider in self.velocities]
         ok = self.call("dm_set", slot, config)
         fresh = self.call("dm_get", slot)       # dm_set only says yes or no: read back what was kept
+        self._show_slot_swing(slot)             # a new pattern has its own default swing
         if fresh is not None:
             self._slots[slot] = fresh
         if ok:

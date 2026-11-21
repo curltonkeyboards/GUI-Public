@@ -70,7 +70,10 @@ HID_CMD_RESET_KEYBOARD_CONFIG = 0xB8
 HID_CMD_SAVE_KEYBOARD_SLOT = 0xB9
 HID_CMD_LOAD_KEYBOARD_SLOT = 0xBA
 HID_CMD_SET_KEYBOARD_CONFIG_ADVANCED = 0xBB
-HID_CMD_LCD_THEME = 0xFE  # Get/set global LCD colour theme (sub 0=GET, 1=SET)
+HID_CMD_LCD_THEME = 0xFE  # Get/set global LCD colour theme (sub 0=GET, 1=SET theme, 2=SET colour, 3=SHOW a screen style)
+# The preset themes' colours (QMK hue, sat, val), for firmware that does not
+# report the colour itself (before 1.1.58, which added Custom: theme 4).
+LCD_THEME_HSV = [(17, 255, 255), (85, 255, 255), (0, 0, 255), (140, 150, 255)]
 HID_CMD_CHANNEL_ARTIC = 0xFF  # Get/set channel->articulation map + enable (sub 0=GET, 1=SET)
 HID_CMD_KEYBOARD_CLONE = 0x94  # Whole-EEPROM clone (sub 0=INFO, 1=READ, 2=WRITE, 3=FINALIZE)
 HID_CMD_NAV_LAYER = 0x97  # Get/set the on-device menu navigation layer (sub 0=GET, 1=SET)
@@ -98,7 +101,7 @@ PARAM_TRIPLESPLIT_HE_VELOCITY_MIN = 11
 PARAM_TRIPLESPLIT_HE_VELOCITY_MAX = 12
 # Global MIDI Settings (velocity, aftertouch, vibrato)
 PARAM_VELOCITY_MODE = 13             # 0=Fixed, 1=Peak, 2=Speed, 3=Speed+Peak
-PARAM_AFTERTOUCH_MODE = 14           # 0=Off, 1=Bottom-out, 2=Bottom-out(NS), 3=Reverse, 4=Reverse(NS), 5=Post-actuation, 6=Post-actuation(NS), 7=Vibrato, 8=Vibrato(NS)
+PARAM_AFTERTOUCH_MODE = 14           # 0=Off, 1=Bottom-out, 2=Bottom-out(NS), 3=Reverse, 4=Reverse(NS), 5=Deep press, 6=Deep press(NS), 7=Vibrato, 8=Vibrato(NS)
 PARAM_BASE_SUSTAIN = 15
 PARAM_KEYSPLIT_SUSTAIN = 16
 PARAM_TRIPLESPLIT_SUSTAIN = 17
@@ -1856,6 +1859,43 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolKeyOver
         try:
             # sub-cmd 1 = SET; payload byte 0 = theme index
             packet = self._create_hid_packet(HID_CMD_LCD_THEME, 1, [theme_index & 0xFF])
+            data = self.usb_send(self.dev, packet, retries=3)
+            return bool(data) and len(data) > 4 and data[4] == 0
+        except Exception:
+            return False
+
+    def get_lcd_color(self):
+        """The LCD's colour as (hue, sat, val) on QMK's 0-255 scale, or None.
+        Firmware 1.1.58 and later reports the colour showing (any colour of
+        its own included); before that, the preset theme's colour."""
+        try:
+            packet = self._create_hid_packet(HID_CMD_LCD_THEME, 0, None)
+            data = self.usb_send(self.dev, packet, retries=3)
+            if not data or len(data) < 10 or data[3] != HID_CMD_LCD_THEME or data[4] != 0 or data[6] == 0:
+                return None
+            if data[6] > len(LCD_THEME_HSV):              # it has Custom: the colour is in the answer
+                return (data[7], data[8], data[9])
+            return LCD_THEME_HSV[data[5]] if data[5] < len(LCD_THEME_HSV) else None
+        except Exception:
+            return None
+
+    def set_screen_live(self, value):
+        """Show a screen style / visualiser (the oled_keyboard value) on the
+        keyboard at once, without saving it: the settings packet (Save as
+        Default / Save to Slot) saves it. Firmware before 1.1.58 ignores it."""
+        try:
+            v = int(value) & 0xFFFFFFFF
+            packet = self._create_hid_packet(HID_CMD_LCD_THEME, 3, [v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF])
+            data = self.usb_send(self.dev, packet, retries=3)
+            return bool(data) and len(data) > 4 and data[4] == 0
+        except Exception:
+            return False
+
+    def set_lcd_color(self, hue, sat, val):
+        """Give the LCD a colour of its own (the Custom theme; applies and
+        persists at once). Firmware before 1.1.58 ignores it."""
+        try:
+            packet = self._create_hid_packet(HID_CMD_LCD_THEME, 2, [hue & 0xFF, sat & 0xFF, val & 0xFF])
             data = self.usb_send(self.dev, packet, retries=3)
             return bool(data) and len(data) > 4 and data[4] == 0
         except Exception:

@@ -2,7 +2,7 @@
 """SmartChord: how chords move from one to the next (voice leading), and the
 twenty chord shapes of your own."""
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (QHBoxLayout, QVBoxLayout, QFormLayout, QGroupBox, QListWidget,
                              QListWidgetItem, QLabel, QPushButton)
 
@@ -59,6 +59,28 @@ class SmartChordPage(QbPage):
         self._vl_dirty = False      # rules / priority changed here but not saved yet
         self._chords = {}           # slot -> intervals on the keyboard
         self._drafts = {}           # slot -> intervals edited here but not saved yet
+
+        # ---- rhythm ----
+        self._rhythm_names = {}     # rhythm index -> name read from the keyboard
+        self._rhythm_count = 0
+        self._rhythm_next = 0       # next name to read in the background
+        layout.addWidget(section_label(_t("Rhythm")))
+        layout.addWidget(hint_label(_t("With a rhythm chosen, a held SmartChord plays that Rhythm Engine "
+                                       "rhythm instead of sounding as one held chord. Lifting every key and "
+                                       "pressing again starts the rhythm over; pressing a new key while one "
+                                       "is still held carries it on with the new chord. It is saved on the "
+                                       "keyboard as soon as you choose it.")))
+        rhythm_row = QHBoxLayout()
+        self.rhythm_combo = Combo()
+        self.rhythm_combo.setMinimumContentsLength(18)
+        self.rhythm_combo.addItem(_t("None"), 0)
+        self.rhythm_combo.currentIndexChanged.connect(self._on_rhythm_chosen)
+        rhythm_row.addWidget(QLabel(_t("SmartChord rhythm")))
+        rhythm_row.addWidget(self.rhythm_combo)
+        self.rhythm_note = hint_label("")
+        rhythm_row.addWidget(self.rhythm_note, 1)
+        layout.addLayout(rhythm_row)
+        layout.addWidget(divider())
 
         # ---- voice leading ----
         if self.CHORDS:
@@ -200,6 +222,8 @@ class SmartChordPage(QbPage):
     def forget(self):
         self._vl = None
         self._set_vl_dirty(False)
+        self._rhythm_next = self._rhythm_count      # stop reading names
+        self.rhythm_note.setText("")
         if not self.CHORDS:
             return
         self._chords = {}
@@ -212,6 +236,7 @@ class SmartChordPage(QbPage):
         if vl is None:
             return False
         self._show_vl(vl)
+        self._load_rhythm()
         if not self.CHORDS:
             return True
         self._chords = {}
@@ -225,6 +250,70 @@ class SmartChordPage(QbPage):
             self.chord_list.item(slot).setText(self._chord_text(slot))
         self._show_chord(self._slot())
         return True
+
+    # ---- rhythm -----------------------------------------------------------------
+
+    def _load_rhythm(self):
+        """Show the keyboard's SmartChord rhythm; the list is None plus every
+        Rhythm Engine rhythm, its names read a few at a time."""
+        value = self.call("scr_get")
+        info = self.call("re_info") if value is not None else None
+        if value is None or info is None:
+            self.rhythm_combo.setEnabled(False)
+            self.rhythm_note.setText(_t("This keyboard's firmware has no SmartChord rhythm."))
+            return
+        self.rhythm_combo.setEnabled(True)
+        count = info["rhythms"]
+        with self.quiet():
+            if count != self._rhythm_count or self.rhythm_combo.count() != count + 1:
+                self._rhythm_count = count
+                self._rhythm_names = {}
+                self.rhythm_combo.clear()
+                self.rhythm_combo.addItem(_t("None"), 0)
+                for index in range(count):
+                    self.rhythm_combo.addItem(_t("Rhythm {}").format(index + 1), index + 1)
+            if 0 < value <= count:
+                self._read_rhythm_name(value - 1)       # the one shown, first
+            self.rhythm_combo.set_data(value)
+        self._rhythm_next = 0
+        self._read_rhythm_names()
+
+    def _read_rhythm_name(self, index):
+        if index in self._rhythm_names:
+            return True
+        name = self.call("re_rhythm_name", index)
+        if name is None:
+            return False
+        self._rhythm_names[index] = name
+        if name:
+            with self.quiet():
+                self.rhythm_combo.setItemText(index + 1, name)
+        return True
+
+    def _read_rhythm_names(self):
+        """Read the next few names, then come back for more."""
+        for _ in range(12):
+            if self._rhythm_next >= self._rhythm_count:
+                self.rhythm_note.setText("")
+                return
+            if not self._read_rhythm_name(self._rhythm_next):
+                self.rhythm_note.setText("")       # the keyboard went away
+                return
+            self._rhythm_next += 1
+        self.rhythm_note.setText(_t("Reading names from the keyboard..."))
+        QTimer.singleShot(0, self._read_rhythm_names)
+
+    def _on_rhythm_chosen(self, *_):
+        if self._quiet:
+            return
+        value = self.rhythm_combo.currentData() or 0
+        result = self.call("scr_set", value)
+        if result is None:
+            self.refused()
+            return
+        with self.quiet():
+            self.rhythm_combo.set_data(result)
+        self.set_status(_t("SmartChord rhythm saved.") if result else _t("SmartChord rhythm off."))
 
     # ---- voice leading ----------------------------------------------------------
 

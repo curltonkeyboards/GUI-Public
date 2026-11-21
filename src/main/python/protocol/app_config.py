@@ -27,9 +27,14 @@ SUB_DL_GET, SUB_DL_SET, SUB_DL_PRESET, SUB_DL_PRESET_NAME, SUB_DL_SLOT_GET, SUB_
 SUB_RE_GET, SUB_RE_SET, SUB_RE_INFO, SUB_RE_PROG_NAME, SUB_RE_RHYTHM_NAME = 0x30, 0x31, 0x32, 0x33, 0x34
 SUB_DM_GET, SUB_DM_SET, SUB_DM_INFO, SUB_DM_PATTERN_NAME = 0x40, 0x41, 0x42, 0x43
 SUB_DM_CHAIN_GET, SUB_DM_CHAIN_SET = 0x44, 0x45
+SUB_DM_SWING_GET, SUB_DM_SWING_SET = 0x46, 0x47
+SUB_DM_SLOT_SWING_GET, SUB_DM_SLOT_SWING_SET = 0x48, 0x49
+DM_SWING_MAX = 11           # 0 = Auto, 1 = Off, 2..11 = 10%..100%
 SUB_FD_GET, SUB_FD_SET = 0x50, 0x51
 SUB_VL_GET, SUB_VL_SET, SUB_VL_RESET = 0x60, 0x61, 0x62
 SUB_SC_GET, SUB_SC_SET = 0x70, 0x71
+SUB_CSET_GET, SUB_CSET_SET = 0x72, 0x73
+SUB_SCR_GET, SUB_SCR_SET = 0x74, 0x75
 
 QB_COUNT = 100
 QB_UNSET = 0xFF
@@ -42,6 +47,7 @@ DM_CHAIN_MAX = 16
 DM_NO_PATTERN = 0xFFFF
 FD_SLOTS = 40
 SC_SLOTS = 20
+CSET_COUNT = 8                     # custom SmartChord Sets
 
 
 def _text(raw):
@@ -285,6 +291,29 @@ class AppConfig:
         b = self.request(SUB_DM_SET, bytes([slot, 1]) + bytes(config["notes"][:12]) + bytes(config["velocities"][:12]))
         return a is not None and b is not None
 
+    def dm_swing_get(self):
+        """The drum machine's swing: 0 = Auto (each pattern's own default), 1 = Off,
+        2..11 = 10%..100% for every pattern. None from firmware without it."""
+        reply = self.request(SUB_DM_SWING_GET)
+        return None if reply is None else reply[0]
+
+    def dm_swing_set(self, value):
+        reply = self.request(SUB_DM_SWING_SET, [value])
+        return None if reply is None else reply[0]
+
+    @staticmethod
+    def _slot_swing(reply):
+        return None if reply is None else {"slot": reply[0], "value": reply[1], "auto": reply[2]}
+
+    def dm_slot_swing_get(self, slot):
+        """One drum machine slot's swing: {"value": 0 = Auto (follow the default
+        swing), 1 = Off, 2..11 = 10%..100%; "auto": the percentage Auto means
+        for this slot right now}. None from firmware without it."""
+        return self._slot_swing(self.request(SUB_DM_SLOT_SWING_GET, [slot]))
+
+    def dm_slot_swing_set(self, slot, value):
+        return self._slot_swing(self.request(SUB_DM_SLOT_SWING_SET, [slot, value]))
+
     def dm_pattern_count(self):
         reply = self.request(SUB_DM_INFO)
         return None if reply is None else reply[0] | (reply[1] << 8)
@@ -353,6 +382,19 @@ class AppConfig:
     def vl_reset(self):
         return self._vl(self.request(SUB_VL_RESET))
 
+    # ---- SmartChord rhythm -----------------------------------------------------
+
+    def scr_get(self):
+        """The global SmartChord rhythm: 0 = None (chords sound as held), else
+        a Rhythm Engine rhythm index + 1. None from firmware without it."""
+        reply = self.request(SUB_SCR_GET)
+        return None if reply is None else struct.unpack_from("<H", reply, 0)[0]
+
+    def scr_set(self, value):
+        """Set it (saved on the keyboard at once); returns it as scr_get."""
+        reply = self.request(SUB_SCR_SET, struct.pack("<H", value))
+        return None if reply is None else struct.unpack_from("<H", reply, 0)[0]
+
     # ---- Custom SmartChords ----------------------------------------------------
 
     @staticmethod
@@ -369,3 +411,25 @@ class AppConfig:
         """intervals: up to six semitone offsets from the root ([] erases)."""
         padded = (list(intervals)[:6] + [0] * 6)[:6]
         return self._sc(self.request(SUB_SC_SET, bytes([slot, min(len(intervals), 6)]) + struct.pack("<6b", *padded)))
+
+    # ---- custom SmartChord Sets ------------------------------------------------
+
+    @staticmethod
+    def _cset(reply):
+        if reply is None:
+            return None
+        return {"set": reply[0], "used": bool(reply[1]),
+                "entries": [(reply[2 + 2 * key], reply[3 + 2 * key]) for key in range(12)]}
+
+    def cset_get(self, index):
+        """{"set", "used", "entries": 12 (chord, inversion) for the keys C..B}.
+        Chord 0 = the note alone, 1..78 = SmartChord keycode 0xC396 + chord - 1,
+        0x80 + n = custom chord n. None from firmware without custom sets."""
+        return self._cset(self.request(SUB_CSET_GET, [index]))
+
+    def cset_set(self, index, used, entries):
+        """Save custom set `index` (used False deletes it); returns it as cset_get."""
+        data = bytearray([index, 1 if used else 0])
+        for chord, inversion in (list(entries) + [(0, 0)] * 12)[:12]:
+            data += bytes([chord & 0xFF, inversion & 0xFF])
+        return self._cset(self.request(SUB_CSET_SET, bytes(data)))

@@ -4433,7 +4433,7 @@ class RGBConfigurator(BasicEditor):
         self.adv_key_lighting_tab = self._create_tab_with_scroll(self.adv_key_lighting_container)
         self.tabs_widget.addTab(self.adv_key_lighting_tab, tr("RGBConfigurator", "Key Indicators"))
         # Basic mode: effect, brightness, colour and Save only
-        ui_mode.limit_tabs(self.tabs_widget, {tr("RGBConfigurator", "Custom Lights")})
+        ui_mode.limit_tabs(self.tabs_widget, {tr("RGBConfigurator", "Custom Lights"), tr("RGBConfigurator", "Screen")})
 
         # Initialize handler for Lighting Configurator tab (per-key RGB)
         self.handler_per_key_rgb = PerKeyRGBHandler(self.lighting_container)
@@ -4591,6 +4591,12 @@ class RGBConfigurator(BasicEditor):
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
         return scroll_area
+
+    def add_page(self, widget, title):
+        """A tab made elsewhere (the Settings editor's Screen page, whose
+        settings travel with the MIDI settings)."""
+        self.tabs_widget.addTab(widget, tr("RGBConfigurator", title))
+        ui_mode.apply_tab_limits()
 
     def _create_tab_with_scroll(self, container):
         """Helper method to create a tab with scroll area"""

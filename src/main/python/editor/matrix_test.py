@@ -7,7 +7,8 @@ import json
 from PyQt5.QtWidgets import (QVBoxLayout, QPushButton, QWidget, QHBoxLayout, QLabel,
                            QSizePolicy, QGroupBox, QGridLayout, QComboBox, QCheckBox,
                            QTableWidget, QHeaderView, QMessageBox, QFileDialog, QFrame,
-                           QScrollArea, QSlider, QMenu, QInputDialog, QTabWidget, QSpinBox)
+                           QScrollArea, QSlider, QMenu, QInputDialog, QTabWidget, QSpinBox,
+                           QColorDialog)
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5 import QtCore
 from PyQt5.QtGui import QPainterPath, QRegion, QPainter, QColor, QBrush, QPen, QFont, QLinearGradient
@@ -49,7 +50,7 @@ from unlocker import Unlocker
 _ATCC_ZONE_BASE_NAMES = ["Leg Vib Slow", "Leg Vib Fast", "Leg Vib Smooth",
                          "Vib Slow", "Vib Fast", "Vib Smooth",
                          "Fast Swell", "Slow Swell", "Reverse Swell",
-                         "Fast Fall", "Slow Fall", "Shimmer Me", "Shimmer Leg"]
+                         "Deep Fast", "Deep Slow", "Shimmer Me", "Shimmer Leg"]
 
 
 def _append_atcc_zone_items(combo):
@@ -1576,15 +1577,21 @@ class TickCombo(QCheckBox):
 class MIDIswitchSettingsConfigurator(BasicEditor):
 
     # LCD visualisers, in the firmware's numbering (lcd_viz.h: LCD_VIZ_* - 1;
-    # saved in the keyboard settings). 1.1.57 numbered them afresh, in the
-    # order they are listed in (lcd_viz_menu_order[]): grouped by kind.
-    VIZ_NAMES = ["Ripple 2", "Ripple 3", "Kaleidoscope", "Pixels", "Dot to Dot", "Zip Lines", "Ribbons", "Fireflies", "Flow", "Life",
-                 "Tunnel", "Starfield", "Spiral", "Vortex", "Galaxy", "Spirograph", "Pulse", "Mandala", "Piano Roll", "Roll Up",
-                 "Roll Down", "Note Bars", "Mirror Bars", "Mirror V", "LED Meter", "Flames", "Rain", "Rain \\", "Rain /", "Code Rain",
-                 "Code Rain \\", "Code Rain /", "Snow", "Leaves", "Rockets", "Fireworks", "Embers", "Helix", "Helix V", "Helix \\",
-                 "Helix /", "Heartbeat", "Orbits", "Chord Wheel", "Key Map", "Random Loop", "Random BPM"]
+    # saved in the keyboard settings). Until the keyboard ships they are the
+    # order they are listed in (lcd_viz_menu_order[], grouped by kind),
+    # renumbered as they come and go (1.1.58: 65 of them). Variants of one
+    # share its name with a number (Flow 1-6, Rain 1-3...).
+    VIZ_NAMES = ["Ripple 1", "Ripple 2", "Kaleidoscope 1", "Kaleidoscope 2", "Kaleidoscope 3", "Kaleidoscope 4", "Kaleidoscope 5", "Kaleidoscope 6",
+                 "Kaleidoscope 7", "Kaleidoscope 8", "Pixels", "Dot to Dot", "Lines 1", "Lines 2", "Fireflies", "Flow 1",
+                 "Flow 2", "Flow 3", "Flow 4", "Flow 5", "Flow 6", "Life", "Blocks", "Tunnel",
+                 "Starfield", "Spiral 1", "Spiral 2", "Galaxy", "Spirograph", "Pulse 1", "Pulse 2", "Piano Roll 1",
+                 "Piano Roll 2", "Piano Roll 3", "Bars 1", "Bars 2", "Bars 3", "Bars 4", "Bars 5", "Rain 1",
+                 "Rain 2", "Rain 3", "Snow 1", "Snow 2", "Fireworks 1", "Fireworks 2", "Embers", "Helix 1",
+                 "Helix 2", "Helix 3", "Helix 4", "Heartbeat", "Waveform 1", "Waveform 2", "Waveform 3", "Waveform 4",
+                 "Strings 1", "Strings 2", "Strings 3", "Strings 4", "Orbits", "Chord Wheel", "Key Map", "Random Loop",
+                 "Random BPM"]
     VIZ_MENU_ORDER = VIZ_NAMES
-    VIZ_RANDOMS = (45, 46)                    # Random Loop, Random BPM (their numbers - 1)
+    VIZ_RANDOMS = (63, 64)                    # Random Loop, Random BPM (their numbers - 1)
 
     @staticmethod
     def oled_keyboard_unpack(value):
@@ -1625,6 +1632,14 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             if self.viz_color.currentData() == 2:
                 self.viz_color.setCurrentIndex(self.viz_color.findData(1))
             self.viz_color.removeItem(both)
+
+    def _send_screen_live(self, *_):
+        """A screen style / visualiser row changed: show it on the keyboard at
+        once. Not saved: Save as Default / Save to Slot saves it."""
+        if getattr(self, "_screen_live_off", False):
+            return
+        if self.device and isinstance(self.device, VialKeyboard):
+            self.device.keyboard.set_screen_live(self.oled_keyboard_value())
 
     def _update_viz_rows(self, *_):
         show = self.oled_keyboard.currentData() == 6
@@ -1697,16 +1712,32 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             if mode is not None:
                 self.device.keyboard.set_perf_mode(mode)
 
-    def on_lcd_theme_changed(self, index):
-        """LCD colour theme changed - apply immediately to the keyboard.
+    @staticmethod
+    def _qcolor_from_hsv(h, s, v):
+        return QColor.fromHsv(int(h) * 360 // 256, int(s), int(v))
 
-        Global setting (own EEPROM region + dedicated HID command), so it takes
-        effect and persists right away without the Save button.
-        """
+    def _show_lcd_color(self):
+        c = self._qcolor_from_hsv(*self.lcd_color)
+        text = "#000000" if c.lightness() > 140 else "#ffffff"
+        self.lcd_color_btn.setText(c.name().upper())
+        self.lcd_color_btn.setStyleSheet(
+            f"QPushButton {{ background-color: {c.name()}; color: {text}; "
+            f"border: 1px solid palette(mid); border-radius: 4px; }}")
+
+    def _set_lcd_color(self, color):
+        """Screen colour picked: show it, and send it to the keyboard, where it
+        applies and saves at once (the Custom theme)."""
+        hue = color.hsvHue()
+        self.lcd_color = (0 if hue < 0 else hue * 256 // 360, color.hsvSaturation(), max(color.value(), 40))
+        self._show_lcd_color()
         if self.device and isinstance(self.device, VialKeyboard):
-            theme_idx = self.lcd_theme.currentData()
-            if theme_idx is not None:
-                self.device.keyboard.set_lcd_theme(theme_idx)
+            self.device.keyboard.set_lcd_color(*self.lcd_color)
+
+    def _pick_lcd_color(self):
+        color = QColorDialog.getColor(self._qcolor_from_hsv(*self.lcd_color), self.lcd_color_btn.window(),
+                                      tr("MIDIswitchSettingsConfigurator", "Screen Color"))
+        if color.isValid():
+            self._set_lcd_color(color)
 
     def _on_channel_artic_enable_changed(self, index):
         """Enable Channel Articulations changed - write immediately to the device.
@@ -2396,7 +2427,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
             "Keyboard 1/2/3: piano keyboard at different octaves\n"
             "Guitar Low/Med/High: guitar tablature views\n"
             "Visualiser: an animation that reacts to every note and key press\n"
-            "(keyboard firmware 1.1.57 or later for this list).\n"
+            "(keyboard firmware 1.1.58 or later for this list).\n"
             "Keys for each style, and Visualiser On/Off / Next / Previous,\n"
             "are on the keymap's Lighting tab."
         ))
@@ -2413,22 +2444,40 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.viz_kind = _combo(CARD_VALUE_WIDTH, [(name, self.VIZ_NAMES.index(name)) for name in self.VIZ_MENU_ORDER])
         _viz_row("Visualiser:", (
             "Which visualiser the LCD shows (LCD Settings > Viz on the keyboard).\n"
-            "Ripple 2 / 3: double squares spreading / blooming where notes play\n"
-            "Dot to Dot, Zip Lines, Ribbons: lines across the screen\n"
-            "Tunnel to Mandala in the list: patterns from the middle\n"
-            "Piano Roll / Roll Up / Roll Down scroll at the tempo\n"
-            "Rain to Leaves in the list come down from the top\n"
-            "Helix / Helix V / \\ / /: a DNA helix turning at the tempo\n"
+            "Ripple 1 / 2: double squares spreading / blooming where notes play\n"
+            "Kaleidoscope 1-8, mirrored or turned round the middle: 1 ripples;\n"
+            "2 drifting specks; 3 specks spiralling out; 4 a mosaic of tiles;\n"
+            "5 rings of tiles rippling out; 6-8 pieces of coloured glass turning\n"
+            "round the middle, shown six, four or eight ways\n"
+            "Dot to Dot, Lines 1 / 2: lines across the screen\n"
+            "Flow 1-6: specks drifting with trails (2 in depth, 3 into whirlpools,\n"
+            "4 in swarms, 5 as smoke, 6 between magnets)\n"
+            "Blocks: pieces of four squares stack up, and full rows clear\n"
+            "Tunnel to Pulse 2 in the list: patterns from the middle\n"
+            "Piano Roll 1-3 scroll at the tempo (left, up, down)\n"
+            "Bars 1-5: a bar for each note (2 / 3 mirrored, 4 a meter, 5 flames)\n"
+            "Rain 1-3 (straight, slanting \\ and /) and Snow 1 / 2 (snow, leaves)\n"
+            "come down from the top; Fireworks 2 launches rockets\n"
+            "Helix 1-4: a DNA helix turning at the tempo (across, down, \\, /)\n"
+            "Waveform 1-4: lines that swell into waves as you play and quickly\n"
+            "settle back to straight (3 / 4: two lines)\n"
+            "Strings 1-4: thin lines a wave runs along from where you press\n"
+            "(1 / 2 up and down, 3 / 4 across; 2 / 4 short sharp ripples)\n"
             "Key Map lights the keys you press\n"
             "Random Loop: a random one, changing each time a loop comes round\n"
             "Random BPM: a random one, changing every 8 beats"
         ), self.viz_kind)
-        self.viz_color = _combo(CARD_VALUE_WIDTH, [("Theme", 0), ("Multicolor", 1)])
+        self.viz_color = _combo(CARD_VALUE_WIDTH, [("Screen Color", 0), ("Multicolor", 1)])
         _viz_row("Visualiser color:", (
-            "Theme: the visualiser in the LCD theme's colour only.\n"
-            "Multicolor: coloured by note (blooms by how hard you play).\n"
+            "Screen Color: the visualiser in the screen color only.\n"
+            "Multicolor: colors shifted from the screen color. Live notes keep the\n"
+            "screen color; each loop, the sequencer, drum machine, arpeggiator,\n"
+            "Rhythm Engine, delay... has a color of its own; keys that play no\n"
+            "note are random colors.\n"
+            "The waveforms and strings shade either side of the screen color as\n"
+            "they bend; Life's new cells swing a little either side of it.\n"
             "Both (Random Loop / Random BPM only): each time it changes,\n"
-            "the new one is in the theme colour or multicolour, at random."
+            "the new one is in the screen color or multicolor, at random."
         ), self.viz_color)
         self.viz_kind.currentIndexChanged.connect(self._update_viz_color_items)
         self.viz_minimal = _combo(CARD_VALUE_WIDTH, [("Off", 0), ("On", 1)])
@@ -2439,54 +2488,41 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         ), self.viz_minimal)
         self.oled_keyboard.currentIndexChanged.connect(self._update_viz_rows)
         self._update_viz_rows()
+        for _w in (self.oled_keyboard, self.viz_kind, self.viz_color, self.viz_minimal):
+            _w.currentIndexChanged.connect(self._send_screen_live)
 
-        # LCD Theme with help — global LCD colour theme. Lives in its own
-        # EEPROM region on the keyboard and is synced over a dedicated HID
-        # command (not the per-slot settings packet), so it applies and
-        # persists immediately on change.
-        lcd_theme_label = QWidget()
-        lcd_theme_label_layout = QHBoxLayout()
-        lcd_theme_label_layout.setContentsMargins(0, 0, 0, 0)
-        lcd_theme_label_layout.setSpacing(5)
-        lcd_theme_label_layout.addWidget(self.create_help_label(
-            "LCD colour theme — recolours the text + keyboard on the LCD.\n"
-            "Orange, Matrix Green, White, Light Blue (bright on black).\n"
-            "Applies and saves to the MIDIswitch instantly."
+        # Screen colour: any colour, picked here. Global (its own EEPROM region
+        # on the keyboard, a dedicated HID command): it applies and persists the
+        # moment it is picked.
+        self._adv_lcd_color_label = _help_row("Screen Color:", (
+            "The colour of the LCD's text, keyboard and visualisers (on black).\n"
+            "Click to pick any colour. Applies and saves to the MIDIswitch instantly\n"
+            "(keyboard firmware 1.1.58 or later; on the keyboard: LCD Settings > Screen Color > Custom)."
         ))
-        lcd_theme_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "LCD Theme:")))
-        lcd_theme_label.setLayout(lcd_theme_label_layout)
-        self._adv_lcd_theme_label = lcd_theme_label   # placed on the Advanced Settings tab
-        self.lcd_theme = ArrowComboBox()
-        self.lcd_theme.setMinimumWidth(120)
-        self.lcd_theme.setMinimumHeight(25)
-        self.lcd_theme.setMaximumHeight(25)
-        self.lcd_theme.setEditable(True)
-        self.lcd_theme.lineEdit().setReadOnly(True)
-        self.lcd_theme.lineEdit().setAlignment(Qt.AlignCenter)
-        # Keep this list + order in sync with lcd_themes[] in the firmware
-        # (keyboards/orthomidi5x14/orthomidi5x14.c). Foreground (text + piano)
-        # colour on a black background.
-        for _idx, _name in enumerate([
-            "Orange", "Matrix Green", "White", "Light Blue",
-        ]):
-            self.lcd_theme.addItem(_name, _idx)
-        self.lcd_theme.currentIndexChanged.connect(self.on_lcd_theme_changed)
+        self.lcd_color = (17, 255, 255)                  # QMK hue, sat, val: the Orange theme
+        self.lcd_color_btn = QPushButton()
+        self.lcd_color_btn.setFixedSize(CARD_VALUE_WIDTH, 26)
+        self.lcd_color_btn.setCursor(Qt.PointingHandCursor)
+        self.lcd_color_btn.clicked.connect(self._pick_lcd_color)
+        self._show_lcd_color()
 
-        # Display smoothness — how much time the keyboard gives the screen and
-        # lights each pass vs. MIDI timing. Own HID command, applies instantly.
+        # Polling rate (was "Smoothness") — how much time the keyboard gives the
+        # keys and MIDI each pass vs. the screen and lights. Own HID command,
+        # applies instantly.
         perf_label = QWidget()
         perf_label_layout = QHBoxLayout()
         perf_label_layout.setContentsMargins(0, 0, 0, 0)
         perf_label_layout.setSpacing(5)
         perf_label_layout.addWidget(self.create_help_label(
-            "How the MIDIswitch shares its time between the screen/lights and MIDI.\n"
-            "Responsive: tightest note timing, the screen and lights update less smoothly.\n"
-            "Balanced: the default.\n"
-            "Smooth / Smoothest: smoother screen and lighting animations, notes can be\n"
-            "up to a few milliseconds later while the screen is busy.\n"
+            "How often the MIDIswitch reads the keys and sends MIDI, against the time\n"
+            "it gives the screen and lights.\n"
+            "Fastest: the tightest note timing; the screen and lights move less smoothly.\n"
+            "Fast: the default.\n"
+            "Slow / Slowest: smoother screen and lighting animations; notes can be up\n"
+            "to a few milliseconds later while the screen is busy.\n"
             "Applies and saves to the MIDIswitch instantly."
         ))
-        perf_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Smoothness:")))
+        perf_label_layout.addWidget(QLabel(tr("MIDIswitchSettingsConfigurator", "Polling rate:")))
         perf_label.setLayout(perf_label_layout)
         self._adv_perf_label = perf_label
         self.perf_mode = ArrowComboBox()
@@ -2496,7 +2532,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         self.perf_mode.setEditable(True)
         self.perf_mode.lineEdit().setReadOnly(True)
         self.perf_mode.lineEdit().setAlignment(Qt.AlignCenter)
-        for _idx, _name in enumerate(["Responsive", "Balanced", "Smooth", "Smoothest"]):
+        for _idx, _name in enumerate(["Fastest", "Fast", "Slow", "Slowest"]):
             self.perf_mode.addItem(_name, _idx)
         self.perf_mode.setCurrentIndex(1)
         self.perf_mode.currentIndexChanged.connect(self.on_perf_mode_changed)
@@ -2832,9 +2868,10 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
 
     def setup_advanced_settings_tab(self):
         """Advanced Settings sub-tab: the Macro Settings (firmware timing values,
-        formerly a tab of their own) plus the display / lighting options moved
-        out of the main MIDI Settings page (LCD Theme, Guide Lights, RGB Layer
-        Mode)."""
+        formerly a tab of their own) plus the key lighting options moved out of
+        the main MIDI Settings page (Guide Lights, RGB Layer Mode). It also
+        builds the Screen page (self.screen_page), which main_window shows on
+        the Lighting page."""
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
@@ -2853,7 +2890,7 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         title_label.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(title_label)
         desc_label = QLabel(tr("MIDIswitchSettingsConfigurator",
-            "Macro timing, the LCD (theme, screen style, visualiser) and lighting behaviour."))
+            "Macro timing, key lighting and the polling rate (the screen's settings are on Lighting > Screen)."))
         desc_label.setStyleSheet("color: palette(dark); font-size: 9pt;")
         desc_label.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(desc_label)
@@ -2866,43 +2903,25 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         macro_row.addStretch()
         main_layout.addLayout(macro_row)
 
-        # Display & Lighting: widgets created by the main page's Advanced grid,
+        # The screen's settings: a page of their own, shown on the Lighting page
+        self.screen_page = self._build_screen_page()
+
+        # Key Lighting: widgets created by the main page's Advanced grid,
         # placed here instead. They keep their attribute names so the settings
         # packet (get_current_settings / apply_settings) is unchanged.
-        display_group = QGroupBox(tr("MIDIswitchSettingsConfigurator", "Display & Lighting"))
+        display_group = QGroupBox(tr("MIDIswitchSettingsConfigurator", "Key Lighting"))
         display_layout = QGridLayout()
         display_layout.setHorizontalSpacing(25)
-        display_layout.addWidget(self._adv_lcd_theme_label, 0, 0)
-        display_layout.addWidget(self.lcd_theme, 0, 1)
-        display_layout.addWidget(self._adv_perf_label, 1, 0)
-        display_layout.addWidget(self.perf_mode, 1, 1)
-        # The screen style and the Visualiser's settings (shown while it is chosen)
-        display_layout.addWidget(self._adv_style_label, 2, 0)
-        display_layout.addWidget(self.oled_keyboard.width_holder, 2, 1)
-        for n, (label, control) in enumerate(self._viz_label_rows):
-            display_layout.addWidget(label, 3 + n, 0)
-            display_layout.addWidget(control.width_holder, 3 + n, 1)
-        row = 3 + len(self._viz_label_rows)
-        display_layout.addWidget(self._adv_guide_lights_label, row, 0)
-        display_layout.addWidget(self.smart_chord_light_mode, row, 1)
-        display_layout.addWidget(self._adv_rgb_layer_label, row + 1, 0)
-        display_layout.addWidget(self.custom_layer_animations, row + 1, 1)
+        display_layout.addWidget(self._adv_guide_lights_label, 0, 0)
+        display_layout.addWidget(self.smart_chord_light_mode, 0, 1)
+        display_layout.addWidget(self._adv_rgb_layer_label, 1, 0)
+        display_layout.addWidget(self.custom_layer_animations, 1, 1)
         note = QLabel(tr("MIDIswitchSettingsConfigurator",
-            "LCD Theme and Smoothness apply and save instantly. The screen style, the Visualiser,\n"
             "Guide Lights and RGB Layer Mode are part of the MIDI Settings and are saved with them\n"
             "(Save as Default / Save to Slot)."))
         note.setStyleSheet("color: palette(dark); font-size: 9pt;")
-        display_layout.addWidget(note, row + 2, 0, 1, 2)
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        btn_save_default = QPushButton(tr("MIDIswitchSettingsConfigurator", "Save as Default"))
-        btn_save_default.setMinimumHeight(30)
-        btn_save_default.setMaximumHeight(30)
-        btn_save_default.setMinimumWidth(120)
-        btn_save_default.setStyleSheet("QPushButton { border-radius: 5px; }")
-        btn_save_default.clicked.connect(lambda: self.on_save_slot(0))
-        btn_row.addWidget(btn_save_default)
-        display_layout.addLayout(btn_row, row + 3, 0, 1, 2)
+        display_layout.addWidget(note, 2, 0, 1, 2)
+        display_layout.addLayout(self._save_default_row(), 3, 0, 1, 2)
         display_group.setLayout(display_layout)
         display_row = QHBoxLayout()
         display_row.addStretch()
@@ -2910,7 +2929,80 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         display_row.addStretch()
         main_layout.addLayout(display_row)
 
+        # Performance: the polling rate
+        perf_group = QGroupBox(tr("MIDIswitchSettingsConfigurator", "Performance"))
+        perf_layout = QGridLayout(perf_group)
+        perf_layout.setHorizontalSpacing(25)
+        perf_layout.addWidget(self._adv_perf_label, 0, 0)
+        perf_layout.addWidget(self.perf_mode, 0, 1)
+        perf_note = QLabel(tr("MIDIswitchSettingsConfigurator", "Applies and saves to the MIDIswitch instantly."))
+        perf_note.setStyleSheet("color: palette(dark); font-size: 9pt;")
+        perf_layout.addWidget(perf_note, 1, 0, 1, 2)
+        perf_row = QHBoxLayout()
+        perf_row.addStretch()
+        perf_row.addWidget(perf_group)
+        perf_row.addStretch()
+        main_layout.addLayout(perf_row)
+
         main_layout.addStretch()
+
+    def _save_default_row(self):
+        row = QHBoxLayout()
+        row.addStretch()
+        btn = QPushButton(tr("MIDIswitchSettingsConfigurator", "Save as Default"))
+        btn.setMinimumHeight(30)
+        btn.setMaximumHeight(30)
+        btn.setMinimumWidth(120)
+        btn.setStyleSheet("QPushButton { border-radius: 5px; }")
+        btn.clicked.connect(lambda: self.on_save_slot(0))
+        row.addWidget(btn)
+        return row
+
+    def _build_screen_page(self):
+        """The Lighting page's Screen tab: the screen colour, the screen style
+        and the Visualiser's settings."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(16, 12, 16, 12)
+        outer.setSpacing(10)
+        title = QLabel(tr("MIDIswitchSettingsConfigurator", "Screen"))
+        title.setStyleSheet("font-weight: bold; font-size: 14pt;")
+        title.setAlignment(QtCore.Qt.AlignCenter)
+        outer.addWidget(title)
+        desc = QLabel(tr("MIDIswitchSettingsConfigurator",
+            "The LCD's color and what it shows: a keyboard, guitar tab or a visualiser."))
+        desc.setStyleSheet("color: palette(dark); font-size: 9pt;")
+        desc.setWordWrap(True)
+        desc.setAlignment(QtCore.Qt.AlignCenter)
+        outer.addWidget(desc)
+        group = QGroupBox(tr("MIDIswitchSettingsConfigurator", "Screen"))
+        grid = QGridLayout(group)
+        grid.setHorizontalSpacing(25)
+        grid.addWidget(self._adv_lcd_color_label, 0, 0)
+        grid.addWidget(self.lcd_color_btn, 0, 1)
+        grid.addWidget(self._adv_style_label, 1, 0)
+        grid.addWidget(self.oled_keyboard.width_holder, 1, 1)
+        for n, (label, control) in enumerate(self._viz_label_rows):   # (shown while Visualiser is chosen)
+            grid.addWidget(label, 2 + n, 0)
+            grid.addWidget(control.width_holder, 2 + n, 1)
+        row = 2 + len(self._viz_label_rows)
+        note = QLabel(tr("MIDIswitchSettingsConfigurator",
+            "The screen color applies and saves instantly. The screen style and the Visualiser show on\n"
+            "the keyboard as you change them, and are saved with the MIDI Settings (Save as Default /\n"
+            "Save to Slot)."))
+        note.setStyleSheet("color: palette(dark); font-size: 9pt;")
+        grid.addWidget(note, row + 1, 0, 1, 2)
+        grid.addLayout(self._save_default_row(), row + 2, 0, 1, 2)
+        centre = QHBoxLayout()
+        centre.addStretch()
+        centre.addWidget(group)
+        centre.addStretch()
+        outer.addLayout(centre)
+        outer.addStretch()
+        scroll.setWidget(page)
+        return scroll
 
     def setup_multichannel_tab(self):
         scroll_area = QScrollArea()
@@ -3548,12 +3640,14 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
         set_combo_by_data(self.transpose_number3, config.get("transpose_number3"), 0)
         set_combo_by_data(self.random_velocity_modifier, config.get("random_velocity_modifier"), 0)
         style, viz, multi, minimal = self.oled_keyboard_unpack(config.get("oled_keyboard", 0))
+        self._screen_live_off = True                     # (what the keyboard has: nothing to send back)
         set_combo_by_data(self.oled_keyboard, style, 0)
         set_combo_by_data(self.viz_kind, viz, 0)
         self._update_viz_color_items()        # Both, if a Random
         set_combo_by_data(self.viz_color, multi, 0)
         set_combo_by_data(self.viz_minimal, minimal, 0)
         self._update_viz_rows()
+        self._screen_live_off = False
 
         # Per-function Stop Mode (basic packet byte 20). A GET from real
         # hardware reports "stop_mode_supported" (bit 7 marker present);
@@ -3580,15 +3674,13 @@ class MIDIswitchSettingsConfigurator(BasicEditor):
                                bool(self.enable_at_modes.currentData()),
                                bool(self.enable_cc_modes.currentData()))
 
-        # LCD colour theme is a global setting carried over a dedicated HID
-        # command (not the per-slot config packet), so fetch it directly and
-        # populate the combo without re-sending it back to the keyboard.
+        # The screen colour is a global setting carried over a dedicated HID
+        # command (not the per-slot config packet), so fetch it directly.
         if self.device and isinstance(self.device, VialKeyboard):
-            theme_idx = self.device.keyboard.get_lcd_theme()
-            if theme_idx is not None:
-                self.lcd_theme.blockSignals(True)
-                set_combo_by_data(self.lcd_theme, theme_idx, 0)
-                self.lcd_theme.blockSignals(False)
+            hsv = self.device.keyboard.get_lcd_color()
+            if hsv is not None:
+                self.lcd_color = tuple(hsv)
+                self._show_lcd_color()
             perf = self.device.keyboard.get_perf_mode()
             self.perf_mode.blockSignals(True)
             if perf is not None:
@@ -4292,8 +4384,8 @@ class LayerActuationConfigurator(BasicEditor):
         aftertouch_combo.addItem("Bottom-Out (NS)", 2)
         aftertouch_combo.addItem("Reverse", 3)
         aftertouch_combo.addItem("Reverse (NS)", 4)
-        aftertouch_combo.addItem("Post-Actuation", 5)
-        aftertouch_combo.addItem("Post-Actuation (NS)", 6)
+        aftertouch_combo.addItem("Deep Press", 5)
+        aftertouch_combo.addItem("Deep Press (NS)", 6)
         aftertouch_combo.addItem("Vibrato", 7)
         aftertouch_combo.addItem("Vibrato (NS)", 8)
         aftertouch_combo.setCurrentIndex(0)
@@ -4869,7 +4961,7 @@ class LayerActuationConfigurator(BasicEditor):
         combo.addItem("Off", 0)
         combo.addItem("Bottom-Out", 1)
         combo.addItem("Reverse", 2)
-        combo.addItem("Post-Actuation", 3)
+        combo.addItem("Deep Press", 3)
         combo.addItem("Bottom-Out (NS)", 4)
         combo.addItem("Reverse (NS)", 5)
         combo.addItem("Vibrato", 6)

@@ -18,7 +18,8 @@ _USER_PATTERN_FIRST, _USER_PATTERN_COUNT = 0x8000, 40      # user sequences as d
 _BASICS = 35
 _SLOT_COUNTS = {0: 4, 1: 8, 2: 4, 3: 20, 4: 8, 5: 40, 6: 20, 7: 8, 8: 6, 9: 6, 10: 10, 11: 11, 12: 12,
                 13: 16, 14: 16, 15: 12, 16: 22, 17: 16, 18: 48, 19: 8, 20: 10, 21: 1, 22: 20, 23: 48,
-                24: 50, 25: 119, 26: 40, 27: 40, 28: _BASICS, 29: 8, 30: 255, 31: 100, 32: 16, 33: 10}
+                24: 50, 25: 119, 26: 40, 27: 40, 28: _BASICS, 29: 8, 30: 255, 31: 100, 32: 16, 33: 10,
+                34: 20}
 _SC_BASE = {11: 0xC38B, 12: 0xC396, 13: 0xC3A2, 14: 0xC3B2, 15: 0xC3C2, 16: 0xC3CE, 17: 0xC3FA}
 
 
@@ -42,11 +43,15 @@ class VirtualAppConfig:
                     "notes": bytearray([36, 38, 42, 46, 39, 37, 56, 51, 45, 47, 50, 70]),
                     "velocities": bytearray([100] * 12)} for _ in range(ac.DM_SLOTS)]
         self.dm_chain = [[] for _ in range(ac.DM_SLOTS)]
+        self.dm_swing = 0               # 0 = Auto
+        self.dm_slot_swing = [0] * ac.DM_SLOTS
         self.dm_chain_tail = [[ac.DM_NO_PATTERN] * 8 for _ in range(ac.DM_SLOTS)]
         self.fd = [bytearray(11) for _ in range(ac.FD_SLOTS)]
         self.vl_rules = bytearray([0, 0, 0, 0, 0, 0])
         self.vl_priority = bytearray([0, 1, 2, 3, 4, 5])
+        self.sc_rhythm = 0              # 0 = None, else rhythm index + 1
         self.sc = [bytearray(7) for _ in range(ac.SC_SLOTS)]
+        self.cset = [[0, bytearray(24)] for _ in range(ac.CSET_COUNT)]
 
     # ---- helpers ---------------------------------------------------------------
 
@@ -116,7 +121,7 @@ class VirtualAppConfig:
                     return False
                 elif category == 21 and (a[4] | (a[5] << 8)) == 0:
                     return False
-                if category not in (3, 25) and category not in _SC_BASE:
+                if category not in (3, 25, 34) and category not in _SC_BASE:
                     flags = 0
                 self.qb[qb_id] = [category, slot, flags & 0x1F if category != 25 else flags]
                 self.qb_cc[qb_id] = [a[4] | (a[5] << 8), a[6]] if category == 21 else [0, 0]
@@ -224,6 +229,24 @@ class VirtualAppConfig:
             else:
                 r[8:20], r[20:32] = entry["notes"], entry["velocities"]
             return True
+        if sub in (ac.SUB_DM_SLOT_SWING_GET, ac.SUB_DM_SLOT_SWING_SET):
+            slot = a[0]
+            if slot >= ac.DM_SLOTS:
+                return False
+            if sub == ac.SUB_DM_SLOT_SWING_SET:
+                if a[1] > ac.DM_SWING_MAX:
+                    return False
+                self.dm_slot_swing[slot] = a[1]
+            # the demo patterns have no default swing: Auto is the global setting
+            r[6], r[7], r[8] = slot, self.dm_slot_swing[slot], max(0, self.dm_swing - 1) * 10
+            return True
+        if sub in (ac.SUB_DM_SWING_GET, ac.SUB_DM_SWING_SET):
+            if sub == ac.SUB_DM_SWING_SET:
+                if a[0] > ac.DM_SWING_MAX:
+                    return False
+                self.dm_swing = a[0]
+            r[6] = self.dm_swing
+            return True
         if sub == ac.SUB_DM_INFO:
             struct.pack_into("<H", r, 6, len(_PATTERNS))
             return True
@@ -282,6 +305,15 @@ class VirtualAppConfig:
             r[6:12], r[12:18] = self.vl_rules, self.vl_priority
             return True
 
+        if sub in (ac.SUB_SCR_GET, ac.SUB_SCR_SET):
+            if sub == ac.SUB_SCR_SET:
+                value = a[0] | (a[1] << 8)
+                if value > len(_RHYTHMS):
+                    return False
+                self.sc_rhythm = value
+            struct.pack_into("<H", r, 6, self.sc_rhythm)
+            return True
+
         if sub in (ac.SUB_SC_GET, ac.SUB_SC_SET):
             slot = a[0]
             if slot >= ac.SC_SLOTS:
@@ -294,6 +326,23 @@ class VirtualAppConfig:
                 self.sc[slot] = bytearray([count]) + bytearray(a[2:8]) if count else bytearray(7)
             r[6] = slot
             r[7:14] = self.sc[slot]
+            return True
+
+        if sub in (ac.SUB_CSET_GET, ac.SUB_CSET_SET):
+            index = a[0]
+            if index >= ac.CSET_COUNT:
+                return False
+            if sub == ac.SUB_CSET_SET:
+                used, entries = a[1], bytes(a[2:26])
+                if used > 1:
+                    return False
+                for key in range(12):
+                    chord, inversion = entries[2 * key], entries[2 * key + 1]
+                    if not (chord <= 78 or 0x80 <= chord < 0x80 + ac.SC_SLOTS) or inversion > 8:
+                        return False
+                self.cset[index] = [used, bytearray(entries) if used else bytearray(24)]
+            r[6], r[7] = index, self.cset[index][0]
+            r[8:32] = self.cset[index][1]
             return True
 
         return False

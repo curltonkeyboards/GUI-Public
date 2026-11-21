@@ -240,7 +240,8 @@ _DRUM_CHANNEL = 9
 _DRUM_EXTRAS = [49, 57, 55, 52, 53, 44, 40, 48, 41, 43, 60, 61, 70, 58, 75, 81]
 
 DAW_COUNT = 9
-LCD_THEME_COUNT = 4
+LCD_THEME_COUNT = 5                  # 4 presets and Custom
+LCD_THEME_HSV = [(17, 255, 255), (85, 255, 255), (0, 0, 255), (140, 150, 255)]
 CHANNEL_ARTIC_MAX = 98
 _IMAGE_SIZE = 65536
 _CLONE_CHUNK = 22
@@ -277,6 +278,7 @@ class MusicMixin:
         self.mus_app_config = VirtualAppConfig()
         self.mus_daw = [0, 0]
         self.mus_lcd_theme = 0
+        self.mus_lcd_color = (17, 255, 255)
         self.mus_chartic = {"enabled": 0, "map": [0xFF] * 16, "cc": 1}
         self.mus_macro_modes = bytearray(96)
         self.mus_macro_sync = 0
@@ -1014,7 +1016,12 @@ class MusicMixin:
         r = self._mus_head(cmd)
         if msg[4] == 1 and msg[6] < LCD_THEME_COUNT:
             self.mus_lcd_theme = msg[6]
+        elif msg[4] == 2:                                # a colour of its own: Custom
+            self.mus_lcd_color = (msg[6], msg[7], max(msg[8], 40))
+            self.mus_lcd_theme = LCD_THEME_COUNT - 1
+        hsv = self.mus_lcd_color if self.mus_lcd_theme == LCD_THEME_COUNT - 1 else LCD_THEME_HSV[self.mus_lcd_theme]
         r[4], r[5], r[6] = 0, self.mus_lcd_theme, LCD_THEME_COUNT
+        r[7], r[8], r[9] = hsv
         return r
 
     def _mus_channel_artic(self, cmd, msg):

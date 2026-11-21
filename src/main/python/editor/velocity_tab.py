@@ -54,7 +54,7 @@ ATCC_END = ATCC_START + ATCC_COUNT - 1   # 98
 _ATCC_BASE_NAMES = ["Leg Vib Slow", "Leg Vib Fast", "Leg Vib Smooth",
                     "Vib Slow", "Vib Fast", "Vib Smooth",
                     "Fast Swell", "Slow Swell", "Reverse Swell",
-                    "Fast Fall", "Slow Fall", "Shimmer Me", "Shimmer Leg"]
+                    "Deep Fast", "Deep Slow", "Shimmer Me", "Shimmer Leg"]
 # CC-flavor set first (73-85), then the poly-AT duplicates (86-98). The two
 # flavors share base names, so suffix them — flat lists (channel-articulation
 # dropdowns, preset-name header) would otherwise show 13 indistinguishable
@@ -79,8 +79,8 @@ _ATCC_ART_PARAMS = [
     ((102, 52), (222, 141), 1, 127, 105,  1, 1, 100, 10, 3,  2, 35,  0),  # Fast Swell
     ((91, 77),  (176, 164), 1, 127, 105,  1, 1, 100, 10, 3,  2, 35, 22),  # Slow Swell
     ((55, 130), (164, 201), 1,   5,  90,  1, 3, 100, 10, 3, 35, 35,  0),  # Reverse Swell
-    ((131, 64), (216, 150), 1, 127, 105,  1, 5, 100, 10, 2,  2, 35,  0),  # Fast Fall
-    ((91, 77),  (176, 164), 1, 127, 105,  1, 5, 100, 10, 2,  2, 35, 22),  # Slow Fall
+    ((131, 64), (216, 150), 1, 127, 105,  1, 5, 100, 10, 2,  2, 35,  0),  # Deep Fast
+    ((91, 77),  (176, 164), 1, 127, 105,  1, 5, 100, 10, 2,  2, 35, 22),  # Deep Slow
     ((73, 83),  (159, 166), 1, 115,  90,  1, 1, 100, 10, 3, 35, 35,  0),  # Shimmer Me
     ((73, 83),  (159, 166), 1, 115,  90,  1, 1, 100, 10, 7, 35, 35,  0),  # Shimmer Leg
 ]
@@ -604,7 +604,7 @@ class VelocityTab(BasicEditor):
             "Off: No aftertouch\n"
             "Bottom-Out: Full travel 0-127, sustain suppresses note-on/off\n"
             "Reverse: Full travel 127-0, sustain suppresses note-on/off\n"
-            "Post-Actuation: Pressure after actuation point\n"
+            "Deep Press: press past a full press for aftertouch\n"
             "Bottom-Out (NS): Full travel 0-127, no sustain suppression\n"
             "Reverse (NS): Full travel 127-0, no sustain suppression\n"
             "Vibrato: Wiggle key for aftertouch"
@@ -621,17 +621,17 @@ class VelocityTab(BasicEditor):
         controls['aftertouch_mode_combo'].lineEdit().setReadOnly(True)
         controls['aftertouch_mode_combo'].lineEdit().setAlignment(Qt.AlignCenter)
         # Mode combo stores the "pair" index as itemData:
-        # 0=Off, 1=Bottom, 2=Reverse, 3=Post, 4=Vibrato
+        # 0=Off, 1=Bottom, 2=Reverse, 3=Deep Press, 4=Vibrato
         controls['aftertouch_mode_combo'].addItem("Off", 0)
-        controls['aftertouch_mode_combo'].addItem("Post Actuation", 3)
+        controls['aftertouch_mode_combo'].addItem("Deep Press", 3)
         controls['aftertouch_mode_combo'].addItem("Bottom Out", 1)
         controls['aftertouch_mode_combo'].addItem("Reverse", 2)
         controls['aftertouch_mode_combo'].addItem("Vibrato", 4)
         # Per-item hover tooltips (plain-language explanations of each mode)
         _at_mode_tips = {
             0: "Off: pressing a held key harder does nothing.",
-            3: "Post Actuation: aftertouch is set by how hard you struck the "
-               "note, then eases off only as you let the key back up.",
+            3: "Deep Press: a normal full press sends nothing; push a fully "
+               "pressed key down harder to send more aftertouch, ease off to send less.",
             1: "Bottom Out: push a held key deeper to send more aftertouch; "
                "ease up to send less.",
             2: "Reverse: opposite of Bottom Out - a held key sends the most "
@@ -1103,9 +1103,7 @@ class VelocityTab(BasicEditor):
             controls['aftertouch_cc_widget'].setVisible(not is_off)
             controls['velocity_as_at_widget'].setVisible(not is_off)
             controls['at_uses_curve_widget'].setVisible(not is_off)
-            # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON: the note
-            # velocity IS the CC ceiling, so it's intrinsic and can't be toggled off.
-            is_post = (pair == 3)
+            is_post = False   # (the old Post Actuation locked "Velocity as Aftertouch" on; Deep Press locks nothing)
             vat = controls['velocity_as_at_checkbox']
             vat.blockSignals(True)
             if is_post:
@@ -1796,13 +1794,12 @@ class VelocityTab(BasicEditor):
         self.aftertouch_cc_widget.setVisible(not is_off)
         self.velocity_as_at_widget.setVisible(not is_off)
         self.at_uses_curve_widget.setVisible(not is_off)
-        # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON (intrinsic cap).
         # NOTE: no inner blockSignals pair here — the whole function runs with
         # this checkbox blocked (see the blanket block above); the old inner
         # blockSignals(False) UNBLOCKED it early, so the setChecked below fired
         # the change handler and pushed param 50 to the device on every
         # connect/settings load.
-        is_post = (pair == 3)
+        is_post = False   # (the old Post Actuation locked "Velocity as Aftertouch" on; Deep Press locks nothing)
         self.velocity_as_at_checkbox.setEnabled(not is_post)
         if is_post:
             self.velocity_as_at_checkbox.setChecked(True)
@@ -1830,7 +1827,7 @@ class VelocityTab(BasicEditor):
                 self.aftertouch_cc_combo.setCurrentIndex(i)
                 break
 
-        # Set velocity as aftertouch checkbox (post-actuation keeps the forced ON)
+        # Set velocity as aftertouch checkbox
         if not is_post:
             velocity_as_at = settings.get('velocity_as_at', False)
             self.velocity_as_at_checkbox.setChecked(velocity_as_at)
@@ -1878,8 +1875,7 @@ class VelocityTab(BasicEditor):
         self.aftertouch_cc_widget.setVisible(not is_off)
         self.velocity_as_at_widget.setVisible(not is_off)
         self.at_uses_curve_widget.setVisible(not is_off)
-        # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON (intrinsic cap).
-        is_post = (pair == 3)
+        is_post = False   # (the old Post Actuation locked "Velocity as Aftertouch" on; Deep Press locks nothing)
         self.velocity_as_at_checkbox.blockSignals(True)
         self.velocity_as_at_checkbox.setEnabled(not is_post)
         if is_post:
@@ -2008,8 +2004,7 @@ class VelocityTab(BasicEditor):
         controls['aftertouch_cc_widget'].setVisible(not is_off)
         controls['velocity_as_at_widget'].setVisible(not is_off)
         controls['at_uses_curve_widget'].setVisible(not is_off)
-        # Post Actuation (pair 3) locks "Velocity as Aftertouch" ON (intrinsic cap).
-        is_post = (pair == 3)
+        is_post = False   # (the old Post Actuation locked "Velocity as Aftertouch" on; Deep Press locks nothing)
         controls['velocity_as_at_checkbox'].blockSignals(True)
         controls['velocity_as_at_checkbox'].setEnabled(not is_post)
         if is_post:
@@ -2042,7 +2037,7 @@ class VelocityTab(BasicEditor):
         # selected; the GUI refresh must only display it, never echo it back.
         velocity_as_at = zone_data.get('velocity_as_at', False)
         controls['velocity_as_at_checkbox'].blockSignals(True)
-        if not is_post:   # Post Actuation already forced it ON above
+        if not is_post:
             controls['velocity_as_at_checkbox'].setChecked(velocity_as_at)
         controls['velocity_as_at_checkbox'].blockSignals(False)
 

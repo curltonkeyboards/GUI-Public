@@ -40,10 +40,10 @@ CATEGORIES = {
     22: ("Rhythm Engine", 20), 23: ("Factory delay", 48), 24: ("Custom delay", 50),
     25: ("Factory arpeggio", 119), 26: ("User arpeggio", 40), 27: ("User sequence", 40),
     28: ("Basics", 35), 29: ("ThruLoop", 8), 30: ("Macro", 255), 31: ("Toggle", 100),
-    32: ("Multi Channel", 16), 33: ("KeySplit", 10),
+    32: ("Multi Channel", 16), 33: ("KeySplit", 10), 34: ("SmartChord Set", 20),
 }
 # What the "Change" dialog offers, in the order of the keyboard's own menu.
-OFFERED = [25, 26, 27, 23, 24, 12, 13, 14, 15, 16, 11, 17, 3, 4, 5, 6, 22, 10, 18, 19, 20, 29,
+OFFERED = [25, 26, 27, 23, 24, 34, 12, 13, 14, 15, 16, 11, 17, 3, 4, 5, 6, 22, 10, 18, 19, 20, 29,
            32, 33, 21, 30, 31, 28]
 
 # The names the keyboard's own menus use (firmware: basics group / leaf names in
@@ -179,7 +179,8 @@ def read_cc_from_image(keyboard):
 # SmartChord categories: the keycode of slot 0 (slot n is that + n)
 SMARTCHORD_BASE = {11: 0xC38B, 12: 0xC396, 13: 0xC3A2, 14: 0xC3B2, 15: 0xC3C2, 16: 0xC3CE, 17: 0xC3FA}
 # Categories whose flags hold a chord inversion (bits 0-3)
-HAS_INVERSION = set(SMARTCHORD_BASE) | {3}
+HAS_INVERSION = set(SMARTCHORD_BASE) | {3, 34}     # (a set: every chord inverted alike)
+SC_SETS = 34                                        # SmartChord Sets (editor/smartchord_sets.py)
 # Categories with names the user gave in this app
 USER_NAMES = {26: FEATURE_ARP, 27: FEATURE_SEQ, 24: FEATURE_DELAY, 31: FEATURE_TOGGLE, 30: FEATURE_MACRO}
 # Which tab here edits what a category plays
@@ -187,7 +188,7 @@ CATEGORY_EDITOR = {0: "Arpeggiator", 25: "Arpeggiator", 26: "Arpeggiator",
                    1: "Step Sequencer", 27: "Step Sequencer",
                    2: "Delay", 24: "Delay", 32: "Multi Channel", 33: "KeySplit",
                    18: "DrumLIVE", 22: "Rhythm Engine", 6: "Drum Machine", 5: "AutoFader",
-                   3: "SmartChord"}
+                   3: "SmartChord", 34: "SmartChord Sets"}
 
 _keycode_names = None
 
@@ -218,6 +219,9 @@ def slot_label(category, slot):
     """What slot `slot` of a category is called."""
     if category in SMARTCHORD_BASE:
         return _smartchord_name(category, slot) or str(slot + 1)
+    if category == SC_SETS:         # the 12 sets, then the 8 custom ones
+        from editor.smartchord_sets import SET_NAMES, custom_set_name
+        return SET_NAMES[slot] if slot < len(SET_NAMES) else custom_set_name(slot - len(SET_NAMES))
     if category == 25:
         try:
             from keycodes.keycodes import _arp_factory_name
@@ -257,6 +261,8 @@ def describe(category, slot, detail=None):
     label = slot_label(category, slot)
     if category in SMARTCHORD_BASE:
         return tr("QuickBuild", "SmartChord: {}").format(label)
+    if category == SC_SETS:
+        return tr("QuickBuild", "SmartChord Set: {}").format(label)
     if category in (28, 29, 20, 19):
         return label if not label.isdigit() else "{} {}".format(name, label)
     text = "{}: {}".format(name, label) if not label.isdigit() else "{} {}".format(name, label)
